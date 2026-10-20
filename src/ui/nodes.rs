@@ -1,0 +1,446 @@
+//! Layout and painting of each node type. Coordinates are in node-local
+//! world units and scaled by the canvas zoom through [`NodeView`].
+
+use egui::{
+    Align2, Color32, CornerRadius, CursorIcon, FontId, Id, Painter, Pos2, Rect, Response, Sense,
+    Shape, Stroke, StrokeKind, Ui, Vec2, vec2,
+};
+
+use super::theme::{self, alpha};
+use super::widgets::{self, hfader, hmeter, knob, toggle};
+use crate::audio::engine::NodeId;
+use crate::audio::params::{
+    MIXER_CHANNELS, OSC_PARAMS, Waveform, fader_gain, format_db, format_hz, gain_to_db, osc,
+};
+use crate::graph::{MixerNode, Node, NodeKind, OscNode};
+
+pub const HEADER_H: f32 = 26.0;
+pub const OSC_SIZE: Vec2 = vec2(216.0, 268.0);
+pub const MIX_SIZE: Vec2 = vec2(340.0, 244.0);
+
+const RADIUS: f32 = 6.0;
+const OSC_PORT_Y: [f32; 2] = [42.0, 60.0];
+const MIX_ROW_Y: f32 = 34.0;
+const MIX_ROW_H: f32 = 38.0;
+
+pub fn size(kind: &NodeKind) -> Vec2 {
+    match kind {
+        NodeKind::Osc(_) => OSC_SIZE,
+        NodeKind::Mixer(_) => MIX_SIZE,
+    }
+}
+
+pub fn input_offset(kind: &NodeKind, i: usize) -> Vec2 {
+    match kind {
+        NodeKind::Osc(_) => vec2(0.0, OSC_PORT_Y[i.min(1)]),
+        NodeKind::Mixer(_) => vec2(0.0, MIX_ROW_Y + MIX_ROW_H * (i as f32 + 0.5)),
+    }
+}
+
+pub fn output_offset(kind: &NodeKind, _i: usize) -> Vec2 {
+    match kind {
+        NodeKind::Osc(_) => vec2(OSC_SIZE.x, OSC_PORT_Y[0]),
+        NodeKind::Mixer(_) => vec2(MIX_SIZE.x, MIX_SIZE.y * 0.5),
+    }
+}
+
+/// Maps node-local coordinates to the screen.
+pub struct NodeView<'a> {
+    pub ui: &'a Ui,
+    pub painter: &'a Painter,
+    pub min: Pos2,
+    pub z: f32,
+}
+
+impl NodeView<'_> {
+    fn p(&self, x: f32, y: f32) -> Pos2 {
+        self.min + vec2(x, y) * self.z
+    }
+
+    fn r(&self, x0: f32, y0: f32, x1: f32, y1: f32) -> Rect {
+        Rect::from_min_max(self.p(x0, y0), self.p(x1, y1))
+    }
+
+    fn font(&self, size: f32) -> FontId {
+        FontId::proportional(size * self.z)
+    }
+
+    fn mono(&self, size: f32) -> FontId {
+        FontId::monospace(size * self.z)
+    }
+
+    fn text(&self, x: f32, y: f32, align: Align2, text: impl ToString, font: FontId, color: Color32) -> Rect {
+        self.painter.text(self.p(x, y), align, text, font, color)
+    }
+}
+
+fn radius(r: f32, z: f32) -> u8 {
+    (r * z).round().clamp(0.0, 255.0) as u8
+}
+
+/// Card, header and close button shared by every node. Returns the close
+/// button's response.
+pub fn frame(v: &NodeView, node: &Node, selected: bool) -> Response {
+    let z = v.z;
+    let size = node.size();
+    let rect = v.r(0.0, 0.0, size.x, size.y);
+    let p = v.painter;
+
+    widgets::shadow(p, rect, RADIUS * z, z);
+    p.rect_filled(rect, RADIUS * z, theme::NODE_BODY);
+    let top = CornerRadius {
+        nw: radius(RADIUS, z),
+        ne: radius(RADIUS, z),
+        sw: 0,
+        se: 0,
+    };
+    p.rect_filled(v.r(0.0, 0.0, size.x, HEADER_H), top, theme::NODE_HEADER);
+    p.line_segment(
+        [v.p(0.0, HEADER_H), v.p(size.x, HEADER_H)],
+        Stroke::new(1.0 * z, theme::NODE_BORDER),
+    );
+
+    // Activity LED in the node's colour, lit by its output level.
+    let level = node.signal_level().clamp(0.0, 1.0).sqrt();
+    p.circle_filled(
+        v.p(13.0, HEADER_H * 0.5),
+        3.5 * z,
+        theme::mix(theme::CONTROL_HI, node.accent, 0.35 + 0.65 * level),
+    );
+    v.text(24.0, HEADER_H * 0.5, Align2::LEFT_CENTER, &node.title, theme::strong(11.5 * z), theme::TEXT);
+
+    // Close button, only shown while the node is hovered or selected.
+    let close_rect = Rect::from_center_size(v.p(size.x - 13.0, HEADER_H * 0.5), Vec2::splat(16.0 * z));
+    let close = v
+        .ui
+        .interact(close_rect, Id::unique(("close", node.id)), Sense::CLICK)
+        .on_hover_cursor(CursorIcon::PointingHand);
+    if selected || v.ui.rect_contains_pointer(rect) {
+        let c = close_rect.center();
+        if close.hovered() {
+            p.circle_filled(c, 8.0 * z, theme::CONTROL_HI);
+        }
+        let col = if close.hovered() { theme::TEXT } else { theme::TEXT_FAINT };
+        let d = 3.0 * z;
+        p.line_segment([c - vec2(d, d), c + vec2(d, d)], Stroke::new(1.2 * z, col));
+        p.line_segment([c + vec2(-d, d), c + vec2(d, -d)], Stroke::new(1.2 * z, col));
+    }
+
+    if selected {
+        p.rect_stroke(rect, RADIUS * z, Stroke::new(1.5 * z, node.accent), StrokeKind::Outside);
+    } else {
+        p.rect_stroke(rect, RADIUS * z, Stroke::new(1.0 * z, theme::NODE_BORDER), StrokeKind::Inside);
+    }
+    close
+}
+
+fn note_name(freq: f32) -> String {
+    const NAMES: [&str; 12] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+    let midi = 69.0 + 12.0 * (freq / 440.0).log2();
+    let nearest = midi.round();
+    let cents = ((midi - nearest) * 100.0).round() as i32;
+    let n = nearest as i32;
+    let name = NAMES[n.rem_euclid(12) as usize];
+    let octave = n.div_euclid(12) - 1;
+    if cents == 0 {
+        format!("{name}{octave}")
+    } else {
+        format!("{name}{octave} {cents:+}ct")
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Oscillator
+// ---------------------------------------------------------------------------
+
+pub fn osc(v: &NodeView, id: NodeId, accent: Color32, o: &mut OscNode, inputs: &[bool], output: bool) {
+    let z = v.z;
+    let p = v.painter;
+    let w = OSC_SIZE.x;
+    let params = &o.params;
+    let wave = params.waveform();
+
+    // Port labels.
+    for (i, label) in ["FM", "AM"].iter().enumerate() {
+        let col = if inputs[i] { theme::TEXT_DIM } else { theme::TEXT_FAINT };
+        v.text(12.0, OSC_PORT_Y[i], Align2::LEFT_CENTER, label, v.font(9.0), col);
+    }
+    v.text(
+        w - 12.0,
+        OSC_PORT_Y[0],
+        Align2::RIGHT_CENTER,
+        "OUT",
+        v.font(9.0),
+        if output { theme::TEXT_DIM } else { theme::TEXT_FAINT },
+    );
+
+    // Frequency readout.
+    let freq = params.get(osc::FREQ) * (params.get(osc::FINE) / 1200.0).exp2();
+    v.text(w * 0.5, OSC_PORT_Y[0], Align2::CENTER_CENTER, format_hz(freq), v.mono(13.0), theme::TEXT);
+    let sub = if wave == Waveform::Noise {
+        "random".to_owned()
+    } else if freq < 20.0 {
+        format!("LFO · {:.2} s", 1.0 / freq)
+    } else {
+        note_name(freq)
+    };
+    v.text(w * 0.5, OSC_PORT_Y[1], Align2::CENTER_CENTER, sub, v.font(9.5), theme::TEXT_DIM);
+
+    // Waveform display (static: shape and level only).
+    let display = v.r(12.0, 72.0, w - 12.0, 114.0);
+    p.rect_filled(display, 4.0 * z, theme::INSET);
+    p.line_segment(
+        [display.left_center(), display.right_center()],
+        Stroke::new(1.0 * z, theme::GRID_MAJOR),
+    );
+    let level = params.get(osc::LEVEL).max(0.03);
+    let pts = widgets::wave_points(
+        display.shrink2(vec2(6.0 * z, 7.0 * z)),
+        wave,
+        params.get(osc::SHAPE),
+        2.0,
+        level,
+        0.0,
+        1,
+    );
+    p.add(Shape::line(pts, Stroke::new(1.4 * z, accent)));
+
+    // Waveform selector: one segmented control.
+    let bar = v.r(12.0, 120.0, w - 12.0, 140.0);
+    p.rect_filled(bar, 4.0 * z, theme::INSET);
+    let seg_w = bar.width() / Waveform::ALL.len() as f32;
+    for (i, &wf) in Waveform::ALL.iter().enumerate() {
+        let rect = Rect::from_min_size(bar.min + vec2(seg_w * i as f32, 0.0), vec2(seg_w, bar.height()));
+        let resp = v
+            .ui
+            .interact(rect, Id::unique(("wave", id, i)), Sense::CLICK)
+            .on_hover_cursor(CursorIcon::PointingHand)
+            .on_hover_text(wf.name());
+        if resp.clicked() {
+            params.set_waveform(wf);
+        }
+        let on = wf == wave;
+        if on {
+            p.rect_filled(rect.shrink(2.0 * z), 3.0 * z, theme::CONTROL);
+        }
+        let col = if on {
+            accent
+        } else if resp.hovered() {
+            theme::TEXT_DIM
+        } else {
+            theme::TEXT_FAINT
+        };
+        let glyph = widgets::wave_points(rect.shrink2(vec2(11.0 * z, 6.0 * z)), wf, 0.0, 1.0, 1.0, 0.0, 7);
+        p.add(Shape::line(glyph, Stroke::new(1.3 * z, col)));
+    }
+
+    // Knobs: two rows of three.
+    let order = [osc::FREQ, osc::FINE, osc::LEVEL, osc::SHAPE, osc::FM, osc::AM];
+    let col_w = (w - 24.0) / 3.0;
+    for (k, &pi) in order.iter().enumerate() {
+        let spec = &OSC_PARAMS[pi];
+        let cx = 12.0 + col_w * ((k % 3) as f32 + 0.5);
+        let row_y = 156.0 + 58.0 * (k / 3) as f32;
+        let unpatched = (pi == osc::FM && !inputs[0]) || (pi == osc::AM && !inputs[1]);
+        let label = if pi == osc::SHAPE { wave.shape_label() } else { spec.name };
+        let label_col = if unpatched { alpha(theme::TEXT_FAINT, 0.6) } else { theme::TEXT_FAINT };
+        v.text(cx, row_y, Align2::CENTER_CENTER, label, v.font(8.5), label_col);
+
+        let value = params.get(pi);
+        let mut norm = spec.to_norm(value);
+        let resp = knob(
+            v.ui,
+            p,
+            Id::unique(("knob", id, pi)),
+            v.p(cx, row_y + 19.0),
+            12.0 * z,
+            &mut norm,
+            spec.to_norm(spec.default),
+            spec.bipolar,
+            accent,
+            z,
+        );
+        if resp.dragged() || resp.double_clicked() {
+            params.set(pi, spec.denorm(norm));
+        }
+        let hot = resp.dragged() || resp.hovered();
+        v.text(
+            cx,
+            row_y + 38.0,
+            Align2::CENTER_CENTER,
+            spec.format(params.get(pi)),
+            v.mono(9.0),
+            if hot { theme::TEXT } else { theme::TEXT_DIM },
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Mixer
+// ---------------------------------------------------------------------------
+
+fn pan_label(pan: f32) -> String {
+    if pan.abs() < 0.01 {
+        "C".to_owned()
+    } else if pan < 0.0 {
+        format!("L{:.0}", -pan * 100.0)
+    } else {
+        format!("R{:.0}", pan * 100.0)
+    }
+}
+
+/// Fader column, shared by the channel strips and the master bus.
+const FADER_X: [f32; 2] = [110.0, 262.0];
+
+/// `sources[ch]` is the colour and name of what's plugged into channel `ch`.
+pub fn mixer(v: &NodeView, id: NodeId, accent: Color32, m: &mut MixerNode, sources: &[Option<(Color32, String)>]) {
+    use std::sync::atomic::Ordering::Relaxed;
+    let z = v.z;
+    let p = v.painter;
+    let w = MIX_SIZE.x;
+    let [fx0, fx1] = FADER_X;
+    let params = &m.params;
+    let any_solo = params.solo.iter().any(|s| s.load(Relaxed));
+
+    for ch in 0..MIXER_CHANNELS {
+        let cy = MIX_ROW_Y + MIX_ROW_H * (ch as f32 + 0.5);
+        let source = sources.get(ch).and_then(|s| s.as_ref());
+        let src_col = source.map(|s| s.0);
+
+        v.text(17.0, cy, Align2::CENTER_CENTER, ch + 1, v.mono(10.0), src_col.unwrap_or(theme::TEXT_FAINT));
+
+        // Mute / solo.
+        let muted = params.mute[ch].load(Relaxed);
+        let soloed = params.solo[ch].load(Relaxed);
+        if toggle(v.ui, p, Id::unique(("mute", id, ch)), v.r(30.0, cy - 8.0, 46.0, cy + 8.0), "M", muted, theme::MUTE, z)
+            .clicked()
+        {
+            params.mute[ch].store(!muted, Relaxed);
+        }
+        if toggle(v.ui, p, Id::unique(("solo", id, ch)), v.r(50.0, cy - 8.0, 66.0, cy + 8.0), "S", soloed, theme::SOLO, z)
+            .clicked()
+        {
+            params.solo[ch].store(!soloed, Relaxed);
+        }
+        let audible = !muted && (!any_solo || soloed);
+
+        // Pan.
+        let pan = params.pan[ch].get();
+        let mut norm = (pan + 1.0) * 0.5;
+        let r = knob(
+            v.ui,
+            p,
+            Id::unique(("pan", id, ch)),
+            v.p(88.0, cy - 3.0),
+            9.0 * z,
+            &mut norm,
+            0.5,
+            true,
+            src_col.unwrap_or(theme::TEXT_FAINT),
+            z,
+        );
+        if r.dragged() || r.double_clicked() {
+            params.pan[ch].set(norm * 2.0 - 1.0);
+        }
+        v.text(88.0, cy + 13.0, Align2::CENTER_CENTER, pan_label(params.pan[ch].get()), v.mono(7.5), theme::TEXT_FAINT);
+
+        // Fader + meter.
+        let mut pos = params.fader[ch].get();
+        let fr = hfader(
+            v.ui,
+            p,
+            Id::unique(("fader", id, ch)),
+            v.r(fx0, cy - 10.0, fx1, cy + 2.0),
+            &mut pos,
+            src_col.unwrap_or(theme::TEXT_FAINT),
+            audible,
+            z,
+        );
+        if fr.dragged() || fr.double_clicked() {
+            params.fader[ch].set(pos);
+        }
+        hmeter(p, v.r(fx0, cy + 6.0, fx1, cy + 9.0), &m.channels[ch], z);
+
+        let db = gain_to_db(fader_gain(params.fader[ch].get()));
+        v.text(
+            w - 12.0,
+            cy - 4.0,
+            Align2::RIGHT_CENTER,
+            format_db(db),
+            v.mono(10.0),
+            if audible { theme::TEXT } else { theme::TEXT_FAINT },
+        );
+        let (name, name_col) = match source {
+            Some((_, n)) => (n.as_str(), theme::TEXT_DIM),
+            None => ("No input", theme::TEXT_FAINT),
+        };
+        v.text(w - 12.0, cy + 9.0, Align2::RIGHT_CENTER, name, v.font(8.5), name_col);
+    }
+
+    // Master section.
+    let sep_y = MIX_ROW_Y + MIX_ROW_H * MIXER_CHANNELS as f32 + 4.0;
+    p.line_segment([v.p(12.0, sep_y), v.p(w - 12.0, sep_y)], Stroke::new(1.0 * z, theme::NODE_BORDER));
+
+    let cy = sep_y + 18.0;
+    v.text(12.0, cy, Align2::LEFT_CENTER, "MASTER", theme::strong(9.5 * z), theme::TEXT_DIM);
+
+    let mut pos = params.master.get();
+    let fr = hfader(
+        v.ui,
+        p,
+        Id::unique(("master", id)),
+        v.r(fx0, cy - 6.0, fx1, cy + 6.0),
+        &mut pos,
+        theme::TEXT_DIM,
+        true,
+        z,
+    );
+    if fr.dragged() || fr.double_clicked() {
+        params.master.set(pos);
+    }
+    v.text(
+        w - 12.0,
+        cy,
+        Align2::RIGHT_CENTER,
+        format_db(gain_to_db(fader_gain(params.master.get()))),
+        v.mono(10.0),
+        theme::TEXT,
+    );
+
+    let my = cy + 14.0;
+    for (i, label) in ["L", "R"].iter().enumerate() {
+        let y = my + i as f32 * 6.0;
+        v.text(fx0 - 8.0, y + 1.5, Align2::CENTER_CENTER, label, v.font(7.0), theme::TEXT_FAINT);
+        hmeter(p, v.r(fx0, y, fx1, y + 3.0), &m.master[i], z);
+    }
+
+    let peak = m.master[0].peak.max(m.master[1].peak);
+    let clip = peak >= 0.999;
+    let clip_rect = v.r(w - 40.0, my - 2.0, w - 12.0, my + 11.0);
+    p.rect_filled(clip_rect, 2.0 * z, if clip { theme::METER_RED } else { theme::CONTROL });
+    p.text(
+        clip_rect.center(),
+        Align2::CENTER_CENTER,
+        "CLIP",
+        v.font(7.5),
+        if clip { theme::INSET } else { theme::TEXT_FAINT },
+    );
+
+    // Main-out indicator: this node feeds the audio device.
+    let level = m.master[0].level.max(m.master[1].level).clamp(0.0, 1.0).sqrt();
+    let col = theme::mix(theme::TEXT_FAINT, accent, level);
+    let sp = v.p(16.0, my + 4.5);
+    p.add(Shape::convex_polygon(
+        vec![
+            sp + vec2(-4.0, -2.0) * z,
+            sp + vec2(-1.5, -2.0) * z,
+            sp + vec2(2.0, -5.0) * z,
+            sp + vec2(2.0, 5.0) * z,
+            sp + vec2(-1.5, 2.0) * z,
+            sp + vec2(-4.0, 2.0) * z,
+        ],
+        col,
+        Stroke::NONE,
+    ));
+    v.text(24.0, my + 4.5, Align2::LEFT_CENTER, "Main out", v.font(8.5), col);
+}
