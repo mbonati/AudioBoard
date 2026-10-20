@@ -2,7 +2,7 @@
 //! world units and scaled by the canvas zoom through [`NodeView`].
 
 use egui::{
-    Align2, Color32, CornerRadius, CursorIcon, FontId, Id, Painter, Pos2, Rect, Response, Sense,
+    Align2, Color32, CornerRadius, CursorIcon, FontId, Id, Painter, Pos2, Rect, Sense,
     Shape, Stroke, StrokeKind, Ui, Vec2, vec2,
 };
 
@@ -13,7 +13,7 @@ use crate::audio::engine::NodeId;
 use crate::audio::params::{
     MIXER_CHANNELS, OSC_PARAMS, ParamSpec, Waveform, fader_gain, format_db, format_hz, gain_to_db, osc,
 };
-use crate::graph::{MixerNode, Node, NodeType, OscNode};
+use crate::graph::{MixerNode, Node, NodeKind, NodeType, OscNode};
 
 pub const HEADER_H: f32 = 26.0;
 pub const OSC_SIZE: Vec2 = vec2(216.0, 268.0);
@@ -82,9 +82,15 @@ fn radius(r: f32, z: f32) -> u8 {
     (r * z).round().clamp(0.0, 255.0) as u8
 }
 
-/// Card, header and close button shared by every node. Returns the close
-/// button's response.
-pub fn frame(v: &NodeView, node: &Node, selected: bool) -> Response {
+/// What the user clicked in a node's header.
+pub struct FrameActions {
+    pub close: bool,
+    pub toggle_collapse: bool,
+}
+
+/// Card, header (collapse chevron, activity LED, title, close button)
+/// shared by every node.
+pub fn frame(v: &NodeView, node: &Node, selected: bool) -> FrameActions {
     let z = v.z;
     let size = node.size();
     let rect = v.r(0.0, 0.0, size.x, size.y);
@@ -104,14 +110,31 @@ pub fn frame(v: &NodeView, node: &Node, selected: bool) -> Response {
         Stroke::new(1.0 * z, theme::NODE_BORDER),
     );
 
+    // Collapse chevron: points down when expanded, right when collapsed.
+    let fold_rect = Rect::from_center_size(v.p(12.0, HEADER_H * 0.5), Vec2::splat(16.0 * z));
+    let fold = v
+        .ui
+        .interact(fold_rect, Id::unique(("fold", node.id)), Sense::CLICK)
+        .on_hover_cursor(CursorIcon::PointingHand)
+        .on_hover_text(if node.collapsed { "Expand (C)" } else { "Collapse (C)" });
+    let c = fold_rect.center();
+    let s = 3.0 * z;
+    let tri = if node.collapsed {
+        vec![c + vec2(-0.6 * s, -s), c + vec2(0.9 * s, 0.0), c + vec2(-0.6 * s, s)]
+    } else {
+        vec![c + vec2(-s, -0.6 * s), c + vec2(s, -0.6 * s), c + vec2(0.0, 0.9 * s)]
+    };
+    let fold_col = if fold.hovered() { theme::TEXT } else { theme::TEXT_FAINT };
+    p.add(Shape::convex_polygon(tri, fold_col, Stroke::NONE));
+
     // Activity LED in the node's colour, lit by its output level.
     let level = node.signal_level().clamp(0.0, 1.0).sqrt();
     p.circle_filled(
-        v.p(13.0, HEADER_H * 0.5),
+        v.p(26.0, HEADER_H * 0.5),
         3.5 * z,
         theme::mix(theme::CONTROL_HI, node.accent, 0.35 + 0.65 * level),
     );
-    v.text(24.0, HEADER_H * 0.5, Align2::LEFT_CENTER, &node.title, theme::strong(11.5 * z), theme::TEXT);
+    v.text(36.0, HEADER_H * 0.5, Align2::LEFT_CENTER, &node.title, theme::strong(11.5 * z), theme::TEXT);
 
     // Close button, only shown while the node is hovered or selected.
     let close_rect = Rect::from_center_size(v.p(size.x - 13.0, HEADER_H * 0.5), Vec2::splat(16.0 * z));
@@ -135,7 +158,58 @@ pub fn frame(v: &NodeView, node: &Node, selected: bool) -> Response {
     } else {
         p.rect_stroke(rect, RADIUS * z, Stroke::new(1.0 * z, theme::NODE_BORDER), StrokeKind::Inside);
     }
-    close
+    FrameActions {
+        close: close.clicked(),
+        toggle_collapse: fold.clicked(),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Collapsed nodes
+// ---------------------------------------------------------------------------
+
+pub const COLLAPSED_W: f32 = 168.0;
+const COLLAPSED_ROW0: f32 = HEADER_H + 13.0;
+const COLLAPSED_ROW_H: f32 = 18.0;
+
+/// Size of a collapsed node with `rows` port rows.
+pub fn collapsed_size(rows: usize) -> Vec2 {
+    vec2(COLLAPSED_W, HEADER_H + 10.0 + COLLAPSED_ROW_H * rows.max(1) as f32)
+}
+
+pub fn collapsed_port(i: usize, output: bool) -> Vec2 {
+    let x = if output { COLLAPSED_W } else { 0.0 };
+    vec2(x, COLLAPSED_ROW0 + COLLAPSED_ROW_H * i as f32)
+}
+
+/// The node's main value, shown when it is collapsed.
+fn summary(node: &Node) -> String {
+    match &node.kind {
+        NodeKind::Osc(o) => format_hz(o.params.get(osc::FREQ) * (o.params.get(osc::FINE) / 1200.0).exp2()),
+        NodeKind::Mixer(m) => format_db(gain_to_db(fader_gain(m.params.master.get()))),
+        NodeKind::Module(m) => modules::summary(&m.params),
+    }
+}
+
+/// Body of a collapsed node: port labels and the main value.
+pub fn collapsed(v: &NodeView, node: &Node, inputs: &[bool], output: bool) {
+    let row_y = |i: usize| COLLAPSED_ROW0 + COLLAPSED_ROW_H * i as f32;
+    let label_col = |on: bool| if on { theme::TEXT_DIM } else { theme::TEXT_FAINT };
+    for (i, label) in node.inputs().iter().enumerate() {
+        let on = inputs.get(i).copied().unwrap_or(false);
+        v.text(12.0, row_y(i), Align2::LEFT_CENTER, label, v.font(9.0), label_col(on));
+    }
+    for (i, label) in node.outputs().iter().enumerate() {
+        v.text(COLLAPSED_W - 12.0, row_y(i), Align2::RIGHT_CENTER, label, v.font(9.0), label_col(output));
+    }
+    v.text(COLLAPSED_W * 0.5, row_y(0), Align2::CENTER_CENTER, summary(node), v.mono(10.5), theme::TEXT);
+    // The mixer is the output: keep its master meters in view.
+    if let NodeKind::Mixer(m) = &node.kind {
+        for (i, meter) in m.master.iter().enumerate() {
+            let y = row_y(1) + 6.0 * i as f32;
+            hmeter(v.painter, v.r(40.0, y, COLLAPSED_W - 40.0, y + 3.0), meter, v.z);
+        }
+    }
 }
 
 pub(super) fn note_name(freq: f32) -> String {

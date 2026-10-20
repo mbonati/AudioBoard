@@ -78,11 +78,16 @@ e meter; bus master stereo con meter L/R e indicatore di clip. Il mixer alimenta
 | Regolare knob / fader | trascinare (Shift = regolazione fine), doppio clic = reset |
 | Spostare la vista / zoom | scroll / pinch o Cmd+scroll |
 | Eliminare / duplicare un nodo | Del / Cmd+D sul nodo selezionato |
+| Ridurre / espandere un nodo | freccia nell'intestazione, doppio clic sul titolo, tasto C, oppure tasto destro → Collapse |
+| Ridurre / espandere tutti i nodi | Shift+C, pulsante nella toolbar, oppure tasto destro sul canvas |
 | Inquadrare tutti i nodi | F |
 | Audio on/off | Spazio |
 | Mostrare / nascondere oscilloscopio e spettro | pulsante pannello nella toolbar |
 
 L'elenco completo delle scorciatoie compare passando il mouse sul pulsante **?** della toolbar.
+
+Un nodo ridotto occupa solo una striscia con titolo, porte e valore principale (frequenza, cutoff, RT…);
+il mixer ridotto mostra anche i meter del master. Cavi e audio continuano a funzionare normalmente.
 
 I collegamenti che creerebbero un loop di feedback vengono rifiutati; ogni ingresso accetta un solo cavo.
 Il feedback si ottiene dentro i nodi (Delay, Reverb).

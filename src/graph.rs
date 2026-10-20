@@ -122,12 +122,18 @@ pub struct Node {
     pub pos: Pos2,
     pub title: String,
     pub accent: Color32,
+    /// Shown as a compact strip: title, ports and the main value only.
+    pub collapsed: bool,
     pub kind: NodeKind,
 }
 
 impl Node {
     pub fn size(&self) -> Vec2 {
-        nodes::type_size(self.kind.node_type())
+        if self.collapsed {
+            nodes::collapsed_size(self.inputs().len().max(self.outputs().len()))
+        } else {
+            nodes::type_size(self.kind.node_type())
+        }
     }
 
     pub fn inputs(&self) -> &'static [&'static str] {
@@ -147,11 +153,21 @@ impl Node {
     }
 
     pub fn input_pos(&self, i: usize) -> Pos2 {
-        self.pos + nodes::input_offset(self.kind.node_type(), i)
+        self.pos
+            + if self.collapsed {
+                nodes::collapsed_port(i, false)
+            } else {
+                nodes::input_offset(self.kind.node_type(), i)
+            }
     }
 
     pub fn output_pos(&self, i: usize) -> Pos2 {
-        self.pos + nodes::output_offset(self.kind.node_type(), i)
+        self.pos
+            + if self.collapsed {
+                nodes::collapsed_port(i, true)
+            } else {
+                nodes::output_offset(self.kind.node_type(), i)
+            }
     }
 
     /// Smoothed output level, used to animate cables.
@@ -253,6 +269,7 @@ impl Graph {
             pos,
             title,
             accent,
+            collapsed: false,
             kind: NodeKind::Osc(OscNode {
                 params,
                 meter: MeterState::default(),
@@ -275,6 +292,7 @@ impl Graph {
             pos,
             title,
             accent: theme::MIXER_ACCENT,
+            collapsed: false,
             kind: NodeKind::Mixer(MixerNode {
                 params,
                 channels: Default::default(),
@@ -301,6 +319,7 @@ impl Graph {
             pos,
             title,
             accent,
+            collapsed: false,
             kind: NodeKind::Module(ModuleNode {
                 params,
                 meter: MeterState::default(),
@@ -315,14 +334,15 @@ impl Graph {
     pub fn duplicate(&mut self, id: NodeId, audio: &AudioHandle) -> Option<NodeId> {
         let node = self.node(id)?;
         let pos = node.pos + Vec2::new(32.0, 32.0);
-        match &node.kind {
+        let collapsed = node.collapsed;
+        let copy = match &node.kind {
             NodeKind::Osc(o) => {
                 let p = OscParams::new();
                 p.set_waveform(o.params.waveform());
                 for i in 0..osc::COUNT {
                     p.set(i, o.params.get(i));
                 }
-                Some(self.add_osc_with(pos, Arc::new(p), audio))
+                self.add_osc_with(pos, Arc::new(p), audio)
             }
             NodeKind::Mixer(m) => {
                 let p = MixerParams::new();
@@ -333,12 +353,32 @@ impl Graph {
                     p.solo[ch].store(m.params.solo[ch].load(Ordering::Relaxed), Ordering::Relaxed);
                 }
                 p.master.set(m.params.master.get());
-                Some(self.add_mixer_with(pos, Arc::new(p), audio))
+                self.add_mixer_with(pos, Arc::new(p), audio)
             }
             NodeKind::Module(m) => {
                 let p = Arc::new(m.params.duplicate());
-                Some(self.add_module_with(pos, p, audio))
+                self.add_module_with(pos, p, audio)
             }
+        };
+        self.set_collapsed(copy, collapsed);
+        Some(copy)
+    }
+
+    pub fn set_collapsed(&mut self, id: NodeId, collapsed: bool) {
+        if let Some(n) = self.nodes.iter_mut().find(|n| n.id == id) {
+            n.collapsed = collapsed;
+        }
+    }
+
+    pub fn toggle_collapsed(&mut self, id: NodeId) {
+        if let Some(n) = self.nodes.iter_mut().find(|n| n.id == id) {
+            n.collapsed = !n.collapsed;
+        }
+    }
+
+    pub fn set_all_collapsed(&mut self, collapsed: bool) {
+        for n in &mut self.nodes {
+            n.collapsed = collapsed;
         }
     }
 

@@ -27,6 +27,8 @@ enum Action {
     Disconnect(Cable),
     Select(NodeId),
     Deselect,
+    ToggleCollapse(NodeId),
+    CollapseAll(bool),
 }
 
 /// A cable being dragged out of a port. `anchor` is the fixed end.
@@ -249,7 +251,8 @@ impl Editor {
                 node.pos += body.drag_delta() / z;
                 ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
             }
-            body.context_menu(|ui| node_menu(ui, id, &mut actions));
+            let collapsed = node.collapsed;
+            body.context_menu(|ui| node_menu(ui, id, collapsed, &mut actions));
 
             let view = NodeView {
                 ui,
@@ -257,8 +260,15 @@ impl Editor {
                 min: rect_s.min,
                 z,
             };
-            if nodes::frame(&view, node, self.selected == Some(id)).clicked() {
+            let header = nodes::frame(&view, node, self.selected == Some(id));
+            if header.close {
                 actions.push(Action::Remove(id));
+            }
+            let on_header = body
+                .interact_pointer_pos()
+                .is_some_and(|p| p.y < rect_s.top() + nodes::HEADER_H * z);
+            if header.toggle_collapse || (body.double_clicked() && on_header) {
+                actions.push(Action::ToggleCollapse(id));
             }
 
             let in_count = node.inputs().len();
@@ -268,10 +278,14 @@ impl Editor {
             let accent = node.accent;
             let connected: Vec<bool> = sources.iter().map(Option::is_some).collect();
             let out = outputs.contains(&PortRef { node: id, port: 0 });
-            match &mut node.kind {
-                NodeKind::Osc(o) => nodes::osc(&view, id, accent, o, &connected, out),
-                NodeKind::Mixer(m) => nodes::mixer(&view, id, accent, m, &sources),
-                NodeKind::Module(m) => modules::draw(&view, id, accent, m, &connected, out),
+            if collapsed {
+                nodes::collapsed(&view, node, &connected, out);
+            } else {
+                match &mut node.kind {
+                    NodeKind::Osc(o) => nodes::osc(&view, id, accent, o, &connected, out),
+                    NodeKind::Mixer(m) => nodes::mixer(&view, id, accent, m, &sources),
+                    NodeKind::Module(m) => modules::draw(&view, id, accent, m, &connected, out),
+                }
             }
 
             // Ports last so they sit on top of everything else in the node.
@@ -346,11 +360,14 @@ impl Editor {
         }
 
         // --- Keyboard ----------------------------------------------------
-        let (delete, duplicate, frame) = ui.input(|i| {
+        let (delete, duplicate, frame, fold, fold_all) = ui.input(|i| {
+            let fold = i.key_pressed(Key::C) && !i.modifiers.command;
             (
                 i.key_pressed(Key::Delete) || i.key_pressed(Key::Backspace),
                 i.modifiers.command && i.key_pressed(Key::D),
                 i.key_pressed(Key::F) && !i.modifiers.command,
+                fold && !i.modifiers.shift,
+                fold && i.modifiers.shift,
             )
         });
         if let Some(sel) = self.selected {
@@ -358,7 +375,13 @@ impl Editor {
                 actions.push(Action::Remove(sel));
             } else if duplicate {
                 actions.push(Action::Duplicate(sel));
+            } else if fold {
+                actions.push(Action::ToggleCollapse(sel));
             }
+        }
+        if fold_all {
+            // Collapse everything, or expand if all are already collapsed.
+            actions.push(Action::CollapseAll(graph.nodes.iter().any(|n| !n.collapsed)));
         }
         if frame {
             self.frame_all(graph);
@@ -391,6 +414,8 @@ impl Editor {
                     graph.bring_to_front(id);
                 }
                 Action::Deselect => self.selected = None,
+                Action::ToggleCollapse(id) => graph.toggle_collapsed(id),
+                Action::CollapseAll(collapsed) => graph.set_all_collapsed(collapsed),
             }
         }
     }
@@ -462,6 +487,15 @@ fn canvas_menu(ui: &mut Ui, target: MenuTarget, actions: &mut Vec<Action>) {
             if let Some(ty) = add_menu(ui) {
                 actions.push(Action::Add(ty, pos));
             }
+            ui.separator();
+            if menu_item(ui, "Collapse all", "Shift+C") {
+                actions.push(Action::CollapseAll(true));
+                ui.close();
+            }
+            if menu_item(ui, "Expand all", "Shift+C") {
+                actions.push(Action::CollapseAll(false));
+                ui.close();
+            }
         }
         MenuTarget::Cable(cable) => {
             if menu_item(ui, "Disconnect", "Double-click") {
@@ -472,7 +506,11 @@ fn canvas_menu(ui: &mut Ui, target: MenuTarget, actions: &mut Vec<Action>) {
     }
 }
 
-fn node_menu(ui: &mut Ui, id: NodeId, actions: &mut Vec<Action>) {
+fn node_menu(ui: &mut Ui, id: NodeId, collapsed: bool, actions: &mut Vec<Action>) {
+    if menu_item(ui, if collapsed { "Expand" } else { "Collapse" }, "C") {
+        actions.push(Action::ToggleCollapse(id));
+        ui.close();
+    }
     if menu_item(ui, "Duplicate", "Cmd+D") {
         actions.push(Action::Duplicate(id));
         ui.close();

@@ -16,7 +16,7 @@ use crate::audio::params::{EngineShared, Waveform};
 use crate::audio::{self, AudioHandle};
 use crate::graph::{Graph, NodeKind, PortRef};
 
-const SHORTCUTS: [(&str, &str); 12] = [
+const SHORTCUTS: [(&str, &str); 15] = [
     ("Right-click", "Add node / menu"),
     ("Drag port", "Patch a cable"),
     ("Drag input", "Re-patch / unplug"),
@@ -28,6 +28,9 @@ const SHORTCUTS: [(&str, &str); 12] = [
     ("Del", "Delete selected node"),
     ("Cmd+D", "Duplicate node"),
     ("F", "Frame all nodes"),
+    ("C", "Collapse / expand node"),
+    ("Double-click title", "Collapse / expand node"),
+    ("Shift+C", "Collapse / expand all"),
     ("Space", "Audio on / off"),
 ];
 
@@ -106,6 +109,11 @@ impl AudioBoardApp {
                 {
                     self.show_monitor = !self.show_monitor;
                 }
+                let all_collapsed = !self.graph.nodes.is_empty() && self.graph.nodes.iter().all(|n| n.collapsed);
+                let tip = if all_collapsed { "Expand all nodes (Shift+C)" } else { "Collapse all nodes (Shift+C)" };
+                if icon_button(ui, Icon::Compact, all_collapsed).on_hover_text(tip).clicked() {
+                    self.graph.set_all_collapsed(!all_collapsed);
+                }
                 icon_button(ui, Icon::Help, false).on_hover_ui(shortcuts);
                 ui.add_space(10.0);
                 let info = &self.audio.info;
@@ -136,7 +144,11 @@ impl AudioBoardApp {
     fn status_bar(&self, ui: &mut Ui) {
         ui.horizontal_centered(|ui| {
             let hint = match self.editor.selected.and_then(|id| self.graph.node(id)) {
-                Some(n) => format!("{} selected  ·  Del to delete  ·  Cmd+D to duplicate", n.title),
+                Some(n) => format!(
+                    "{} selected  ·  Del to delete  ·  Cmd+D to duplicate  ·  C to {}",
+                    n.title,
+                    if n.collapsed { "expand" } else { "collapse" }
+                ),
                 None => "Drag from an output to an input to connect  ·  Right-click to add nodes".to_owned(),
             };
             ui.label(RichText::new(hint).size(10.5).color(theme::TEXT_FAINT));
@@ -341,6 +353,7 @@ fn tool_button(ui: &mut Ui, label: &str, color: Color32) -> Response {
 
 enum Icon {
     Monitor,
+    Compact,
     Help,
 }
 
@@ -358,6 +371,13 @@ fn icon_button(ui: &mut Ui, icon: Icon, active: bool) -> Response {
             let r = Rect::from_center_size(c, vec2(13.0, 11.0));
             p.rect_stroke(r, 2.0, Stroke::new(1.2, col), StrokeKind::Inside);
             p.hline(r.x_range(), r.bottom() - 4.0, Stroke::new(1.2, col));
+        }
+        Icon::Compact => {
+            // Two slim cards: nodes folded to their headers.
+            for dy in [-3.0, 3.0] {
+                let r = Rect::from_center_size(c + vec2(0.0, dy), vec2(13.0, 4.0));
+                p.rect_stroke(r, 1.5, Stroke::new(1.2, col), StrokeKind::Inside);
+            }
         }
         Icon::Help => {
             p.circle_stroke(c, 6.5, Stroke::new(1.2, col));

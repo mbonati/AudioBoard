@@ -145,6 +145,11 @@ fn mode_name(kind: ModuleKind, i: usize) -> &'static str {
     .unwrap_or("")
 }
 
+/// The main readout line, shown on collapsed nodes.
+pub fn summary(p: &ModuleParams) -> String {
+    readout(p.kind, p).0
+}
+
 fn readout(kind: ModuleKind, p: &ModuleParams) -> (String, String) {
     let mode = mode_name(kind, p.mode());
     match kind {

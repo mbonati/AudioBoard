@@ -396,11 +396,39 @@ fn every_node_type_draws_without_panicking() {
     }
     render_buf(&mut e, 4800);
     let ctx = egui::Context::default();
-    for _ in 0..3 {
+    for frame in 0..4 {
+        // Expanded first, then every node collapsed.
+        g.set_all_collapsed(frame >= 2);
         for node in &mut g.nodes {
             node.update_meters(1.0 / 60.0);
         }
         let mut out = ctx.run_ui(egui::RawInput::default(), |ui| editor.show(ui, &mut g, &a));
         out.textures_delta.clear(); // no renderer here to upload them
     }
+}
+
+#[test]
+fn collapsing_shrinks_a_node_and_keeps_it_patchable() {
+    let (mut g, a, mut e) = setup();
+    let x = source(&mut g, &a);
+    let m = g.add_mixer(pos2(0.0, 0.0), &a);
+    g.connect(port(x, 0), port(m, 2), &a);
+
+    let full = g.node(m).unwrap().size();
+    let input = g.node(m).unwrap().input_pos(2);
+    g.toggle_collapsed(m);
+    let small = g.node(m).unwrap().size();
+    assert!(small.x < full.x && small.y < full.y, "{full:?} → {small:?}");
+    assert_ne!(g.node(m).unwrap().input_pos(2), input, "ports follow the compact layout");
+    assert!(g.node(m).unwrap().input_pos(3).y < g.node(m).unwrap().pos.y + small.y);
+
+    // Collapsing is visual only: the audio keeps flowing.
+    render_buf(&mut e, 4800);
+    assert!(rms_of(&render_buf(&mut e, 4800)) > 0.01);
+
+    let copy = g.duplicate(m, &a).unwrap();
+    assert!(g.node(copy).unwrap().collapsed, "duplicates keep the collapsed state");
+    g.set_all_collapsed(false);
+    assert!(g.nodes.iter().all(|n| !n.collapsed));
+    assert_eq!(g.node(m).unwrap().size(), full);
 }
