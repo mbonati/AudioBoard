@@ -1081,3 +1081,118 @@ fn after_auto_layout_no_cable_runs_behind_a_node() {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// VST3 plugins
+// ---------------------------------------------------------------------------
+
+#[test]
+fn base64_round_trips() {
+    use crate::project::{base64_decode, base64_encode};
+    for data in [&b""[..], b"f", b"fo", b"foo", b"foob", b"\x00\xff\x10binary\x80"] {
+        let text = base64_encode(data);
+        assert_eq!(base64_decode(&text).unwrap(), data, "{text}");
+    }
+    assert_eq!(base64_encode(b"foobar"), "Zm9vYmFy");
+    assert!(base64_decode("not*base64").is_none());
+}
+
+#[test]
+fn midi_stream_reaches_every_reader() {
+    use crate::audio::midi::MidiState;
+    let m = MidiState::new();
+    let mut a = m.stream_head();
+    m.handle(&[0x90, 60, 100]);
+    m.handle(&[0xE0, 0, 64]); // pitch bend: kept in the stream though not in the state
+    let mut b = m.stream_head(); // a late reader sees only newer messages
+    m.handle(&[0x80, 60, 0]);
+    let mut seen_a = Vec::new();
+    m.read_stream(&mut a, |msg| seen_a.push(msg));
+    assert_eq!(seen_a, vec![[0x90, 60, 100], [0xE0, 0, 64], [0x80, 60, 0]]);
+    let mut seen_b = Vec::new();
+    m.read_stream(&mut b, |msg| seen_b.push(msg));
+    assert_eq!(seen_b, vec![[0x80, 60, 0]]);
+    // A reader far behind skips to what is still kept.
+    let mut late = m.stream_head();
+    for i in 0..3000u32 {
+        m.handle(&[0xB0, 1, (i % 128) as u8]);
+    }
+    let mut count = 0;
+    m.read_stream(&mut late, |_| count += 1);
+    assert_eq!(count, 1024);
+}
+
+/// A free effect plugin, if installed (these checks need a real VST3).
+fn installed_effect() -> Option<std::path::PathBuf> {
+    let path = std::path::PathBuf::from("/Library/Audio/Plug-Ins/VST3/ValhallaFreqEcho.vst3");
+    if path.exists() {
+        Some(path)
+    } else {
+        eprintln!("skipping: {} is not installed", path.display());
+        None
+    }
+}
+
+#[test]
+fn vst3_plugins_work_as_nodes() {
+    use crate::graph::{NodeKind, ParamRef, Target};
+    let Some(path) = installed_effect() else { return };
+    let (mut g, a, mut e) = setup();
+    let src = source(&mut g, &a);
+    let fx = g.add_plugin(&path, pos2(300.0, 0.0), &a).expect("loads");
+    let mix = g.add_mixer(pos2(600.0, 0.0), &a);
+    g.connect(port(src, 0), port(fx, 0), &a);
+    g.connect(port(fx, 0), port(mix, 0), &a);
+    let node = g.node(fx).unwrap();
+    assert_eq!(node.title, "VALHALLAFREQECHO 1");
+    assert_eq!(node.inputs(), &["IN"]);
+
+    // Audio flows through it.
+    render_buf(&mut e, 24_000);
+    let buf = render_buf(&mut e, 24_000);
+    assert!(buf.iter().all(|s| s.is_finite()));
+    assert!(rms_of(&buf) > 0.01, "plugin output is silent");
+
+    // A knob moved in the UI reaches the plugin on the audio thread.
+    let (index, id) = match &g.node(fx).unwrap().kind {
+        NodeKind::Plugin(p) => (0, p.params[0].id),
+        _ => unreachable!(),
+    };
+    if let Some(NodeKind::Plugin(p)) = g.node_mut(fx).map(|n| &mut n.kind) {
+        p.set_param(index, 0.25, 0.0);
+    }
+    render_buf(&mut e, 4800);
+    let plugin_value = |g: &Graph| match &g.node(fx).unwrap().kind {
+        NodeKind::Plugin(p) => p.shared.plugin.lock().unwrap().get_parameter(id).unwrap(),
+        _ => unreachable!(),
+    };
+    assert!((plugin_value(&g) - 0.25).abs() < 1e-3);
+
+    // MIDI CC can drive a plugin parameter too.
+    let cc = g.add_module(ModuleKind::MidiCc, pos2(0.0, 300.0), &a);
+    g.set_target(cc, Some(Target { node: fx, param: ParamRef::Plugin(id) }));
+    g.update_midi(&a.midi);
+    a.midi.handle(&[0xB0, 1, 127]);
+    g.update_midi(&a.midi);
+    render_buf(&mut e, 4800);
+    assert!((plugin_value(&g) - 1.0).abs() < 1e-3);
+
+    // Saved and reopened: same plugin, same state, same knobs.
+    let saved = crate::project::snapshot(&g);
+    let (mut h, b, mut e2) = setup();
+    assert_eq!(crate::project::restore(&mut h, &saved, &b), 0);
+    let copy = h.nodes.iter().find(|n| matches!(n.kind, NodeKind::Plugin(_))).expect("plugin restored").id;
+    render_buf(&mut e2, 4800);
+    assert!((plugin_value(&h) - 1.0).abs() < 1e-3, "state restored");
+    let _ = copy;
+    assert_eq!(crate::project::snapshot(&h), saved);
+
+    // Duplicates carry the state; removal tears down off the audio thread.
+    let dup = g.duplicate(fx, &a).expect("duplicates");
+    assert_eq!(g.node(dup).unwrap().title, "VALHALLAFREQECHO 2");
+    g.remove_node(fx, &a);
+    g.remove_node(dup, &a);
+    render_buf(&mut e, 4800); // the engine lets go of them
+    g.service_plugins(0.0);
+    assert!(rms_of(&render_buf(&mut e, 4800)) < 1e-3, "nothing left reaches the mixer");
+}

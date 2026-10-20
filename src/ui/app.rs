@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -9,7 +10,8 @@ use egui::{
 
 use super::canvas::{Editor, Request, menu_item};
 use super::monitor::Monitor;
-use super::palette::{self, Palette, Spawn};
+use super::palette::{self, Palette, PluginEntry, Spawn};
+use super::plugin_node;
 use super::theme::{self, alpha};
 use crate::audio::engine::{BLOCK, NodeId};
 use crate::audio::modules::{ModuleKind, ModuleParams, delay, drone, filter, granular, random, reverb};
@@ -111,6 +113,8 @@ pub struct AudioBoardApp {
     show_palette: bool,
     doc: Document,
     library: Library,
+    /// Category and maker of plugins loaded before, by bundle path.
+    plugin_catalog: BTreeMap<String, String>,
     toast: Option<Toast>,
     window_title: String,
     midi: MidiInputs,
@@ -133,6 +137,8 @@ impl AudioBoardApp {
         );
         let mut editor = Editor::new();
         editor.library = library.presets.clone();
+        let plugin_catalog = load_catalog();
+        editor.plugins = plugin_entries(&plugin_catalog);
         Self {
             shared,
             audio,
@@ -144,6 +150,7 @@ impl AudioBoardApp {
             palette: Palette::new(),
             show_palette: true,
             library,
+            plugin_catalog,
             toast: None,
             window_title: String::new(),
             midi: MidiInputs::new(),
@@ -324,6 +331,11 @@ impl AudioBoardApp {
                     self.notify(now, format!("Could not remove “{name}”: {e}"), true);
                 }
             }
+            Request::RescanPlugins => {
+                self.editor.plugins = plugin_entries(&self.plugin_catalog);
+                let n = self.editor.plugins.len();
+                self.notify(now, format!("{n} VST3 plugin(s) found"), false);
+            }
             Request::RevealLibrary => {
                 let dir = &self.library.dir;
                 let opened = std::fs::create_dir_all(dir).and_then(|()| {
@@ -408,6 +420,14 @@ impl AudioBoardApp {
                 let id = self.graph.add(ty, p, &self.audio);
                 self.editor.select_only(id);
             }
+            Spawn::Plugin(i) => {
+                let Some(entry) = self.editor.plugins.get(i).cloned() else { return };
+                let p = self.editor.spawn_point(&self.graph, plugin_node::SIZE);
+                match self.graph.add_plugin(&entry.path, p, &self.audio) {
+                    Ok(id) => self.editor.select_only(id),
+                    Err(e) => self.editor.notices.push(format!("Could not load {}: {e}", entry.name)),
+                }
+            }
             Spawn::Preset(i) => {
                 if let Some(preset) = self.library.presets.get(i) {
                     let p = self.editor.spawn_point(&self.graph, vec2(240.0, 80.0));
@@ -415,6 +435,25 @@ impl AudioBoardApp {
                     self.editor.selected = nodes.into_iter().collect();
                 }
             }
+        }
+    }
+
+    /// Notes the category and maker of every plugin that has been loaded,
+    /// so the palette can show them without loading plugins to list them.
+    fn remember_plugins(&mut self) {
+        let mut changed = false;
+        for n in &self.graph.nodes {
+            if let NodeKind::Plugin(p) = &n.kind {
+                let key = p.meta.path.to_string_lossy().into_owned();
+                if let std::collections::btree_map::Entry::Vacant(slot) = self.plugin_catalog.entry(key) {
+                    slot.insert(format!("{} · {}", plugin_node::category_label(&p.meta.category), p.meta.vendor));
+                    changed = true;
+                }
+            }
+        }
+        if changed {
+            save_catalog(&self.plugin_catalog);
+            self.editor.plugins = plugin_entries(&self.plugin_catalog);
         }
     }
 
@@ -631,7 +670,10 @@ impl eframe::App for AudioBoardApp {
                 .exact_size(palette::WIDTH)
                 .resizable(false)
                 .frame(bar_frame(Margin::same(8)))
-                .show(ui, |ui| self.palette.show(ui, &self.editor.library, &mut self.editor.requests))
+                .show(ui, |ui| {
+                    let e = &mut self.editor;
+                    self.palette.show(ui, &e.library, &e.plugins, &mut e.requests)
+                })
                 .inner;
             if let Some(spawn) = picked {
                 self.add_spawn(spawn);
@@ -646,6 +688,8 @@ impl eframe::App for AudioBoardApp {
         for request in std::mem::take(&mut self.editor.requests) {
             self.handle_request(request, now);
         }
+        self.graph.service_plugins(now);
+        self.remember_plugins();
         self.track_document(ui, now);
 
         // Meters and analyzers only move while there is signal; otherwise
@@ -935,4 +979,39 @@ fn view_menu(ui: &mut Ui) -> Option<ViewCommand> {
     item("Auto-fit on / off", "A", ViewCommand::AutoFit);
     item("Auto layout", "L", ViewCommand::AutoLayout);
     picked
+}
+
+fn catalog_path() -> Option<PathBuf> {
+    project::data_dir().map(|d| d.join("plugins.json"))
+}
+
+fn load_catalog() -> BTreeMap<String, String> {
+    catalog_path()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
+}
+
+fn save_catalog(catalog: &BTreeMap<String, String>) {
+    if let Some(path) = catalog_path()
+        && let Ok(json) = serde_json::to_string_pretty(catalog)
+    {
+        let _ = path.parent().map(std::fs::create_dir_all);
+        let _ = std::fs::write(path, json);
+    }
+}
+
+/// Installed plugins, with what is known about each.
+fn plugin_entries(catalog: &BTreeMap<String, String>) -> Vec<PluginEntry> {
+    crate::audio::plugin::scan()
+        .into_iter()
+        .map(|path| PluginEntry {
+            name: crate::audio::plugin::bundle_name(&path),
+            hint: catalog
+                .get(path.to_string_lossy().as_ref())
+                .cloned()
+                .unwrap_or_else(|| "VST3".to_owned()),
+            path,
+        })
+        .collect()
 }

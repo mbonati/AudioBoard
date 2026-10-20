@@ -84,6 +84,26 @@ PITCH del Drone o FREQ dell'oscillatore), quelli in semitoni la distanza dal Do 
 posizione del tasto. Il controllo si muove solo con i messaggi che arrivano dopo la mappatura. **UNMAP**
 la rimuove. Le mappature si salvano nel progetto e nei moduli della libreria.
 
+### Plugin VST3
+
+I plugin VST3 installati (`/Library/Audio/Plug-Ins/VST3` e `~/Library/Audio/Plug-Ins/VST3`) compaiono nella
+sezione **Plugins** della palette e del menu del tasto destro, e si inseriscono come qualsiasi altro nodo.
+Per elencarli non viene caricato nessun plugin; categoria e produttore compaiono dopo il primo caricamento.
+**Rescan plugins** aggiorna l'elenco.
+
+Un nodo plugin ha un ingresso stereo (effetti) e un'uscita stereo, e mostra:
+- **EDITOR**: apre la finestra del plugin stesso (suoni, preset, tutte le sue impostazioni);
+- **PARAMS**: l'elenco di tutti i parametri, con ricerca e cursori; il pallino fissa fino a 8 parametri
+  come knob sul nodo (all'inizio sono i primi 8);
+- **MIDI IN**: suona il plugin dalla tastiera MIDI esterna (attivo da solo per gli strumenti).
+
+I knob del nodo si possono mappare con un nodo MIDI CC (MAP), come gli altri. Il progetto salva il percorso
+del plugin e il suo stato completo, quindi anche il suono scelto nel suo editor; su un altro computer il
+plugin viene cercato per nome nelle cartelle VST3. Lo stesso vale per i moduli della libreria.
+
+I plugin girano dentro AudioBoard: un plugin difettoso può far chiudere l'applicazione. Sono supportati i VST3
+(non VST2, AU o CLAP).
+
 ### Uscita
 
 **Mixer (4 canali)**: per ogni canale fader di volume, pan (bilanciamento sui segnali stereo), Mute/Solo
@@ -190,6 +210,7 @@ src/
 │   ├── modules/    drone, random, granular, resonator, filter, delay, reverb, midi_cc, midi_note
 │   │   └── mod.rs  descrizione dei moduli (ModuleDef), parametri generici e helper DSP
 │   ├── midi.rs     ingressi MIDI (midir) e stato condiviso letto dai nodi MIDI
+│   ├── plugin.rs   plugin VST3 (vst3-host): caricamento, scansione, elaborazione sul thread audio
 │   └── mod.rs      apertura dello stream di uscita (cpal)
 ├── graph.rs        modello della patch lato UI (nodi, cavi, moduli, ordinamento di Kahn)
 ├── project.rs      salvataggio/caricamento dei progetti e libreria dei moduli (JSON)
@@ -198,6 +219,7 @@ src/
 │   ├── groups.rs   moduli: cornice (espansi) e scheda con le porte di confine (ridotti)
 │   ├── layout.rs   auto layout per flusso del segnale (colonne, porte allineate, corridoi per i cavi)
 │   ├── palette.rs  palette dei nodi e della libreria, con trascinamento sul canvas
+│   ├── plugin_node.rs pannello dei nodi plugin (editor, parametri, MIDI, knob)
 │   ├── nodes.rs    layout e disegno di oscillatore e mixer, controlli condivisi
 │   ├── modules.rs  pannello comune dei moduli e i loro display
 │   ├── widgets.rs  knob, fader, meter, porte e cavi disegnati a mano

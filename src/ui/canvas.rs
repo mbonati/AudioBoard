@@ -13,7 +13,8 @@ use super::groups;
 use super::layout;
 use super::modules;
 use super::nodes::{self, KnobHit, NodeView};
-use super::palette::Spawn;
+use super::palette::{PluginEntry, Spawn};
+use super::plugin_node;
 use super::theme::{self, alpha};
 use super::widgets;
 use crate::audio::AudioHandle;
@@ -45,18 +46,21 @@ pub enum Request {
     SaveToLibrary(GroupId),
     DeletePreset(usize),
     RevealLibrary,
+    RescanPlugins,
 }
 
 /// What was picked in the "add" menu.
 pub enum AddChoice {
     Node(NodeType),
     Preset(usize),
+    Plugin(usize),
     Request(Request),
 }
 
 enum Action {
     Add(NodeType, Pos2),
     AddPreset(usize, Pos2),
+    AddPlugin(usize, Pos2),
     Request(Request),
     Remove(NodeId),
     Connect { from: PortRef, to: PortRef },
@@ -148,6 +152,8 @@ pub struct Editor {
     needs_framing: bool,
     /// Modules saved in the library, offered in the add menu.
     pub library: Vec<Preset>,
+    /// Installed VST3 plugins, offered in the add menu.
+    pub plugins: Vec<PluginEntry>,
     /// Requests for the app, drained after each frame.
     pub requests: Vec<Request>,
     renaming: Option<Rename>,
@@ -177,6 +183,7 @@ impl Editor {
             menu: MenuTarget::Canvas(Pos2::ZERO),
             needs_framing: true,
             library: Vec::new(),
+            plugins: Vec::new(),
             requests: Vec::new(),
             renaming: None,
             mapping: None,
@@ -697,6 +704,15 @@ impl Editor {
                 match &mut node.kind {
                     NodeKind::Osc(o) => nodes::osc(&view, id, accent, o, &connected, out),
                     NodeKind::Mixer(m) => nodes::mixer(&view, id, accent, m, &sources),
+                    NodeKind::Plugin(p) => {
+                        let input = connected.first().copied().unwrap_or(false);
+                        let events = plugin_node::draw(&view, id, accent, p, input, out, now);
+                        if events.toggle_editor
+                            && let Err(e) = p.toggle_editor()
+                        {
+                            self.notices.push(format!("Could not open the editor: {e}"));
+                        }
+                    }
                     NodeKind::Module(m) => {
                         let outs: Vec<bool> = (0..m.params.kind.def().outputs.len())
                             .map(|port| outputs.contains(&PortRef { node: id, port }))
@@ -794,6 +810,7 @@ impl Editor {
             let size = match *spawn {
                 Spawn::Node(ty) => ty.size(),
                 Spawn::Preset(_) => groups::card_size(2, 1),
+                Spawn::Plugin(_) => plugin_node::SIZE,
             };
             let at = self.to_world(p) - vec2(size.x * 0.5, nodes::HEADER_H * 0.5);
             let preview = Rect::from_min_size(self.to_screen(at), size * z);
@@ -809,6 +826,7 @@ impl Editor {
                 actions.push(match *spawn {
                     Spawn::Node(ty) => Action::Add(ty, at),
                     Spawn::Preset(i) => Action::AddPreset(i, at),
+                    Spawn::Plugin(i) => Action::AddPlugin(i, at),
                 });
             }
         }
@@ -858,7 +876,7 @@ impl Editor {
             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
             .at_pointer_fixed()
             .show(|ui| match menu {
-                MenuTarget::Canvas(pos) => canvas_menu(ui, pos, has_selection, &self.library, &mut actions),
+                MenuTarget::Canvas(pos) => canvas_menu(ui, pos, has_selection, &self.library, &self.plugins, &mut actions),
                 MenuTarget::Cable(cable) => {
                     if menu_item(ui, "Disconnect", "Double-click") {
                         actions.push(Action::Disconnect(cable));
@@ -1116,6 +1134,13 @@ impl Editor {
                         self.selected = project::insert_preset(graph, preset, p, audio).into_iter().collect();
                     }
                 }
+                Action::AddPlugin(i, p) => {
+                    let Some(entry) = self.plugins.get(i) else { continue };
+                    match graph.add_plugin(&entry.path, p, audio) {
+                        Ok(id) => self.select_only(id),
+                        Err(e) => self.notices.push(format!("Could not load {}: {e}", entry.name)),
+                    }
+                }
                 Action::Request(r) => self.requests.push(r),
                 Action::Remove(id) => {
                     graph.remove_node(id, audio);
@@ -1324,13 +1349,23 @@ fn menu_heading(ui: &mut Ui, text: &str) {
 }
 
 /// Node types in groups, then the module library; returns the pick (and closes).
-pub fn add_menu(ui: &mut Ui, library: &[Preset]) -> Option<AddChoice> {
+pub fn add_menu(ui: &mut Ui, library: &[Preset], plugins: &[PluginEntry]) -> Option<AddChoice> {
     let mut picked = None;
     for (group, types) in NodeType::MENU {
         menu_heading(ui, group);
         for &ty in types {
             if menu_item(ui, ty.name(), ty.hint()) {
                 picked = Some(AddChoice::Node(ty));
+                ui.close();
+            }
+        }
+    }
+
+    if !plugins.is_empty() {
+        menu_heading(ui, "Plugins");
+        for (i, plugin) in plugins.iter().enumerate() {
+            if menu_item(ui, &plugin.name, &plugin.hint) {
+                picked = Some(AddChoice::Plugin(i));
                 ui.close();
             }
         }
@@ -1369,10 +1404,18 @@ pub fn add_menu(ui: &mut Ui, library: &[Preset]) -> Option<AddChoice> {
     picked
 }
 
-fn canvas_menu(ui: &mut Ui, pos: Pos2, has_selection: bool, library: &[Preset], actions: &mut Vec<Action>) {
-    match add_menu(ui, library) {
+fn canvas_menu(
+    ui: &mut Ui,
+    pos: Pos2,
+    has_selection: bool,
+    library: &[Preset],
+    plugins: &[PluginEntry],
+    actions: &mut Vec<Action>,
+) {
+    match add_menu(ui, library, plugins) {
         Some(AddChoice::Node(ty)) => actions.push(Action::Add(ty, pos)),
         Some(AddChoice::Preset(i)) => actions.push(Action::AddPreset(i, pos)),
+        Some(AddChoice::Plugin(i)) => actions.push(Action::AddPlugin(i, pos)),
         Some(AddChoice::Request(r)) => actions.push(Action::Request(r)),
         None => {}
     }

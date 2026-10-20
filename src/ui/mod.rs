@@ -6,5 +6,6 @@ pub mod modules;
 pub mod monitor;
 pub mod nodes;
 pub mod palette;
+pub mod plugin_node;
 pub mod theme;
 pub mod widgets;
