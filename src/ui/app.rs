@@ -16,21 +16,27 @@ use crate::audio::params::{EngineShared, Waveform};
 use crate::audio::{self, AudioHandle};
 use crate::graph::{Graph, NodeKind, PortRef};
 
-const SHORTCUTS: [(&str, &str); 15] = [
+const SHORTCUTS: [(&str, &str); 21] = [
     ("Right-click", "Add node / menu"),
     ("Drag port", "Patch a cable"),
     ("Drag input", "Re-patch / unplug"),
     ("Double-click cable", "Remove cable"),
     ("Drag knob", "Adjust (Shift: fine)"),
     ("Double-click knob", "Reset to default"),
+    ("Drag empty space", "Select with a rectangle"),
+    ("Shift+click", "Add to / remove from selection"),
+    ("Cmd+A / Esc", "Select all / none"),
     ("Scroll", "Pan canvas"),
+    ("Right / middle drag", "Pan canvas (also Alt+drag)"),
     ("Cmd+Scroll", "Zoom (or pinch)"),
-    ("Del", "Delete selected node"),
-    ("Cmd+D", "Duplicate node"),
-    ("F", "Frame all nodes"),
-    ("C", "Collapse / expand node"),
-    ("Double-click title", "Collapse / expand node"),
+    ("Del", "Delete selection"),
+    ("Cmd+D", "Duplicate selection"),
+    ("Cmd+G", "Make a module from the selection"),
+    ("Cmd+Shift+G", "Ungroup"),
+    ("C", "Collapse / expand node or module"),
+    ("Double-click title", "Collapse / expand"),
     ("Shift+C", "Collapse / expand all"),
+    ("F", "Frame all"),
     ("Space", "Audio on / off"),
 ];
 
@@ -94,7 +100,8 @@ impl AudioBoardApp {
             let add = tool_button(ui, "Add node", theme::ACCENT);
             if let Some(ty) = egui::Popup::menu(&add).show(add_menu).and_then(|r| r.inner) {
                 let p = self.editor.spawn_point(&self.graph, ty.size());
-                self.editor.selected = Some(self.graph.add(ty, p, &self.audio));
+                let id = self.graph.add(ty, p, &self.audio);
+                self.editor.select_only(id);
             }
 
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -109,8 +116,10 @@ impl AudioBoardApp {
                 {
                     self.show_monitor = !self.show_monitor;
                 }
-                let all_collapsed = !self.graph.nodes.is_empty() && self.graph.nodes.iter().all(|n| n.collapsed);
-                let tip = if all_collapsed { "Expand all nodes (Shift+C)" } else { "Collapse all nodes (Shift+C)" };
+                let all_collapsed = !self.graph.nodes.is_empty()
+                    && self.graph.nodes.iter().all(|n| n.collapsed)
+                    && self.graph.groups.iter().all(|g| g.collapsed);
+                let tip = if all_collapsed { "Expand everything (Shift+C)" } else { "Collapse everything (Shift+C)" };
                 if icon_button(ui, Icon::Compact, all_collapsed).on_hover_text(tip).clicked() {
                     self.graph.set_all_collapsed(!all_collapsed);
                 }
@@ -143,13 +152,27 @@ impl AudioBoardApp {
 
     fn status_bar(&self, ui: &mut Ui) {
         ui.horizontal_centered(|ui| {
-            let hint = match self.editor.selected.and_then(|id| self.graph.node(id)) {
-                Some(n) => format!(
+            let selected = &self.editor.selected;
+            let single = (selected.len() == 1)
+                .then(|| selected.iter().next().and_then(|id| self.graph.node(*id)))
+                .flatten();
+            let hint = if let Some(g) = self.editor.selected_group(&self.graph) {
+                format!(
+                    "{} selected  ·  C to {}  ·  Cmd+D to duplicate  ·  Cmd+Shift+G to ungroup",
+                    g.title,
+                    if g.collapsed { "expand" } else { "collapse" }
+                )
+            } else if let Some(n) = single {
+                format!(
                     "{} selected  ·  Del to delete  ·  Cmd+D to duplicate  ·  C to {}",
                     n.title,
                     if n.collapsed { "expand" } else { "collapse" }
-                ),
-                None => "Drag from an output to an input to connect  ·  Right-click to add nodes".to_owned(),
+                )
+            } else if selected.len() > 1 {
+                format!("{} nodes selected  ·  Cmd+G to make a module  ·  Del to delete", selected.len())
+            } else {
+                "Drag from an output to an input to connect  ·  Drag on empty space to select  ·  Right-click to add nodes"
+                    .to_owned()
             };
             ui.label(RichText::new(hint).size(10.5).color(theme::TEXT_FAINT));
 

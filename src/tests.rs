@@ -394,11 +394,15 @@ fn every_node_type_draws_without_panicking() {
             }
         }
     }
+    // The first three nodes form a module.
+    let first: Vec<u32> = g.nodes.iter().take(3).map(|n| n.id).collect();
+    let gid = g.create_group(&first).unwrap();
     render_buf(&mut e, 4800);
     let ctx = egui::Context::default();
-    for frame in 0..4 {
-        // Expanded first, then every node collapsed.
-        g.set_all_collapsed(frame >= 2);
+    for frame in 0..6 {
+        // Expanded, then the module folded, then everything folded.
+        g.set_all_collapsed(frame >= 4);
+        g.set_group_collapsed(gid, frame >= 2);
         for node in &mut g.nodes {
             node.update_meters(1.0 / 60.0);
         }
@@ -431,4 +435,186 @@ fn collapsing_shrinks_a_node_and_keeps_it_patchable() {
     g.set_all_collapsed(false);
     assert!(g.nodes.iter().all(|n| !n.collapsed));
     assert_eq!(g.node(m).unwrap().size(), full);
+}
+
+/// Random → Filter (CUT), Drone → Filter → Reverb → Mixer.
+fn ambient_chain(g: &mut Graph, a: &AudioHandle) -> [u32; 5] {
+    let random = g.add_module(ModuleKind::Random, pos2(0.0, 0.0), a);
+    let drone = g.add_module(ModuleKind::Drone, pos2(0.0, 300.0), a);
+    let filter = g.add_module(ModuleKind::Filter, pos2(340.0, 150.0), a);
+    let reverb = g.add_module(ModuleKind::Reverb, pos2(700.0, 150.0), a);
+    let mixer = g.add_mixer(pos2(1000.0, 150.0), a);
+    g.connect(port(random, 0), port(filter, 1), a);
+    g.connect(port(drone, 0), port(filter, 0), a);
+    g.connect(port(filter, 0), port(reverb, 0), a);
+    g.connect(port(reverb, 0), port(mixer, 0), a);
+    [random, drone, filter, reverb, mixer]
+}
+
+#[test]
+fn modules_expose_only_their_outer_ports() {
+    let (mut g, a, _e) = setup();
+    let [random, drone, filter, reverb, _mixer] = ambient_chain(&mut g, &a);
+    let gid = g.create_group(&[random, drone, filter, reverb]).unwrap();
+
+    let (ins, outs) = g.exposed_ports(g.group(gid).unwrap());
+    // Only the drone's free CV inputs and the reverb feeding the mixer.
+    assert_eq!(ins, vec![port(drone, 0), port(drone, 1)]);
+    assert_eq!(outs, vec![port(reverb, 0)]);
+
+    // Tapping the filter from outside exposes its output as well.
+    let x = g.add_osc(pos2(0.0, 0.0), &a);
+    g.connect(port(filter, 0), port(x, 0), &a);
+    let (_, outs) = g.exposed_ports(g.group(gid).unwrap());
+    assert_eq!(outs, vec![port(filter, 0), port(reverb, 0)]);
+}
+
+#[test]
+fn modules_are_created_renamed_and_dissolved() {
+    let (mut g, a, mut e) = setup();
+    let [random, drone, filter, reverb, mixer] = ambient_chain(&mut g, &a);
+    let first = g.create_group(&[random, drone]).unwrap();
+    assert_eq!(g.group(first).unwrap().title, "MODULE 1");
+
+    // A node joins at most one module: it leaves the old one.
+    let second = g.create_group(&[drone, filter]).unwrap();
+    assert_eq!(g.group(second).unwrap().title, "MODULE 2");
+    assert_eq!(g.group(first).unwrap().members, vec![random]);
+    assert_eq!(g.group_of(drone).unwrap().id, second);
+
+    g.rename_group(second, "Pad");
+    assert_eq!(g.group(second).unwrap().title, "Pad");
+
+    // Grouping is visual: the sound is the same before and after.
+    render_buf(&mut e, 9600);
+    let grouped = rms_of(&render_buf(&mut e, 9600));
+    g.ungroup(second);
+    assert!(g.group_of(drone).is_none());
+    assert_eq!(g.nodes.len(), 5, "ungrouping keeps the nodes");
+    assert!(grouped > 0.005);
+
+    // Deleting its last node removes a module.
+    g.remove_node(random, &a);
+    assert!(g.group(first).is_none());
+    let _ = (reverb, mixer);
+}
+
+#[test]
+fn duplicating_a_module_copies_its_inner_cables() {
+    let (mut g, a, _e) = setup();
+    let [random, drone, filter, _reverb, _mixer] = ambient_chain(&mut g, &a);
+    let gid = g.create_group(&[random, drone, filter]).unwrap();
+    g.set_group_collapsed(gid, true);
+    let cables_before = g.cables.len();
+
+    let copies = g.duplicate_nodes(&[random, drone, filter], &a);
+    assert_eq!(copies.len(), 3);
+    // Random → Filter and Drone → Filter are recreated between the copies;
+    // the cable leaving the module (Filter → Reverb) is not.
+    assert_eq!(g.cables.len(), cables_before + 2);
+    let copy = g.group_of(copies[0]).expect("the copies form a module");
+    assert_ne!(copy.id, gid);
+    assert_eq!(copy.members.len(), 3);
+    assert!(copy.collapsed);
+}
+
+#[test]
+fn keyboard_makes_and_folds_a_module() {
+    let (mut g, a, _e) = setup();
+    let [random, drone, filter, _reverb, _mixer] = ambient_chain(&mut g, &a);
+    let mut editor = crate::ui::canvas::Editor::new();
+    let ctx = egui::Context::default();
+    let frame = |editor: &mut crate::ui::canvas::Editor, g: &mut Graph, key: Option<(egui::Key, egui::Modifiers)>| {
+        let mut input = egui::RawInput::default();
+        if let Some((key, modifiers)) = key {
+            input.events.push(egui::Event::ModifiersChanged(modifiers));
+            input.events.push(egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers,
+            });
+        }
+        let mut out = ctx.run_ui(input, |ui| editor.show(ui, g, &a));
+        out.textures_delta.clear();
+    };
+
+    frame(&mut editor, &mut g, None);
+    editor.selected = [random, drone, filter].into_iter().collect();
+    frame(&mut editor, &mut g, Some((egui::Key::G, egui::Modifiers::COMMAND)));
+    assert_eq!(g.groups.len(), 1);
+    let gid = g.groups[0].id;
+    assert_eq!(editor.selected_group(&g).map(|m| m.id), Some(gid));
+
+    frame(&mut editor, &mut g, Some((egui::Key::C, egui::Modifiers::NONE)));
+    assert!(g.group(gid).unwrap().collapsed, "C folds a selected module");
+    frame(&mut editor, &mut g, Some((egui::Key::C, egui::Modifiers::NONE)));
+    assert!(!g.group(gid).unwrap().collapsed);
+
+    frame(&mut editor, &mut g, Some((egui::Key::G, egui::Modifiers::COMMAND | egui::Modifiers::SHIFT)));
+    assert!(g.groups.is_empty(), "Cmd+Shift+G ungroups");
+}
+
+#[test]
+fn right_click_opens_a_menu_on_anything() {
+    let (mut g, a, _e) = setup();
+    let x = source(&mut g, &a);
+    let y = g.add_osc(pos2(500.0, 0.0), &a);
+    g.connect(port(x, 0), port(y, 0), &a);
+    let pair = [g.add_osc(pos2(0.0, 400.0), &a), g.add_osc(pos2(300.0, 400.0), &a)];
+    let gid = g.create_group(&pair).unwrap();
+    g.set_group_collapsed(gid, true);
+
+    let mut editor = crate::ui::canvas::Editor::new();
+    let ctx = egui::Context::default();
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 900.0));
+    let run = |editor: &mut crate::ui::canvas::Editor, g: &mut Graph, events: Vec<egui::Event>| {
+        let input = egui::RawInput { screen_rect: Some(screen), events, ..Default::default() };
+        let mut out = ctx.run_ui(input, |ui| editor.show(ui, g, &a));
+        out.textures_delta.clear();
+    };
+    run(&mut editor, &mut g, vec![]);
+    let to_screen = |e: &crate::ui::canvas::Editor, p: egui::Pos2| (e.pan + p.to_vec2() * e.zoom).to_pos2();
+    let button = |pos, pressed| egui::Event::PointerButton {
+        pos,
+        button: egui::PointerButton::Secondary,
+        pressed,
+        modifiers: egui::Modifiers::NONE,
+    };
+    let escape = egui::Event::Key {
+        key: egui::Key::Escape,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::NONE,
+    };
+
+    let knob = to_screen(&editor, g.node(x).unwrap().pos + egui::vec2(44.0, 175.0));
+    let card = to_screen(&editor, crate::ui::groups::frame_rect(&g, g.group(gid).unwrap()).unwrap().min)
+        + egui::vec2(120.0, 40.0) * editor.zoom;
+    let mid_cable = {
+        let (a_, b_) = (g.node(x).unwrap().output_pos(0), g.node(y).unwrap().input_pos(0));
+        to_screen(&editor, a_ + (b_ - a_) * 0.5)
+    };
+    let empty = egui::pos2(1380.0, 880.0);
+    for (what, p, selects) in [
+        ("a knob", knob, vec![x]),
+        ("a module card", card, pair.to_vec()),
+        ("a cable", mid_cable, vec![]),
+        ("empty canvas", empty, vec![]),
+    ] {
+        editor.selected.clear();
+        run(&mut editor, &mut g, vec![egui::Event::PointerMoved(p)]);
+        run(&mut editor, &mut g, vec![button(p, true)]);
+        run(&mut editor, &mut g, vec![button(p, false)]);
+        run(&mut editor, &mut g, vec![]);
+        assert!(egui::Popup::is_any_open(&ctx), "right-click on {what} opened no menu");
+        let mut got: Vec<u32> = editor.selected.iter().copied().collect();
+        got.sort();
+        assert_eq!(got, selects, "right-click on {what} selects it");
+        run(&mut editor, &mut g, vec![escape.clone()]);
+        run(&mut editor, &mut g, vec![]);
+        assert!(!egui::Popup::is_any_open(&ctx));
+    }
 }

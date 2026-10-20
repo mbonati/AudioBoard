@@ -76,21 +76,43 @@ e meter; bus master stereo con meter L/R e indicatore di clip. Il mixer alimenta
 | Ricollegare / staccare un cavo | trascinarlo via dall'ingresso a cui è collegato |
 | Eliminare un cavo | doppio clic sul cavo, oppure tasto destro → Disconnect |
 | Regolare knob / fader | trascinare (Shift = regolazione fine), doppio clic = reset |
-| Spostare la vista / zoom | scroll / pinch o Cmd+scroll |
-| Eliminare / duplicare un nodo | Del / Cmd+D sul nodo selezionato |
-| Ridurre / espandere un nodo | freccia nell'intestazione, doppio clic sul titolo, tasto C, oppure tasto destro → Collapse |
-| Ridurre / espandere tutti i nodi | Shift+C, pulsante nella toolbar, oppure tasto destro sul canvas |
+| Selezionare più nodi | trascinare un rettangolo sul canvas vuoto, oppure Shift+clic (Cmd+A tutti, Esc nessuno) |
+| Spostare la vista | scroll a due dita, trascinare col tasto destro o centrale, oppure Alt+trascina |
+| Zoom | pinch o Cmd+scroll |
+| Spostare / eliminare / duplicare la selezione | trascinare un nodo selezionato / Del / Cmd+D (i cavi interni vengono copiati) |
+| Creare un modulo dalla selezione | Cmd+G, oppure tasto destro → Make module |
+| Sciogliere un modulo | Cmd+Shift+G, la × nell'intestazione del modulo, oppure tasto destro → Ungroup |
+| Ridurre / espandere un nodo o un modulo | freccia nell'intestazione, doppio clic sul titolo, tasto C, oppure tasto destro → Collapse |
+| Ridurre / espandere tutto | Shift+C, pulsante nella toolbar, oppure tasto destro sul canvas |
 | Inquadrare tutti i nodi | F |
 | Audio on/off | Spazio |
 | Mostrare / nascondere oscilloscopio e spettro | pulsante pannello nella toolbar |
 
 L'elenco completo delle scorciatoie compare passando il mouse sul pulsante **?** della toolbar.
 
+Il tasto destro (o Ctrl+clic su macOS) apre il menu di ciò che si trova sotto il puntatore: canvas, nodo
+(anche cliccando su un knob o un display), modulo o cavo.
+
 Un nodo ridotto occupa solo una striscia con titolo, porte e valore principale (frequenza, cutoff, RT…);
 il mixer ridotto mostra anche i meter del master. Cavi e audio continuano a funzionare normalmente.
 
 I collegamenti che creerebbero un loop di feedback vengono rifiutati; ogni ingresso accetta un solo cavo.
 Il feedback si ottiene dentro i nodi (Delay, Reverb).
+
+### Moduli
+
+Un **modulo** raggruppa più nodi in uno solo, per spostarli, ridurli e duplicarli insieme.
+Si crea selezionando i nodi e premendo Cmd+G; il nome si cambia dal menu del tasto destro sull'intestazione.
+
+- **Espanso**: una cornice attorno ai nodi, che restano modificabili sul posto. Trascinando l'intestazione
+  si sposta tutto il modulo; la cornice si adatta quando sposti un nodo al suo interno.
+- **Ridotto**: un'unica scheda che mostra solo le porte di confine, cioè gli ingressi non alimentati da un
+  altro nodo del modulo e le uscite libere o collegate all'esterno (es. `DRONE 1 · PITCH`, `FILTER 1 · OUT`).
+  I cavi esterni si attaccano alla scheda e si possono collegare e staccare come su un nodo normale.
+- **Duplicare** un modulo (selezionalo cliccando l'intestazione, poi Cmd+D) copia i nodi, i cavi tra loro e
+  il modulo stesso. **Del** elimina il modulo con i suoi nodi; **Ungroup** lo scioglie e tiene i nodi.
+
+Il raggruppamento è solo visivo: il suono non cambia. Un nodo appartiene al massimo a un modulo.
 
 ## Architettura
 
@@ -105,7 +127,8 @@ src/
 │   └── mod.rs      apertura dello stream di uscita (cpal)
 ├── graph.rs        modello della patch lato UI (nodi, cavi, ordinamento di Kahn)
 ├── ui/
-│   ├── canvas.rs   canvas con pan/zoom, drag & drop dei cavi, menu contestuali
+│   ├── canvas.rs   canvas con pan/zoom, selezione, drag & drop dei cavi, menu contestuali
+│   ├── groups.rs   moduli: cornice (espansi) e scheda con le porte di confine (ridotti)
 │   ├── nodes.rs    layout e disegno di oscillatore e mixer, controlli condivisi
 │   ├── modules.rs  pannello comune dei moduli e i loro display
 │   ├── widgets.rs  knob, fader, meter, porte e cavi disegnati a mano

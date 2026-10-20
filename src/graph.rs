@@ -204,11 +204,25 @@ impl Node {
     }
 }
 
+pub type GroupId = u32;
+
+/// Nodes gathered into a module, to be moved, collapsed and duplicated
+/// together. Purely visual: the audio graph does not change.
+pub struct Group {
+    pub id: GroupId,
+    pub title: String,
+    pub members: Vec<NodeId>,
+    /// Shown as a single card exposing only the module's outer ports.
+    pub collapsed: bool,
+}
+
 #[derive(Default)]
 pub struct Graph {
     pub nodes: Vec<Node>,
     pub cables: Vec<Cable>,
+    pub groups: Vec<Group>,
     next_id: NodeId,
+    next_group: GroupId,
     /// Nodes given a colour so far; each new source/effect takes the next.
     accent_count: usize,
 }
@@ -376,17 +390,154 @@ impl Graph {
         }
     }
 
+    /// Collapses or expands every node and module.
     pub fn set_all_collapsed(&mut self, collapsed: bool) {
         for n in &mut self.nodes {
             n.collapsed = collapsed;
+        }
+        for g in &mut self.groups {
+            g.collapsed = collapsed;
         }
     }
 
     pub fn remove_node(&mut self, id: NodeId, audio: &AudioHandle) {
         self.nodes.retain(|n| n.id != id);
         self.cables.retain(|c| c.from.node != id && c.to.node != id);
+        for g in &mut self.groups {
+            g.members.retain(|m| *m != id);
+        }
+        self.groups.retain(|g| !g.members.is_empty());
         self.sync(audio);
         audio.send(Command::RemoveNode(id));
+    }
+
+    pub fn move_nodes(&mut self, ids: &HashSet<NodeId>, delta: Vec2) {
+        for n in self.nodes.iter_mut().filter(|n| ids.contains(&n.id)) {
+            n.pos += delta;
+        }
+    }
+
+    /// Copies nodes with their settings and the cables between them. Modules
+    /// whose members are all copied are copied too. Returns the new nodes.
+    pub fn duplicate_nodes(&mut self, ids: &[NodeId], audio: &AudioHandle) -> Vec<NodeId> {
+        let mut copies = HashMap::new();
+        for &id in ids {
+            if let Some(new) = self.duplicate(id, audio) {
+                copies.insert(id, new);
+            }
+        }
+        let inner: Vec<Cable> = self
+            .cables
+            .iter()
+            .filter(|c| copies.contains_key(&c.from.node) && copies.contains_key(&c.to.node))
+            .copied()
+            .collect();
+        for c in inner {
+            let from = PortRef { node: copies[&c.from.node], port: c.from.port };
+            let to = PortRef { node: copies[&c.to.node], port: c.to.port };
+            self.connect(from, to, audio);
+        }
+        let groups: Vec<(Vec<NodeId>, bool)> = self
+            .groups
+            .iter()
+            .filter(|g| g.members.iter().all(|m| copies.contains_key(m)))
+            .map(|g| (g.members.iter().map(|m| copies[m]).collect(), g.collapsed))
+            .collect();
+        for (members, collapsed) in groups {
+            if let Some(gid) = self.create_group(&members) {
+                self.set_group_collapsed(gid, collapsed);
+            }
+        }
+        ids.iter().filter_map(|id| copies.get(id).copied()).collect()
+    }
+
+    // --- Modules (groups of nodes) ------------------------------------------
+
+    pub fn group(&self, id: GroupId) -> Option<&Group> {
+        self.groups.iter().find(|g| g.id == id)
+    }
+
+    fn group_mut(&mut self, id: GroupId) -> Option<&mut Group> {
+        self.groups.iter_mut().find(|g| g.id == id)
+    }
+
+    pub fn group_of(&self, node: NodeId) -> Option<&Group> {
+        self.groups.iter().find(|g| g.members.contains(&node))
+    }
+
+    /// Gathers nodes into a new module; they leave any module they were in.
+    pub fn create_group(&mut self, members: &[NodeId]) -> Option<GroupId> {
+        let mut list: Vec<NodeId> = Vec::new();
+        for &id in members {
+            if self.node(id).is_some() && !list.contains(&id) {
+                list.push(id);
+            }
+        }
+        if list.is_empty() {
+            return None;
+        }
+        for g in &mut self.groups {
+            g.members.retain(|m| !list.contains(m));
+        }
+        self.groups.retain(|g| !g.members.is_empty());
+
+        let n = self
+            .groups
+            .iter()
+            .filter_map(|g| g.title.strip_prefix("MODULE")?.trim().parse::<usize>().ok())
+            .max()
+            .unwrap_or(0);
+        self.next_group += 1;
+        let id = self.next_group;
+        self.groups.push(Group {
+            id,
+            title: format!("MODULE {}", n + 1),
+            members: list,
+            collapsed: false,
+        });
+        Some(id)
+    }
+
+    /// Dissolves a module, keeping its nodes.
+    pub fn ungroup(&mut self, id: GroupId) {
+        self.groups.retain(|g| g.id != id);
+    }
+
+    pub fn rename_group(&mut self, id: GroupId, title: &str) {
+        if let Some(g) = self.group_mut(id) {
+            g.title = title.to_owned();
+        }
+    }
+
+    pub fn set_group_collapsed(&mut self, id: GroupId, collapsed: bool) {
+        if let Some(g) = self.group_mut(id) {
+            g.collapsed = collapsed;
+        }
+    }
+
+    /// The ports linking a module to the rest of the patch: member inputs not
+    /// fed by another member, and member outputs that are unused or feed
+    /// something outside. A collapsed module shows exactly these.
+    pub fn exposed_ports(&self, g: &Group) -> (Vec<PortRef>, Vec<PortRef>) {
+        let inside = |n: NodeId| g.members.contains(&n);
+        let (mut ins, mut outs) = (Vec::new(), Vec::new());
+        for node in g.members.iter().filter_map(|m| self.node(*m)) {
+            for port in 0..node.inputs().len() {
+                let pr = PortRef { node: node.id, port };
+                if !self.cables.iter().any(|c| c.to == pr && inside(c.from.node)) {
+                    ins.push(pr);
+                }
+            }
+            for port in 0..node.outputs().len() {
+                let pr = PortRef { node: node.id, port };
+                let mut uses = self.cables.iter().filter(|c| c.from == pr).peekable();
+                let used = uses.peek().is_some();
+                if !used || uses.any(|c| !inside(c.to.node)) {
+                    outs.push(pr);
+                }
+            }
+        }
+        (ins, outs)
     }
 
     /// Connects an output to an input, replacing whatever fed that input.
