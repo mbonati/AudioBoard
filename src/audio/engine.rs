@@ -27,21 +27,30 @@ pub struct ProcessCtx {
     pub smooth: f32,
 }
 
+/// One block of stereo audio, `[left, right]`. Every cable carries stereo;
+/// mono sources write the same signal to both channels.
+pub type Buf = [[f32; BLOCK]; 2];
+
 pub struct Inputs {
-    pub bufs: [[f32; BLOCK]; MAX_INPUTS],
+    pub bufs: [Buf; MAX_INPUTS],
     pub connected: [bool; MAX_INPUTS],
 }
 
 impl Inputs {
-    pub fn get(&self, i: usize) -> Option<&[f32; BLOCK]> {
+    pub fn get(&self, i: usize) -> Option<&Buf> {
         self.connected[i].then(|| &self.bufs[i])
+    }
+
+    /// Left channel only: the mono view used by control (CV) inputs.
+    pub fn cv(&self, i: usize) -> Option<&[f32; BLOCK]> {
+        self.get(i).map(|b| &b[0])
     }
 }
 
 pub trait Processor: Send {
-    fn process(&mut self, ctx: &ProcessCtx, inputs: &Inputs, outputs: &mut [[f32; BLOCK]], n: usize);
+    fn process(&mut self, ctx: &ProcessCtx, inputs: &Inputs, outputs: &mut [Buf], n: usize);
 
-    /// Sinks feed the audio device: their first two outputs are summed into L/R.
+    /// Sinks feed the audio device: their first output is summed into the mix.
     fn is_sink(&self) -> bool {
         false
     }
@@ -50,14 +59,14 @@ pub trait Processor: Send {
 /// A processor plus its output buffers, allocated on the UI thread.
 pub struct Slot {
     proc: Box<dyn Processor>,
-    outputs: Vec<[f32; BLOCK]>,
+    outputs: Vec<Buf>,
 }
 
 impl Slot {
     pub fn new(proc: Box<dyn Processor>, outputs: usize) -> Box<Self> {
         Box::new(Self {
             proc,
-            outputs: vec![[0.0; BLOCK]; outputs.max(1)],
+            outputs: vec![[[0.0; BLOCK]; 2]; outputs.max(1)],
         })
     }
 }
@@ -102,7 +111,7 @@ impl Engine {
             nodes: HashMap::with_capacity(256),
             topo: Box::default(),
             inputs: Box::new(Inputs {
-                bufs: [[0.0; BLOCK]; MAX_INPUTS],
+                bufs: [[[0.0; BLOCK]; 2]; MAX_INPUTS],
                 connected: [false; MAX_INPUTS],
             }),
             mix: [[0.0; BLOCK]; 2],
@@ -142,13 +151,18 @@ impl Engine {
                 let upstream = src.and_then(|(sid, port)| {
                     nodes.get(&sid).and_then(|s| s.outputs.get(port))
                 });
+                let dst = &mut inputs.bufs[k];
                 match upstream {
                     Some(buf) => {
-                        inputs.bufs[k][..n].copy_from_slice(&buf[..n]);
+                        for (d, s) in dst.iter_mut().zip(buf) {
+                            d[..n].copy_from_slice(&s[..n]);
+                        }
                         inputs.connected[k] = true;
                     }
                     None => {
-                        inputs.bufs[k][..n].fill(0.0);
+                        for d in dst.iter_mut() {
+                            d[..n].fill(0.0);
+                        }
                         inputs.connected[k] = false;
                     }
                 }
@@ -160,7 +174,7 @@ impl Engine {
             slot.proc.process(ctx, inputs, &mut slot.outputs, n);
 
             if slot.proc.is_sink() {
-                for (ch, out) in mix.iter_mut().zip(&slot.outputs) {
+                for (ch, out) in mix.iter_mut().zip(&slot.outputs[0]) {
                     for (m, s) in ch[..n].iter_mut().zip(&out[..n]) {
                         *m += *s;
                     }

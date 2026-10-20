@@ -7,20 +7,20 @@ use egui::{
     Stroke, Ui, Vec2, vec2,
 };
 
+use super::modules;
 use super::nodes::{self, NodeView};
 use super::theme::{self, alpha};
 use super::widgets;
 use crate::audio::AudioHandle;
 use crate::audio::engine::NodeId;
-use crate::graph::{Cable, Graph, NodeKind, PortRef};
+use crate::graph::{Cable, Graph, NodeKind, NodeType, PortRef};
 
 const GRID: f32 = 24.0;
 const MIN_ZOOM: f32 = 0.3;
 const MAX_ZOOM: f32 = 2.0;
 
 enum Action {
-    AddOsc(Pos2),
-    AddMixer(Pos2),
+    Add(NodeType, Pos2),
     Remove(NodeId),
     Duplicate(NodeId),
     Connect { from: PortRef, to: PortRef },
@@ -266,13 +266,12 @@ impl Editor {
                 .map(|i| inputs.get(&PortRef { node: id, port: i }).map(|(_, c, n)| (*c, n.clone())))
                 .collect();
             let accent = node.accent;
+            let connected: Vec<bool> = sources.iter().map(Option::is_some).collect();
+            let out = outputs.contains(&PortRef { node: id, port: 0 });
             match &mut node.kind {
-                NodeKind::Osc(o) => {
-                    let connected: Vec<bool> = sources.iter().map(Option::is_some).collect();
-                    let out = outputs.contains(&PortRef { node: id, port: 0 });
-                    nodes::osc(&view, id, accent, o, &connected, out);
-                }
+                NodeKind::Osc(o) => nodes::osc(&view, id, accent, o, &connected, out),
                 NodeKind::Mixer(m) => nodes::mixer(&view, id, accent, m, &sources),
+                NodeKind::Module(m) => modules::draw(&view, id, accent, m, &connected, out),
             }
 
             // Ports last so they sit on top of everything else in the node.
@@ -371,8 +370,7 @@ impl Editor {
     fn apply(&mut self, actions: Vec<Action>, graph: &mut Graph, audio: &AudioHandle) {
         for action in actions {
             match action {
-                Action::AddOsc(p) => self.selected = Some(graph.add_osc(p, audio)),
-                Action::AddMixer(p) => self.selected = Some(graph.add_mixer(p, audio)),
+                Action::Add(ty, p) => self.selected = Some(graph.add(ty, p, audio)),
                 Action::Remove(id) => {
                     graph.remove_node(id, audio);
                     if self.selected == Some(id) {
@@ -429,40 +427,44 @@ impl Editor {
     }
 }
 
-/// Context-menu entry; `color` adds a small swatch for node types.
-fn menu_item(ui: &mut Ui, color: Option<Color32>, label: &str, hint: &str) -> bool {
-    let text = if color.is_some() { format!("    {label}") } else { label.to_owned() };
-    let resp = ui.add(
-        egui::Button::new(egui::RichText::new(text).color(theme::TEXT).size(12.5))
+fn menu_item(ui: &mut Ui, label: &str, hint: &str) -> bool {
+    ui.add(
+        egui::Button::new(egui::RichText::new(label).color(theme::TEXT).size(12.5))
             .right_text(egui::RichText::new(hint).color(theme::TEXT_FAINT).size(10.5))
-            .min_size(vec2(196.0, 22.0)),
-    );
-    if let Some(c) = color {
-        ui.painter().circle_filled(resp.rect.left_center() + vec2(13.0, 0.0), 3.0, c);
-    }
-    resp.clicked()
+            .min_size(vec2(220.0, 22.0)),
+    )
+    .clicked()
 }
 
 fn menu_heading(ui: &mut Ui, text: &str) {
-    ui.add_space(2.0);
+    ui.add_space(4.0);
     ui.label(egui::RichText::new(text).size(9.5).color(theme::TEXT_FAINT));
+}
+
+/// The grouped list of node types; returns the one picked (and closes).
+pub fn add_menu(ui: &mut Ui) -> Option<NodeType> {
+    let mut picked = None;
+    for (group, types) in NodeType::MENU {
+        menu_heading(ui, group);
+        for &ty in types {
+            if menu_item(ui, ty.name(), ty.hint()) {
+                picked = Some(ty);
+                ui.close();
+            }
+        }
+    }
+    picked
 }
 
 fn canvas_menu(ui: &mut Ui, target: MenuTarget, actions: &mut Vec<Action>) {
     match target {
         MenuTarget::Canvas(pos) => {
-            menu_heading(ui, "Add node");
-            if menu_item(ui, Some(theme::OSC_ACCENTS[0]), "Oscillator", "sine · saw · pulse") {
-                actions.push(Action::AddOsc(pos));
-                ui.close();
-            }
-            if menu_item(ui, Some(theme::MIXER_ACCENT), "Mixer", "4 channels") {
-                actions.push(Action::AddMixer(pos));
-                ui.close();
+            if let Some(ty) = add_menu(ui) {
+                actions.push(Action::Add(ty, pos));
             }
         }
         MenuTarget::Cable(cable) => {
-            if menu_item(ui, None, "Disconnect", "Double-click") {
+            if menu_item(ui, "Disconnect", "Double-click") {
                 actions.push(Action::Disconnect(cable));
                 ui.close();
             }
@@ -471,11 +473,11 @@ fn canvas_menu(ui: &mut Ui, target: MenuTarget, actions: &mut Vec<Action>) {
 }
 
 fn node_menu(ui: &mut Ui, id: NodeId, actions: &mut Vec<Action>) {
-    if menu_item(ui, None, "Duplicate", "Cmd+D") {
+    if menu_item(ui, "Duplicate", "Cmd+D") {
         actions.push(Action::Duplicate(id));
         ui.close();
     }
-    if menu_item(ui, None, "Delete", "Del") {
+    if menu_item(ui, "Delete", "Del") {
         actions.push(Action::Remove(id));
         ui.close();
     }

@@ -8,10 +8,11 @@ use egui::{
 
 use super::canvas::Editor;
 use super::monitor::Monitor;
-use super::nodes;
+use super::canvas::add_menu;
 use super::theme::{self, alpha};
 use crate::audio::engine::{BLOCK, NodeId};
-use crate::audio::params::{EngineShared, OscParams, Waveform, osc};
+use crate::audio::modules::{ModuleKind, ModuleParams, delay, drone, filter, granular, random, reverb};
+use crate::audio::params::{EngineShared, Waveform};
 use crate::audio::{self, AudioHandle};
 use crate::graph::{Graph, NodeKind, PortRef};
 
@@ -87,13 +88,10 @@ impl AudioBoardApp {
             vsep(ui);
             ui.add_space(8.0);
 
-            if tool_button(ui, "Oscillator", theme::OSC_ACCENTS[0]).clicked() {
-                let p = self.editor.spawn_point(&self.graph, nodes::OSC_SIZE);
-                self.editor.selected = Some(self.graph.add_osc(p, &self.audio));
-            }
-            if tool_button(ui, "Mixer", theme::MIXER_ACCENT).clicked() {
-                let p = self.editor.spawn_point(&self.graph, nodes::MIX_SIZE);
-                self.editor.selected = Some(self.graph.add_mixer(p, &self.audio));
+            let add = tool_button(ui, "Add node", theme::ACCENT);
+            if let Some(ty) = egui::Popup::menu(&add).show(add_menu).and_then(|r| r.inner) {
+                let p = self.editor.spawn_point(&self.graph, ty.size());
+                self.editor.selected = Some(self.graph.add(ty, p, &self.audio));
             }
 
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -214,50 +212,83 @@ impl eframe::App for AudioBoardApp {
 // Demo patch
 // ---------------------------------------------------------------------------
 
-fn osc_params(graph: &Graph, id: NodeId) -> Arc<OscParams> {
+fn module(graph: &Graph, id: NodeId) -> Arc<ModuleParams> {
     match &graph.node(id).expect("node just created").kind {
-        NodeKind::Osc(o) => o.params.clone(),
-        NodeKind::Mixer(_) => unreachable!("not an oscillator"),
+        NodeKind::Module(m) => m.params.clone(),
+        _ => unreachable!("not a module"),
     }
 }
 
-/// A slow LFO adding tremolo to a saw, plus a triangle a fifth above,
-/// both going into the mixer.
+/// An ambient pad: a drone through a slowly wandering filter, spread into a
+/// shimmering reverb and, an octave up, into a grain cloud with tape echoes.
 fn demo_patch(graph: &mut Graph, audio: &AudioHandle) {
-    let lfo = graph.add_osc(pos2(0.0, 190.0), audio);
-    graph.rename(lfo, "LFO");
-    let saw = graph.add_osc(pos2(340.0, 0.0), audio);
-    let tri = graph.add_osc(pos2(340.0, 410.0), audio);
-    let mixer = graph.add_mixer(pos2(700.0, 200.0), audio);
+    let random = graph.add_module(ModuleKind::Random, pos2(0.0, 0.0), audio);
+    let drone_id = graph.add_module(ModuleKind::Drone, pos2(0.0, 230.0), audio);
+    let filter_id = graph.add_module(ModuleKind::Filter, pos2(340.0, 150.0), audio);
+    let grains = graph.add_module(ModuleKind::Granular, pos2(680.0, 0.0), audio);
+    let reverb_id = graph.add_module(ModuleKind::Reverb, pos2(712.0, 310.0), audio);
+    let delay_id = graph.add_module(ModuleKind::Delay, pos2(1020.0, 12.0), audio);
+    let mixer = graph.add_mixer(pos2(1300.0, 200.0), audio);
 
-    let p = osc_params(graph, lfo);
-    p.set_waveform(Waveform::Sine);
-    p.set(osc::FREQ, 0.35);
-    p.set(osc::LEVEL, 1.0);
+    let p = module(graph, random);
+    p.set(random::RATE, 0.15);
+    p.set(random::CHAOS, 0.4);
+    p.set(random::SMOOTH, 1.0);
 
-    let p = osc_params(graph, saw);
-    p.set_waveform(Waveform::Saw);
-    p.set(osc::FREQ, 110.0);
-    p.set(osc::LEVEL, 0.45);
-    p.set(osc::AM, 0.8);
+    let p = module(graph, drone_id);
+    p.set_mode(1); // fifths
+    p.set(drone::PITCH, 55.0);
+    p.set(drone::DETUNE, 14.0);
+    p.set(drone::DRIFT, 0.45);
+    p.set(drone::TONE, 0.45);
+    p.set(drone::SPREAD, 0.8);
+    p.set(drone::LEVEL, 0.55);
 
-    let p = osc_params(graph, tri);
-    p.set_waveform(Waveform::Triangle);
-    p.set(osc::FREQ, 164.81);
-    p.set(osc::LEVEL, 0.5);
+    let p = module(graph, filter_id);
+    p.set(filter::CUTOFF, 700.0);
+    p.set(filter::RESO, 0.35);
+    p.set(filter::MOD, 1.5);
+
+    let p = module(graph, grains);
+    p.set(granular::POSITION, 1.2);
+    p.set(granular::SIZE, 0.22);
+    p.set(granular::DENSITY, 9.0);
+    p.set(granular::PITCH, 12.0);
+    p.set(granular::JITTER, 0.6);
+    p.set(granular::SPRAY, 0.15);
+    p.set(granular::SPREAD, 0.9);
+    p.set(granular::MIX, 1.0);
+
+    let p = module(graph, delay_id);
+    p.set(delay::TIME, 0.62);
+    p.set(delay::FEEDBACK, 0.6);
+    p.set(delay::TONE, 0.45);
+    p.set(delay::WOW, 0.35);
+    p.set(delay::PING, 0.7);
+    p.set(delay::MIX, 0.45);
+
+    let p = module(graph, reverb_id);
+    p.set(reverb::SIZE, 0.85);
+    p.set(reverb::DECAY, 11.0);
+    p.set(reverb::DAMP, 0.5);
+    p.set(reverb::MOD, 0.5);
+    p.set(reverb::SHIMMER, 0.15);
+    p.set(reverb::MIX, 0.55);
 
     if let Some(NodeKind::Mixer(m)) = graph.node(mixer).map(|n| &n.kind) {
-        m.params.pan[0].set(-0.35);
-        m.params.pan[1].set(0.35);
-        m.params.fader[0].set(0.72);
+        m.params.fader[1].set(0.63); // grains about -6 dB under the pad
+        m.params.pan[1].set(0.15);
     }
 
     let port = |node, port| PortRef { node, port };
-    graph.connect(port(lfo, 0), port(saw, 1), audio);
-    graph.connect(port(saw, 0), port(mixer, 0), audio);
-    graph.connect(port(tri, 0), port(mixer, 1), audio);
+    graph.connect(port(random, 0), port(filter_id, 1), audio);
+    graph.connect(port(drone_id, 0), port(filter_id, 0), audio);
+    graph.connect(port(filter_id, 0), port(grains, 0), audio);
+    graph.connect(port(filter_id, 0), port(reverb_id, 0), audio);
+    graph.connect(port(grains, 0), port(delay_id, 0), audio);
+    graph.connect(port(reverb_id, 0), port(mixer, 0), audio);
+    graph.connect(port(delay_id, 0), port(mixer, 1), audio);
 }
-
 
 // ---------------------------------------------------------------------------
 // Toolbar widgets

@@ -1,7 +1,7 @@
 //! The patch as the UI sees it: nodes with positions, and cables.
 //! Every structural change is mirrored to the audio engine.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
@@ -10,6 +10,7 @@ use egui::{Color32, Pos2, Vec2};
 use crate::audio::AudioHandle;
 use crate::audio::dsp::{Mixer, Oscillator};
 use crate::audio::engine::{Command, MAX_INPUTS, NodeId, Slot, TopoEntry, Topology};
+use crate::audio::modules::{self, ModuleKind, ModuleParams, random};
 use crate::audio::params::{MIXER_CHANNELS, MixerParams, OscParams, osc};
 use crate::ui::nodes;
 use crate::ui::theme;
@@ -29,6 +30,57 @@ pub struct Cable {
     pub to: PortRef,
 }
 
+/// Everything that can be added to a patch.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum NodeType {
+    Osc,
+    Mixer,
+    Module(ModuleKind),
+}
+
+impl NodeType {
+    /// The "add node" menu, in groups.
+    pub const MENU: [(&'static str, &'static [NodeType]); 4] = [
+        (
+            "Sources",
+            &[NodeType::Osc, NodeType::Module(ModuleKind::Drone), NodeType::Module(ModuleKind::Random)],
+        ),
+        (
+            "Texture",
+            &[NodeType::Module(ModuleKind::Granular), NodeType::Module(ModuleKind::Resonator)],
+        ),
+        (
+            "Effects",
+            &[
+                NodeType::Module(ModuleKind::Filter),
+                NodeType::Module(ModuleKind::Delay),
+                NodeType::Module(ModuleKind::Reverb),
+            ],
+        ),
+        ("Output", &[NodeType::Mixer]),
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            NodeType::Osc => "Oscillator",
+            NodeType::Mixer => "Mixer",
+            NodeType::Module(k) => k.def().name,
+        }
+    }
+
+    pub fn hint(self) -> &'static str {
+        match self {
+            NodeType::Osc => "sine · saw · pulse",
+            NodeType::Mixer => "4 channels",
+            NodeType::Module(k) => k.def().hint,
+        }
+    }
+
+    pub fn size(self) -> Vec2 {
+        nodes::type_size(self)
+    }
+}
+
 pub struct OscNode {
     pub params: Arc<OscParams>,
     pub meter: MeterState,
@@ -40,9 +92,29 @@ pub struct MixerNode {
     pub master: [MeterState; 2],
 }
 
+pub struct ModuleNode {
+    pub params: Arc<ModuleParams>,
+    pub meter: MeterState,
+    /// Recent output values, for modulation sources' trace display.
+    pub trace: VecDeque<f32>,
+}
+
+pub const TRACE_LEN: usize = 180;
+
 pub enum NodeKind {
     Osc(OscNode),
     Mixer(MixerNode),
+    Module(ModuleNode),
+}
+
+impl NodeKind {
+    pub fn node_type(&self) -> NodeType {
+        match self {
+            NodeKind::Osc(_) => NodeType::Osc,
+            NodeKind::Mixer(_) => NodeType::Mixer,
+            NodeKind::Module(m) => NodeType::Module(m.params.kind),
+        }
+    }
 }
 
 pub struct Node {
@@ -55,13 +127,14 @@ pub struct Node {
 
 impl Node {
     pub fn size(&self) -> Vec2 {
-        nodes::size(&self.kind)
+        nodes::type_size(self.kind.node_type())
     }
 
     pub fn inputs(&self) -> &'static [&'static str] {
-        match self.kind {
+        match &self.kind {
             NodeKind::Osc(_) => &["FM", "AM"],
             NodeKind::Mixer(_) => &["1", "2", "3", "4"],
+            NodeKind::Module(m) => m.params.kind.def().inputs,
         }
     }
 
@@ -69,15 +142,16 @@ impl Node {
         match self.kind {
             NodeKind::Osc(_) => &["OUT"],
             NodeKind::Mixer(_) => &[],
+            NodeKind::Module(_) => modules::OUTPUTS,
         }
     }
 
     pub fn input_pos(&self, i: usize) -> Pos2 {
-        self.pos + nodes::input_offset(&self.kind, i)
+        self.pos + nodes::input_offset(self.kind.node_type(), i)
     }
 
     pub fn output_pos(&self, i: usize) -> Pos2 {
-        self.pos + nodes::output_offset(&self.kind, i)
+        self.pos + nodes::output_offset(self.kind.node_type(), i)
     }
 
     /// Smoothed output level, used to animate cables.
@@ -85,6 +159,7 @@ impl Node {
         match &self.kind {
             NodeKind::Osc(o) => o.meter.level,
             NodeKind::Mixer(m) => m.master[0].level.max(m.master[1].level),
+            NodeKind::Module(m) => m.meter.level,
         }
     }
 
@@ -100,6 +175,15 @@ impl Node {
                     state.update(src.take(), dt);
                 }
             }
+            NodeKind::Module(m) => {
+                m.meter.update(m.params.meter.take(), dt);
+                if m.params.kind == ModuleKind::Random {
+                    if m.trace.len() == TRACE_LEN {
+                        m.trace.pop_front();
+                    }
+                    m.trace.push_back(m.params.viz[random::VALUE].get());
+                }
+            }
         }
     }
 }
@@ -109,7 +193,8 @@ pub struct Graph {
     pub nodes: Vec<Node>,
     pub cables: Vec<Cable>,
     next_id: NodeId,
-    osc_count: usize,
+    /// Nodes given a colour so far; each new source/effect takes the next.
+    accent_count: usize,
 }
 
 impl Graph {
@@ -120,6 +205,12 @@ impl Graph {
     fn alloc_id(&mut self) -> NodeId {
         self.next_id += 1;
         self.next_id
+    }
+
+    fn next_accent(&mut self) -> Color32 {
+        let c = theme::OSC_ACCENTS[self.accent_count % theme::OSC_ACCENTS.len()];
+        self.accent_count += 1;
+        c
     }
 
     /// "OSC 3" etc.: one past the highest number currently in use.
@@ -133,9 +224,18 @@ impl Graph {
         format!("{prefix} {}", n + 1)
     }
 
+    #[cfg(test)]
     pub fn rename(&mut self, id: NodeId, title: &str) {
         if let Some(n) = self.nodes.iter_mut().find(|n| n.id == id) {
             n.title = title.to_owned();
+        }
+    }
+
+    pub fn add(&mut self, ty: NodeType, pos: Pos2, audio: &AudioHandle) -> NodeId {
+        match ty {
+            NodeType::Osc => self.add_osc(pos, audio),
+            NodeType::Mixer => self.add_mixer(pos, audio),
+            NodeType::Module(kind) => self.add_module(kind, pos, audio),
         }
     }
 
@@ -145,8 +245,7 @@ impl Graph {
 
     fn add_osc_with(&mut self, pos: Pos2, params: Arc<OscParams>, audio: &AudioHandle) -> NodeId {
         let id = self.alloc_id();
-        let accent = theme::OSC_ACCENTS[self.osc_count % theme::OSC_ACCENTS.len()];
-        self.osc_count += 1;
+        let accent = self.next_accent();
         let title = self.next_title("OSC");
         audio.send(Command::AddNode(id, Slot::new(Box::new(Oscillator::new(params.clone())), 1)));
         self.nodes.push(Node {
@@ -170,7 +269,7 @@ impl Graph {
     fn add_mixer_with(&mut self, pos: Pos2, params: Arc<MixerParams>, audio: &AudioHandle) -> NodeId {
         let id = self.alloc_id();
         let title = self.next_title("MIXER");
-        audio.send(Command::AddNode(id, Slot::new(Box::new(Mixer::new(params.clone())), 2)));
+        audio.send(Command::AddNode(id, Slot::new(Box::new(Mixer::new(params.clone())), 1)));
         self.nodes.push(Node {
             id,
             pos,
@@ -180,6 +279,32 @@ impl Graph {
                 params,
                 channels: Default::default(),
                 master: Default::default(),
+            }),
+        });
+        self.sync(audio);
+        id
+    }
+
+    pub fn add_module(&mut self, kind: ModuleKind, pos: Pos2, audio: &AudioHandle) -> NodeId {
+        self.add_module_with(pos, Arc::new(ModuleParams::new(kind)), audio)
+    }
+
+    fn add_module_with(&mut self, pos: Pos2, params: Arc<ModuleParams>, audio: &AudioHandle) -> NodeId {
+        let id = self.alloc_id();
+        let kind = params.kind;
+        let accent = self.next_accent();
+        let title = self.next_title(kind.def().prefix);
+        let proc = kind.processor(params.clone(), audio.info.sample_rate as f32);
+        audio.send(Command::AddNode(id, Slot::new(proc, 1)));
+        self.nodes.push(Node {
+            id,
+            pos,
+            title,
+            accent,
+            kind: NodeKind::Module(ModuleNode {
+                params,
+                meter: MeterState::default(),
+                trace: VecDeque::with_capacity(TRACE_LEN),
             }),
         });
         self.sync(audio);
@@ -209,6 +334,10 @@ impl Graph {
                 }
                 p.master.set(m.params.master.get());
                 Some(self.add_mixer_with(pos, Arc::new(p), audio))
+            }
+            NodeKind::Module(m) => {
+                let p = Arc::new(m.params.duplicate());
+                Some(self.add_module_with(pos, p, audio))
             }
         }
     }

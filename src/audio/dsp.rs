@@ -4,12 +4,12 @@ use std::f32::consts::{FRAC_PI_4, TAU};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use super::engine::{BLOCK, Inputs, ProcessCtx, Processor};
+use super::engine::{Buf, Inputs, ProcessCtx, Processor};
 use super::params::{MIXER_CHANNELS, MixerParams, OscParams, Waveform, fader_gain, osc};
 
 /// Band-limited step correction (PolyBLEP) for the discontinuities of
 /// saw and pulse waves; removes most of the audible aliasing.
-fn poly_blep(t: f32, dt: f32) -> f32 {
+pub fn poly_blep(t: f32, dt: f32) -> f32 {
     if t < dt {
         let t = t / dt;
         t + t - t * t - 1.0
@@ -21,7 +21,7 @@ fn poly_blep(t: f32, dt: f32) -> f32 {
     }
 }
 
-fn drive(x: f32, amount: f32) -> f32 {
+pub fn drive(x: f32, amount: f32) -> f32 {
     if amount < 0.001 {
         x
     } else {
@@ -128,7 +128,7 @@ impl Oscillator {
 }
 
 impl Processor for Oscillator {
-    fn process(&mut self, ctx: &ProcessCtx, inputs: &Inputs, outputs: &mut [[f32; BLOCK]], n: usize) {
+    fn process(&mut self, ctx: &ProcessCtx, inputs: &Inputs, outputs: &mut [Buf], n: usize) {
         let p = &self.params;
         let wave = p.waveform();
         let freq_target = p.get(osc::FREQ) * (p.get(osc::FINE) / 1200.0).exp2();
@@ -136,8 +136,8 @@ impl Processor for Oscillator {
         let shape = p.get(osc::SHAPE);
         let fm_amount = p.get(osc::FM);
         let am_amount = p.get(osc::AM);
-        let fm_in = inputs.get(0).copied();
-        let am_in = inputs.get(1).copied();
+        let fm_in = inputs.cv(0);
+        let am_in = inputs.cv(1);
         let sr = ctx.sample_rate;
 
         let mut peak = 0.0f32;
@@ -162,7 +162,8 @@ impl Processor for Oscillator {
             }
 
             let y = s * gain;
-            outputs[0][i] = y;
+            outputs[0][0][i] = y;
+            outputs[0][1][i] = y;
             peak = peak.max(y.abs());
         }
         self.params.meter.fetch_max(peak);
@@ -191,7 +192,7 @@ impl Mixer {
 
 impl Processor for Mixer {
     #[allow(clippy::needless_range_loop)] // indexes several per-channel arrays in lockstep
-    fn process(&mut self, ctx: &ProcessCtx, inputs: &Inputs, outputs: &mut [[f32; BLOCK]], n: usize) {
+    fn process(&mut self, ctx: &ProcessCtx, inputs: &Inputs, outputs: &mut [Buf], n: usize) {
         let p = &self.params;
         let any_solo = p.solo.iter().any(|s| s.load(Ordering::Relaxed));
 
@@ -223,16 +224,18 @@ impl Processor for Mixer {
                 if !inputs.connected[ch] {
                     continue;
                 }
-                let x = inputs.bufs[ch][i] * self.gain[ch];
-                ch_peak[ch] = ch_peak[ch].max(x.abs());
-                l += x * self.pan_l[ch];
-                r += x * self.pan_r[ch];
+                // Stereo inputs: the pan acts as a balance control.
+                let [xl, xr] = &inputs.bufs[ch];
+                let (xl, xr) = (xl[i] * self.gain[ch], xr[i] * self.gain[ch]);
+                ch_peak[ch] = ch_peak[ch].max(xl.abs()).max(xr.abs());
+                l += xl * self.pan_l[ch];
+                r += xr * self.pan_r[ch];
             }
             self.master += (master_t - self.master) * k;
             l *= self.master;
             r *= self.master;
-            outputs[0][i] = l;
-            outputs[1][i] = r;
+            outputs[0][0][i] = l;
+            outputs[0][1][i] = r;
             out_peak[0] = out_peak[0].max(l.abs());
             out_peak[1] = out_peak[1].max(r.abs());
         }

@@ -1,5 +1,6 @@
 pub mod dsp;
 pub mod engine;
+pub mod modules;
 pub mod params;
 
 use std::sync::Arc;

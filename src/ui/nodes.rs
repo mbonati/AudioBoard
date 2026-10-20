@@ -6,13 +6,14 @@ use egui::{
     Shape, Stroke, StrokeKind, Ui, Vec2, vec2,
 };
 
+use super::modules;
 use super::theme::{self, alpha};
 use super::widgets::{self, hfader, hmeter, knob, toggle};
 use crate::audio::engine::NodeId;
 use crate::audio::params::{
-    MIXER_CHANNELS, OSC_PARAMS, Waveform, fader_gain, format_db, format_hz, gain_to_db, osc,
+    MIXER_CHANNELS, OSC_PARAMS, ParamSpec, Waveform, fader_gain, format_db, format_hz, gain_to_db, osc,
 };
-use crate::graph::{MixerNode, Node, NodeKind, OscNode};
+use crate::graph::{MixerNode, Node, NodeType, OscNode};
 
 pub const HEADER_H: f32 = 26.0;
 pub const OSC_SIZE: Vec2 = vec2(216.0, 268.0);
@@ -23,24 +24,27 @@ const OSC_PORT_Y: [f32; 2] = [42.0, 60.0];
 const MIX_ROW_Y: f32 = 34.0;
 const MIX_ROW_H: f32 = 38.0;
 
-pub fn size(kind: &NodeKind) -> Vec2 {
-    match kind {
-        NodeKind::Osc(_) => OSC_SIZE,
-        NodeKind::Mixer(_) => MIX_SIZE,
+pub fn type_size(ty: NodeType) -> Vec2 {
+    match ty {
+        NodeType::Osc => OSC_SIZE,
+        NodeType::Mixer => MIX_SIZE,
+        NodeType::Module(k) => modules::size(k.def()),
     }
 }
 
-pub fn input_offset(kind: &NodeKind, i: usize) -> Vec2 {
-    match kind {
-        NodeKind::Osc(_) => vec2(0.0, OSC_PORT_Y[i.min(1)]),
-        NodeKind::Mixer(_) => vec2(0.0, MIX_ROW_Y + MIX_ROW_H * (i as f32 + 0.5)),
+pub fn input_offset(ty: NodeType, i: usize) -> Vec2 {
+    match ty {
+        NodeType::Osc => vec2(0.0, OSC_PORT_Y[i.min(1)]),
+        NodeType::Mixer => vec2(0.0, MIX_ROW_Y + MIX_ROW_H * (i as f32 + 0.5)),
+        NodeType::Module(_) => modules::input_offset(i),
     }
 }
 
-pub fn output_offset(kind: &NodeKind, _i: usize) -> Vec2 {
-    match kind {
-        NodeKind::Osc(_) => vec2(OSC_SIZE.x, OSC_PORT_Y[0]),
-        NodeKind::Mixer(_) => vec2(MIX_SIZE.x, MIX_SIZE.y * 0.5),
+pub fn output_offset(ty: NodeType, i: usize) -> Vec2 {
+    match ty {
+        NodeType::Osc => vec2(OSC_SIZE.x, OSC_PORT_Y[0]),
+        NodeType::Mixer => vec2(MIX_SIZE.x, MIX_SIZE.y * 0.5),
+        NodeType::Module(k) => modules::output_offset(k.def(), i),
     }
 }
 
@@ -53,23 +57,23 @@ pub struct NodeView<'a> {
 }
 
 impl NodeView<'_> {
-    fn p(&self, x: f32, y: f32) -> Pos2 {
+    pub(super) fn p(&self, x: f32, y: f32) -> Pos2 {
         self.min + vec2(x, y) * self.z
     }
 
-    fn r(&self, x0: f32, y0: f32, x1: f32, y1: f32) -> Rect {
+    pub(super) fn r(&self, x0: f32, y0: f32, x1: f32, y1: f32) -> Rect {
         Rect::from_min_max(self.p(x0, y0), self.p(x1, y1))
     }
 
-    fn font(&self, size: f32) -> FontId {
+    pub(super) fn font(&self, size: f32) -> FontId {
         FontId::proportional(size * self.z)
     }
 
-    fn mono(&self, size: f32) -> FontId {
+    pub(super) fn mono(&self, size: f32) -> FontId {
         FontId::monospace(size * self.z)
     }
 
-    fn text(&self, x: f32, y: f32, align: Align2, text: impl ToString, font: FontId, color: Color32) -> Rect {
+    pub(super) fn text(&self, x: f32, y: f32, align: Align2, text: impl ToString, font: FontId, color: Color32) -> Rect {
         self.painter.text(self.p(x, y), align, text, font, color)
     }
 }
@@ -134,7 +138,7 @@ pub fn frame(v: &NodeView, node: &Node, selected: bool) -> Response {
     close
 }
 
-fn note_name(freq: f32) -> String {
+pub(super) fn note_name(freq: f32) -> String {
     const NAMES: [&str; 12] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
     let midi = 69.0 + 12.0 * (freq / 440.0).log2();
     let nearest = midi.round();
@@ -205,33 +209,16 @@ pub fn osc(v: &NodeView, id: NodeId, accent: Color32, o: &mut OscNode, inputs: &
     );
     p.add(Shape::line(pts, Stroke::new(1.4 * z, accent)));
 
-    // Waveform selector: one segmented control.
+    // Waveform selector.
     let bar = v.r(12.0, 120.0, w - 12.0, 140.0);
-    p.rect_filled(bar, 4.0 * z, theme::INSET);
-    let seg_w = bar.width() / Waveform::ALL.len() as f32;
-    for (i, &wf) in Waveform::ALL.iter().enumerate() {
-        let rect = Rect::from_min_size(bar.min + vec2(seg_w * i as f32, 0.0), vec2(seg_w, bar.height()));
-        let resp = v
-            .ui
-            .interact(rect, Id::unique(("wave", id, i)), Sense::CLICK)
-            .on_hover_cursor(CursorIcon::PointingHand)
-            .on_hover_text(wf.name());
-        if resp.clicked() {
-            params.set_waveform(wf);
-        }
-        let on = wf == wave;
-        if on {
-            p.rect_filled(rect.shrink(2.0 * z), 3.0 * z, theme::CONTROL);
-        }
-        let col = if on {
-            accent
-        } else if resp.hovered() {
-            theme::TEXT_DIM
-        } else {
-            theme::TEXT_FAINT
-        };
+    let picked = segmented(v, ("wave", id), bar, Waveform::ALL.len(), wave as usize, accent, |i, rect, col| {
+        let wf = Waveform::ALL[i];
         let glyph = widgets::wave_points(rect.shrink2(vec2(11.0 * z, 6.0 * z)), wf, 0.0, 1.0, 1.0, 0.0, 7);
         p.add(Shape::line(glyph, Stroke::new(1.3 * z, col)));
+        wf.name()
+    });
+    if let Some(i) = picked {
+        params.set_waveform(Waveform::ALL[i]);
     }
 
     // Knobs: two rows of three.
@@ -243,36 +230,96 @@ pub fn osc(v: &NodeView, id: NodeId, accent: Color32, o: &mut OscNode, inputs: &
         let row_y = 156.0 + 58.0 * (k / 3) as f32;
         let unpatched = (pi == osc::FM && !inputs[0]) || (pi == osc::AM && !inputs[1]);
         let label = if pi == osc::SHAPE { wave.shape_label() } else { spec.name };
-        let label_col = if unpatched { alpha(theme::TEXT_FAINT, 0.6) } else { theme::TEXT_FAINT };
-        v.text(cx, row_y, Align2::CENTER_CENTER, label, v.font(8.5), label_col);
-
-        let value = params.get(pi);
-        let mut norm = spec.to_norm(value);
-        let resp = knob(
-            v.ui,
-            p,
-            Id::unique(("knob", id, pi)),
-            v.p(cx, row_y + 19.0),
-            12.0 * z,
-            &mut norm,
-            spec.to_norm(spec.default),
-            spec.bipolar,
-            accent,
-            z,
-        );
-        if resp.dragged() || resp.double_clicked() {
-            params.set(pi, spec.denorm(norm));
+        let cell = KnobCell { cx, row_y, label, dimmed: unpatched, accent };
+        if let Some(value) = knob_cell(v, Id::unique(("knob", id, pi)), spec, params.get(pi), cell) {
+            params.set(pi, value);
         }
-        let hot = resp.dragged() || resp.hovered();
-        v.text(
-            cx,
-            row_y + 38.0,
-            Align2::CENTER_CENTER,
-            spec.format(params.get(pi)),
-            v.mono(9.0),
-            if hot { theme::TEXT } else { theme::TEXT_DIM },
-        );
     }
+}
+
+/// Segmented control in `rect` (screen space). `item` paints segment `i`
+/// in the given colour and returns its tooltip. Returns a clicked segment.
+pub(super) fn segmented(
+    v: &NodeView,
+    salt: impl std::hash::Hash + std::fmt::Debug,
+    rect: Rect,
+    count: usize,
+    selected: usize,
+    accent: Color32,
+    mut item: impl FnMut(usize, Rect, Color32) -> &'static str,
+) -> Option<usize> {
+    let z = v.z;
+    let p = v.painter;
+    p.rect_filled(rect, 4.0 * z, theme::INSET);
+    let seg_w = rect.width() / count as f32;
+    let base = Id::unique(salt);
+    let mut picked = None;
+    for i in 0..count {
+        let seg = Rect::from_min_size(rect.min + vec2(seg_w * i as f32, 0.0), vec2(seg_w, rect.height()));
+        let resp = v
+            .ui
+            .interact(seg, base.with(i), Sense::CLICK)
+            .on_hover_cursor(CursorIcon::PointingHand);
+        let on = i == selected;
+        if on {
+            p.rect_filled(seg.shrink(2.0 * z), 3.0 * z, theme::CONTROL);
+        }
+        let col = if on {
+            accent
+        } else if resp.hovered() {
+            theme::TEXT_DIM
+        } else {
+            theme::TEXT_FAINT
+        };
+        let tip = item(i, seg, col);
+        if resp.on_hover_text(tip).clicked() {
+            picked = Some(i);
+        }
+    }
+    picked
+}
+
+/// Placement and look of one knob cell (label, knob, value).
+pub(super) struct KnobCell<'a> {
+    pub cx: f32,
+    /// Node-local y of the label line.
+    pub row_y: f32,
+    pub label: &'a str,
+    /// For modulation-depth knobs whose input is unpatched.
+    pub dimmed: bool,
+    pub accent: Color32,
+}
+
+/// Draws a knob cell; returns the new value when it was moved or reset.
+pub(super) fn knob_cell(v: &NodeView, id: Id, spec: &ParamSpec, value: f32, cell: KnobCell) -> Option<f32> {
+    let z = v.z;
+    let KnobCell { cx, row_y, label, dimmed, accent } = cell;
+    let label_col = if dimmed { alpha(theme::TEXT_FAINT, 0.6) } else { theme::TEXT_FAINT };
+    v.text(cx, row_y, Align2::CENTER_CENTER, label, v.font(8.5), label_col);
+    let mut norm = spec.to_norm(value);
+    let resp = knob(
+        v.ui,
+        v.painter,
+        id,
+        v.p(cx, row_y + 19.0),
+        12.0 * z,
+        &mut norm,
+        spec.to_norm(spec.default),
+        spec.bipolar,
+        accent,
+        z,
+    );
+    let new = (resp.dragged() || resp.double_clicked()).then(|| spec.denorm(norm));
+    let hot = resp.dragged() || resp.hovered();
+    v.text(
+        cx,
+        row_y + 38.0,
+        Align2::CENTER_CENTER,
+        spec.format(new.unwrap_or(value)),
+        v.mono(9.0),
+        if hot { theme::TEXT } else { theme::TEXT_DIM },
+    );
+    new
 }
 
 // ---------------------------------------------------------------------------

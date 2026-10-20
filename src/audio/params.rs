@@ -48,6 +48,10 @@ pub enum Unit {
     Cents,
     Percent,
     Decibel,
+    Seconds,
+    Semitones,
+    Octaves,
+    PerSecond,
 }
 
 /// Static description of a knob-controlled parameter.
@@ -62,6 +66,30 @@ pub struct ParamSpec {
 }
 
 impl ParamSpec {
+    pub const fn lin(name: &'static str, min: f32, max: f32, default: f32, unit: Unit) -> Self {
+        Self {
+            name,
+            min,
+            max,
+            default,
+            taper: Taper::Linear,
+            unit,
+            bipolar: false,
+        }
+    }
+
+    pub const fn log(name: &'static str, min: f32, max: f32, default: f32, unit: Unit) -> Self {
+        Self {
+            taper: Taper::Log,
+            ..Self::lin(name, min, max, default, unit)
+        }
+    }
+
+    /// Knob arc grows from the centre.
+    pub const fn bipolar(self) -> Self {
+        Self { bipolar: true, ..self }
+    }
+
     pub fn to_norm(&self, v: f32) -> f32 {
         let n = match self.taper {
             Taper::Linear => (v - self.min) / (self.max - self.min),
@@ -79,11 +107,19 @@ impl ParamSpec {
     }
 
     pub fn format(&self, v: f32) -> String {
-        match self.unit {
-            Unit::Hz => format_hz(v),
-            Unit::Cents => format!("{v:+.0} ct"),
-            Unit::Percent => format!("{:.0}%", v * 100.0),
-            Unit::Decibel => format_db(gain_to_db(v)),
+        match (self.unit, self.bipolar) {
+            (Unit::Hz, _) => format_hz(v),
+            (Unit::Cents, true) => format!("{v:+.0} ct"),
+            (Unit::Cents, false) => format!("{v:.0} ct"),
+            (Unit::Percent, _) => format!("{:.0}%", v * 100.0),
+            (Unit::Decibel, _) => format_db(gain_to_db(v)),
+            (Unit::Seconds, _) => format_seconds(v),
+            (Unit::Semitones, true) => format!("{:+.0} st", v.round()),
+            (Unit::Semitones, false) => format!("±{v:.1} st"),
+            (Unit::Octaves, true) => format!("{v:+.1} oct"),
+            (Unit::Octaves, false) => format!("{v:.1} oct"),
+            (Unit::PerSecond, _) if v < 10.0 => format!("{v:.1}/s"),
+            (Unit::PerSecond, _) => format!("{v:.0}/s"),
         }
     }
 }
@@ -97,6 +133,16 @@ pub fn format_hz(v: f32) -> String {
         format!("{v:.1} Hz")
     } else {
         format!("{v:.2} Hz")
+    }
+}
+
+pub fn format_seconds(v: f32) -> String {
+    if v < 1.0 {
+        format!("{:.0} ms", v * 1000.0)
+    } else if v < 10.0 {
+        format!("{v:.2} s")
+    } else {
+        format!("{v:.1} s")
     }
 }
 
