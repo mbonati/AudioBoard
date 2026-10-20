@@ -238,9 +238,18 @@ pub fn toggle(
     resp
 }
 
-pub fn port(p: &Painter, c: Pos2, connected: bool, hot: bool, color: Color32, z: f32) {
+/// A port: round for audio and CV, square for MIDI.
+pub fn port(p: &Painter, c: Pos2, connected: bool, hot: bool, color: Color32, midi: bool, z: f32) {
     let r = if hot { 5.5 } else { 4.5 } * z;
     let ring = if connected || hot { color } else { theme::TEXT_FAINT };
+    if midi {
+        let rect = Rect::from_center_size(c, vec2(r, r) * 1.8);
+        p.rect(rect, 1.5 * z, theme::NODE_BODY, Stroke::new(1.4 * z, ring), egui::StrokeKind::Middle);
+        if connected {
+            p.rect_filled(Rect::from_center_size(c, vec2(4.0, 4.0) * z), 0.5 * z, color);
+        }
+        return;
+    }
     p.circle(c, r, theme::NODE_BODY, Stroke::new(1.4 * z, ring));
     if connected {
         p.circle_filled(c, 2.2 * z, color);
@@ -284,14 +293,23 @@ pub fn cable_shape(from: Pos2, to: Pos2, z: f32) -> CubicBezierShape {
 }
 
 /// `level` (0..1) brightens the cable so active signal paths stand out.
-pub fn draw_cable(p: &Painter, from: Pos2, to: Pos2, color: Color32, level: f32, hot: bool, z: f32) {
+/// MIDI cables are dashed.
+#[allow(clippy::too_many_arguments)]
+pub fn draw_cable(p: &Painter, from: Pos2, to: Pos2, color: Color32, level: f32, hot: bool, midi: bool, z: f32) {
     let mut s = cable_shape(from, to, z);
     let (width, color) = if hot {
         (2.6, theme::mix(color, Color32::WHITE, 0.3))
     } else {
         (1.8, alpha(color, 0.55 + 0.45 * level.clamp(0.0, 1.0).sqrt()))
     };
-    s.stroke = Stroke::new(width * z, color).into();
+    let stroke = Stroke::new(width * z, color);
+    if midi {
+        let n = ((to - from).length() / (6.0 * z)).clamp(16.0, 160.0) as usize;
+        let pts: Vec<Pos2> = (0..=n).map(|i| s.sample(i as f32 / n as f32)).collect();
+        p.extend(Shape::dashed_line(&pts, stroke, 6.0 * z, 4.0 * z));
+        return;
+    }
+    s.stroke = stroke.into();
     p.add(s);
 }
 

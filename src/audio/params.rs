@@ -55,7 +55,16 @@ pub enum Unit {
     Integer,
     /// MIDI channel; 0 is "omni".
     Channel,
+    /// Index into [`DIVISIONS`].
+    Division,
+    /// Pitch class, 0 = C.
+    NoteName,
 }
+
+/// Note lengths for sequencers: (label, steps per beat).
+pub const DIVISIONS: [(&str, f64); 6] = [("1/4", 1.0), ("1/8", 2.0), ("1/8T", 3.0), ("1/16", 4.0), ("1/16T", 6.0), ("1/32", 8.0)];
+
+pub const NOTE_NAMES: [&str; 12] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
 /// Static description of a knob-controlled parameter.
 pub struct ParamSpec {
@@ -126,6 +135,8 @@ impl ParamSpec {
             (Unit::Integer, _) => format!("{:.0}", v.round()),
             (Unit::Channel, _) if v.round() < 1.0 => "Omni".to_owned(),
             (Unit::Channel, _) => format!("Ch {:.0}", v.round()),
+            (Unit::Division, _) => DIVISIONS[(v.round() as usize).min(DIVISIONS.len() - 1)].0.to_owned(),
+            (Unit::NoteName, _) => NOTE_NAMES[(v.round() as usize) % 12].to_owned(),
         }
     }
 }
@@ -391,8 +402,17 @@ impl Scope {
     }
 }
 
+/// Tempo of a new patch, in BPM.
+pub const DEFAULT_TEMPO: f32 = 90.0;
+/// Slowest and fastest tempo, in beats per minute.
+pub const TEMPO_RANGE: (f32, f32) = (20.0, 300.0);
+
 pub struct EngineShared {
     pub running: AtomicBool,
+    /// Transport tempo in BPM, shared by sequencers and arpeggiators.
+    pub tempo: AtomicF32,
+    /// Transport position in beats (wrapped), for the UI's beat light.
+    pub beat: AtomicF32,
     /// DSP load: time spent rendering / time available (0..1+).
     pub load: AtomicF32,
     pub scope: Scope,
@@ -402,6 +422,8 @@ impl EngineShared {
     pub fn new() -> Self {
         Self {
             running: AtomicBool::new(true),
+            tempo: AtomicF32::new(DEFAULT_TEMPO),
+            beat: AtomicF32::new(0.0),
             load: AtomicF32::new(0.0),
             scope: Scope::new(),
         }

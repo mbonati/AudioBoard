@@ -17,6 +17,17 @@ const ROW_H: f32 = 34.0;
 pub enum Spawn {
     Node(NodeType),
     Preset(usize),
+    /// A VST3 plugin from the installed list.
+    Plugin(usize),
+}
+
+/// An installed VST3 plugin, as listed (its code is not loaded to list it).
+#[derive(Clone, Debug)]
+pub struct PluginEntry {
+    pub path: std::path::PathBuf,
+    pub name: String,
+    /// Category and maker once it has been loaded, else "VST3".
+    pub hint: String,
 }
 
 pub struct Palette {
@@ -41,7 +52,13 @@ impl Palette {
     }
 
     /// Returns an entry that was clicked; drags are dropped on the canvas.
-    pub fn show(&mut self, ui: &mut Ui, library: &[Preset], requests: &mut Vec<Request>) -> Option<Spawn> {
+    pub fn show(
+        &mut self,
+        ui: &mut Ui,
+        library: &[Preset],
+        plugins: &[PluginEntry],
+        requests: &mut Vec<Request>,
+    ) -> Option<Spawn> {
         let mut picked = None;
         ui.add(
             egui::TextEdit::singleline(&mut self.query)
@@ -75,6 +92,41 @@ impl Palette {
                     if r.clicked {
                         picked = Some(entry.spawn);
                     }
+                }
+            }
+
+            let shown: Vec<(usize, &PluginEntry)> =
+                plugins.iter().enumerate().filter(|(_, p)| matches(&p.name, &p.hint)).collect();
+            if !shown.is_empty() || query.is_empty() {
+                heading(ui, "Plugins");
+            }
+            if plugins.is_empty() && query.is_empty() {
+                ui.label(
+                    RichText::new("No VST3 plugins in the system plug-in folders.")
+                        .size(10.5)
+                        .color(theme::TEXT_FAINT),
+                );
+            }
+            for (i, plugin) in shown {
+                let entry = Entry {
+                    name: &plugin.name,
+                    hint: &plugin.hint,
+                    color: theme::OSC_ACCENTS[4],
+                    spawn: Spawn::Plugin(i),
+                    removable: false,
+                };
+                if row(ui, &entry).clicked {
+                    picked = Some(entry.spawn);
+                }
+            }
+            if query.is_empty() {
+                ui.add_space(6.0);
+                let rescan = ui.add(
+                    egui::Label::new(RichText::new("Rescan plugins").size(10.5).color(theme::TEXT_DIM))
+                        .sense(Sense::click()),
+                );
+                if rescan.on_hover_cursor(CursorIcon::PointingHand).clicked() {
+                    requests.push(Request::RescanPlugins);
                 }
             }
 
@@ -124,7 +176,7 @@ impl Palette {
             }
         });
 
-        drag_ghost(ui, library);
+        drag_ghost(ui, library, plugins);
         picked
     }
 }
@@ -198,7 +250,7 @@ fn row(ui: &mut Ui, e: &Entry) -> RowResponse {
 }
 
 /// While an entry is being dragged: its name follows the pointer.
-fn drag_ghost(ui: &Ui, library: &[Preset]) {
+fn drag_ghost(ui: &Ui, library: &[Preset], plugins: &[PluginEntry]) {
     let Some(spawn) = egui::DragAndDrop::payload::<Spawn>(ui.ctx()) else {
         return;
     };
@@ -208,6 +260,7 @@ fn drag_ghost(ui: &Ui, library: &[Preset]) {
     let name = match *spawn {
         Spawn::Node(ty) => ty.name().to_owned(),
         Spawn::Preset(i) => library.get(i).map_or("Module".to_owned(), |p| p.name.clone()),
+        Spawn::Plugin(i) => plugins.get(i).map_or("Plugin".to_owned(), |p| p.name.clone()),
     };
     ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
     let painter = ui.ctx().layer_painter(LayerId::new(Order::Tooltip, Id::unique("palette_ghost")));

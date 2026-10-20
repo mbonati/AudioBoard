@@ -199,8 +199,7 @@ pub fn draw_card(
     let label = |pr: PortRef, input: bool| {
         let node = graph.node(pr.node);
         let title = node.map_or("?", |n| n.title.as_str());
-        let names = node.map(|n| if input { n.inputs() } else { n.outputs() });
-        let port = names.and_then(|ns| ns.get(pr.port)).copied().unwrap_or("?");
+        let port = node.map_or("?", |n| n.port_label(pr.port, !input));
         format!("{title} · {port}")
     };
     let font = egui::FontId::proportional(8.5 * z);

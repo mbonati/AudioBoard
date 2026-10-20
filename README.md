@@ -84,6 +84,64 @@ PITCH del Drone o FREQ dell'oscillatore), quelli in semitoni la distanza dal Do 
 posizione del tasto. Il controllo si muove solo con i messaggi che arrivano dopo la mappatura. **UNMAP**
 la rimuove. Le mappature si salvano nel progetto e nei moduli della libreria.
 
+### Sequenze MIDI: Step Sequencer, Arpeggiator, MIDI In
+
+Oltre ai cavi audio esistono i **cavi MIDI**: porte quadrate (le porte audio sono tonde) e cavi
+tratteggiati. Un cavo MIDI collega solo un'uscita MIDI a un ingresso MIDI. Hanno un ingresso MIDI i plugin
+VST3 che accettano MIDI (gli strumenti), l'Arpeggiator e MIDI Note.
+
+Il **tempo** è globale: il campo **BPM** nella toolbar (trascina per cambiarlo, Shift per i decimali, doppio
+clic torna a 90); la luce lampeggia a ogni battito mentre l'audio è acceso. Sequencer e arpeggiatori sono
+agganciati alla stessa griglia, quindi restano sempre a tempo tra loro; il tempo viene passato anche ai
+plugin (LFO e delay sincronizzati). Si salva nel progetto.
+
+**Step Sequencer**: fino a 16 step su una scala. Nella griglia ogni colonna è uno step e la cella accesa è
+la sua nota: clicca una cella per spostarci lo step (sulla cella accesa lo spegni o lo riaccendi),
+trascina per disegnare una melodia; passando col mouse si vede la nota. RATE (da 1/4 a 1/32, terzine),
+STEPS (lunghezza), GATE (durata della nota), SWING (sposta in ritardo gli step pari), CHANCE (probabilità
+che uno step suoni), VELOCITY, ROOT e OCTAVE (la tonica), scala MAJ / MIN / DOR / PENT / CHR. **PLAY**
+lo ferma e lo riavvia. Gli step si salvano nel progetto e nei moduli della libreria.
+
+**Arpeggiator**: suona una alla volta le note tenute, a tempo, su 1–4 ottave (OCTAVES), in ordine UP,
+DOWN, U+D (su e giù), RAND o ORDER (come suonate). RATE, GATE, SWING, CHANCE, VELOCITY come nel
+sequencer. Le note arrivano dal suo cavo MIDI oppure, senza cavo, direttamente dalla tastiera MIDI.
+**LATCH** tiene l'accordo dopo aver lasciato i tasti, finché non ne suoni uno nuovo.
+
+**MIDI In**: la tastiera MIDI su un cavo, per mandarla in un arpeggiatore o in un plugin; CHANNEL filtra un
+canale, TRANSPOSE sposta le note (controller e pitch bend passano invariati).
+
+Esempi:
+- *Step Sequencer → strumento VST*: il plugin suona la sequenza (lascia **KEYBOARD** acceso per suonarci
+  sopra anche dalla tastiera);
+- *MIDI In → Arpeggiator → strumento VST*: arpeggi da quello che suoni;
+- *Step Sequencer → MIDI Note*, con ENV nell'AM di un oscillatore e MAP sulla sua FREQ: la sequenza suona
+  i nodi interni.
+
+Staccando un cavo MIDI (o eliminando il nodo che lo alimenta) il plugin riceve i note-off delle note
+rimaste accese, quindi niente note appese.
+
+### Plugin VST3
+
+I plugin VST3 installati (`/Library/Audio/Plug-Ins/VST3` e `~/Library/Audio/Plug-Ins/VST3`) compaiono nella
+sezione **Plugins** della palette e del menu del tasto destro, e si inseriscono come qualsiasi altro nodo.
+Per elencarli non viene caricato nessun plugin; categoria e produttore compaiono dopo il primo caricamento.
+**Rescan plugins** aggiorna l'elenco.
+
+Un nodo plugin ha un ingresso stereo (effetti) e un'uscita stereo; se accetta MIDI ha anche un ingresso
+MIDI (porta quadrata) per sequencer e arpeggiatori. Mostra:
+- **EDITOR**: apre la finestra del plugin stesso (suoni, preset, tutte le sue impostazioni);
+- **PARAMS**: l'elenco di tutti i parametri, con ricerca e cursori; il pallino fissa fino a 8 parametri
+  come knob sul nodo (all'inizio sono i primi 8);
+- **KEYBOARD**: suona il plugin dalla tastiera MIDI esterna (attivo da solo per gli strumenti), insieme a
+  quello che arriva dal cavo MIDI.
+
+I knob del nodo si possono mappare con un nodo MIDI CC (MAP), come gli altri. Il progetto salva il percorso
+del plugin e il suo stato completo, quindi anche il suono scelto nel suo editor; su un altro computer il
+plugin viene cercato per nome nelle cartelle VST3. Lo stesso vale per i moduli della libreria.
+
+I plugin girano dentro AudioBoard: un plugin difettoso può far chiudere l'applicazione. Sono supportati i VST3
+(non VST2, AU o CLAP).
+
 ### Uscita
 
 **Mixer (4 canali)**: per ogni canale fader di volume, pan (bilanciamento sui segnali stereo), Mute/Solo
@@ -185,11 +243,15 @@ come nuovo modulo, già **ridotto** a una scheda. La × accanto al nome lo rimuo
 src/
 ├── audio/
 │   ├── params.rs   parametri condivisi lock-free (atomics) tra UI e thread audio
-│   ├── engine.rs   grafo lato audio: blocchi stereo da 64 frame, ordine topologico precalcolato
+│   ├── engine.rs   grafo lato audio: blocchi stereo da 64 frame, eventi MIDI per blocco, clock
+│   │               globale in battiti, ordine topologico precalcolato
 │   ├── dsp.rs      Oscillator e Mixer
-│   ├── modules/    drone, random, granular, resonator, filter, delay, reverb, midi_cc, midi_note
+│   ├── modules/    drone, random, granular, resonator, filter, delay, reverb, midi_cc, midi_note,
+│   │               sequencer, arpeggiator, midi_in
+│   │   ├── steps.rs griglia degli step sul tempo globale, note in uscita, tasti tenuti
 │   │   └── mod.rs  descrizione dei moduli (ModuleDef), parametri generici e helper DSP
 │   ├── midi.rs     ingressi MIDI (midir) e stato condiviso letto dai nodi MIDI
+│   ├── plugin.rs   plugin VST3 (vst3-host): caricamento, scansione, elaborazione sul thread audio
 │   └── mod.rs      apertura dello stream di uscita (cpal)
 ├── graph.rs        modello della patch lato UI (nodi, cavi, moduli, ordinamento di Kahn)
 ├── project.rs      salvataggio/caricamento dei progetti e libreria dei moduli (JSON)
@@ -198,6 +260,7 @@ src/
 │   ├── groups.rs   moduli: cornice (espansi) e scheda con le porte di confine (ridotti)
 │   ├── layout.rs   auto layout per flusso del segnale (colonne, porte allineate, corridoi per i cavi)
 │   ├── palette.rs  palette dei nodi e della libreria, con trascinamento sul canvas
+│   ├── plugin_node.rs pannello dei nodi plugin (editor, parametri, MIDI, knob)
 │   ├── nodes.rs    layout e disegno di oscillatore e mixer, controlli condivisi
 │   ├── modules.rs  pannello comune dei moduli e i loro display
 │   ├── widgets.rs  knob, fader, meter, porte e cavi disegnati a mano

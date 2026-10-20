@@ -2,7 +2,7 @@
 //! MIDI threads write it, the MIDI nodes read it on the audio thread
 //! (atomics only) and the UI reads it for learning and knob mapping.
 
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering::Relaxed};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering::Acquire, Ordering::Relaxed, Ordering::Release};
 use std::sync::{Arc, Mutex};
 
 /// Channel slots: 1..=16, plus 0 for "omni" (the latest event on any channel).
@@ -41,7 +41,17 @@ pub struct MidiState {
     held: Mutex<[Vec<u8>; CHANNELS]>,
     /// Any message received, for the activity light.
     events: AtomicU32,
+    /// The latest raw messages (status | data1 << 8 | data2 << 16), for
+    /// plugins that want the stream itself. Readers keep their own cursor.
+    ring: Box<[AtomicU32]>,
+    /// Messages written to `ring` so far.
+    ring_head: AtomicU32,
+    /// Serialises writers (one thread per device); readers never lock.
+    ring_writer: Mutex<()>,
 }
+
+/// Raw messages kept for stream readers.
+const RING: usize = 1024;
 
 impl MidiState {
     pub fn new() -> Self {
@@ -56,6 +66,9 @@ impl MidiState {
             note_seq: std::array::from_fn(|_| AtomicU32::new(0)),
             held: Mutex::new(std::array::from_fn(|_| Vec::new())),
             events: AtomicU32::new(0),
+            ring: (0..RING).map(|_| AtomicU32::new(0)).collect(),
+            ring_head: AtomicU32::new(0),
+            ring_writer: Mutex::new(()),
         }
     }
 
@@ -71,6 +84,13 @@ impl MidiState {
         self.events.fetch_add(1, Relaxed);
         let ch = (status & 0x0F) as usize + 1;
         let data = |i: usize| msg.get(i).copied().unwrap_or(0) & 0x7F;
+        {
+            let _writer = self.ring_writer.lock().unwrap_or_else(|e| e.into_inner());
+            let head = self.ring_head.load(Relaxed);
+            let packed = status as u32 | (data(1) as u32) << 8 | (data(2) as u32) << 16;
+            self.ring[head as usize % RING].store(packed, Relaxed);
+            self.ring_head.store(head.wrapping_add(1), Release);
+        }
         match status & 0xF0 {
             0x90 if data(2) > 0 => self.note_on(ch, data(1), data(2)),
             0x80 | 0x90 => self.note_off(ch, data(1)),
@@ -152,6 +172,27 @@ impl MidiState {
 
     pub fn events(&self) -> u32 {
         self.events.load(Relaxed)
+    }
+
+    /// Where the message stream is now: a reader starting here sees only
+    /// newer messages.
+    pub fn stream_head(&self) -> u32 {
+        self.ring_head.load(Acquire)
+    }
+
+    /// Calls `f` with each message since `cursor` (status, data1, data2) and
+    /// moves the cursor on. A reader that fell more than the ring behind
+    /// skips to the oldest message still kept. Lock-free.
+    pub fn read_stream(&self, cursor: &mut u32, mut f: impl FnMut([u8; 3])) {
+        let head = self.ring_head.load(Acquire);
+        if head.wrapping_sub(*cursor) > RING as u32 {
+            *cursor = head.wrapping_sub(RING as u32);
+        }
+        while *cursor != head {
+            let packed = self.ring[*cursor as usize % RING].load(Relaxed);
+            f([packed as u8, (packed >> 8) as u8, (packed >> 16) as u8]);
+            *cursor = cursor.wrapping_add(1);
+        }
     }
 }
 

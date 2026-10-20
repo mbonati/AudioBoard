@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::audio::AudioHandle;
 use crate::audio::engine::NodeId;
 use crate::audio::modules::{ModuleKind, ModuleParams};
-use crate::audio::params::{MIXER_CHANNELS, MixerParams, OSC_PARAMS, OscParams, Waveform};
+use crate::audio::params::{DEFAULT_TEMPO, MIXER_CHANNELS, MixerParams, OSC_PARAMS, OscParams, TEMPO_RANGE, Waveform};
 use crate::graph::{Graph, GroupId, Node, NodeKind, PortRef, Target};
 use crate::ui::groups;
 use crate::ui::nodes::HEADER_H;
@@ -32,6 +32,13 @@ pub struct Project {
     cables: Vec<CableData>,
     #[serde(default)]
     modules: Vec<ModuleData>,
+    /// Beats per minute.
+    #[serde(default = "default_tempo")]
+    tempo: f32,
+}
+
+fn default_tempo() -> f32 {
+    DEFAULT_TEMPO
 }
 
 /// A module saved in the library: its nodes (positioned relative to the
@@ -83,9 +90,21 @@ enum KindData {
         mode: String,
         #[serde(default)]
         toggle: bool,
+        /// Settings beyond the knobs (a sequencer's steps).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        data: Vec<f32>,
         /// MIDI nodes: the control they drive.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         target: Option<TargetData>,
+    },
+    /// A VST3 plugin: where it lives and its complete state.
+    Plugin {
+        path: String,
+        /// The plugin's own state, base64.
+        state: String,
+        /// Parameter ids shown as knobs.
+        pinned: Vec<u32>,
+        midi: bool,
     },
 }
 
@@ -144,6 +163,12 @@ fn node_data(graph: &Graph, n: &Node, numbers: &HashMap<NodeId, u32>, origin: Ve
                 .collect(),
             master: m.params.master.get(),
         },
+        NodeKind::Plugin(p) => KindData::Plugin {
+            path: p.meta.path.to_string_lossy().into_owned(),
+            state: p.save_state().map(|s| base64_encode(&s)).unwrap_or_default(),
+            pinned: p.pinned.iter().map(|&i| p.params[i].id).collect(),
+            midi: p.shared.midi_in.load(Ordering::Relaxed),
+        },
         NodeKind::Module(m) => {
             let p = &m.params;
             let def = p.kind.def();
@@ -157,6 +182,7 @@ fn node_data(graph: &Graph, n: &Node, numbers: &HashMap<NodeId, u32>, origin: Ve
                     .collect(),
                 mode: def.modes.get(p.mode()).copied().unwrap_or_default().to_owned(),
                 toggle: p.toggled(),
+                data: p.data.iter().map(|v| v.get()).collect(),
                 // Kept only when the mapped node is saved too.
                 target: m.target.and_then(|t| {
                     Some(TargetData {
@@ -216,6 +242,7 @@ pub fn snapshot(graph: &Graph) -> Project {
         nodes,
         cables,
         modules,
+        tempo: graph.tempo,
     }
 }
 
@@ -281,7 +308,24 @@ fn instantiate(
                 p.master.set(master.clamp(0.0, 1.0));
                 graph.add_mixer_with(pos, Arc::new(p), audio)
             }
-            KindData::Module { module, params, mode, toggle, .. } => {
+            KindData::Plugin { path, state, pinned, midi } => {
+                let Ok(id) = graph.add_plugin(&locate_plugin(path), pos, audio) else {
+                    continue;
+                };
+                if let Some(NodeKind::Plugin(p)) = graph.node_mut(id).map(|n| &mut n.kind) {
+                    if let Some(bytes) = base64_decode(state) {
+                        let _ = p.load_state(&bytes);
+                    }
+                    let wanted: Vec<usize> =
+                        pinned.iter().filter_map(|id| p.params.iter().position(|q| q.id == *id)).collect();
+                    if !wanted.is_empty() {
+                        p.pinned = wanted;
+                    }
+                    p.shared.midi_in.store(*midi, Ordering::Relaxed);
+                }
+                id
+            }
+            KindData::Module { module, params, mode, toggle, data: extra, .. } => {
                 let Some(kind) = ModuleKind::ALL.iter().copied().find(|k| k.def().name == module) else {
                     continue;
                 };
@@ -294,6 +338,9 @@ fn instantiate(
                 }
                 p.set_mode(def.modes.iter().position(|m| m == mode).unwrap_or(0));
                 p.set_toggle(*toggle);
+                for (dst, v) in p.data.iter().zip(extra) {
+                    dst.set(*v);
+                }
                 graph.add_module_with(pos, Arc::new(p), audio)
             }
         };
@@ -326,6 +373,7 @@ fn instantiate(
 /// be loaded (unknown types).
 pub fn restore(graph: &mut Graph, project: &Project, audio: &AudioHandle) -> usize {
     graph.clear(audio);
+    graph.tempo = project.tempo.clamp(TEMPO_RANGE.0, TEMPO_RANGE.1);
     let ids = instantiate(graph, &project.nodes, &project.cables, Vec2::ZERO, audio);
     for m in &project.modules {
         let members: Vec<NodeId> = m.members.iter().filter_map(|id| ids.get(id).copied()).collect();
@@ -448,4 +496,51 @@ impl Library {
         self.reload();
         Ok(())
     }
+}
+
+/// A saved plugin path, or the plugin with the same bundle name in this
+/// machine's plugin folders.
+fn locate_plugin(saved: &str) -> PathBuf {
+    let path = PathBuf::from(saved);
+    if path.exists() {
+        return path;
+    }
+    crate::audio::plugin::scan()
+        .into_iter()
+        .find(|p| p.file_name() == path.file_name())
+        .unwrap_or(path)
+}
+
+const BASE64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+pub fn base64_encode(data: &[u8]) -> String {
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
+    for chunk in data.chunks(3) {
+        let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
+        let n = (b[0] as u32) << 16 | (b[1] as u32) << 8 | b[2] as u32;
+        for k in 0..4 {
+            if k <= chunk.len() {
+                out.push(BASE64[(n >> (18 - 6 * k) & 63) as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
+}
+
+pub fn base64_decode(text: &str) -> Option<Vec<u8>> {
+    let mut out = Vec::with_capacity(text.len() / 4 * 3);
+    let (mut acc, mut bits) = (0u32, 0);
+    for c in text.bytes().filter(|c| !c.is_ascii_whitespace() && *c != b'=') {
+        let v = BASE64.iter().position(|&b| b == c)? as u32;
+        acc = acc << 6 | v;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((acc >> bits) as u8);
+            acc &= (1 << bits) - 1;
+        }
+    }
+    Some(out)
 }
