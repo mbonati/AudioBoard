@@ -1,6 +1,7 @@
 pub mod app;
 pub mod canvas;
 pub mod groups;
+pub mod layout;
 pub mod modules;
 pub mod monitor;
 pub mod nodes;

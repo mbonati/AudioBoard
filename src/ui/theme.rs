@@ -128,6 +128,8 @@ pub fn apply(ctx: &egui::Context) {
     // Always dark, whatever the OS appearance (menus and separators use these).
     ctx.set_theme(egui::ThemePreference::Dark);
     ctx.set_visuals_of(egui::Theme::Dark, v);
+    // Cmd +/- zoom the canvas, not the whole interface.
+    ctx.options_mut(|o| o.zoom_with_keyboard = false);
     ctx.all_styles_mut(|s| {
         s.spacing.button_padding = egui::vec2(8.0, 3.0);
         s.spacing.menu_margin = egui::Margin::same(4);

@@ -43,7 +43,10 @@ const SHORTCUTS: &[(&str, &str)] = &[
     ("C", "Collapse / expand node or module"),
     ("Double-click title", "Collapse / expand"),
     ("Shift+C", "Collapse / expand all"),
-    ("F", "Frame all"),
+    ("L", "Auto layout (selection or all) · Cmd+Z undoes"),
+    ("F / Shift+F", "Fit all / fit selection"),
+    ("A", "Auto-fit: keep the patch in view"),
+    ("Cmd+= / Cmd+− / Cmd+0", "Zoom in / out / 100%"),
     ("Space", "Audio on / off"),
 ];
 
@@ -85,6 +88,16 @@ enum FileCommand {
     Open,
     Save,
     SaveAs,
+}
+
+enum ViewCommand {
+    ZoomIn,
+    ZoomOut,
+    Actual,
+    FitAll,
+    FitSelection,
+    AutoFit,
+    AutoLayout,
 }
 
 pub struct AudioBoardApp {
@@ -456,6 +469,14 @@ impl AudioBoardApp {
                 if icon_button(ui, Icon::Compact, all_collapsed).on_hover_text(tip).clicked() {
                     self.graph.set_all_collapsed(!all_collapsed);
                 }
+                let tip = "Auto-fit: keep the whole patch in view (A)";
+                if icon_button(ui, Icon::Fit, self.editor.auto_fit).on_hover_text(tip).clicked() {
+                    self.editor.set_auto_fit(!self.editor.auto_fit, &self.graph, now);
+                }
+                let tip = "Auto layout: arrange by signal flow (L)";
+                if icon_button(ui, Icon::Layout, false).on_hover_text(tip).clicked() {
+                    self.editor.auto_layout(&mut self.graph, now);
+                }
                 icon_button(ui, Icon::Help, false).on_hover_ui(shortcuts);
                 ui.add_space(10.0);
                 let info = &self.audio.info;
@@ -483,7 +504,20 @@ impl AudioBoardApp {
         });
     }
 
-    fn status_bar(&self, ui: &mut Ui, now: f64) {
+    fn run_view_command(&mut self, cmd: ViewCommand, now: f64) {
+        let e = &mut self.editor;
+        match cmd {
+            ViewCommand::ZoomIn => e.zoom_by(1.25, now),
+            ViewCommand::ZoomOut => e.zoom_by(0.8, now),
+            ViewCommand::Actual => e.zoom_actual(now),
+            ViewCommand::FitAll => e.fit_all(&self.graph, now),
+            ViewCommand::FitSelection => e.fit_selection(&self.graph, now),
+            ViewCommand::AutoFit => e.set_auto_fit(!e.auto_fit, &self.graph, now),
+            ViewCommand::AutoLayout => e.auto_layout(&mut self.graph, now),
+        }
+    }
+
+    fn status_bar(&mut self, ui: &mut Ui, now: f64) {
         ui.horizontal_centered(|ui| {
             let selected = &self.editor.selected;
             let single = (selected.len() == 1)
@@ -520,7 +554,13 @@ impl AudioBoardApp {
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 20.0;
                 let item = |text: String| RichText::new(text).size(10.0).monospace().color(theme::TEXT_DIM);
-                ui.label(item(format!("{:.0}%", self.editor.zoom * 100.0)));
+                let auto = if self.editor.auto_fit { "  auto" } else { "" };
+                let zoom = ui
+                    .add(egui::Label::new(item(format!("{:.0}%{auto}", self.editor.zoom * 100.0))).sense(Sense::click()))
+                    .on_hover_cursor(CursorIcon::PointingHand);
+                if let Some(cmd) = egui::Popup::menu(&zoom).show(view_menu).and_then(|r| r.inner) {
+                    self.run_view_command(cmd, now);
+                }
                 let devices: Vec<&str> = self.midi.names().collect();
                 let active = now - self.midi_events.1 < 0.15;
                 if active {
@@ -600,6 +640,9 @@ impl eframe::App for AudioBoardApp {
         CentralPanel::default()
             .frame(Frame::NONE.fill(theme::BG))
             .show(ui, |ui| self.editor.show(ui, &mut self.graph, &self.audio));
+        for notice in std::mem::take(&mut self.editor.notices) {
+            self.notify(now, notice, false);
+        }
         for request in std::mem::take(&mut self.editor.requests) {
             self.handle_request(request, now);
         }
@@ -626,7 +669,7 @@ fn module(graph: &Graph, id: NodeId) -> Arc<ModuleParams> {
 
 /// An ambient pad: a drone through a slowly wandering filter, spread into a
 /// shimmering reverb and, an octave up, into a grain cloud with tape echoes.
-fn demo_patch(graph: &mut Graph, audio: &AudioHandle) {
+pub(crate) fn demo_patch(graph: &mut Graph, audio: &AudioHandle) {
     let random = graph.add_module(ModuleKind::Random, pos2(0.0, 0.0), audio);
     let drone_id = graph.add_module(ModuleKind::Drone, pos2(0.0, 230.0), audio);
     let filter_id = graph.add_module(ModuleKind::Filter, pos2(340.0, 150.0), audio);
@@ -775,6 +818,8 @@ fn vsep(ui: &mut Ui) {
 
 enum Icon {
     Sidebar,
+    Layout,
+    Fit,
     Monitor,
     Compact,
     Help,
@@ -794,6 +839,31 @@ fn icon_button(ui: &mut Ui, icon: Icon, active: bool) -> Response {
             let r = Rect::from_center_size(c, vec2(13.0, 11.0));
             p.rect_stroke(r, 2.0, Stroke::new(1.2, col), StrokeKind::Inside);
             p.vline(r.left() + 4.5, r.y_range(), Stroke::new(1.2, col));
+        }
+        Icon::Layout => {
+            // One block feeding two: a patch arranged left to right.
+            let block = |x: f32, y: f32| Rect::from_center_size(c + vec2(x, y), vec2(4.5, 4.5));
+            let stroke = Stroke::new(1.2, col);
+            let (a, b, d) = (block(-4.5, 0.0), block(4.5, -3.5), block(4.5, 3.5));
+            for r in [a, b, d] {
+                p.rect_stroke(r, 1.0, stroke, StrokeKind::Inside);
+            }
+            p.line_segment([a.right_center(), b.left_center()], stroke);
+            p.line_segment([a.right_center(), d.left_center()], stroke);
+        }
+        Icon::Fit => {
+            // Four corners framing the view.
+            let r = Rect::from_center_size(c, vec2(13.0, 11.0));
+            let stroke = Stroke::new(1.2, col);
+            for (corner, dx, dy) in [
+                (r.left_top(), 1.0, 1.0),
+                (r.right_top(), -1.0, 1.0),
+                (r.left_bottom(), 1.0, -1.0),
+                (r.right_bottom(), -1.0, -1.0),
+            ] {
+                p.line_segment([corner, corner + vec2(4.0 * dx, 0.0)], stroke);
+                p.line_segment([corner, corner + vec2(0.0, 3.5 * dy)], stroke);
+            }
         }
         Icon::Monitor => {
             // A window with its bottom dock.
@@ -847,4 +917,22 @@ fn shortcuts(ui: &mut Ui) {
             ui.end_row();
         }
     });
+}
+
+fn view_menu(ui: &mut Ui) -> Option<ViewCommand> {
+    let mut picked = None;
+    let mut item = |label: &str, hint: &str, cmd: ViewCommand| {
+        if menu_item(ui, label, hint) {
+            picked = Some(cmd);
+            ui.close();
+        }
+    };
+    item("Zoom in", "Cmd+=", ViewCommand::ZoomIn);
+    item("Zoom out", "Cmd+−", ViewCommand::ZoomOut);
+    item("Actual size", "Cmd+0", ViewCommand::Actual);
+    item("Fit to view", "F", ViewCommand::FitAll);
+    item("Fit selection", "Shift+F", ViewCommand::FitSelection);
+    item("Auto-fit on / off", "A", ViewCommand::AutoFit);
+    item("Auto layout", "L", ViewCommand::AutoLayout);
+    picked
 }

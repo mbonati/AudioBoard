@@ -10,6 +10,7 @@ use egui::{
 };
 
 use super::groups;
+use super::layout;
 use super::modules;
 use super::nodes::{self, KnobHit, NodeView};
 use super::palette::Spawn;
@@ -23,6 +24,21 @@ use crate::project::{self, Preset};
 const GRID: f32 = 24.0;
 const MIN_ZOOM: f32 = 0.3;
 const MAX_ZOOM: f32 = 2.0;
+/// Length of layout glides and view animations.
+const ANIM_SECS: f64 = 0.35;
+
+/// Nodes gliding to new positions: (node, from, to).
+struct Glide {
+    moves: Vec<(NodeId, Pos2, Pos2)>,
+    start: f64,
+}
+
+/// The view moving to a new (pan, zoom).
+struct ViewAnim {
+    from: (Vec2, f32),
+    to: (Vec2, f32),
+    start: f64,
+}
 
 /// Work that needs the app (files, dialogs) rather than the canvas.
 pub enum Request {
@@ -51,6 +67,13 @@ enum Action {
     SelectAll,
     Deselect,
     MoveSelection(Vec2),
+    AutoLayout,
+    UndoLayout,
+    FitAll,
+    FitSelection,
+    ZoomBy(f32),
+    ZoomActual,
+    ToggleAutoFit,
     RemoveSelection,
     DuplicateSelection,
     ToggleCollapse(NodeId),
@@ -130,6 +153,16 @@ pub struct Editor {
     renaming: Option<Rename>,
     /// MIDI node waiting for a click on the control it should drive.
     mapping: Option<NodeId>,
+    /// Keep the whole patch in view as it changes.
+    pub auto_fit: bool,
+    glide: Option<Glide>,
+    view_anim: Option<ViewAnim>,
+    /// Positions before the last auto layout, for Cmd+Z.
+    layout_undo: Option<Vec<(NodeId, Pos2)>>,
+    /// Short messages for the status bar, drained by the app.
+    pub notices: Vec<String>,
+    /// Time of the current frame.
+    now: f64,
 }
 
 impl Editor {
@@ -147,6 +180,12 @@ impl Editor {
             requests: Vec::new(),
             renaming: None,
             mapping: None,
+            auto_fit: false,
+            glide: None,
+            view_anim: None,
+            layout_undo: None,
+            notices: Vec::new(),
+            now: 0.0,
         }
     }
 
@@ -158,6 +197,9 @@ impl Editor {
         self.marquee = None;
         self.renaming = None;
         self.mapping = None;
+        self.glide = None;
+        self.view_anim = None;
+        self.layout_undo = None;
         self.needs_framing = true;
     }
 
@@ -203,16 +245,155 @@ impl Editor {
     }
 
     fn frame_all(&mut self, graph: &Graph) {
-        let Some(bounds) = content_bounds(graph) else {
-            self.zoom = 1.0;
-            self.pan = self.rect.size() * 0.5;
-            return;
-        };
+        match content_bounds(graph) {
+            Some(bounds) => (self.pan, self.zoom) = self.fit_params(bounds),
+            None => {
+                self.zoom = 1.0;
+                self.pan = self.rect.size() * 0.5;
+            }
+        }
+    }
+
+    /// The view (pan, zoom) that shows `bounds` with a margin, at most 100%.
+    fn fit_params(&self, bounds: Rect) -> (Vec2, f32) {
         let avail = self.rect.size() - vec2(120.0, 120.0);
-        self.zoom = (avail.x / bounds.width())
+        let zoom = (avail.x / bounds.width())
             .min(avail.y / bounds.height())
             .clamp(MIN_ZOOM, 1.0);
-        self.pan = self.rect.size() * 0.5 - bounds.center().to_vec2() * self.zoom;
+        (self.rect.size() * 0.5 - bounds.center().to_vec2() * zoom, zoom)
+    }
+
+    /// Where the view is heading (or is, when it isn't moving).
+    fn view_target(&self) -> (Vec2, f32) {
+        self.view_anim.as_ref().map_or((self.pan, self.zoom), |a| a.to)
+    }
+
+    fn animate_view(&mut self, pan: Vec2, zoom: f32, now: f64) {
+        self.view_anim = Some(ViewAnim {
+            from: (self.pan, self.zoom),
+            to: (pan, zoom),
+            start: now,
+        });
+    }
+
+    /// Manual navigation takes over from auto-fit and view animations.
+    fn take_over_view(&mut self) {
+        self.auto_fit = false;
+        self.view_anim = None;
+    }
+
+    pub fn fit_all(&mut self, graph: &Graph, now: f64) {
+        if let Some(bounds) = content_bounds(graph) {
+            let (pan, zoom) = self.fit_params(bounds);
+            self.animate_view(pan, zoom, now);
+        }
+    }
+
+    pub fn fit_selection(&mut self, graph: &Graph, now: f64) {
+        if let Some(bounds) = selection_bounds(graph, &self.selected) {
+            let (pan, zoom) = self.fit_params(bounds);
+            self.auto_fit = false;
+            self.animate_view(pan, zoom, now);
+        }
+    }
+
+    /// Zooms by `factor` around the middle of the view.
+    pub fn zoom_by(&mut self, factor: f32, now: f64) {
+        let (pan, zoom) = self.view_target();
+        let new_zoom = (zoom * factor).clamp(MIN_ZOOM, MAX_ZOOM);
+        let centre = self.rect.size() * 0.5;
+        let world = (centre - pan) / zoom;
+        self.take_over_view();
+        self.animate_view(centre - world * new_zoom, new_zoom, now);
+    }
+
+    pub fn zoom_actual(&mut self, now: f64) {
+        let zoom = self.view_target().1;
+        self.zoom_by(1.0 / zoom, now);
+    }
+
+    /// Auto-fit keeps the whole patch in view as it changes.
+    pub fn set_auto_fit(&mut self, on: bool, graph: &Graph, now: f64) {
+        self.auto_fit = on;
+        if on {
+            self.fit_all(graph, now);
+        }
+    }
+
+    /// Arranges the selection (two or more nodes, or a module) or else the
+    /// whole patch, gliding the nodes into place.
+    pub fn auto_layout(&mut self, graph: &mut Graph, now: f64) {
+        let partial = self.selected.len() >= 2 || self.selected_group(graph).is_some();
+        let only = partial.then(|| self.selected.clone());
+        let moves: Vec<(NodeId, Pos2, Pos2)> = layout::plan(graph, only.as_ref())
+            .into_iter()
+            .filter_map(|(id, to)| Some((id, graph.node(id)?.pos, to)))
+            .collect();
+        if moves.iter().all(|(_, from, to)| (*from - *to).length() < 0.5) {
+            self.notices.push("Already tidy".to_owned());
+            return;
+        }
+        if !partial {
+            // Zoom to where everything will end up.
+            for (id, _, to) in &moves {
+                graph.node_mut(*id).expect("planned node").pos = *to;
+            }
+            let bounds = content_bounds(graph);
+            for (id, from, _) in &moves {
+                graph.node_mut(*id).expect("planned node").pos = *from;
+            }
+            if let Some(b) = bounds {
+                let (pan, zoom) = self.fit_params(b);
+                self.animate_view(pan, zoom, now);
+            }
+        }
+        self.layout_undo = Some(moves.iter().map(|(id, from, _)| (*id, *from)).collect());
+        self.glide = Some(Glide { moves, start: now });
+        self.notices.push("Auto layout  ·  Cmd+Z to undo".to_owned());
+    }
+
+    /// Puts nodes back where they were before the last auto layout.
+    pub fn undo_layout(&mut self, graph: &Graph, now: f64) {
+        let Some(before) = self.layout_undo.take() else {
+            return;
+        };
+        let moves = before
+            .into_iter()
+            .filter_map(|(id, to)| Some((id, graph.node(id)?.pos, to)))
+            .collect();
+        self.glide = Some(Glide { moves, start: now });
+        self.notices.push("Layout undone".to_owned());
+    }
+
+    /// Advances node glides and view animations; true while one is running.
+    fn animate(&mut self, graph: &mut Graph, now: f64) -> bool {
+        let ease = |start: f64| {
+            let t = ((now - start) / ANIM_SECS).clamp(0.0, 1.0) as f32;
+            (1.0 - (1.0 - t).powi(3), t >= 1.0)
+        };
+        let mut busy = false;
+        if let Some(g) = &self.glide {
+            let (e, done) = ease(g.start);
+            for &(id, from, to) in &g.moves {
+                if let Some(n) = graph.node_mut(id) {
+                    n.pos = from + (to - from) * e;
+                }
+            }
+            busy |= !done;
+            if done {
+                self.glide = None;
+            }
+        }
+        if let Some(a) = &self.view_anim {
+            let (e, done) = ease(a.start);
+            self.pan = a.from.0 + (a.to.0 - a.from.0) * e;
+            self.zoom = a.from.1 + (a.to.1 - a.from.1) * e;
+            busy |= !done;
+            if done {
+                self.view_anim = None;
+            }
+        }
+        busy
     }
 
     pub fn show(&mut self, ui: &mut Ui, graph: &mut Graph, audio: &AudioHandle) {
@@ -221,6 +402,11 @@ impl Editor {
         if self.needs_framing {
             self.needs_framing = false;
             self.frame_all(graph);
+        }
+        let now = ui.input(|i| i.time);
+        self.now = now;
+        if self.animate(graph, now) {
+            ui.ctx().request_repaint();
         }
 
         let painter = ui.painter_at(rect);
@@ -234,11 +420,15 @@ impl Editor {
             || bg.dragged_by(PointerButton::Secondary)
             || (bg.dragged_by(PointerButton::Primary) && mods.alt && self.marquee.is_none());
         if panning {
+            self.take_over_view();
             self.pan += bg.drag_delta();
             ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
         }
         if ui.rect_contains_pointer(rect) {
             let (zoom_delta, scroll) = ui.input(|i| (i.zoom_delta(), i.smooth_scroll_delta));
+            if zoom_delta != 1.0 || scroll != Vec2::ZERO {
+                self.take_over_view();
+            }
             if let Some(hp) = pointer
                 && zoom_delta != 1.0
             {
@@ -685,6 +875,18 @@ impl Editor {
                 },
             });
 
+        // Auto-fit: follow the patch as it changes (not mid-gesture).
+        if self.auto_fit && self.glide.is_none() && !ui.input(|i| i.pointer.any_down())
+            && let Some(bounds) = content_bounds(graph)
+        {
+            let (pan, zoom) = self.fit_params(bounds);
+            let (to_pan, to_zoom) = self.view_target();
+            if (to_zoom - zoom).abs() > 1e-3 || (to_pan - pan).length() > 1.0 {
+                self.animate_view(pan, zoom, now);
+                ui.ctx().request_repaint();
+            }
+        }
+
         // --- Keyboard (not while typing, e.g. a module name) --------------
         if ui.memory(|m| m.focused().is_none()) {
             self.keyboard(ui, graph, &mut actions);
@@ -803,7 +1005,25 @@ impl Editor {
             }
         }
         if !cmd && pressed(Key::F) {
-            self.frame_all(graph);
+            actions.push(if shift { Action::FitSelection } else { Action::FitAll });
+        }
+        if !cmd && pressed(Key::L) {
+            actions.push(Action::AutoLayout);
+        }
+        if !cmd && pressed(Key::A) {
+            actions.push(Action::ToggleAutoFit);
+        }
+        if cmd && (pressed(Key::Equals) || pressed(Key::Plus)) {
+            actions.push(Action::ZoomBy(1.25));
+        }
+        if cmd && pressed(Key::Minus) {
+            actions.push(Action::ZoomBy(0.8));
+        }
+        if cmd && pressed(Key::Num0) {
+            actions.push(Action::ZoomActual);
+        }
+        if cmd && pressed(Key::Z) {
+            actions.push(Action::UndoLayout);
         }
     }
 
@@ -925,6 +1145,13 @@ impl Editor {
                 Action::SelectAll => self.selected = graph.nodes.iter().map(|n| n.id).collect(),
                 Action::Deselect => self.selected.clear(),
                 Action::MoveSelection(delta) => graph.move_nodes(&self.selected, delta),
+                Action::AutoLayout => self.auto_layout(graph, self.now),
+                Action::UndoLayout => self.undo_layout(graph, self.now),
+                Action::FitAll => self.fit_all(graph, self.now),
+                Action::FitSelection => self.fit_selection(graph, self.now),
+                Action::ZoomBy(f) => self.zoom_by(f, self.now),
+                Action::ZoomActual => self.zoom_actual(self.now),
+                Action::ToggleAutoFit => self.set_auto_fit(!self.auto_fit, graph, self.now),
                 Action::RemoveSelection => {
                     for id in self.ordered_selection(graph) {
                         graph.remove_node(id, audio);
@@ -1154,6 +1381,14 @@ fn canvas_menu(ui: &mut Ui, pos: Pos2, has_selection: bool, library: &[Preset], 
         actions.push(Action::GroupSelection);
         ui.close();
     }
+    if menu_item(ui, "Auto layout", "L") {
+        actions.push(Action::AutoLayout);
+        ui.close();
+    }
+    if menu_item(ui, "Fit to view", "F") {
+        actions.push(Action::FitAll);
+        ui.close();
+    }
     if menu_item(ui, "Select all", "Cmd+A") {
         actions.push(Action::SelectAll);
         ui.close();
@@ -1211,4 +1446,25 @@ fn group_menu(ui: &mut Ui, gid: GroupId, collapsed: bool, actions: &mut Vec<Acti
         actions.push(Action::RemoveSelection);
         ui.close();
     }
+}
+
+/// Bounds of the selected nodes as drawn (a folded module counts whole).
+fn selection_bounds(graph: &Graph, selected: &HashSet<NodeId>) -> Option<Rect> {
+    let mut bounds: Option<Rect> = None;
+    let mut add = |r: Rect| bounds = Some(bounds.map_or(r, |b| b.union(r)));
+    for g in &graph.groups {
+        if g.collapsed
+            && g.members.iter().any(|m| selected.contains(m))
+            && let Some((r, ..)) = groups::card_layout(graph, g)
+        {
+            add(r);
+        }
+    }
+    for n in &graph.nodes {
+        let folded = graph.group_of(n.id).is_some_and(|g| g.collapsed);
+        if selected.contains(&n.id) && !folded {
+            add(Rect::from_min_size(n.pos, n.size()));
+        }
+    }
+    bounds
 }

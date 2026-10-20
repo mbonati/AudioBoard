@@ -100,14 +100,16 @@ e meter; bus master stereo con meter L/R e indicatore di clip. Il mixer alimenta
 | Regolare knob / fader | trascinare (Shift = regolazione fine), doppio clic = reset |
 | Selezionare più nodi | trascinare un rettangolo sul canvas vuoto, oppure Shift+clic (Cmd+A tutti, Esc nessuno) |
 | Spostare la vista | scroll a due dita, trascinare col tasto destro o centrale, oppure Alt+trascina |
-| Zoom | pinch o Cmd+scroll |
+| Zoom | pinch o Cmd+scroll; Cmd+= / Cmd+− / Cmd+0 (100%); oppure clic sulla percentuale nella barra di stato |
 | Spostare / eliminare / duplicare la selezione | trascinare un nodo selezionato / Del / Cmd+D (i cavi interni vengono copiati) |
 | Creare un modulo dalla selezione | Cmd+G, oppure tasto destro → Make module |
 | Rinominare un modulo | Invio o F2 con il modulo selezionato, oppure tasto destro → Rename… (Invio conferma, Esc annulla) |
 | Sciogliere un modulo | Cmd+Shift+G, la × nell'intestazione del modulo, oppure tasto destro → Ungroup |
 | Ridurre / espandere un nodo o un modulo | freccia nell'intestazione, doppio clic sul titolo, tasto C, oppure tasto destro → Collapse |
 | Ridurre / espandere tutto | Shift+C, pulsante nella toolbar, oppure tasto destro sul canvas |
-| Inquadrare tutti i nodi | F |
+| Inquadrare tutto / la selezione | F / Shift+F |
+| Auto layout | L, il pulsante nella toolbar o tasto destro sul canvas; Cmd+Z annulla |
+| Auto-fit (tenere tutta la patch in vista) | A o il pulsante nella toolbar |
 | Nuovo / apri progetto | Cmd+N / Cmd+O, oppure il nome del progetto nella toolbar |
 | Salvare / salvare con nome | Cmd+S / Shift+Cmd+S |
 | Audio on/off | Spazio |
@@ -139,6 +141,21 @@ Rename…): il nome si modifica direttamente nell'intestazione.
   il modulo stesso. **Del** elimina il modulo con i suoi nodi; **Ungroup** lo scioglie e tiene i nodi.
 
 Il raggruppamento è solo visivo: il suono non cambia. Un nodo appartiene al massimo a un modulo.
+
+## Auto layout e zoom
+
+**Auto layout** (L) dispone la patch seguendo il flusso del segnale: colonne da sinistra a destra, dalle
+sorgenti al mixer. In ogni colonna i blocchi si allineano alle porte a cui sono collegati, così i cavi sono
+il più dritti possibile; i modulatori (Random, LFO, nodi MIDI) finiscono subito prima di ciò che modulano;
+i cavi che saltano una colonna hanno un corridoio libero, così non passano dietro altri nodi. I moduli si
+spostano come blocchi interi e vengono riordinati anche all'interno. Con due o più nodi selezionati (o un
+modulo) viene sistemata solo la selezione. I nodi scivolano nelle nuove posizioni e la vista si adatta al
+risultato; **Cmd+Z** riporta la disposizione precedente.
+
+**Zoom.** F adatta la vista a tutta la patch, Shift+F alla selezione, con un'animazione breve. Cliccando la
+percentuale di zoom nella barra di stato si apre il menu della vista. **Auto-fit** (A) tiene sempre tutta la
+patch in vista mentre aggiungi, togli, riduci o sposti nodi o ridimensioni la finestra; nella barra di stato
+compare "auto". Si spegne da solo appena fai zoom o sposti la vista a mano.
 
 ## Palette
 
@@ -179,6 +196,7 @@ src/
 ├── ui/
 │   ├── canvas.rs   canvas con pan/zoom, selezione, drag & drop dei cavi, menu contestuali
 │   ├── groups.rs   moduli: cornice (espansi) e scheda con le porte di confine (ridotti)
+│   ├── layout.rs   auto layout per flusso del segnale (colonne, porte allineate, corridoi per i cavi)
 │   ├── palette.rs  palette dei nodi e della libreria, con trascinamento sul canvas
 │   ├── nodes.rs    layout e disegno di oscillatore e mixer, controlli condivisi
 │   ├── modules.rs  pannello comune dei moduli e i loro display

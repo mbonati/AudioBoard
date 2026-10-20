@@ -753,16 +753,24 @@ fn foreign_files_are_rejected() {
 struct Ui {
     ctx: egui::Context,
     editor: crate::ui::canvas::Editor,
+    /// Simulated clock, 50 ms per frame.
+    time: f64,
 }
 
 impl Ui {
     fn new() -> Self {
-        Self { ctx: egui::Context::default(), editor: crate::ui::canvas::Editor::new() }
+        Self {
+            ctx: egui::Context::default(),
+            editor: crate::ui::canvas::Editor::new(),
+            time: 0.0,
+        }
     }
 
     fn frame(&mut self, g: &mut Graph, a: &AudioHandle, events: Vec<egui::Event>) {
+        self.time += 0.05;
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 900.0))),
+            time: Some(self.time),
             events,
             ..Default::default()
         };
@@ -772,15 +780,26 @@ impl Ui {
     }
 
     fn key(&mut self, g: &mut Graph, a: &AudioHandle, key: egui::Key) {
+        self.key_with(g, a, key, egui::Modifiers::NONE);
+    }
+
+    fn key_with(&mut self, g: &mut Graph, a: &AudioHandle, key: egui::Key, modifiers: egui::Modifiers) {
         let event = egui::Event::Key {
             key,
             physical_key: None,
             pressed: true,
             repeat: false,
-            modifiers: egui::Modifiers::NONE,
+            modifiers,
         };
-        self.frame(g, a, vec![event]);
-        self.frame(g, a, vec![]);
+        self.frame(g, a, vec![egui::Event::ModifiersChanged(modifiers), event]);
+        self.frame(g, a, vec![egui::Event::ModifiersChanged(egui::Modifiers::NONE)]);
+    }
+
+    /// Lets animations finish.
+    fn settle(&mut self, g: &mut Graph, a: &AudioHandle) {
+        for _ in 0..12 {
+            self.frame(g, a, vec![]);
+        }
     }
 }
 
@@ -915,4 +934,150 @@ fn palette_entries_drop_where_released() {
     let screen = (e.pan + reverb.pos.to_vec2() * e.zoom).to_pos2();
     assert!((screen.y - p.y).abs() < 20.0 && screen.x < p.x, "{screen:?}");
     assert!(egui::DragAndDrop::payload::<Spawn>(&ui.ctx).is_none());
+}
+
+// ---------------------------------------------------------------------------
+// Auto layout and zoom
+// ---------------------------------------------------------------------------
+
+fn rect_of(g: &Graph, id: u32) -> egui::Rect {
+    let n = g.node(id).unwrap();
+    egui::Rect::from_min_size(n.pos, n.size())
+}
+
+fn assert_no_overlaps(g: &Graph, ids: &[u32]) {
+    for (i, &a) in ids.iter().enumerate() {
+        for &b in &ids[i + 1..] {
+            let (ra, rb) = (rect_of(g, a), rect_of(g, b));
+            assert!(!ra.shrink(1.0).intersects(rb.shrink(1.0)), "{a} and {b} overlap: {ra:?} {rb:?}");
+        }
+    }
+}
+
+#[test]
+fn arrange_puts_signal_flow_in_columns_with_level_ports() {
+    use crate::ui::layout::{GAP_X, Link, arrange};
+    let size = egui::vec2(200.0, 100.0);
+    // 0 → 1 → 2, and modulator 3 → 2 (its port lower on 2).
+    let links = [
+        Link { from: 0, to: 1, from_dy: 20.0, to_dy: 20.0 },
+        Link { from: 1, to: 2, from_dy: 20.0, to_dy: 20.0 },
+        Link { from: 3, to: 2, from_dy: 20.0, to_dy: 60.0 },
+    ];
+    let start = [pos2(500.0, 0.0), pos2(0.0, 300.0), pos2(250.0, 900.0), pos2(0.0, 0.0)];
+    let p = arrange(&[size; 4], &start, &links);
+    assert_eq!(p[0].x, 0.0);
+    assert_eq!(p[1].x, size.x + GAP_X);
+    assert_eq!(p[2].x, 2.0 * (size.x + GAP_X));
+    assert_eq!(p[3].x, p[1].x, "the modulator sits right before what it feeds");
+    // Two blocks in one column never overlap, and a source lines up with
+    // what it feeds even when its neighbours have to compromise.
+    assert!((p[1].y - p[3].y).abs() >= size.y + crate::ui::layout::GAP_Y - 0.5);
+    assert!((p[0].y - p[1].y).abs() < 0.5);
+
+    // A plain chain comes out perfectly straight.
+    let chain = arrange(&[size; 3], &start[..3], &links[..2]);
+    assert!(chain.iter().all(|q| q.y == chain[0].y), "{chain:?}");
+}
+
+#[test]
+fn auto_layout_arranges_the_patch_left_to_right() {
+    use crate::ui::layout;
+    let (mut g, a, _e) = setup();
+    let ids = ambient_chain(&mut g, &a);
+    let [random, drone, filter, reverb, mixer] = ids;
+    // Scramble.
+    for (i, id) in ids.iter().enumerate() {
+        g.node_mut(*id).unwrap().pos = pos2(900.0 - 200.0 * i as f32, 50.0 * (i % 2) as f32);
+    }
+    let gid = g.create_group(&[random, drone]).unwrap();
+    for (id, to) in layout::plan(&g, None) {
+        g.node_mut(id).unwrap().pos = to;
+    }
+    assert_no_overlaps(&g, &ids);
+    let x = |id| g.node(id).unwrap().pos.x;
+    assert!(x(drone) < x(filter) && x(filter) < x(reverb) && x(reverb) < x(mixer));
+    assert!(x(random) < x(filter));
+    // Every cable runs left to right.
+    for c in &g.cables {
+        assert!(g.node(c.from.node).unwrap().output_pos(c.from.port).x < g.node(c.to.node).unwrap().input_pos(c.to.port).x);
+    }
+    // The module moved as one block: its frame does not cover other nodes.
+    let frame = crate::ui::groups::frame_rect(&g, g.group(gid).unwrap()).unwrap();
+    for id in [filter, reverb, mixer] {
+        assert!(!frame.intersects(rect_of(&g, id)), "module frame covers {id}");
+    }
+}
+
+#[test]
+fn layout_glides_into_place_and_undoes() {
+    use crate::ui::layout;
+    let (mut g, a, _e) = setup();
+    let ids = ambient_chain(&mut g, &a);
+    for (i, id) in ids.iter().enumerate() {
+        g.node_mut(*id).unwrap().pos = pos2(1000.0 - 250.0 * i as f32, 0.0);
+    }
+    let before: Vec<egui::Pos2> = ids.iter().map(|id| g.node(*id).unwrap().pos).collect();
+    let planned = layout::plan(&g, None);
+
+    let mut ui = Ui::new();
+    ui.frame(&mut g, &a, vec![]);
+    ui.key(&mut g, &a, egui::Key::L);
+    ui.settle(&mut g, &a);
+    for (id, to) in &planned {
+        assert!((g.node(*id).unwrap().pos - *to).length() < 0.01);
+    }
+    assert!(ui.editor.notices.iter().any(|n| n.contains("Cmd+Z")));
+
+    ui.key_with(&mut g, &a, egui::Key::Z, egui::Modifiers::COMMAND);
+    ui.settle(&mut g, &a);
+    let after: Vec<egui::Pos2> = ids.iter().map(|id| g.node(*id).unwrap().pos).collect();
+    assert_eq!(after, before, "Cmd+Z puts everything back");
+}
+
+#[test]
+fn auto_fit_follows_the_patch_until_you_zoom() {
+    let (mut g, a, _e) = setup();
+    ambient_chain(&mut g, &a);
+    let mut ui = Ui::new();
+    ui.frame(&mut g, &a, vec![]);
+    ui.key(&mut g, &a, egui::Key::A);
+    assert!(ui.editor.auto_fit);
+    ui.settle(&mut g, &a);
+    let fitted = ui.editor.zoom;
+
+    // A node far away: the view zooms out to keep everything in sight.
+    g.add_osc(pos2(5000.0, 3000.0), &a);
+    ui.settle(&mut g, &a);
+    assert!(ui.editor.zoom < fitted * 0.7, "{} vs {fitted}", ui.editor.zoom);
+
+    // Zooming by hand turns auto-fit off.
+    let z = ui.editor.zoom;
+    ui.key_with(&mut g, &a, egui::Key::Equals, egui::Modifiers::COMMAND);
+    ui.settle(&mut g, &a);
+    assert!(!ui.editor.auto_fit);
+    assert!((ui.editor.zoom - z * 1.25).abs() < 1e-3);
+}
+
+#[test]
+fn after_auto_layout_no_cable_runs_behind_a_node() {
+    use crate::ui::{layout, widgets};
+    let (mut g, a, _e) = setup();
+    // The demo patch: its reverb → mixer cable skips the delay's column.
+    crate::ui::app::demo_patch(&mut g, &a);
+    for (id, to) in layout::plan(&g, None) {
+        g.node_mut(id).unwrap().pos = to;
+    }
+
+    for c in &g.cables {
+        let (from, to) = (g.node(c.from.node).unwrap(), g.node(c.to.node).unwrap());
+        let shape = widgets::cable_shape(from.output_pos(c.from.port), to.input_pos(c.to.port), 1.0);
+        for n in g.nodes.iter().filter(|n| n.id != from.id && n.id != to.id) {
+            let body = egui::Rect::from_min_size(n.pos, n.size()).shrink(4.0);
+            for i in 0..=64 {
+                let p = shape.sample(i as f32 / 64.0);
+                assert!(!body.contains(p), "{} → {} passes behind {}", from.title, to.title, n.title);
+            }
+        }
+    }
 }
