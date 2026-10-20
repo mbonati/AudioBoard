@@ -7,6 +7,8 @@ pub mod delay;
 pub mod drone;
 pub mod filter;
 pub mod granular;
+pub mod midi_cc;
+pub mod midi_note;
 pub mod random;
 pub mod resonator;
 pub mod reverb;
@@ -15,6 +17,7 @@ use std::f32::consts::PI;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
+use super::AudioHandle;
 use super::engine::Processor;
 use super::params::{AtomicF32, ParamSpec};
 
@@ -27,6 +30,8 @@ pub enum ModuleKind {
     Filter,
     Delay,
     Reverb,
+    MidiCc,
+    MidiNote,
 }
 
 /// Static description of a module's panel and ports.
@@ -38,6 +43,7 @@ pub struct ModuleDef {
     /// Short description shown next to the name in menus.
     pub hint: &'static str,
     pub inputs: &'static [&'static str],
+    pub outputs: &'static [&'static str],
     pub params: &'static [ParamSpec],
     /// `(param, input)`: knobs that set how much a CV input modulates.
     pub cv_depth: &'static [(usize, usize)],
@@ -45,15 +51,14 @@ pub struct ModuleDef {
     pub modes: &'static [&'static str],
     /// Label of the on/off switch, if any.
     pub toggle: Option<&'static str>,
+    /// Can drive any knob directly (MIDI nodes): shows a MAP button.
+    pub map: bool,
     /// Number of values the processor publishes for the node's display.
     pub viz: usize,
 }
 
-pub const OUTPUTS: &[&str] = &["OUT"];
-
 impl ModuleKind {
-    #[cfg(test)]
-    pub const ALL: [ModuleKind; 7] = [
+    pub const ALL: [ModuleKind; 9] = [
         ModuleKind::Drone,
         ModuleKind::Random,
         ModuleKind::Granular,
@@ -61,6 +66,8 @@ impl ModuleKind {
         ModuleKind::Filter,
         ModuleKind::Delay,
         ModuleKind::Reverb,
+        ModuleKind::MidiCc,
+        ModuleKind::MidiNote,
     ];
 
     pub fn def(self) -> &'static ModuleDef {
@@ -72,12 +79,16 @@ impl ModuleKind {
             ModuleKind::Filter => &filter::DEF,
             ModuleKind::Delay => &delay::DEF,
             ModuleKind::Reverb => &reverb::DEF,
+            ModuleKind::MidiCc => &midi_cc::DEF,
+            ModuleKind::MidiNote => &midi_note::DEF,
         }
     }
 
     /// Builds the audio-thread processor. Called on the UI thread, so
     /// buffers can be allocated here.
-    pub fn processor(self, params: Arc<ModuleParams>, sample_rate: f32) -> Box<dyn Processor> {
+    pub fn processor(self, params: Arc<ModuleParams>, audio: &AudioHandle) -> Box<dyn Processor> {
+        let sample_rate = audio.info.sample_rate as f32;
+        let midi = audio.midi.clone();
         match self {
             ModuleKind::Drone => Box::new(drone::Drone::new(params, sample_rate)),
             ModuleKind::Random => Box::new(random::Random::new(params, sample_rate)),
@@ -86,6 +97,8 @@ impl ModuleKind {
             ModuleKind::Filter => Box::new(filter::Filter::new(params, sample_rate)),
             ModuleKind::Delay => Box::new(delay::Delay::new(params, sample_rate)),
             ModuleKind::Reverb => Box::new(reverb::Reverb::new(params, sample_rate)),
+            ModuleKind::MidiCc => Box::new(midi_cc::MidiCc::new(params, midi, sample_rate)),
+            ModuleKind::MidiNote => Box::new(midi_note::MidiNote::new(params, midi, sample_rate)),
         }
     }
 }

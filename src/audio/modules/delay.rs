@@ -32,10 +32,12 @@ pub static DEF: ModuleDef = ModuleDef {
     prefix: "DELAY",
     hint: "tape echo",
     inputs: &["IN"],
+    outputs: &["OUT"],
     params: &PARAMS,
     cv_depth: &[],
     modes: &[],
     toggle: None,
+    map: false,
     viz: 0,
 };
 

@@ -46,10 +46,12 @@ pub static DEF: ModuleDef = ModuleDef {
     prefix: "DRONE",
     hint: "detuned chord",
     inputs: &["PITCH", "TONE"],
+    outputs: &["OUT"],
     params: &PARAMS,
     cv_depth: &[(PITCH_MOD, 0), (TONE_MOD, 1)],
     modes: &["UNI", "5TH", "OCT", "MAJ", "MIN", "SUS"],
     toggle: None,
+    map: false,
     viz: 0,
 };
 

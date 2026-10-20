@@ -1,23 +1,29 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 use egui::{
-    Align, Align2, CentralPanel, Color32, CursorIcon, FontId, Frame, Id, Key, Layout, Margin, Panel,
-    Rect, Response, RichText, Sense, Shape, Stroke, StrokeKind, Ui, ViewportCommand, pos2, vec2,
+    Align, Align2, CentralPanel, Color32, CursorIcon, FontId, Frame, Id, Key, KeyboardShortcut, Layout, Margin,
+    Modifiers, Panel, Rect, Response, RichText, Sense, Shape, Stroke, StrokeKind, Ui, ViewportCommand, pos2, vec2,
 };
 
-use super::canvas::Editor;
+use super::canvas::{Editor, Request, menu_item};
 use super::monitor::Monitor;
-use super::canvas::add_menu;
+use super::palette::{self, Palette, Spawn};
 use super::theme::{self, alpha};
 use crate::audio::engine::{BLOCK, NodeId};
 use crate::audio::modules::{ModuleKind, ModuleParams, delay, drone, filter, granular, random, reverb};
 use crate::audio::params::{EngineShared, Waveform};
+use crate::audio::midi::MidiInputs;
 use crate::audio::{self, AudioHandle};
 use crate::graph::{Graph, NodeKind, PortRef};
+use crate::project::{self, Library, PROJECT_EXT, Project};
 
-const SHORTCUTS: [(&str, &str); 21] = [
-    ("Right-click", "Add node / menu"),
+const SHORTCUTS: &[(&str, &str)] = &[
+    ("Cmd+N / Cmd+O", "New / open project"),
+    ("Cmd+S / Shift+Cmd+S", "Save / save as"),
+    ("Drag from palette", "Add a node or library module"),
+    ("Right-click", "Menu for what is under the pointer"),
     ("Drag port", "Patch a cable"),
     ("Drag input", "Re-patch / unplug"),
     ("Double-click cable", "Remove cable"),
@@ -33,12 +39,53 @@ const SHORTCUTS: [(&str, &str); 21] = [
     ("Cmd+D", "Duplicate selection"),
     ("Cmd+G", "Make a module from the selection"),
     ("Cmd+Shift+G", "Ungroup"),
+    ("Enter / F2", "Rename the selected module"),
     ("C", "Collapse / expand node or module"),
     ("Double-click title", "Collapse / expand"),
     ("Shift+C", "Collapse / expand all"),
     ("F", "Frame all"),
     ("Space", "Audio on / off"),
 ];
+
+/// The open project: where it lives and what was last saved.
+struct Document {
+    path: Option<PathBuf>,
+    saved: Project,
+    dirty: bool,
+    checked_at: f64,
+}
+
+impl Document {
+    fn new(path: Option<PathBuf>, saved: Project) -> Self {
+        Self {
+            path,
+            saved,
+            dirty: false,
+            checked_at: 0.0,
+        }
+    }
+
+    fn name(&self) -> String {
+        self.path
+            .as_ref()
+            .and_then(|p| p.file_stem())
+            .map_or("Untitled".to_owned(), |s| s.to_string_lossy().into_owned())
+    }
+}
+
+/// A short message in the status bar.
+struct Toast {
+    text: String,
+    error: bool,
+    until: f64,
+}
+
+enum FileCommand {
+    New,
+    Open,
+    Save,
+    SaveAs,
+}
 
 pub struct AudioBoardApp {
     shared: Arc<EngineShared>,
@@ -47,8 +94,17 @@ pub struct AudioBoardApp {
     editor: Editor,
     monitor: Monitor,
     show_monitor: bool,
+    palette: Palette,
+    show_palette: bool,
+    doc: Document,
+    library: Library,
+    toast: Option<Toast>,
+    window_title: String,
+    midi: MidiInputs,
+    midi_scanned: f64,
+    /// MIDI messages seen so far, and when the count last moved.
+    midi_events: (u32, f64),
 }
-
 
 impl AudioBoardApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
@@ -57,13 +113,29 @@ impl AudioBoardApp {
         let audio = audio::start(shared.clone());
         let mut graph = Graph::default();
         demo_patch(&mut graph, &audio);
+        let library = Library::open(
+            project::data_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join("Library"),
+        );
+        let mut editor = Editor::new();
+        editor.library = library.presets.clone();
         Self {
             shared,
             audio,
+            doc: Document::new(None, project::snapshot(&graph)),
             graph,
-            editor: Editor::new(),
+            editor,
             monitor: Monitor::new(),
             show_monitor: true,
+            palette: Palette::new(),
+            show_palette: true,
+            library,
+            toast: None,
+            window_title: String::new(),
+            midi: MidiInputs::new(),
+            midi_scanned: f64::NEG_INFINITY,
+            midi_events: (0, f64::NEG_INFINITY),
         }
     }
 
@@ -75,7 +147,265 @@ impl AudioBoardApp {
         self.shared.running.fetch_xor(true, Ordering::Relaxed);
     }
 
-    fn toolbar(&mut self, ui: &mut Ui) {
+    fn notify(&mut self, now: f64, text: impl Into<String>, error: bool) {
+        self.toast = Some(Toast {
+            text: text.into(),
+            error,
+            until: now + if error { 8.0 } else { 3.0 },
+        });
+    }
+
+    // --- Projects -----------------------------------------------------------
+
+    fn refresh_dirty(&mut self) {
+        self.doc.dirty = project::snapshot(&self.graph) != self.doc.saved;
+    }
+
+    /// Where file dialogs start: next to the open project, else Documents.
+    fn dialog_dir(&self) -> PathBuf {
+        self.doc
+            .path
+            .as_ref()
+            .and_then(|p| p.parent().map(PathBuf::from))
+            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join("Documents")))
+            .unwrap_or_else(|| PathBuf::from("."))
+    }
+
+    /// Offers to save unsaved changes. False if the user cancelled.
+    fn confirm_discard(&mut self, now: f64) -> bool {
+        self.refresh_dirty();
+        if !self.doc.dirty {
+            return true;
+        }
+        let answer = rfd::MessageDialog::new()
+            .set_level(rfd::MessageLevel::Warning)
+            .set_title("Unsaved changes")
+            .set_description(format!("Do you want to save the changes to “{}”?", self.doc.name()))
+            .set_buttons(rfd::MessageButtons::YesNoCancelCustom(
+                "Save".into(),
+                "Don't Save".into(),
+                "Cancel".into(),
+            ))
+            .show();
+        match answer {
+            rfd::MessageDialogResult::Yes => self.save(now),
+            rfd::MessageDialogResult::Custom(label) if label == "Save" => self.save(now),
+            rfd::MessageDialogResult::No => true,
+            rfd::MessageDialogResult::Custom(label) if label == "Don't Save" => true,
+            _ => false,
+        }
+    }
+
+    fn new_project(&mut self, now: f64) {
+        if !self.confirm_discard(now) {
+            return;
+        }
+        self.graph.clear(&self.audio);
+        self.editor.reset();
+        self.doc = Document::new(None, project::snapshot(&self.graph));
+    }
+
+    fn open_project(&mut self, now: f64) {
+        if !self.confirm_discard(now) {
+            return;
+        }
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("AudioBoard project", &[PROJECT_EXT])
+            .set_directory(self.dialog_dir())
+            .pick_file()
+        else {
+            return;
+        };
+        let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+        match project::load_project(&path) {
+            Ok(p) => {
+                let skipped = project::restore(&mut self.graph, &p, &self.audio);
+                self.editor.reset();
+                self.doc = Document::new(Some(path), project::snapshot(&self.graph));
+                if skipped > 0 {
+                    self.notify(now, format!("Opened {name}: {skipped} unknown node(s) skipped"), true);
+                } else {
+                    self.notify(now, format!("Opened {name}"), false);
+                }
+            }
+            Err(e) => self.notify(now, format!("Could not open {name}: {e}"), true),
+        }
+    }
+
+    /// Saves to the current file (asking for one the first time).
+    fn save(&mut self, now: f64) -> bool {
+        match self.doc.path.clone() {
+            Some(path) => self.write(path, now),
+            None => self.save_as(now),
+        }
+    }
+
+    fn save_as(&mut self, now: f64) -> bool {
+        let Some(mut path) = rfd::FileDialog::new()
+            .add_filter("AudioBoard project", &[PROJECT_EXT])
+            .set_directory(self.dialog_dir())
+            .set_file_name(format!("{}.{PROJECT_EXT}", self.doc.name()))
+            .save_file()
+        else {
+            return false;
+        };
+        if path.extension().is_none_or(|x| x != PROJECT_EXT) {
+            path.set_extension(PROJECT_EXT);
+        }
+        self.write(path, now)
+    }
+
+    fn write(&mut self, path: PathBuf, now: f64) -> bool {
+        let snapshot = project::snapshot(&self.graph);
+        let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+        match project::save_project(&path, &snapshot) {
+            Ok(()) => {
+                self.doc = Document::new(Some(path), snapshot);
+                self.notify(now, format!("Saved {name}"), false);
+                true
+            }
+            Err(e) => {
+                self.notify(now, format!("Could not save {name}: {e}"), true);
+                false
+            }
+        }
+    }
+
+    fn run_file_command(&mut self, cmd: FileCommand, now: f64) {
+        match cmd {
+            FileCommand::New => self.new_project(now),
+            FileCommand::Open => self.open_project(now),
+            FileCommand::Save => {
+                self.save(now);
+            }
+            FileCommand::SaveAs => {
+                self.save_as(now);
+            }
+        }
+    }
+
+    // --- Module library -----------------------------------------------------
+
+    fn handle_request(&mut self, request: Request, now: f64) {
+        match request {
+            Request::SaveToLibrary(gid) => {
+                let Some(preset) = project::preset_from_group(&self.graph, gid) else {
+                    return;
+                };
+                if self.library.contains(&preset.name) && !ask(&format!("Replace “{}” in the library?", preset.name)) {
+                    return;
+                }
+                match self.library.save(&preset) {
+                    Ok(()) => self.notify(now, format!("“{}” saved to the library", preset.name), false),
+                    Err(e) => self.notify(now, format!("Could not save to the library: {e}"), true),
+                }
+            }
+            Request::DeletePreset(i) => {
+                let Some(name) = self.library.presets.get(i).map(|p| p.name.clone()) else {
+                    return;
+                };
+                if !ask(&format!("Remove “{name}” from the library?")) {
+                    return;
+                }
+                if let Err(e) = self.library.remove(i) {
+                    self.notify(now, format!("Could not remove “{name}”: {e}"), true);
+                }
+            }
+            Request::RevealLibrary => {
+                let dir = &self.library.dir;
+                let opened = std::fs::create_dir_all(dir).and_then(|()| {
+                    let opener = if cfg!(target_os = "macos") {
+                        "open"
+                    } else if cfg!(target_os = "windows") {
+                        "explorer"
+                    } else {
+                        "xdg-open"
+                    };
+                    std::process::Command::new(opener).arg(dir).spawn().map(|_| ())
+                });
+                if let Err(e) = opened {
+                    self.notify(now, format!("Could not open {}: {e}", dir.display()), true);
+                }
+            }
+        }
+        self.editor.library = self.library.presets.clone();
+    }
+
+    /// Keeps MIDI devices connected (they can come and go) and applies MIDI
+    /// to mapped controls and to MIDI learn.
+    fn poll_midi(&mut self, ui: &Ui, now: f64) {
+        if now - self.midi_scanned > 3.0 {
+            self.midi_scanned = now;
+            let ctx = ui.ctx().clone();
+            self.midi.rescan(&self.audio.midi, move || ctx.request_repaint());
+        }
+        self.graph.update_midi(&self.audio.midi);
+        let events = self.audio.midi.events();
+        if events != self.midi_events.0 {
+            self.midi_events = (events, now);
+        }
+    }
+
+    fn file_shortcuts(&mut self, ui: &Ui, now: f64) {
+        if ui.memory(|m| m.focused().is_some()) {
+            return;
+        }
+        let cmd = ui.input_mut(|i| {
+            let mut pressed = |mods, key| i.consume_shortcut(&KeyboardShortcut::new(mods, key));
+            if pressed(Modifiers::COMMAND | Modifiers::SHIFT, Key::S) {
+                Some(FileCommand::SaveAs)
+            } else if pressed(Modifiers::COMMAND, Key::S) {
+                Some(FileCommand::Save)
+            } else if pressed(Modifiers::COMMAND, Key::O) {
+                Some(FileCommand::Open)
+            } else if pressed(Modifiers::COMMAND, Key::N) {
+                Some(FileCommand::New)
+            } else {
+                None
+            }
+        });
+        if let Some(cmd) = cmd {
+            self.run_file_command(cmd, now);
+        }
+    }
+
+    /// Keeps the unsaved-changes marker and the window title current, and
+    /// offers to save before the window closes.
+    fn track_document(&mut self, ui: &Ui, now: f64) {
+        if now - self.doc.checked_at > 0.3 {
+            self.doc.checked_at = now;
+            self.refresh_dirty();
+        }
+        let edited = if self.doc.dirty { " (edited)" } else { "" };
+        let title = format!("{}{edited} — AudioBoard", self.doc.name());
+        if title != self.window_title {
+            ui.ctx().send_viewport_cmd(ViewportCommand::Title(title.clone()));
+            self.window_title = title;
+        }
+        if ui.input(|i| i.viewport().close_requested()) && !self.confirm_discard(now) {
+            ui.ctx().send_viewport_cmd(ViewportCommand::CancelClose);
+        }
+    }
+
+    /// Adds a palette entry in the middle of the view.
+    fn add_spawn(&mut self, spawn: Spawn) {
+        match spawn {
+            Spawn::Node(ty) => {
+                let p = self.editor.spawn_point(&self.graph, ty.size());
+                let id = self.graph.add(ty, p, &self.audio);
+                self.editor.select_only(id);
+            }
+            Spawn::Preset(i) => {
+                if let Some(preset) = self.library.presets.get(i) {
+                    let p = self.editor.spawn_point(&self.graph, vec2(240.0, 80.0));
+                    let nodes = project::insert_preset(&mut self.graph, preset, p, &self.audio);
+                    self.editor.selected = nodes.into_iter().collect();
+                }
+            }
+        }
+    }
+
+    fn toolbar(&mut self, ui: &mut Ui, now: f64) {
         // The bar doubles as the window title bar on macOS.
         let bar = ui.max_rect();
         let drag = ui.interact(bar, Id::unique("titlebar"), Sense::CLICK | Sense::DRAG);
@@ -97,11 +427,14 @@ impl AudioBoardApp {
             vsep(ui);
             ui.add_space(8.0);
 
-            let add = tool_button(ui, "Add node", theme::ACCENT);
-            if let Some(ty) = egui::Popup::menu(&add).show(add_menu).and_then(|r| r.inner) {
-                let p = self.editor.spawn_point(&self.graph, ty.size());
-                let id = self.graph.add(ty, p, &self.audio);
-                self.editor.select_only(id);
+            let tip = if self.show_palette { "Hide palette" } else { "Show palette" };
+            if icon_button(ui, Icon::Sidebar, self.show_palette).on_hover_text(tip).clicked() {
+                self.show_palette = !self.show_palette;
+            }
+            ui.add_space(4.0);
+            let doc = doc_button(ui, &self.doc.name(), self.doc.dirty);
+            if let Some(cmd) = egui::Popup::menu(&doc).show(file_menu).and_then(|r| r.inner) {
+                self.run_file_command(cmd, now);
             }
 
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -150,7 +483,7 @@ impl AudioBoardApp {
         });
     }
 
-    fn status_bar(&self, ui: &mut Ui) {
+    fn status_bar(&self, ui: &mut Ui, now: f64) {
         ui.horizontal_centered(|ui| {
             let selected = &self.editor.selected;
             let single = (selected.len() == 1)
@@ -171,15 +504,35 @@ impl AudioBoardApp {
             } else if selected.len() > 1 {
                 format!("{} nodes selected  ·  Cmd+G to make a module  ·  Del to delete", selected.len())
             } else {
-                "Drag from an output to an input to connect  ·  Drag on empty space to select  ·  Right-click to add nodes"
+                "Drag nodes from the palette  ·  Drag from an output to an input to connect  ·  Right-click for more"
                     .to_owned()
             };
-            ui.label(RichText::new(hint).size(10.5).color(theme::TEXT_FAINT));
+            match self.toast.as_ref().filter(|t| t.until > now) {
+                Some(t) => {
+                    let col = if t.error { theme::MUTE } else { theme::TEXT };
+                    ui.label(RichText::new(&t.text).size(10.5).color(col));
+                }
+                None => {
+                    ui.label(RichText::new(hint).size(10.5).color(theme::TEXT_FAINT));
+                }
+            }
 
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 20.0;
                 let item = |text: String| RichText::new(text).size(10.0).monospace().color(theme::TEXT_DIM);
                 ui.label(item(format!("{:.0}%", self.editor.zoom * 100.0)));
+                let devices: Vec<&str> = self.midi.names().collect();
+                let active = now - self.midi_events.1 < 0.15;
+                if active {
+                    ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
+                }
+                let (text, tip) = match (&self.midi.error, devices.len()) {
+                    (Some(e), _) => ("MIDI off".to_owned(), e.clone()),
+                    (None, 0) => ("MIDI —".to_owned(), "No MIDI input connected".to_owned()),
+                    (None, n) => (format!("MIDI {n}"), devices.join("\n")),
+                };
+                let col = if active { theme::METER_GREEN } else { theme::TEXT_DIM };
+                ui.label(item(text).color(col)).on_hover_text(tip);
                 ui.label(item(format!(
                     "{} nodes · {} cables",
                     self.graph.nodes.len(),
@@ -207,7 +560,9 @@ impl AudioBoardApp {
 
 impl eframe::App for AudioBoardApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
-        let dt = ui.input(|i| i.stable_dt.min(0.1));
+        let (dt, now) = ui.input(|i| (i.stable_dt.min(0.1), i.time));
+        self.file_shortcuts(ui, now);
+        self.poll_midi(ui, now);
         for node in &mut self.graph.nodes {
             node.update_meters(dt);
         }
@@ -219,11 +574,11 @@ impl eframe::App for AudioBoardApp {
         Panel::top("toolbar")
             .exact_size(36.0)
             .frame(bar_frame(Margin::symmetric(10, 0)))
-            .show(ui, |ui| self.toolbar(ui));
+            .show(ui, |ui| self.toolbar(ui, now));
         Panel::bottom("status")
             .exact_size(22.0)
             .frame(bar_frame(Margin::symmetric(10, 0)))
-            .show(ui, |ui| self.status_bar(ui));
+            .show(ui, |ui| self.status_bar(ui, now));
         if self.show_monitor {
             Panel::bottom("monitor")
                 .exact_size(150.0)
@@ -231,9 +586,24 @@ impl eframe::App for AudioBoardApp {
                 .frame(bar_frame(Margin::same(8)))
                 .show(ui, |ui| self.monitor_dock(ui, dt));
         }
+        if self.show_palette {
+            let picked = Panel::left("palette")
+                .exact_size(palette::WIDTH)
+                .resizable(false)
+                .frame(bar_frame(Margin::same(8)))
+                .show(ui, |ui| self.palette.show(ui, &self.editor.library, &mut self.editor.requests))
+                .inner;
+            if let Some(spawn) = picked {
+                self.add_spawn(spawn);
+            }
+        }
         CentralPanel::default()
             .frame(Frame::NONE.fill(theme::BG))
             .show(ui, |ui| self.editor.show(ui, &mut self.graph, &self.audio));
+        for request in std::mem::take(&mut self.editor.requests) {
+            self.handle_request(request, now);
+        }
+        self.track_document(ui, now);
 
         // Meters and analyzers only move while there is signal; otherwise
         // egui repaints on input alone.
@@ -329,6 +699,58 @@ fn demo_patch(graph: &mut Graph, audio: &AudioHandle) {
 // Toolbar widgets
 // ---------------------------------------------------------------------------
 
+/// Yes / no question in a native dialog.
+fn ask(question: &str) -> bool {
+    let answer = rfd::MessageDialog::new()
+        .set_level(rfd::MessageLevel::Info)
+        .set_description(question)
+        .set_buttons(rfd::MessageButtons::YesNo)
+        .show();
+    matches!(answer, rfd::MessageDialogResult::Yes)
+}
+
+/// The project's name, opening the file menu. A dot marks unsaved changes.
+fn doc_button(ui: &mut Ui, name: &str, dirty: bool) -> Response {
+    let galley = ui
+        .painter()
+        .layout_no_wrap(name.to_owned(), FontId::proportional(12.0), theme::TEXT);
+    let text_w = galley.size().x;
+    let (rect, resp) = ui.allocate_exact_size(vec2(text_w + 40.0, 24.0), Sense::CLICK);
+    let hot = resp.hovered();
+    let p = ui.painter();
+    if hot {
+        p.rect_filled(rect, 4.0, theme::CONTROL);
+    }
+    let text_pos = pos2(rect.left() + 8.0, rect.center().y - galley.size().y * 0.5);
+    p.galley(text_pos, galley, if hot { theme::TEXT } else { theme::TEXT_DIM });
+    if dirty {
+        p.circle_filled(pos2(text_pos.x + text_w + 8.0, rect.center().y), 2.5, theme::TEXT_DIM);
+    }
+    let c = pos2(rect.right() - 9.0, rect.center().y);
+    p.add(Shape::convex_polygon(
+        vec![c + vec2(-3.0, -1.5), c + vec2(3.0, -1.5), c + vec2(0.0, 2.0)],
+        theme::TEXT_FAINT,
+        Stroke::NONE,
+    ));
+    resp.on_hover_cursor(CursorIcon::PointingHand)
+        .on_hover_text(if dirty { "Project · unsaved changes" } else { "Project" })
+}
+
+fn file_menu(ui: &mut Ui) -> Option<FileCommand> {
+    let mut picked = None;
+    let mut item = |label: &str, hint: &str, cmd: FileCommand| {
+        if menu_item(ui, label, hint) {
+            picked = Some(cmd);
+            ui.close();
+        }
+    };
+    item("New project", "Cmd+N", FileCommand::New);
+    item("Open…", "Cmd+O", FileCommand::Open);
+    item("Save", "Cmd+S", FileCommand::Save);
+    item("Save as…", "Shift+Cmd+S", FileCommand::SaveAs);
+    picked
+}
+
 fn logo(ui: &mut Ui) {
     let galley = ui
         .painter()
@@ -351,30 +773,8 @@ fn vsep(ui: &mut Ui) {
     ui.painter().rect_filled(rect, 0.0, theme::PANEL_BORDER);
 }
 
-/// Flat toolbar button with a small "+" in the node's colour.
-fn tool_button(ui: &mut Ui, label: &str, color: Color32) -> Response {
-    let galley = ui
-        .painter()
-        .layout_no_wrap(label.to_owned(), FontId::proportional(12.0), theme::TEXT);
-    let (rect, resp) = ui.allocate_exact_size(vec2(galley.size().x + 30.0, 24.0), Sense::CLICK);
-    let hot = resp.hovered();
-    let p = ui.painter();
-    if hot {
-        p.rect_filled(rect, 4.0, theme::CONTROL);
-    }
-    let c = pos2(rect.left() + 12.0, rect.center().y);
-    let d = 3.5;
-    p.line_segment([c - vec2(d, 0.0), c + vec2(d, 0.0)], Stroke::new(1.4, color));
-    p.line_segment([c - vec2(0.0, d), c + vec2(0.0, d)], Stroke::new(1.4, color));
-    p.galley(
-        pos2(rect.left() + 22.0, rect.center().y - galley.size().y * 0.5),
-        galley,
-        if hot { theme::TEXT } else { theme::TEXT_DIM },
-    );
-    resp.on_hover_cursor(CursorIcon::PointingHand)
-}
-
 enum Icon {
+    Sidebar,
     Monitor,
     Compact,
     Help,
@@ -389,6 +789,12 @@ fn icon_button(ui: &mut Ui, icon: Icon, active: bool) -> Response {
     let col = if active || resp.hovered() { theme::TEXT } else { theme::TEXT_DIM };
     let c = rect.center();
     match icon {
+        Icon::Sidebar => {
+            // A window with its left panel.
+            let r = Rect::from_center_size(c, vec2(13.0, 11.0));
+            p.rect_stroke(r, 2.0, Stroke::new(1.2, col), StrokeKind::Inside);
+            p.vline(r.left() + 4.5, r.y_range(), Stroke::new(1.2, col));
+        }
         Icon::Monitor => {
             // A window with its bottom dock.
             let r = Rect::from_center_size(c, vec2(13.0, 11.0));
@@ -435,7 +841,7 @@ fn shortcuts(ui: &mut Ui) {
     ui.label(RichText::new("Shortcuts").size(11.5).color(theme::TEXT));
     ui.add_space(4.0);
     egui::Grid::new("shortcuts").num_columns(2).spacing([18.0, 4.0]).show(ui, |ui| {
-        for (keys, what) in SHORTCUTS {
+        for &(keys, what) in SHORTCUTS {
             ui.label(RichText::new(keys).size(10.5).monospace().color(theme::TEXT));
             ui.label(RichText::new(what).size(11.0).color(theme::TEXT_DIM));
             ui.end_row();

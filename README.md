@@ -62,6 +62,28 @@ TONE (scurisce le ripetizioni), WOW (wow & flutter), PING (ping-pong), MIX.
 cattedrale), DECAY (0.3 – 60 s), DAMP, MOD, SHIMMER (un'ottava sopra, rientra nella coda), MIX.
 **FREEZE** congela la coda all'infinito.
 
+### MIDI
+
+I nodi MIDI ricevono da qualsiasi dispositivo MIDI collegato: vengono collegati automaticamente, anche se
+inseriti dopo l'avvio. L'indicatore **MIDI** nella barra di stato mostra quanti ingressi sono attivi
+(passa il mouse per i nomi) e si accende quando arrivano messaggi.
+
+**MIDI CC**: un controller esterno (knob, fader, rotella) come segnale. CC, CHANNEL (Omni o 1–16),
+SMOOTH (glide), uscita 0…1 o ±1. **LEARN** prende il prossimo controller che muovi.
+
+**MIDI Note**: una tastiera come inviluppo. Tenendo un tasto, ENV sale in ATTACK; rilasciandolo scende in
+RELEASE; VEL è lo stesso inviluppo scalato dalla velocity. Entrambe le uscite vanno da −1 a +1, quindi
+nell'ingresso AM di un oscillatore (AM al 100%) passano dal silenzio al volume pieno. Priorità all'ultima
+nota premuta; TRANSPOSE in semitoni.
+
+**Pilotare un controllo (MAP).** Oltre a collegare le uscite con i cavi, un nodo MIDI può muovere
+direttamente qualsiasi knob o fader: premi **MAP** sul nodo, poi clicca il controllo (Esc annulla). Una
+linea tratteggiata collega il nodo al controllo, e il nodo mostra "→ FILTER 1 · CUTOFF". Con MIDI CC il
+controllo segue il controller; con MIDI Note i knob di frequenza prendono la frequenza della nota (es.
+PITCH del Drone o FREQ dell'oscillatore), quelli in semitoni la distanza dal Do centrale, gli altri la
+posizione del tasto. Il controllo si muove solo con i messaggi che arrivano dopo la mappatura. **UNMAP**
+la rimuove. Le mappature si salvano nel progetto e nei moduli della libreria.
+
 ### Uscita
 
 **Mixer (4 canali)**: per ogni canale fader di volume, pan (bilanciamento sui segnali stereo), Mute/Solo
@@ -71,7 +93,7 @@ e meter; bus master stereo con meter L/R e indicatore di clip. Il mixer alimenta
 
 | Azione | Gesto |
 |--------|-------|
-| Aggiungere un nodo | tasto destro sul canvas, oppure **Add node** nella toolbar |
+| Aggiungere un nodo o un modulo della libreria | trascinarlo dalla palette sul canvas (o cliccarlo), oppure tasto destro sul canvas |
 | Collegare | trascinare da una porta a quella opposta (output → input o viceversa) |
 | Ricollegare / staccare un cavo | trascinarlo via dall'ingresso a cui è collegato |
 | Eliminare un cavo | doppio clic sul cavo, oppure tasto destro → Disconnect |
@@ -81,10 +103,13 @@ e meter; bus master stereo con meter L/R e indicatore di clip. Il mixer alimenta
 | Zoom | pinch o Cmd+scroll |
 | Spostare / eliminare / duplicare la selezione | trascinare un nodo selezionato / Del / Cmd+D (i cavi interni vengono copiati) |
 | Creare un modulo dalla selezione | Cmd+G, oppure tasto destro → Make module |
+| Rinominare un modulo | Invio o F2 con il modulo selezionato, oppure tasto destro → Rename… (Invio conferma, Esc annulla) |
 | Sciogliere un modulo | Cmd+Shift+G, la × nell'intestazione del modulo, oppure tasto destro → Ungroup |
 | Ridurre / espandere un nodo o un modulo | freccia nell'intestazione, doppio clic sul titolo, tasto C, oppure tasto destro → Collapse |
 | Ridurre / espandere tutto | Shift+C, pulsante nella toolbar, oppure tasto destro sul canvas |
 | Inquadrare tutti i nodi | F |
+| Nuovo / apri progetto | Cmd+N / Cmd+O, oppure il nome del progetto nella toolbar |
+| Salvare / salvare con nome | Cmd+S / Shift+Cmd+S |
 | Audio on/off | Spazio |
 | Mostrare / nascondere oscilloscopio e spettro | pulsante pannello nella toolbar |
 
@@ -102,7 +127,8 @@ Il feedback si ottiene dentro i nodi (Delay, Reverb).
 ### Moduli
 
 Un **modulo** raggruppa più nodi in uno solo, per spostarli, ridurli e duplicarli insieme.
-Si crea selezionando i nodi e premendo Cmd+G; il nome si cambia dal menu del tasto destro sull'intestazione.
+Si crea selezionando i nodi e premendo Cmd+G. Per rinominarlo selezionalo e premi Invio (o F2, o tasto destro →
+Rename…): il nome si modifica direttamente nell'intestazione.
 
 - **Espanso**: una cornice attorno ai nodi, che restano modificabili sul posto. Trascinando l'intestazione
   si sposta tutto il modulo; la cornice si adatta quando sposti un nodo al suo interno.
@@ -114,6 +140,28 @@ Si crea selezionando i nodi e premendo Cmd+G; il nome si cambia dal menu del tas
 
 Il raggruppamento è solo visivo: il suono non cambia. Un nodo appartiene al massimo a un modulo.
 
+## Palette
+
+Il pannello a sinistra (si mostra e si nasconde con il pulsante accanto al nome del progetto) elenca tutti i
+nodi per categoria e i moduli della libreria, con un campo di ricerca. Trascina una voce sul canvas per
+posizionarla dove vuoi (un riquadro mostra dove atterra), oppure cliccala per aggiungerla al centro della
+vista. Sulle voci della libreria, la × rimuove il modulo dalla libreria.
+
+## Progetti e libreria
+
+**Progetti.** Il nome del progetto nella toolbar apre il menu File (New project, Open…, Save, Save as…).
+Un pallino accanto al nome, e "(edited)" nel titolo della finestra, segnalano modifiche non salvate:
+prima di creare un nuovo progetto, aprirne un altro o chiudere la finestra, AudioBoard chiede se salvarle.
+Un progetto (`.audioboard`) è un file JSON con nodi e parametri, posizioni, colori, nodi ridotti,
+cavi e moduli; i parametri sono salvati per nome. All'avvio si apre sempre la patch demo.
+
+**Libreria dei moduli.** Tasto destro sull'intestazione di un modulo → **Save to library** lo salva con
+il suo nome (se esiste già, chiede se sostituirlo). I moduli salvati compaiono nella sezione **Library**
+della palette e del menu del tasto destro: inserirne uno aggiunge i nodi, i cavi tra loro e le impostazioni
+come nuovo modulo, già **ridotto** a una scheda. La × accanto al nome lo rimuove dalla libreria, e
+**Open library folder** apre la cartella dei file `.abmodule`
+(`~/Library/Application Support/AudioBoard/Library` su macOS), utile per copiarli o condividerli.
+
 ## Architettura
 
 ```
@@ -122,13 +170,16 @@ src/
 │   ├── params.rs   parametri condivisi lock-free (atomics) tra UI e thread audio
 │   ├── engine.rs   grafo lato audio: blocchi stereo da 64 frame, ordine topologico precalcolato
 │   ├── dsp.rs      Oscillator e Mixer
-│   ├── modules/    nodi ambient: drone, random, granular, resonator, filter, delay, reverb
+│   ├── modules/    drone, random, granular, resonator, filter, delay, reverb, midi_cc, midi_note
 │   │   └── mod.rs  descrizione dei moduli (ModuleDef), parametri generici e helper DSP
+│   ├── midi.rs     ingressi MIDI (midir) e stato condiviso letto dai nodi MIDI
 │   └── mod.rs      apertura dello stream di uscita (cpal)
-├── graph.rs        modello della patch lato UI (nodi, cavi, ordinamento di Kahn)
+├── graph.rs        modello della patch lato UI (nodi, cavi, moduli, ordinamento di Kahn)
+├── project.rs      salvataggio/caricamento dei progetti e libreria dei moduli (JSON)
 ├── ui/
 │   ├── canvas.rs   canvas con pan/zoom, selezione, drag & drop dei cavi, menu contestuali
 │   ├── groups.rs   moduli: cornice (espansi) e scheda con le porte di confine (ridotti)
+│   ├── palette.rs  palette dei nodi e della libreria, con trascinamento sul canvas
 │   ├── nodes.rs    layout e disegno di oscillatore e mixer, controlli condivisi
 │   ├── modules.rs  pannello comune dei moduli e i loro display
 │   ├── widgets.rs  knob, fader, meter, porte e cavi disegnati a mano

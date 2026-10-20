@@ -13,7 +13,9 @@ use crate::audio::engine::NodeId;
 use crate::audio::params::{
     MIXER_CHANNELS, OSC_PARAMS, ParamSpec, Waveform, fader_gain, format_db, format_hz, gain_to_db, osc,
 };
-use crate::graph::{MixerNode, Node, NodeKind, NodeType, OscNode};
+use std::cell::RefCell;
+
+use crate::graph::{MixerNode, Node, NodeKind, NodeType, OscNode, ParamRef};
 
 pub const HEADER_H: f32 = 26.0;
 pub const OSC_SIZE: Vec2 = vec2(216.0, 268.0);
@@ -48,12 +50,23 @@ pub fn output_offset(ty: NodeType, i: usize) -> Vec2 {
     }
 }
 
+/// A control drawn this frame, for MIDI mapping (click one to map it).
+#[derive(Clone, Copy)]
+pub struct KnobHit {
+    pub rect: Rect,
+    pub node: NodeId,
+    pub param: ParamRef,
+}
+
 /// Maps node-local coordinates to the screen.
 pub struct NodeView<'a> {
     pub ui: &'a Ui,
     pub painter: &'a Painter,
     pub min: Pos2,
     pub z: f32,
+    pub node: NodeId,
+    /// Collects every knob and fader drawn.
+    pub hits: &'a RefCell<Vec<KnobHit>>,
 }
 
 impl NodeView<'_> {
@@ -63,6 +76,11 @@ impl NodeView<'_> {
 
     pub(super) fn r(&self, x0: f32, y0: f32, x1: f32, y1: f32) -> Rect {
         Rect::from_min_max(self.p(x0, y0), self.p(x1, y1))
+    }
+
+    /// Records a control for MIDI mapping.
+    pub(super) fn hit(&self, rect: Rect, param: ParamRef) {
+        self.hits.borrow_mut().push(KnobHit { rect, node: self.node, param });
     }
 
     pub(super) fn font(&self, size: f32) -> FontId {
@@ -304,7 +322,14 @@ pub fn osc(v: &NodeView, id: NodeId, accent: Color32, o: &mut OscNode, inputs: &
         let row_y = 156.0 + 58.0 * (k / 3) as f32;
         let unpatched = (pi == osc::FM && !inputs[0]) || (pi == osc::AM && !inputs[1]);
         let label = if pi == osc::SHAPE { wave.shape_label() } else { spec.name };
-        let cell = KnobCell { cx, row_y, label, dimmed: unpatched, accent };
+        let cell = KnobCell {
+            cx,
+            row_y,
+            label,
+            dimmed: unpatched,
+            accent,
+            param: ParamRef::Osc(pi),
+        };
         if let Some(value) = knob_cell(v, Id::unique(("knob", id, pi)), spec, params.get(pi), cell) {
             params.set(pi, value);
         }
@@ -362,12 +387,13 @@ pub(super) struct KnobCell<'a> {
     /// For modulation-depth knobs whose input is unpatched.
     pub dimmed: bool,
     pub accent: Color32,
+    pub param: ParamRef,
 }
 
 /// Draws a knob cell; returns the new value when it was moved or reset.
 pub(super) fn knob_cell(v: &NodeView, id: Id, spec: &ParamSpec, value: f32, cell: KnobCell) -> Option<f32> {
     let z = v.z;
-    let KnobCell { cx, row_y, label, dimmed, accent } = cell;
+    let KnobCell { cx, row_y, label, dimmed, accent, param } = cell;
     let label_col = if dimmed { alpha(theme::TEXT_FAINT, 0.6) } else { theme::TEXT_FAINT };
     v.text(cx, row_y, Align2::CENTER_CENTER, label, v.font(8.5), label_col);
     let mut norm = spec.to_norm(value);
@@ -383,6 +409,7 @@ pub(super) fn knob_cell(v: &NodeView, id: Id, spec: &ParamSpec, value: f32, cell
         accent,
         z,
     );
+    v.hit(resp.rect, param);
     let new = (resp.dragged() || resp.double_clicked()).then(|| spec.denorm(norm));
     let hot = resp.dragged() || resp.hovered();
     v.text(
@@ -460,6 +487,7 @@ pub fn mixer(v: &NodeView, id: NodeId, accent: Color32, m: &mut MixerNode, sourc
             src_col.unwrap_or(theme::TEXT_FAINT),
             z,
         );
+        v.hit(r.rect, ParamRef::Pan(ch));
         if r.dragged() || r.double_clicked() {
             params.pan[ch].set(norm * 2.0 - 1.0);
         }
@@ -477,6 +505,7 @@ pub fn mixer(v: &NodeView, id: NodeId, accent: Color32, m: &mut MixerNode, sourc
             audible,
             z,
         );
+        v.hit(fr.rect, ParamRef::Fader(ch));
         if fr.dragged() || fr.double_clicked() {
             params.fader[ch].set(pos);
         }
@@ -516,6 +545,7 @@ pub fn mixer(v: &NodeView, id: NodeId, accent: Color32, m: &mut MixerNode, sourc
         true,
         z,
     );
+    v.hit(fr.rect, ParamRef::Master);
     if fr.dragged() || fr.double_clicked() {
         params.master.set(pos);
     }

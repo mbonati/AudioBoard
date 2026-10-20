@@ -43,6 +43,8 @@ pub fn card_port(i: usize, output: bool) -> Vec2 {
 pub struct HeaderActions {
     pub toggle_collapse: bool,
     pub ungroup: bool,
+    /// Where the title sits (screen space), for editing it in place.
+    pub title_rect: Rect,
 }
 
 /// Chevron, title, an optional note and the ungroup button along the top
@@ -56,6 +58,7 @@ fn header(
     note: &str,
     led: Option<f32>,
     hovered: bool,
+    renaming: bool,
     z: f32,
 ) -> HeaderActions {
     let cy = rect.top() + HEADER_H * 0.5 * z;
@@ -87,14 +90,20 @@ fn header(
         );
         x += 12.0 * z;
     }
-    let title = p.text(pos2(x, cy), Align2::LEFT_CENTER, &g.title, theme::strong(11.5 * z), theme::TEXT);
-    p.text(
-        pos2(title.right() + 8.0 * z, cy),
-        Align2::LEFT_CENTER,
-        note,
-        egui::FontId::proportional(9.5 * z),
-        theme::TEXT_FAINT,
+    let title_rect = Rect::from_min_max(
+        pos2(x - 3.0 * z, rect.top() + 4.0 * z),
+        pos2(rect.right() - 28.0 * z, rect.top() + (HEADER_H - 4.0) * z),
     );
+    if !renaming {
+        let title = p.text(pos2(x, cy), Align2::LEFT_CENTER, &g.title, theme::strong(11.5 * z), theme::TEXT);
+        p.text(
+            pos2(title.right() + 8.0 * z, cy),
+            Align2::LEFT_CENTER,
+            note,
+            egui::FontId::proportional(9.5 * z),
+            theme::TEXT_FAINT,
+        );
+    }
 
     let close_rect = Rect::from_center_size(pos2(rect.right() - 13.0 * z, cy), Vec2::splat(16.0 * z));
     let close = ui
@@ -115,11 +124,12 @@ fn header(
     HeaderActions {
         toggle_collapse: fold.clicked(),
         ungroup: close.clicked(),
+        title_rect,
     }
 }
 
 /// An expanded module: a translucent frame behind its nodes.
-pub fn draw_frame(ui: &Ui, p: &Painter, g: &Group, rect: Rect, selected: bool, z: f32) -> HeaderActions {
+pub fn draw_frame(ui: &Ui, p: &Painter, g: &Group, rect: Rect, selected: bool, renaming: bool, z: f32) -> HeaderActions {
     let r = RADIUS * z;
     p.rect_filled(rect, r, alpha(theme::TEXT, 0.025));
     let top = CornerRadius {
@@ -139,7 +149,7 @@ pub fn draw_frame(ui: &Ui, p: &Painter, g: &Group, rect: Rect, selected: bool, z
 
     let n = g.members.len();
     let note = if n == 1 { "1 node".to_owned() } else { format!("{n} nodes") };
-    header(ui, p, g, rect, &note, None, ui.rect_contains_pointer(head) || selected, z)
+    header(ui, p, g, rect, &note, None, ui.rect_contains_pointer(head) || selected, renaming, z)
 }
 
 /// A collapsed module: one card with the module's outer ports.
@@ -153,6 +163,7 @@ pub fn draw_card(
     ports: (&[PortRef], &[PortRef]),
     connected: impl Fn(PortRef, bool) -> bool,
     selected: bool,
+    renaming: bool,
     z: f32,
 ) -> HeaderActions {
     let r = 6.0 * z;
@@ -181,7 +192,8 @@ pub fn draw_card(
         .fold(0.0, f32::max);
     let n = g.members.len();
     let note = if n == 1 { "1 node".to_owned() } else { format!("{n} nodes") };
-    let actions = header(ui, p, g, rect, &note, Some(level), ui.rect_contains_pointer(rect) || selected, z);
+    let hovered = ui.rect_contains_pointer(rect) || selected;
+    let actions = header(ui, p, g, rect, &note, Some(level), hovered, renaming, z);
 
     // Port labels: "DRONE 1 · PITCH".
     let label = |pr: PortRef, input: bool| {

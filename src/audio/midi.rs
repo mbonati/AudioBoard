@@ -1,0 +1,211 @@
+//! External MIDI input. Every connected device feeds one shared state: the
+//! MIDI threads write it, the MIDI nodes read it on the audio thread
+//! (atomics only) and the UI reads it for learning and knob mapping.
+
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering::Relaxed};
+use std::sync::{Arc, Mutex};
+
+/// Channel slots: 1..=16, plus 0 for "omni" (the latest event on any channel).
+pub const CHANNELS: usize = 17;
+
+/// Frequency of a MIDI note (A4 = 69 = 440 Hz).
+pub fn note_hz(note: f32) -> f32 {
+    440.0 * ((note - 69.0) / 12.0).exp2()
+}
+
+/// The note held on a channel (last-note priority).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct NoteState {
+    pub note: u8,
+    /// 0..1.
+    pub velocity: f32,
+    pub gate: bool,
+    /// Bumped on every note-on and every change of the sounding note.
+    pub seq: u32,
+}
+
+pub struct MidiState {
+    /// Controller values, `CHANNELS * 128`.
+    cc: Box<[AtomicU8]>,
+    /// Messages received per controller, `CHANNELS * 128`.
+    cc_seq: Box<[AtomicU32]>,
+    /// Last controller moved: channel (1..=16) << 8 | number.
+    last_cc: AtomicU32,
+    /// Controller messages received, for MIDI learn.
+    cc_count: AtomicU32,
+    note: [AtomicU8; CHANNELS],
+    velocity: [AtomicU8; CHANNELS],
+    gate: [AtomicBool; CHANNELS],
+    note_seq: [AtomicU32; CHANNELS],
+    /// Held keys per channel, in press order. Only the MIDI threads lock it.
+    held: Mutex<[Vec<u8>; CHANNELS]>,
+    /// Any message received, for the activity light.
+    events: AtomicU32,
+}
+
+impl MidiState {
+    pub fn new() -> Self {
+        Self {
+            cc: (0..CHANNELS * 128).map(|_| AtomicU8::new(0)).collect(),
+            cc_seq: (0..CHANNELS * 128).map(|_| AtomicU32::new(0)).collect(),
+            last_cc: AtomicU32::new(0),
+            cc_count: AtomicU32::new(0),
+            note: std::array::from_fn(|_| AtomicU8::new(60)),
+            velocity: std::array::from_fn(|_| AtomicU8::new(0)),
+            gate: std::array::from_fn(|_| AtomicBool::new(false)),
+            note_seq: std::array::from_fn(|_| AtomicU32::new(0)),
+            held: Mutex::new(std::array::from_fn(|_| Vec::new())),
+            events: AtomicU32::new(0),
+        }
+    }
+
+    /// Takes one raw MIDI message (note on/off and control change; the rest
+    /// is ignored).
+    pub fn handle(&self, msg: &[u8]) {
+        let Some(&status) = msg.first() else {
+            return;
+        };
+        if !(0x80..0xF0).contains(&status) {
+            return;
+        }
+        self.events.fetch_add(1, Relaxed);
+        let ch = (status & 0x0F) as usize + 1;
+        let data = |i: usize| msg.get(i).copied().unwrap_or(0) & 0x7F;
+        match status & 0xF0 {
+            0x90 if data(2) > 0 => self.note_on(ch, data(1), data(2)),
+            0x80 | 0x90 => self.note_off(ch, data(1)),
+            0xB0 if data(1) == 123 => self.all_notes_off(ch),
+            0xB0 => {
+                let (num, value) = (data(1) as usize, data(2));
+                for c in [ch, 0] {
+                    self.cc[c * 128 + num].store(value, Relaxed);
+                    self.cc_seq[c * 128 + num].fetch_add(1, Relaxed);
+                }
+                self.last_cc.store(((ch as u32) << 8) | num as u32, Relaxed);
+                self.cc_count.fetch_add(1, Relaxed);
+            }
+            _ => {}
+        }
+    }
+
+    fn held(&self) -> std::sync::MutexGuard<'_, [Vec<u8>; CHANNELS]> {
+        self.held.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn note_on(&self, ch: usize, note: u8, velocity: u8) {
+        let mut held = self.held();
+        for c in [ch, 0] {
+            held[c].retain(|n| *n != note);
+            held[c].push(note);
+            self.note[c].store(note, Relaxed);
+            self.velocity[c].store(velocity, Relaxed);
+            self.gate[c].store(true, Relaxed);
+            self.note_seq[c].fetch_add(1, Relaxed);
+        }
+    }
+
+    fn note_off(&self, ch: usize, note: u8) {
+        let mut held = self.held();
+        for c in [ch, 0] {
+            held[c].retain(|n| *n != note);
+            match held[c].last() {
+                // Fall back to the key still held (last-note priority).
+                Some(&n) if n != self.note[c].load(Relaxed) => {
+                    self.note[c].store(n, Relaxed);
+                    self.note_seq[c].fetch_add(1, Relaxed);
+                }
+                Some(_) => {}
+                None => self.gate[c].store(false, Relaxed),
+            }
+        }
+    }
+
+    fn all_notes_off(&self, ch: usize) {
+        let mut held = self.held();
+        for c in [ch, 0] {
+            held[c].clear();
+            self.gate[c].store(false, Relaxed);
+        }
+    }
+
+    /// Controller value (0..1) and how many messages it has received.
+    pub fn cc(&self, channel: usize, number: usize) -> (f32, u32) {
+        let i = channel.min(CHANNELS - 1) * 128 + number.min(127);
+        (self.cc[i].load(Relaxed) as f32 / 127.0, self.cc_seq[i].load(Relaxed))
+    }
+
+    pub fn note(&self, channel: usize) -> NoteState {
+        let c = channel.min(CHANNELS - 1);
+        NoteState {
+            note: self.note[c].load(Relaxed),
+            velocity: self.velocity[c].load(Relaxed) as f32 / 127.0,
+            gate: self.gate[c].load(Relaxed),
+            seq: self.note_seq[c].load(Relaxed),
+        }
+    }
+
+    /// (messages so far, channel 1..=16, number) of the last controller moved.
+    pub fn last_cc(&self) -> (u32, usize, usize) {
+        let packed = self.last_cc.load(Relaxed);
+        (self.cc_count.load(Relaxed), (packed >> 8) as usize, (packed & 0x7F) as usize)
+    }
+
+    pub fn events(&self) -> u32 {
+        self.events.load(Relaxed)
+    }
+}
+
+/// Open connections to every MIDI input on the system.
+pub struct MidiInputs {
+    connections: Vec<(String, midir::MidiInputConnection<()>)>,
+    pub error: Option<String>,
+}
+
+impl MidiInputs {
+    pub fn new() -> Self {
+        Self {
+            connections: Vec::new(),
+            error: None,
+        }
+    }
+
+    pub fn names(&self) -> impl Iterator<Item = &str> {
+        self.connections.iter().map(|(n, _)| n.as_str())
+    }
+
+    /// Connects to inputs that appeared and drops those that went away.
+    /// `wake` runs on the MIDI thread after each message.
+    pub fn rescan(&mut self, state: &Arc<MidiState>, wake: impl Fn() + Send + Clone + 'static) {
+        let probe = match midir::MidiInput::new("AudioBoard") {
+            Ok(m) => m,
+            Err(e) => {
+                self.error = Some(e.to_string());
+                return;
+            }
+        };
+        self.error = None;
+        let present: Vec<String> = probe.ports().iter().filter_map(|p| probe.port_name(p).ok()).collect();
+        self.connections.retain(|(name, _)| present.contains(name));
+
+        for name in present {
+            if self.connections.iter().any(|(n, _)| *n == name) {
+                continue;
+            }
+            let Ok(mut input) = midir::MidiInput::new("AudioBoard") else {
+                continue;
+            };
+            input.ignore(midir::Ignore::All);
+            let Some(port) = input.ports().into_iter().find(|p| input.port_name(p).ok().as_ref() == Some(&name)) else {
+                continue;
+            };
+            let (state, wake) = (state.clone(), wake.clone());
+            let callback = move |_: u64, msg: &[u8], _: &mut ()| {
+                state.handle(msg);
+                wake();
+            };
+            if let Ok(conn) = input.connect(&port, "AudioBoard in", callback, ()) {
+                self.connections.push((name, conn));
+            }
+        }
+    }
+}

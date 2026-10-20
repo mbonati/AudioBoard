@@ -1,5 +1,6 @@
 pub mod dsp;
 pub mod engine;
+pub mod midi;
 pub mod modules;
 pub mod params;
 
@@ -24,6 +25,8 @@ pub struct AudioHandle {
     _stream: Option<cpal::Stream>,
     tx: Sender<Command>,
     pub info: AudioInfo,
+    /// External MIDI, read by the MIDI nodes.
+    pub midi: Arc<midi::MidiState>,
 }
 
 impl AudioHandle {
@@ -38,6 +41,7 @@ impl AudioHandle {
 pub fn offline(shared: Arc<EngineShared>, sample_rate: u32) -> (AudioHandle, Engine) {
     let (tx, rx) = mpsc::channel();
     let handle = AudioHandle {
+        midi: Arc::new(midi::MidiState::new()),
         _stream: None,
         tx,
         info: AudioInfo {
@@ -57,10 +61,12 @@ pub fn start(shared: Arc<EngineShared>) -> AudioHandle {
             _stream: Some(stream),
             tx,
             info,
+            midi: Arc::new(midi::MidiState::new()),
         },
         Err(e) => AudioHandle {
             _stream: None,
             tx,
+            midi: Arc::new(midi::MidiState::new()),
             info: AudioInfo {
                 device: "No device".into(),
                 sample_rate: 48_000,

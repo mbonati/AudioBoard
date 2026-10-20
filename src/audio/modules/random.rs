@@ -28,10 +28,12 @@ pub static DEF: ModuleDef = ModuleDef {
     prefix: "RANDOM",
     hint: "smooth / stepped CV",
     inputs: &[],
+    outputs: &["OUT"],
     params: &PARAMS,
     cv_depth: &[],
     modes: &[],
     toggle: None,
+    map: false,
     viz: 1,
 };
 

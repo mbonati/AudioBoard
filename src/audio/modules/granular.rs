@@ -61,10 +61,12 @@ pub static DEF: ModuleDef = ModuleDef {
     prefix: "GRAINS",
     hint: "live grain cloud",
     inputs: &["IN", "POS"],
+    outputs: &["OUT"],
     params: &PARAMS,
     cv_depth: &[],
     modes: &["FWD", "REV", "BOTH"],
     toggle: Some("FREEZE"),
+    map: false,
     viz: viz::LEN,
 };
 

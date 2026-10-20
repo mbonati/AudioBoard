@@ -1,5 +1,6 @@
 mod audio;
 mod graph;
+mod project;
 mod ui;
 
 #[cfg(test)]

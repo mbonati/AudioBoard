@@ -52,6 +52,9 @@ pub enum Unit {
     Semitones,
     Octaves,
     PerSecond,
+    Integer,
+    /// MIDI channel; 0 is "omni".
+    Channel,
 }
 
 /// Static description of a knob-controlled parameter.
@@ -120,6 +123,9 @@ impl ParamSpec {
             (Unit::Octaves, false) => format!("{v:.1} oct"),
             (Unit::PerSecond, _) if v < 10.0 => format!("{v:.1}/s"),
             (Unit::PerSecond, _) => format!("{v:.0}/s"),
+            (Unit::Integer, _) => format!("{:.0}", v.round()),
+            (Unit::Channel, _) if v.round() < 1.0 => "Omni".to_owned(),
+            (Unit::Channel, _) => format!("Ch {:.0}", v.round()),
         }
     }
 }

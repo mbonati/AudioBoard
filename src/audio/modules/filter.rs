@@ -32,10 +32,12 @@ pub static DEF: ModuleDef = ModuleDef {
     prefix: "FILTER",
     hint: "LP · BP · HP · notch",
     inputs: &["IN", "CUT"],
+    outputs: &["OUT"],
     params: &PARAMS,
     cv_depth: &[(MOD, 1)],
     modes: &["LP", "BP", "HP", "NOTCH"],
     toggle: None,
+    map: false,
     viz: 0,
 };
 

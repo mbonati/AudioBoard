@@ -30,10 +30,12 @@ pub static DEF: ModuleDef = ModuleDef {
     prefix: "REVERB",
     hint: "hall · shimmer · freeze",
     inputs: &["IN"],
+    outputs: &["OUT"],
     params: &PARAMS,
     cv_depth: &[],
     modes: &[],
     toggle: Some("FREEZE"),
+    map: false,
     viz: 0,
 };
 

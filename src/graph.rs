@@ -10,8 +10,9 @@ use egui::{Color32, Pos2, Vec2};
 use crate::audio::AudioHandle;
 use crate::audio::dsp::{Mixer, Oscillator};
 use crate::audio::engine::{Command, MAX_INPUTS, NodeId, Slot, TopoEntry, Topology};
-use crate::audio::modules::{self, ModuleKind, ModuleParams, random};
-use crate::audio::params::{MIXER_CHANNELS, MixerParams, OscParams, osc};
+use crate::audio::midi::{MidiState, note_hz};
+use crate::audio::modules::{ModuleKind, ModuleParams, midi_cc, midi_note, random};
+use crate::audio::params::{MIXER_CHANNELS, MixerParams, OSC_PARAMS, OscParams, ParamSpec, Unit, osc};
 use crate::ui::nodes;
 use crate::ui::theme;
 use crate::ui::widgets::MeterState;
@@ -40,7 +41,7 @@ pub enum NodeType {
 
 impl NodeType {
     /// The "add node" menu, in groups.
-    pub const MENU: [(&'static str, &'static [NodeType]); 4] = [
+    pub const MENU: [(&'static str, &'static [NodeType]); 5] = [
         (
             "Sources",
             &[NodeType::Osc, NodeType::Module(ModuleKind::Drone), NodeType::Module(ModuleKind::Random)],
@@ -56,6 +57,10 @@ impl NodeType {
                 NodeType::Module(ModuleKind::Delay),
                 NodeType::Module(ModuleKind::Reverb),
             ],
+        ),
+        (
+            "MIDI",
+            &[NodeType::Module(ModuleKind::MidiCc), NodeType::Module(ModuleKind::MidiNote)],
         ),
         ("Output", &[NodeType::Mixer]),
     ];
@@ -92,11 +97,46 @@ pub struct MixerNode {
     pub master: [MeterState; 2],
 }
 
+/// A knob or fader that a MIDI node can drive.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum ParamRef {
+    Osc(usize),
+    Module(usize),
+    Fader(usize),
+    Pan(usize),
+    Master,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Target {
+    pub node: NodeId,
+    pub param: ParamRef,
+}
+
 pub struct ModuleNode {
     pub params: Arc<ModuleParams>,
     pub meter: MeterState,
     /// Recent output values, for modulation sources' trace display.
     pub trace: VecDeque<f32>,
+    /// MIDI nodes: the control they drive directly, if mapped.
+    pub target: Option<Target>,
+    /// MIDI nodes: the last MIDI message seen (only newer ones move the target).
+    midi_seen: Option<u32>,
+    /// MIDI CC while learning: the controller count when LEARN was armed.
+    learn_from: Option<u32>,
+}
+
+impl ModuleNode {
+    fn new(params: Arc<ModuleParams>) -> Self {
+        Self {
+            params,
+            meter: MeterState::default(),
+            trace: VecDeque::with_capacity(TRACE_LEN),
+            target: None,
+            midi_seen: None,
+            learn_from: None,
+        }
+    }
 }
 
 pub const TRACE_LEN: usize = 180;
@@ -145,10 +185,10 @@ impl Node {
     }
 
     pub fn outputs(&self) -> &'static [&'static str] {
-        match self.kind {
+        match &self.kind {
             NodeKind::Osc(_) => &["OUT"],
             NodeKind::Mixer(_) => &[],
-            NodeKind::Module(_) => modules::OUTPUTS,
+            NodeKind::Module(m) => m.params.kind.def().outputs,
         }
     }
 
@@ -168,6 +208,45 @@ impl Node {
             } else {
                 nodes::output_offset(self.kind.node_type(), i)
             }
+    }
+
+    /// Name of one of this node's controls ("CUTOFF", "FADER 2"…).
+    pub fn param_name(&self, p: ParamRef) -> Option<String> {
+        match (&self.kind, p) {
+            (NodeKind::Osc(_), ParamRef::Osc(i)) => OSC_PARAMS.get(i).map(|s| s.name.to_owned()),
+            (NodeKind::Module(m), ParamRef::Module(i)) => m.params.kind.def().params.get(i).map(|s| s.name.to_owned()),
+            (NodeKind::Mixer(_), ParamRef::Fader(ch)) if ch < MIXER_CHANNELS => Some(format!("FADER {}", ch + 1)),
+            (NodeKind::Mixer(_), ParamRef::Pan(ch)) if ch < MIXER_CHANNELS => Some(format!("PAN {}", ch + 1)),
+            (NodeKind::Mixer(_), ParamRef::Master) => Some("MASTER".to_owned()),
+            _ => None,
+        }
+    }
+
+    /// The control called `name` (see [`Self::param_name`]).
+    pub fn param_by_name(&self, name: &str) -> Option<ParamRef> {
+        let specs: &[ParamSpec] = match &self.kind {
+            NodeKind::Osc(_) => &OSC_PARAMS,
+            NodeKind::Module(m) => m.params.kind.def().params,
+            NodeKind::Mixer(_) => &[],
+        };
+        let wrap = |i| match self.kind {
+            NodeKind::Osc(_) => ParamRef::Osc(i),
+            _ => ParamRef::Module(i),
+        };
+        if let Some(i) = specs.iter().position(|s| s.name == name) {
+            return Some(wrap(i));
+        }
+        let channel = |prefix: &str| {
+            let ch: usize = name.strip_prefix(prefix)?.trim().parse().ok()?;
+            (1..=MIXER_CHANNELS).contains(&ch).then_some(ch - 1)
+        };
+        match &self.kind {
+            NodeKind::Mixer(_) if name == "MASTER" => Some(ParamRef::Master),
+            NodeKind::Mixer(_) => channel("FADER")
+                .map(ParamRef::Fader)
+                .or_else(|| channel("PAN").map(ParamRef::Pan)),
+            _ => None,
+        }
     }
 
     /// Smoothed output level, used to animate cables.
@@ -193,11 +272,17 @@ impl Node {
             }
             NodeKind::Module(m) => {
                 m.meter.update(m.params.meter.take(), dt);
-                if m.params.kind == ModuleKind::Random {
+                let traced = match m.params.kind {
+                    ModuleKind::Random => Some(m.params.viz[random::VALUE].get()),
+                    ModuleKind::MidiCc => Some(m.params.viz[midi_cc::VALUE].get()),
+                    ModuleKind::MidiNote => Some(m.params.viz[midi_note::ENV].get() * 2.0 - 1.0),
+                    _ => None,
+                };
+                if let Some(v) = traced {
                     if m.trace.len() == TRACE_LEN {
                         m.trace.pop_front();
                     }
-                    m.trace.push_back(m.params.viz[random::VALUE].get());
+                    m.trace.push_back(v);
                 }
             }
         }
@@ -216,6 +301,15 @@ pub struct Group {
     pub collapsed: bool,
 }
 
+/// A MIDI value on its way to a control.
+#[derive(Clone, Copy)]
+enum Write {
+    /// Controller position, 0..1.
+    Norm(f32),
+    /// MIDI note number.
+    Note(f32),
+}
+
 #[derive(Default)]
 pub struct Graph {
     pub nodes: Vec<Node>,
@@ -230,6 +324,20 @@ pub struct Graph {
 impl Graph {
     pub fn node(&self, id: NodeId) -> Option<&Node> {
         self.nodes.iter().find(|n| n.id == id)
+    }
+
+    pub fn node_mut(&mut self, id: NodeId) -> Option<&mut Node> {
+        self.nodes.iter_mut().find(|n| n.id == id)
+    }
+
+    /// Removes every node, cable and module.
+    pub fn clear(&mut self, audio: &AudioHandle) {
+        let ids: Vec<NodeId> = self.nodes.iter().map(|n| n.id).collect();
+        for id in ids {
+            self.remove_node(id, audio);
+        }
+        self.groups.clear();
+        self.accent_count = 0;
     }
 
     fn alloc_id(&mut self) -> NodeId {
@@ -273,7 +381,7 @@ impl Graph {
         self.add_osc_with(pos, Arc::new(OscParams::new()), audio)
     }
 
-    fn add_osc_with(&mut self, pos: Pos2, params: Arc<OscParams>, audio: &AudioHandle) -> NodeId {
+    pub fn add_osc_with(&mut self, pos: Pos2, params: Arc<OscParams>, audio: &AudioHandle) -> NodeId {
         let id = self.alloc_id();
         let accent = self.next_accent();
         let title = self.next_title("OSC");
@@ -297,7 +405,7 @@ impl Graph {
         self.add_mixer_with(pos, Arc::new(MixerParams::new()), audio)
     }
 
-    fn add_mixer_with(&mut self, pos: Pos2, params: Arc<MixerParams>, audio: &AudioHandle) -> NodeId {
+    pub fn add_mixer_with(&mut self, pos: Pos2, params: Arc<MixerParams>, audio: &AudioHandle) -> NodeId {
         let id = self.alloc_id();
         let title = self.next_title("MIXER");
         audio.send(Command::AddNode(id, Slot::new(Box::new(Mixer::new(params.clone())), 1)));
@@ -321,24 +429,20 @@ impl Graph {
         self.add_module_with(pos, Arc::new(ModuleParams::new(kind)), audio)
     }
 
-    fn add_module_with(&mut self, pos: Pos2, params: Arc<ModuleParams>, audio: &AudioHandle) -> NodeId {
+    pub fn add_module_with(&mut self, pos: Pos2, params: Arc<ModuleParams>, audio: &AudioHandle) -> NodeId {
         let id = self.alloc_id();
         let kind = params.kind;
         let accent = self.next_accent();
         let title = self.next_title(kind.def().prefix);
-        let proc = kind.processor(params.clone(), audio.info.sample_rate as f32);
-        audio.send(Command::AddNode(id, Slot::new(proc, 1)));
+        let proc = kind.processor(params.clone(), audio);
+        audio.send(Command::AddNode(id, Slot::new(proc, kind.def().outputs.len())));
         self.nodes.push(Node {
             id,
             pos,
             title,
             accent,
             collapsed: false,
-            kind: NodeKind::Module(ModuleNode {
-                params,
-                meter: MeterState::default(),
-                trace: VecDeque::with_capacity(TRACE_LEN),
-            }),
+            kind: NodeKind::Module(ModuleNode::new(params)),
         });
         self.sync(audio);
         id
@@ -371,7 +475,10 @@ impl Graph {
             }
             NodeKind::Module(m) => {
                 let p = Arc::new(m.params.duplicate());
-                self.add_module_with(pos, p, audio)
+                let target = m.target;
+                let copy = self.add_module_with(pos, p, audio);
+                self.set_target(copy, target);
+                copy
             }
         };
         self.set_collapsed(copy, collapsed);
@@ -407,6 +514,13 @@ impl Graph {
             g.members.retain(|m| *m != id);
         }
         self.groups.retain(|g| !g.members.is_empty());
+        for n in &mut self.nodes {
+            if let NodeKind::Module(m) = &mut n.kind
+                && m.target.is_some_and(|t| t.node == id)
+            {
+                m.target = None;
+            }
+        }
         self.sync(audio);
         audio.send(Command::RemoveNode(id));
     }
@@ -437,6 +551,14 @@ impl Graph {
             let to = PortRef { node: copies[&c.to.node], port: c.to.port };
             self.connect(from, to, audio);
         }
+        // MIDI mappings inside the copied set follow the copies.
+        for &new in copies.values() {
+            if let Some(t) = self.target_of(new)
+                && let Some(&moved) = copies.get(&t.node)
+            {
+                self.set_target(new, Some(Target { node: moved, param: t.param }));
+            }
+        }
         let groups: Vec<(Vec<NodeId>, bool)> = self
             .groups
             .iter()
@@ -449,6 +571,103 @@ impl Graph {
             }
         }
         ids.iter().filter_map(|id| copies.get(id).copied()).collect()
+    }
+
+    // --- MIDI mapping ---------------------------------------------------------
+
+    /// "FILTER 1 · CUTOFF".
+    pub fn target_label(&self, t: Target) -> Option<String> {
+        let n = self.node(t.node)?;
+        Some(format!("{} · {}", n.title, n.param_name(t.param)?))
+    }
+
+    pub fn target_of(&self, id: NodeId) -> Option<Target> {
+        match &self.node(id)?.kind {
+            NodeKind::Module(m) => m.target,
+            _ => None,
+        }
+    }
+
+    /// Points a MIDI node at a control (or unmaps it with `None`).
+    pub fn set_target(&mut self, midi_node: NodeId, target: Option<Target>) {
+        if let Some(NodeKind::Module(m)) = self.node_mut(midi_node).map(|n| &mut n.kind) {
+            m.target = target;
+            m.midi_seen = None;
+        }
+    }
+
+    /// Finishes MIDI learn and moves mapped controls. Only messages that
+    /// arrive after a mapping is made move its control.
+    pub fn update_midi(&mut self, midi: &MidiState) {
+        let mut writes = Vec::new();
+        for node in &mut self.nodes {
+            let NodeKind::Module(m) = &mut node.kind else {
+                continue;
+            };
+            let p = &m.params;
+            let (seq, write) = match p.kind {
+                ModuleKind::MidiCc => {
+                    let (count, channel, number) = midi.last_cc();
+                    if !p.toggled() {
+                        m.learn_from = None;
+                    } else if m.learn_from.is_none() {
+                        m.learn_from = Some(count);
+                    } else if m.learn_from != Some(count) {
+                        p.set(midi_cc::CC, number as f32);
+                        p.set(midi_cc::CHANNEL, channel as f32);
+                        p.set_toggle(false);
+                        m.learn_from = None;
+                        m.midi_seen = None;
+                    }
+                    let (channel, number) = midi_cc::address(p);
+                    let (value, seq) = midi.cc(channel, number);
+                    (seq, Write::Norm(value))
+                }
+                ModuleKind::MidiNote => {
+                    let key = midi.note(midi_note::channel(p));
+                    (key.seq, Write::Note(midi_note::played_note(p, key.note)))
+                }
+                _ => continue,
+            };
+            if let Some(target) = m.target
+                && m.midi_seen.is_some_and(|seen| seen != seq)
+            {
+                writes.push((target, write));
+            }
+            m.midi_seen = Some(seq);
+        }
+        for (target, write) in writes {
+            self.write_param(target, write);
+        }
+    }
+
+    fn write_param(&self, t: Target, write: Write) {
+        let Some(node) = self.node(t.node) else {
+            return;
+        };
+        let norm = match write {
+            Write::Norm(n) => n,
+            Write::Note(note) => note / 127.0,
+        };
+        // A note sets pitch knobs to its frequency and semitone knobs to its
+        // distance from middle C; anything else follows the key's position.
+        let value = |spec: &ParamSpec| match (write, spec.unit) {
+            (Write::Note(note), Unit::Hz) => note_hz(note).clamp(spec.min, spec.max),
+            (Write::Note(note), Unit::Semitones) if spec.bipolar => (note - 60.0).clamp(spec.min, spec.max),
+            _ => spec.denorm(norm),
+        };
+        match (&node.kind, t.param) {
+            (NodeKind::Osc(o), ParamRef::Osc(i)) if i < osc::COUNT => o.params.set(i, value(&OSC_PARAMS[i])),
+            (NodeKind::Module(m), ParamRef::Module(i)) => {
+                if let Some(spec) = m.params.kind.def().params.get(i) {
+                    m.params.set(i, value(spec));
+                }
+            }
+            (NodeKind::Mixer(m), ParamRef::Fader(ch)) if ch < MIXER_CHANNELS => m.params.fader[ch].set(norm),
+            (NodeKind::Mixer(m), ParamRef::Pan(ch)) if ch < MIXER_CHANNELS => m.params.pan[ch].set(norm * 2.0 - 1.0),
+            (NodeKind::Mixer(m), ParamRef::Master) => m.params.master.set(norm),
+            _ => {}
+        }
     }
 
     // --- Modules (groups of nodes) ------------------------------------------

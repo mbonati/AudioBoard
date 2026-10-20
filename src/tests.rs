@@ -234,6 +234,9 @@ fn every_module_stays_finite_across_settings() {
         }
         p.set_mode(0);
         p.set_toggle(false);
+        // MIDI nodes need something to play: the mod wheel and a key.
+        a.midi.handle(&[0xB0, 1, 100]);
+        a.midi.handle(&[0x90, 60, 100]);
         render_buf(&mut e, 48_000);
         let buf = render_buf(&mut e, 24_000);
         assert!(rms_of(&buf) > 0.005, "{kind:?} is silent at its defaults");
@@ -567,6 +570,8 @@ fn right_click_opens_a_menu_on_anything() {
     g.set_group_collapsed(gid, true);
 
     let mut editor = crate::ui::canvas::Editor::new();
+    // The canvas menu lists library modules too.
+    editor.library = vec![crate::project::preset_from_group(&g, gid).unwrap()];
     let ctx = egui::Context::default();
     let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 900.0));
     let run = |editor: &mut crate::ui::canvas::Editor, g: &mut Graph, events: Vec<egui::Event>| {
@@ -617,4 +622,297 @@ fn right_click_opens_a_menu_on_anything() {
         run(&mut editor, &mut g, vec![]);
         assert!(!egui::Popup::is_any_open(&ctx));
     }
+}
+
+// ---------------------------------------------------------------------------
+// Saving and the module library
+// ---------------------------------------------------------------------------
+
+/// A fresh folder under the system temp dir, removed on drop.
+struct TempDir(std::path::PathBuf);
+
+impl TempDir {
+    fn new(tag: &str) -> Self {
+        let dir = std::env::temp_dir().join(format!("audioboard-test-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        Self(dir)
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+#[test]
+fn projects_round_trip_through_a_file() {
+    use crate::audio::modules::{drone, reverb};
+    use crate::project;
+    let (mut g, a, _e) = setup();
+    let [random, drone_id, filter, reverb_id, mixer] = ambient_chain(&mut g, &a);
+    let x = source(&mut g, &a);
+    module_params(&g, drone_id).set(drone::PITCH, 73.4);
+    module_params(&g, drone_id).set_mode(3);
+    module_params(&g, reverb_id).set(reverb::DECAY, 21.0);
+    module_params(&g, reverb_id).set_toggle(true);
+    mixer_params(&g, mixer).pan[0].set(-0.4);
+    mixer_params(&g, mixer).mute[2].store(true, Ordering::Relaxed);
+    osc_params(&g, x).set_waveform(Waveform::Square);
+    g.set_collapsed(filter, true);
+    let gid = g.create_group(&[random, drone_id]).unwrap();
+    g.rename_group(gid, "Source");
+    g.set_group_collapsed(gid, true);
+
+    let dir = TempDir::new("project");
+    let path = dir.0.join("pad.audioboard");
+    let saved = project::snapshot(&g);
+    project::save_project(&path, &saved).unwrap();
+
+    // Load into a patch that already has other nodes: they are replaced.
+    let (mut h, b, mut e2) = setup();
+    source(&mut h, &b);
+    let loaded = project::load_project(&path).unwrap();
+    assert_eq!(project::restore(&mut h, &loaded, &b), 0);
+    assert_eq!(project::snapshot(&h), saved, "everything survives the round trip");
+    assert_eq!(h.groups[0].title, "Source");
+
+    // And it plays.
+    render_buf(&mut e2, 48_000);
+    assert!(rms_of(&render_buf(&mut e2, 24_000)) > 0.005);
+}
+
+#[test]
+fn library_modules_are_inserted_with_their_cables() {
+    use crate::audio::modules::filter;
+    use crate::project;
+    let (mut g, a, _e) = setup();
+    let [random, drone, filter_id, _reverb, _mixer] = ambient_chain(&mut g, &a);
+    module_params(&g, filter_id).set(filter::CUTOFF, 333.0);
+    let gid = g.create_group(&[random, drone, filter_id]).unwrap();
+    g.rename_group(gid, "Wobble pad");
+    let preset = project::preset_from_group(&g, gid).unwrap();
+    assert_eq!(preset.name, "Wobble pad");
+    assert_eq!(preset.node_count(), 3);
+
+    let (mut h, b, _e2) = setup();
+    let nodes = project::insert_preset(&mut h, &preset, pos2(500.0, 200.0), &b);
+    assert_eq!(nodes.len(), 3);
+    assert_eq!(h.cables.len(), 2, "random → filter and drone → filter");
+    let group = h.group_of(nodes[0]).expect("inserted as a module");
+    assert_eq!(group.title, "Wobble pad");
+    assert!(group.collapsed, "library modules arrive folded");
+    let frame = crate::ui::groups::frame_rect(&h, group).unwrap();
+    assert!((frame.min - pos2(500.0, 200.0)).length() < 1e-3, "frame at the drop point: {frame:?}");
+    let f = h.nodes.iter().find(|n| n.title == "FILTER 1").unwrap().id;
+    assert_eq!(module_params(&h, f).get(filter::CUTOFF), 333.0);
+}
+
+#[test]
+fn library_stores_presets_on_disk() {
+    use crate::project::{self, Library};
+    let (mut g, a, _e) = setup();
+    let [random, drone, ..] = ambient_chain(&mut g, &a);
+    let gid = g.create_group(&[random, drone]).unwrap();
+    g.rename_group(gid, "Drift / pad");
+    let preset = project::preset_from_group(&g, gid).unwrap();
+
+    let dir = TempDir::new("library");
+    let mut lib = Library::open(dir.0.join("Library"));
+    assert!(lib.presets.is_empty());
+    lib.save(&preset).unwrap();
+    assert!(lib.contains("Drift / pad"));
+
+    // A fresh library sees the file; saving again replaces it.
+    let mut again = Library::open(dir.0.join("Library"));
+    assert_eq!(again.presets, vec![preset.clone()]);
+    again.save(&preset).unwrap();
+    assert_eq!(again.presets.len(), 1);
+
+    again.remove(0).unwrap();
+    assert!(Library::open(dir.0.join("Library")).presets.is_empty());
+}
+
+#[test]
+fn foreign_files_are_rejected() {
+    use crate::project;
+    let dir = TempDir::new("foreign");
+    let path = dir.0.join("x.audioboard");
+    std::fs::write(&path, "{\"hello\": 1}").unwrap();
+    assert!(project::load_project(&path).is_err());
+    std::fs::write(&path, r#"{"format":"other","version":1,"nodes":[],"cables":[]}"#).unwrap();
+    assert!(project::load_project(&path).is_err());
+}
+
+// ---------------------------------------------------------------------------
+// MIDI, renaming, palette
+// ---------------------------------------------------------------------------
+
+/// Runs editor frames with the given input events.
+struct Ui {
+    ctx: egui::Context,
+    editor: crate::ui::canvas::Editor,
+}
+
+impl Ui {
+    fn new() -> Self {
+        Self { ctx: egui::Context::default(), editor: crate::ui::canvas::Editor::new() }
+    }
+
+    fn frame(&mut self, g: &mut Graph, a: &AudioHandle, events: Vec<egui::Event>) {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 900.0))),
+            events,
+            ..Default::default()
+        };
+        let editor = &mut self.editor;
+        let mut out = self.ctx.run_ui(input, |ui| editor.show(ui, g, a));
+        out.textures_delta.clear();
+    }
+
+    fn key(&mut self, g: &mut Graph, a: &AudioHandle, key: egui::Key) {
+        let event = egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        };
+        self.frame(g, a, vec![event]);
+        self.frame(g, a, vec![]);
+    }
+}
+
+#[test]
+fn midi_state_tracks_controllers_and_the_last_key() {
+    use crate::audio::midi::MidiState;
+    let m = MidiState::new();
+    m.handle(&[0xB2, 74, 127]); // CC 74 on channel 3
+    let (value, seq) = m.cc(3, 74);
+    assert_eq!((value, seq), (1.0, 1));
+    assert_eq!(m.cc(0, 74).0, 1.0, "omni sees every channel");
+    assert_eq!(m.cc(1, 74).1, 0);
+    assert_eq!(m.last_cc(), (1, 3, 74));
+
+    m.handle(&[0x90, 60, 100]);
+    m.handle(&[0x90, 67, 50]);
+    assert_eq!(m.note(1).note, 67);
+    m.handle(&[0x80, 67, 0]); // back to the key still held
+    let held = m.note(1);
+    assert_eq!((held.note, held.gate), (60, true));
+    m.handle(&[0x90, 60, 0]); // note-on with velocity 0 is a note-off
+    assert!(!m.note(1).gate);
+    m.handle(&[0x90, 50, 90]);
+    m.handle(&[0xB0, 123, 0]); // all notes off
+    assert!(!m.note(0).gate);
+    m.handle(&[0xF8]); // clock: ignored
+}
+
+#[test]
+fn midi_learn_and_mapping_drive_knobs() {
+    use crate::audio::modules::{drone, filter, midi_cc};
+    use crate::graph::{ParamRef, Target};
+    let (mut g, a, mut e) = setup();
+    let [_random, drone_id, filter_id, _reverb, mixer] = ambient_chain(&mut g, &a);
+    let cc = g.add_module(ModuleKind::MidiCc, pos2(0.0, 0.0), &a);
+    let note = g.add_module(ModuleKind::MidiNote, pos2(0.0, 0.0), &a);
+
+    // LEARN takes the next controller moved.
+    module_params(&g, cc).set_toggle(true);
+    g.update_midi(&a.midi);
+    a.midi.handle(&[0xB4, 21, 10]); // CC 21, channel 5
+    g.update_midi(&a.midi);
+    let p = module_params(&g, cc);
+    assert_eq!((p.get(midi_cc::CC), p.get(midi_cc::CHANNEL)), (21.0, 5.0));
+    assert!(!p.toggled(), "learn switches itself off");
+
+    // Mapping does not jump the knob; the next message moves it.
+    let cutoff = Target { node: filter_id, param: ParamRef::Module(filter::CUTOFF) };
+    g.set_target(cc, Some(cutoff));
+    let before = module_params(&g, filter_id).get(filter::CUTOFF);
+    g.update_midi(&a.midi);
+    assert_eq!(module_params(&g, filter_id).get(filter::CUTOFF), before);
+    a.midi.handle(&[0xB4, 21, 127]);
+    g.update_midi(&a.midi);
+    assert_eq!(module_params(&g, filter_id).get(filter::CUTOFF), 20_000.0);
+    assert_eq!(g.target_label(cutoff).unwrap(), "FILTER 1 · CUTOFF");
+
+    // A key sets a pitch knob to its frequency.
+    g.set_target(note, Some(Target { node: drone_id, param: ParamRef::Module(drone::PITCH) }));
+    g.update_midi(&a.midi);
+    a.midi.handle(&[0x90, 45, 100]); // A2
+    g.update_midi(&a.midi);
+    assert!((module_params(&g, drone_id).get(drone::PITCH) - 110.0).abs() < 0.01);
+
+    // Controllers can ride mixer faders too.
+    g.set_target(cc, Some(Target { node: mixer, param: ParamRef::Fader(1) }));
+    g.update_midi(&a.midi);
+    a.midi.handle(&[0xB4, 21, 0]);
+    g.update_midi(&a.midi);
+    assert_eq!(mixer_params(&g, mixer).fader[1].get(), 0.0);
+
+    // The MIDI note node plays an envelope while the key is held.
+    render_buf(&mut e, 24_000);
+    assert!(module_params(&g, note).viz[crate::audio::modules::midi_note::ENV].get() > 0.9);
+
+    // Deleting the mapped node unmaps it; mappings survive saving.
+    g.remove_node(mixer, &a);
+    assert!(g.target_of(cc).is_none());
+    g.set_target(cc, Some(cutoff));
+    let saved = crate::project::snapshot(&g);
+    let (mut h, b, _e2) = setup();
+    crate::project::restore(&mut h, &crate::project::snapshot(&g), &b);
+    assert_eq!(crate::project::snapshot(&h), saved);
+    let cc_copy = h.nodes.iter().find(|n| n.title == "CC 1").unwrap().id;
+    assert_eq!(h.target_label(h.target_of(cc_copy).unwrap()).unwrap(), "FILTER 1 · CUTOFF");
+}
+
+#[test]
+fn modules_are_renamed_in_place() {
+    let (mut g, a, _e) = setup();
+    let [random, drone, ..] = ambient_chain(&mut g, &a);
+    let gid = g.create_group(&[random, drone]).unwrap();
+    let mut ui = Ui::new();
+    ui.frame(&mut g, &a, vec![]);
+    ui.editor.selected = [random, drone].into_iter().collect();
+
+    // Enter opens the title for editing, with the old name selected.
+    ui.key(&mut g, &a, egui::Key::Enter);
+    ui.frame(&mut g, &a, vec![]); // (a person types a few frames later)
+    ui.frame(&mut g, &a, vec![egui::Event::Text("Pad source".into())]);
+    ui.key(&mut g, &a, egui::Key::Enter);
+    assert_eq!(g.group(gid).unwrap().title, "Pad source");
+
+    // Esc cancels.
+    ui.key(&mut g, &a, egui::Key::F2);
+    ui.frame(&mut g, &a, vec![]);
+    ui.frame(&mut g, &a, vec![egui::Event::Text("Nope".into())]);
+    ui.key(&mut g, &a, egui::Key::Escape);
+    assert_eq!(g.group(gid).unwrap().title, "Pad source");
+}
+
+#[test]
+fn palette_entries_drop_where_released() {
+    use crate::ui::palette::Spawn;
+    let (mut g, a, _e) = setup();
+    g.add_mixer(pos2(0.0, 0.0), &a);
+    let mut ui = Ui::new();
+    ui.frame(&mut g, &a, vec![]);
+
+    let p = egui::pos2(300.0, 200.0);
+    egui::DragAndDrop::set_payload(&ui.ctx, Spawn::Node(crate::graph::NodeType::Module(ModuleKind::Reverb)));
+    let release = egui::Event::PointerButton {
+        pos: p,
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers: egui::Modifiers::NONE,
+    };
+    ui.frame(&mut g, &a, vec![egui::Event::PointerMoved(p), release]);
+    let reverb = g.nodes.iter().find(|n| n.title == "REVERB 1").expect("dropped");
+    // Its header sits under the pointer.
+    let e = &ui.editor;
+    let screen = (e.pan + reverb.pos.to_vec2() * e.zoom).to_pos2();
+    assert!((screen.y - p.y).abs() < 20.0 && screen.x < p.x, "{screen:?}");
+    assert!(egui::DragAndDrop::payload::<Spawn>(&ui.ctx).is_none());
 }

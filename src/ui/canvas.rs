@@ -1,28 +1,47 @@
 //! The patching canvas: grid, pan/zoom, nodes and modules, selection, and
 //! cable drag & drop.
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
 use egui::{
     Align2, Color32, CursorIcon, FontId, Id, Key, Painter, PointerButton, Pos2, Rect, Response,
-    Sense, Stroke, StrokeKind, Ui, Vec2, vec2,
+    Sense, Shape, Stroke, StrokeKind, Ui, Vec2, pos2, vec2,
 };
 
 use super::groups;
 use super::modules;
-use super::nodes::{self, NodeView};
+use super::nodes::{self, KnobHit, NodeView};
+use super::palette::Spawn;
 use super::theme::{self, alpha};
 use super::widgets;
 use crate::audio::AudioHandle;
 use crate::audio::engine::NodeId;
-use crate::graph::{Cable, Graph, Group, GroupId, NodeKind, NodeType, PortRef};
+use crate::graph::{Cable, Graph, Group, GroupId, NodeKind, NodeType, PortRef, Target};
+use crate::project::{self, Preset};
 
 const GRID: f32 = 24.0;
 const MIN_ZOOM: f32 = 0.3;
 const MAX_ZOOM: f32 = 2.0;
 
+/// Work that needs the app (files, dialogs) rather than the canvas.
+pub enum Request {
+    SaveToLibrary(GroupId),
+    DeletePreset(usize),
+    RevealLibrary,
+}
+
+/// What was picked in the "add" menu.
+pub enum AddChoice {
+    Node(NodeType),
+    Preset(usize),
+    Request(Request),
+}
+
 enum Action {
     Add(NodeType, Pos2),
+    AddPreset(usize, Pos2),
+    Request(Request),
     Remove(NodeId),
     Connect { from: PortRef, to: PortRef },
     Disconnect(Cable),
@@ -41,7 +60,23 @@ enum Action {
     UngroupSelection,
     Ungroup(GroupId),
     ToggleGroup(GroupId),
+    StartRename(GroupId),
     RenameGroup(GroupId, String),
+    /// Wait for a click on a control to map this MIDI node to.
+    StartMapping(NodeId),
+    CancelMapping,
+    SetTarget(NodeId, Option<Target>),
+}
+
+/// A module title being edited in place.
+struct Rename {
+    gid: GroupId,
+    text: String,
+    /// Focus the field on its first frame.
+    fresh: bool,
+    /// Select the old name once the field has focus (egui drops a
+    /// selection made before that).
+    select: bool,
 }
 
 /// A cable being dragged out of a port. `anchor` is the fixed end.
@@ -88,6 +123,13 @@ pub struct Editor {
     marquee: Option<Pos2>,
     menu: MenuTarget,
     needs_framing: bool,
+    /// Modules saved in the library, offered in the add menu.
+    pub library: Vec<Preset>,
+    /// Requests for the app, drained after each frame.
+    pub requests: Vec<Request>,
+    renaming: Option<Rename>,
+    /// MIDI node waiting for a click on the control it should drive.
+    mapping: Option<NodeId>,
 }
 
 impl Editor {
@@ -101,7 +143,22 @@ impl Editor {
             marquee: None,
             menu: MenuTarget::Canvas(Pos2::ZERO),
             needs_framing: true,
+            library: Vec::new(),
+            requests: Vec::new(),
+            renaming: None,
+            mapping: None,
         }
+    }
+
+    /// Forgets selection and gestures, and frames the patch on the next
+    /// frame (after a project is opened or created).
+    pub fn reset(&mut self) {
+        self.selected.clear();
+        self.drag = None;
+        self.marquee = None;
+        self.renaming = None;
+        self.mapping = None;
+        self.needs_framing = true;
     }
 
     pub fn select_only(&mut self, id: NodeId) {
@@ -372,7 +429,9 @@ impl Editor {
             let head = Rect::from_min_size(frame.min, vec2(frame.width(), nodes::HEADER_H * z));
             let resp = ui.interact(head, Id::unique(("group", gid)), Sense::CLICK | Sense::DRAG);
             module_pointer(ui, &resp, g, selected, additive, z, &mut actions);
-            let h = groups::draw_frame(ui, &painter, g, frame, selected, z);
+            let renaming = self.renaming.as_ref().is_some_and(|r| r.gid == gid);
+            let h = groups::draw_frame(ui, &painter, g, frame, selected, renaming, z);
+            self.title_editor(ui, gid, h.title_rect, &mut actions);
             push_header(h, gid, &mut actions);
         }
 
@@ -388,6 +447,13 @@ impl Editor {
             drop_target,
             dragging: self.drag,
         };
+        let hits = RefCell::new(Vec::<KnobHit>::new());
+        let target_labels: HashMap<NodeId, String> = graph
+            .nodes
+            .iter()
+            .filter_map(|n| Some((n.id, graph.target_label(graph.target_of(n.id)?)?)))
+            .collect();
+        let mut map_button = None;
         for (idx, node) in graph.nodes.iter_mut().enumerate() {
             let Some(rect_s) = node_rects[idx] else {
                 continue;
@@ -414,6 +480,8 @@ impl Editor {
                 painter: &painter,
                 min: rect_s.min,
                 z,
+                node: id,
+                hits: &hits,
             };
             let header = nodes::frame(&view, node, selected);
             if header.close {
@@ -439,7 +507,29 @@ impl Editor {
                 match &mut node.kind {
                     NodeKind::Osc(o) => nodes::osc(&view, id, accent, o, &connected, out),
                     NodeKind::Mixer(m) => nodes::mixer(&view, id, accent, m, &sources),
-                    NodeKind::Module(m) => modules::draw(&view, id, accent, m, &connected, out),
+                    NodeKind::Module(m) => {
+                        let outs: Vec<bool> = (0..m.params.kind.def().outputs.len())
+                            .map(|port| outputs.contains(&PortRef { node: id, port }))
+                            .collect();
+                        let picking = self.mapping == Some(id);
+                        let map = modules::MapState {
+                            target: target_labels.get(&id).map(String::as_str),
+                            picking,
+                        };
+                        let button = modules::draw(&view, id, accent, m, &connected, &outs, map);
+                        if button.clicked {
+                            actions.push(if picking {
+                                Action::CancelMapping
+                            } else if m.target.is_some() {
+                                Action::SetTarget(id, None)
+                            } else {
+                                Action::StartMapping(id)
+                            });
+                        }
+                        if picking {
+                            map_button = button.rect;
+                        }
+                    }
                 }
             }
 
@@ -468,7 +558,9 @@ impl Editor {
                 if input { inputs.contains_key(&pr) } else { outputs.contains(&pr) }
             };
             let ports = (card.ins.as_slice(), card.outs.as_slice());
-            let h = groups::draw_card(ui, &painter, graph, g, card.rect, ports, connected, selected, z);
+            let renaming = self.renaming.as_ref().is_some_and(|r| r.gid == gid);
+            let h = groups::draw_card(ui, &painter, graph, g, card.rect, ports, connected, selected, renaming, z);
+            self.title_editor(ui, gid, h.title_rect, &mut actions);
             push_header(h, gid, &mut actions);
 
             let accent_of = |pr: &PortRef| graph.node(pr.node).map_or(theme::ACCENT, |n| n.accent);
@@ -479,6 +571,8 @@ impl Editor {
                 self.port(ui, &painter, *pr, false, out_pos[pr], accent_of(pr), &ctx, &mut actions);
             }
         }
+
+        self.midi_mapping(ui, &painter, graph, &node_rects, hits.into_inner(), map_button, pointer, &mut actions);
 
         // --- Cable being dragged -----------------------------------------
         if let Some(d) = self.drag {
@@ -498,6 +592,34 @@ impl Editor {
                     actions.push(Action::Connect { from, to });
                 }
                 self.drag = None;
+            }
+        }
+
+        // --- Dropping a palette entry ------------------------------------
+        if let Some(spawn) = egui::DragAndDrop::payload::<Spawn>(ui.ctx())
+            && let Some(p) = pointer
+            && rect.contains(p)
+        {
+            // Lands with its header under the pointer.
+            let size = match *spawn {
+                Spawn::Node(ty) => ty.size(),
+                Spawn::Preset(_) => groups::card_size(2, 1),
+            };
+            let at = self.to_world(p) - vec2(size.x * 0.5, nodes::HEADER_H * 0.5);
+            let preview = Rect::from_min_size(self.to_screen(at), size * z);
+            painter.rect(
+                preview,
+                6.0 * z,
+                alpha(theme::ACCENT, 0.06),
+                Stroke::new(1.0, alpha(theme::ACCENT, 0.7)),
+                StrokeKind::Inside,
+            );
+            if ui.input(|i| i.pointer.any_released()) {
+                egui::DragAndDrop::clear_payload(ui.ctx());
+                actions.push(match *spawn {
+                    Spawn::Node(ty) => Action::Add(ty, at),
+                    Spawn::Preset(i) => Action::AddPreset(i, at),
+                });
             }
         }
 
@@ -543,9 +665,10 @@ impl Editor {
         let has_selection = !self.selected.is_empty();
         egui::Popup::menu(&bg)
             .open_memory(open_menu.then_some(egui::SetOpenCommand::Bool(true)))
+            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
             .at_pointer_fixed()
             .show(|ui| match menu {
-                MenuTarget::Canvas(pos) => canvas_menu(ui, pos, has_selection, &mut actions),
+                MenuTarget::Canvas(pos) => canvas_menu(ui, pos, has_selection, &self.library, &mut actions),
                 MenuTarget::Cable(cable) => {
                     if menu_item(ui, "Disconnect", "Double-click") {
                         actions.push(Action::Disconnect(cable));
@@ -557,7 +680,7 @@ impl Editor {
                     None => ui.close(),
                 },
                 MenuTarget::Group(gid) => match graph.group(gid) {
-                    Some(g) => group_menu(ui, gid, &g.title, g.collapsed, &mut actions),
+                    Some(g) => group_menu(ui, gid, g.collapsed, &mut actions),
                     None => ui.close(),
                 },
             });
@@ -568,6 +691,81 @@ impl Editor {
         }
 
         self.apply(actions, graph, audio);
+    }
+
+    /// MIDI mappings: a dashed line from each MIDI node to the control it
+    /// drives and, while picking one, highlighted controls and a hint.
+    #[allow(clippy::too_many_arguments)]
+    fn midi_mapping(
+        &mut self,
+        ui: &Ui,
+        painter: &Painter,
+        graph: &Graph,
+        node_rects: &[Option<Rect>],
+        hits: Vec<KnobHit>,
+        map_button: Option<Rect>,
+        pointer: Option<Pos2>,
+        actions: &mut Vec<Action>,
+    ) {
+        let z = self.zoom;
+        for (node, rect) in graph.nodes.iter().zip(node_rects) {
+            let (NodeKind::Module(m), Some(rect)) = (&node.kind, rect) else {
+                continue;
+            };
+            let Some(t) = m.target else {
+                continue;
+            };
+            let Some(hit) = hits.iter().find(|h| h.node == t.node && h.param == t.param) else {
+                continue;
+            };
+            let from = pos2(rect.right(), rect.top() + nodes::HEADER_H * 0.5 * z);
+            let to = hit.rect.center();
+            let stroke = Stroke::new(1.2 * z.max(0.6), alpha(node.accent, 0.65));
+            painter.extend(Shape::dashed_line(&[from, to], stroke, 6.0 * z, 4.0 * z));
+            painter.circle_stroke(to, hit.rect.width().min(hit.rect.height()) * 0.5, stroke);
+        }
+
+        let Some(source) = self.mapping else {
+            return;
+        };
+        if graph.node(source).is_none() {
+            self.mapping = None;
+            return;
+        }
+        let targets = || hits.iter().filter(|h| h.node != source);
+        for h in targets() {
+            painter.rect_stroke(
+                h.rect.expand(2.0 * z),
+                4.0 * z,
+                Stroke::new(1.2, alpha(theme::ACCENT, 0.8)),
+                StrokeKind::Outside,
+            );
+        }
+        let area = painter.clip_rect();
+        let text = "Click a knob or fader to drive it with MIDI  ·  Esc to cancel";
+        let galley = painter.layout_no_wrap(text.to_owned(), FontId::proportional(12.0), theme::TEXT);
+        let banner = Rect::from_center_size(pos2(area.center().x, area.top() + 24.0), galley.size() + vec2(24.0, 12.0));
+        painter.rect(banner, 6.0, theme::NODE_HEADER, Stroke::new(1.0, theme::ACCENT), StrokeKind::Inside);
+        painter.galley(banner.center() - galley.size() * 0.5, galley, theme::TEXT);
+
+        let Some(p) = pointer else {
+            return;
+        };
+        let under = targets().find(|h| h.rect.contains(p)).copied();
+        if under.is_some() {
+            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+        }
+        if ui.input(|i| i.pointer.primary_pressed()) {
+            match under {
+                Some(h) => {
+                    actions.push(Action::SetTarget(source, Some(Target { node: h.node, param: h.param })));
+                    actions.push(Action::CancelMapping);
+                }
+                // The MAP button itself toggles picking off on its own.
+                None if map_button.is_some_and(|r| r.contains(p)) => {}
+                None => actions.push(Action::CancelMapping),
+            }
+        }
     }
 
     fn keyboard(&mut self, ui: &Ui, graph: &Graph, actions: &mut Vec<Action>) {
@@ -585,7 +783,12 @@ impl Editor {
             actions.push(Action::SelectAll);
         }
         if pressed(Key::Escape) {
-            actions.push(Action::Deselect);
+            actions.push(if self.mapping.is_some() { Action::CancelMapping } else { Action::Deselect });
+        }
+        if (pressed(Key::Enter) || pressed(Key::F2))
+            && let Some(g) = self.selected_group(graph)
+        {
+            actions.push(Action::StartRename(g.id));
         }
         if cmd && pressed(Key::G) {
             actions.push(if shift { Action::UngroupSelection } else { Action::GroupSelection });
@@ -648,6 +851,39 @@ impl Editor {
         }
     }
 
+    /// While renaming a module: a text field over its title. Enter or a
+    /// click elsewhere keeps the new name, Esc cancels.
+    fn title_editor(&mut self, ui: &mut Ui, gid: GroupId, rect: Rect, actions: &mut Vec<Action>) {
+        let Some(r) = self.renaming.as_mut().filter(|r| r.gid == gid) else {
+            return;
+        };
+        let id = Id::unique(("rename", gid));
+        let edit = egui::TextEdit::singleline(&mut r.text)
+            .id(id)
+            .font(theme::strong(11.5 * self.zoom))
+            .text_color(theme::TEXT)
+            .margin(egui::Margin::symmetric(3, 1))
+            .desired_width(rect.width());
+        let resp = ui.put(rect, edit);
+        if r.select && resp.has_focus() {
+            let mut state = egui::text_edit::TextEditState::load(ui.ctx(), id).unwrap_or_default();
+            let all = egui::text_selection::CCursorRange::select_all_str(&r.text);
+            state.cursor.set_char_range(Some(all));
+            state.store(ui.ctx(), id);
+            r.select = false;
+        }
+        if r.fresh {
+            resp.request_focus();
+            r.fresh = false;
+        } else if resp.lost_focus() {
+            let name = r.text.trim().to_owned();
+            if !ui.input(|i| i.key_pressed(Key::Escape)) && !name.is_empty() {
+                actions.push(Action::RenameGroup(gid, name));
+            }
+            self.renaming = None;
+        }
+    }
+
     fn apply(&mut self, actions: Vec<Action>, graph: &mut Graph, audio: &AudioHandle) {
         for action in actions {
             match action {
@@ -655,6 +891,12 @@ impl Editor {
                     let id = graph.add(ty, p, audio);
                     self.select_only(id);
                 }
+                Action::AddPreset(i, p) => {
+                    if let Some(preset) = self.library.get(i) {
+                        self.selected = project::insert_preset(graph, preset, p, audio).into_iter().collect();
+                    }
+                }
+                Action::Request(r) => self.requests.push(r),
                 Action::Remove(id) => {
                     graph.remove_node(id, audio);
                     self.selected.remove(&id);
@@ -717,7 +959,20 @@ impl Editor {
                         graph.set_group_collapsed(gid, !collapsed);
                     }
                 }
+                Action::StartRename(gid) => {
+                    if let Some(g) = graph.group(gid) {
+                        self.renaming = Some(Rename {
+                            gid,
+                            text: g.title.clone(),
+                            fresh: true,
+                            select: true,
+                        });
+                    }
+                }
                 Action::RenameGroup(gid, title) => graph.rename_group(gid, &title),
+                Action::StartMapping(id) => self.mapping = Some(id),
+                Action::CancelMapping => self.mapping = None,
+                Action::SetTarget(id, target) => graph.set_target(id, target),
             }
         }
     }
@@ -827,7 +1082,7 @@ fn push_header(h: groups::HeaderActions, gid: GroupId, actions: &mut Vec<Action>
     }
 }
 
-fn menu_item(ui: &mut Ui, label: &str, hint: &str) -> bool {
+pub(super) fn menu_item(ui: &mut Ui, label: &str, hint: &str) -> bool {
     ui.add(
         egui::Button::new(egui::RichText::new(label).color(theme::TEXT).size(12.5))
             .right_text(egui::RichText::new(hint).color(theme::TEXT_FAINT).size(10.5))
@@ -841,24 +1096,58 @@ fn menu_heading(ui: &mut Ui, text: &str) {
     ui.label(egui::RichText::new(text).size(9.5).color(theme::TEXT_FAINT));
 }
 
-/// The grouped list of node types; returns the one picked (and closes).
-pub fn add_menu(ui: &mut Ui) -> Option<NodeType> {
+/// Node types in groups, then the module library; returns the pick (and closes).
+pub fn add_menu(ui: &mut Ui, library: &[Preset]) -> Option<AddChoice> {
     let mut picked = None;
     for (group, types) in NodeType::MENU {
         menu_heading(ui, group);
         for &ty in types {
             if menu_item(ui, ty.name(), ty.hint()) {
-                picked = Some(ty);
+                picked = Some(AddChoice::Node(ty));
                 ui.close();
             }
         }
     }
+
+    menu_heading(ui, "Library");
+    if library.is_empty() {
+        ui.label(
+            egui::RichText::new("Right-click a module → Save to library")
+                .size(10.5)
+                .color(theme::TEXT_FAINT),
+        );
+    }
+    for (i, preset) in library.iter().enumerate() {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 2.0;
+            let n = preset.node_count();
+            let hint = if n == 1 { "1 node".to_owned() } else { format!("{n} nodes") };
+            if menu_item(ui, &preset.name, &hint) {
+                picked = Some(AddChoice::Preset(i));
+                ui.close();
+            }
+            let remove = ui
+                .add(egui::Button::new(egui::RichText::new("×").color(theme::TEXT_FAINT)).min_size(vec2(22.0, 22.0)))
+                .on_hover_text("Remove from the library");
+            if remove.clicked() {
+                picked = Some(AddChoice::Request(Request::DeletePreset(i)));
+                ui.close();
+            }
+        });
+    }
+    if menu_item(ui, "Open library folder", "") {
+        picked = Some(AddChoice::Request(Request::RevealLibrary));
+        ui.close();
+    }
     picked
 }
 
-fn canvas_menu(ui: &mut Ui, pos: Pos2, has_selection: bool, actions: &mut Vec<Action>) {
-    if let Some(ty) = add_menu(ui) {
-        actions.push(Action::Add(ty, pos));
+fn canvas_menu(ui: &mut Ui, pos: Pos2, has_selection: bool, library: &[Preset], actions: &mut Vec<Action>) {
+    match add_menu(ui, library) {
+        Some(AddChoice::Node(ty)) => actions.push(Action::Add(ty, pos)),
+        Some(AddChoice::Preset(i)) => actions.push(Action::AddPreset(i, pos)),
+        Some(AddChoice::Request(r)) => actions.push(Action::Request(r)),
+        None => {}
     }
     ui.separator();
     if has_selection && menu_item(ui, "Make module from selection", "Cmd+G") {
@@ -897,15 +1186,17 @@ fn node_menu(ui: &mut Ui, collapsed: bool, in_group: bool, actions: &mut Vec<Act
     }
 }
 
-fn group_menu(ui: &mut Ui, gid: GroupId, title: &str, collapsed: bool, actions: &mut Vec<Action>) {
-    menu_heading(ui, "Module name");
-    let mut name = title.to_owned();
-    if ui.add(egui::TextEdit::singleline(&mut name).desired_width(220.0)).changed() {
-        actions.push(Action::RenameGroup(gid, name));
+fn group_menu(ui: &mut Ui, gid: GroupId, collapsed: bool, actions: &mut Vec<Action>) {
+    if menu_item(ui, "Rename…", "Enter") {
+        actions.push(Action::StartRename(gid));
+        ui.close();
     }
-    ui.separator();
     if menu_item(ui, if collapsed { "Expand" } else { "Collapse" }, "C") {
         actions.push(Action::ToggleGroup(gid));
+        ui.close();
+    }
+    if menu_item(ui, "Save to library", "") {
+        actions.push(Action::Request(Request::SaveToLibrary(gid)));
         ui.close();
     }
     if menu_item(ui, "Duplicate module", "Cmd+D") {

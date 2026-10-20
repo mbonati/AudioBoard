@@ -40,10 +40,12 @@ pub static DEF: ModuleDef = ModuleDef {
     prefix: "RESON",
     hint: "string · pipe · bar · bell",
     inputs: &["IN", "PITCH"],
+    outputs: &["OUT"],
     params: &PARAMS,
     cv_depth: &[(MOD, 1)],
     modes: &["STRING", "PIPE", "BAR", "BELL"],
     toggle: None,
+    map: false,
     viz: 0,
 };
 

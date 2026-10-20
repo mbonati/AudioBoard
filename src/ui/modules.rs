@@ -9,11 +9,13 @@ use super::nodes::{KnobCell, NodeView, knob_cell, note_name, segmented};
 use super::theme::{self, alpha};
 use super::widgets;
 use crate::audio::engine::NodeId;
+use crate::audio::midi::note_hz;
 use crate::audio::modules::{
-    ModuleDef, ModuleKind, ModuleParams, delay, drone, filter, granular, random, resonator, reverb,
+    ModuleDef, ModuleKind, ModuleParams, delay, drone, filter, granular, midi_cc, midi_note, random, resonator,
+    reverb,
 };
 use crate::audio::params::{format_hz, format_seconds};
-use crate::graph::ModuleNode;
+use crate::graph::{ModuleNode, ParamRef};
 
 const PAD: f32 = 12.0;
 const COL_W: f32 = 64.0;
@@ -33,7 +35,7 @@ fn columns(def: &ModuleDef) -> usize {
 
 /// Node-local y of the first knob row's labels.
 fn knobs_top(def: &ModuleDef) -> f32 {
-    if def.modes.is_empty() { 132.0 } else { 156.0 }
+    if def.modes.is_empty() && !def.map { 132.0 } else { 156.0 }
 }
 
 pub fn size(def: &ModuleDef) -> Vec2 {
@@ -53,26 +55,69 @@ pub fn output_offset(def: &ModuleDef, i: usize) -> Vec2 {
     vec2(size(def).x, PORT_Y + PORT_DY * i as f32)
 }
 
-pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, inputs: &[bool], output: bool) {
+/// What the canvas tells a module panel about MIDI mapping.
+#[derive(Default)]
+pub struct MapState<'a> {
+    /// The control this MIDI node drives ("FILTER 1 · CUTOFF").
+    pub target: Option<&'a str>,
+    /// Waiting for a click on the control to map.
+    pub picking: bool,
+}
+
+/// MIDI nodes: the MAP button, if clicked, and where it is.
+#[derive(Default)]
+pub struct MapButton {
+    pub clicked: bool,
+    pub rect: Option<Rect>,
+}
+
+pub fn draw(
+    v: &NodeView,
+    id: NodeId,
+    accent: Color32,
+    m: &ModuleNode,
+    inputs: &[bool],
+    outputs: &[bool],
+    map: MapState,
+) -> MapButton {
     let p = &m.params;
     let kind = p.kind;
     let def = kind.def();
     let z = v.z;
     let w = size(def).x;
     let patched = |i: usize| inputs.get(i).copied().unwrap_or(false);
+    let label_col = |on: bool| if on { theme::TEXT_DIM } else { theme::TEXT_FAINT };
 
     // Ports.
     for (i, label) in def.inputs.iter().enumerate() {
-        let col = if patched(i) { theme::TEXT_DIM } else { theme::TEXT_FAINT };
-        v.text(PAD, PORT_Y + PORT_DY * i as f32, Align2::LEFT_CENTER, label, v.font(9.0), col);
+        v.text(PAD, PORT_Y + PORT_DY * i as f32, Align2::LEFT_CENTER, label, v.font(9.0), label_col(patched(i)));
     }
-    let out_col = if output { theme::TEXT_DIM } else { theme::TEXT_FAINT };
-    v.text(w - PAD, PORT_Y, Align2::RIGHT_CENTER, "OUT", v.font(9.0), out_col);
+    for (i, label) in def.outputs.iter().enumerate() {
+        let on = outputs.get(i).copied().unwrap_or(false);
+        v.text(w - PAD, PORT_Y + PORT_DY * i as f32, Align2::RIGHT_CENTER, label, v.font(9.0), label_col(on));
+    }
 
     // Readout.
     let (main, sub) = readout(kind, p);
+    let sub = if map.picking {
+        "Click a knob or fader…".to_owned()
+    } else if let Some(target) = map.target {
+        format!("→ {target}")
+    } else {
+        sub
+    };
     v.text(w * 0.5, PORT_Y, Align2::CENTER_CENTER, main, v.mono(13.0), theme::TEXT);
-    v.text(w * 0.5, PORT_Y + PORT_DY, Align2::CENTER_CENTER, sub, v.font(9.5), theme::TEXT_DIM);
+    let sub_col = if map.target.is_some() || map.picking { accent } else { theme::TEXT_DIM };
+    // The second line shares its row with the toggle, if there is one; a
+    // mapping that does not fit shows just the control's name.
+    let (left, right) = (PAD + 30.0, if def.toggle.is_some() { w - PAD - 50.0 } else { w - PAD - 30.0 });
+    let fits = |s: &str| v.painter.layout_no_wrap(s.to_owned(), v.font(9.5), sub_col).size().x <= (right - left) * z;
+    let sub = match map.target {
+        Some(t) if !map.picking && !fits(&sub) => format!("→ {}", t.rsplit(" · ").next().unwrap_or(t)),
+        _ => sub,
+    };
+    let cx = if def.toggle.is_some() { (left + right) * 0.5 } else { w * 0.5 };
+    v.text(cx, PORT_Y + PORT_DY, Align2::CENTER_CENTER, sub, v.font(9.5), sub_col);
 
     if let Some(label) = def.toggle {
         let y = PORT_Y + PORT_DY;
@@ -95,7 +140,7 @@ pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, inputs: &
     };
     match kind {
         ModuleKind::Drone => drone_display(&screen, p),
-        ModuleKind::Random => random_display(&screen, m),
+        ModuleKind::Random | ModuleKind::MidiCc | ModuleKind::MidiNote => trace_display(&screen, m),
         ModuleKind::Granular => granular_display(&screen, p),
         ModuleKind::Resonator => resonator_display(&screen, p),
         ModuleKind::Filter => filter_display(&screen, p),
@@ -103,9 +148,33 @@ pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, inputs: &
         ModuleKind::Reverb => reverb_display(&screen, p),
     }
 
-    // Mode selector.
+    // Mode selector, and the MAP button for MIDI nodes.
+    let mut button = MapButton::default();
+    let mut modes_right = w - PAD;
+    if def.map {
+        let left = if def.modes.is_empty() { PAD } else { w - PAD - 76.0 };
+        let rect = v.r(left, SELECTOR_Y[0], w - PAD, SELECTOR_Y[1]);
+        let label = if map.picking {
+            "PICK…"
+        } else if map.target.is_some() {
+            "UNMAP"
+        } else {
+            "MAP"
+        };
+        let resp = widgets::toggle(v.ui, v.painter, Id::unique(("map", id)), rect, label, map.picking, accent, z)
+            .on_hover_text(if map.target.is_some() {
+                "Stop driving the mapped control"
+            } else {
+                "Drive a knob or fader directly: click MAP, then the control"
+            });
+        button = MapButton {
+            clicked: resp.clicked(),
+            rect: Some(rect),
+        };
+        modes_right = left - 4.0;
+    }
     if !def.modes.is_empty() {
-        let bar = v.r(PAD, SELECTOR_Y[0], w - PAD, SELECTOR_Y[1]);
+        let bar = v.r(PAD, SELECTOR_Y[0], modes_right, SELECTOR_Y[1]);
         let picked = segmented(v, ("mode", id), bar, def.modes.len(), p.mode(), accent, |i, seg, col| {
             v.painter.text(seg.center(), Align2::CENTER_CENTER, def.modes[i], v.font(8.5), col);
             mode_name(kind, i)
@@ -126,11 +195,13 @@ pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, inputs: &
             label: spec.name,
             dimmed,
             accent,
+            param: ParamRef::Module(k),
         };
         if let Some(value) = knob_cell(v, Id::unique(("mknob", id, k)), spec, p.get(k), cell) {
             p.set(k, value);
         }
     }
+    button
 }
 
 /// Long name of a mode, for tooltips and readouts.
@@ -140,6 +211,7 @@ fn mode_name(kind: ModuleKind, i: usize) -> &'static str {
         ModuleKind::Resonator => resonator::MATERIALS.get(i).map(|m| m.0),
         ModuleKind::Filter => filter::MODE_NAMES.get(i).copied(),
         ModuleKind::Granular => ["Forward", "Reverse", "Both directions"].get(i).copied(),
+        ModuleKind::MidiCc => ["Unipolar 0…1", "Bipolar ±1"].get(i).copied(),
         _ => kind.def().modes.get(i).copied(),
     }
     .unwrap_or("")
@@ -153,6 +225,24 @@ pub fn summary(p: &ModuleParams) -> String {
 fn readout(kind: ModuleKind, p: &ModuleParams) -> (String, String) {
     let mode = mode_name(kind, p.mode());
     match kind {
+        ModuleKind::MidiCc => {
+            let (channel, number) = midi_cc::address(p);
+            let learning = p.toggled();
+            let sub = if learning {
+                "Move a controller…".to_owned()
+            } else {
+                let ch = if channel == 0 { "Omni".to_owned() } else { format!("Ch {channel}") };
+                format!("{ch} · {:+.2}", p.viz[midi_cc::VALUE].get())
+            };
+            (format!("CC {number}"), sub)
+        }
+        ModuleKind::MidiNote => {
+            let note = p.viz[midi_note::NOTE].get();
+            let main = if note < 0.0 { "—".to_owned() } else { note_name(note_hz(note)) };
+            let channel = midi_note::channel(p);
+            let ch = if channel == 0 { "Omni".to_owned() } else { format!("Ch {channel}") };
+            (main, format!("{ch} · play a key"))
+        }
         ModuleKind::Drone => {
             let f = p.get(drone::PITCH);
             (format_hz(f), format!("{} · {mode}", note_name(f)))
@@ -277,7 +367,7 @@ fn drone_display(s: &Screen, p: &ModuleParams) {
 }
 
 /// Recent output values, newest on the right.
-fn random_display(s: &Screen, m: &ModuleNode) {
+fn trace_display(s: &Screen, m: &ModuleNode) {
     s.center_line();
     let r = s.rect;
     let n = m.trace.len();

@@ -4,5 +4,6 @@ pub mod groups;
 pub mod modules;
 pub mod monitor;
 pub mod nodes;
+pub mod palette;
 pub mod theme;
 pub mod widgets;
