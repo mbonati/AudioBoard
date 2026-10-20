@@ -3,15 +3,19 @@
 //! ports, optional mode selector and toggle), stores its settings in the
 //! generic [`ModuleParams`] and has a single stereo output.
 
+pub mod arpeggiator;
 pub mod delay;
 pub mod drone;
 pub mod filter;
 pub mod granular;
 pub mod midi_cc;
+pub mod midi_in;
 pub mod midi_note;
 pub mod random;
 pub mod resonator;
 pub mod reverb;
+pub mod sequencer;
+pub mod steps;
 
 use std::f32::consts::PI;
 use std::sync::Arc;
@@ -32,6 +36,9 @@ pub enum ModuleKind {
     Reverb,
     MidiCc,
     MidiNote,
+    Sequencer,
+    Arpeggiator,
+    MidiIn,
 }
 
 /// Static description of a module's panel and ports.
@@ -51,14 +58,25 @@ pub struct ModuleDef {
     pub modes: &'static [&'static str],
     /// Label of the on/off switch, if any.
     pub toggle: Option<&'static str>,
+    /// The switch starts on.
+    pub toggle_default: bool,
     /// Can drive any knob directly (MIDI nodes): shows a MAP button.
     pub map: bool,
+    /// Takes MIDI on a MIDI cable.
+    pub midi_in: bool,
+    /// Sends MIDI on a MIDI cable.
+    pub midi_out: bool,
+    /// Extra values kept with the settings (a sequencer's steps), with
+    /// their defaults.
+    pub data: &'static [f32],
+    /// Height of the display, in node units.
+    pub display_h: f32,
     /// Number of values the processor publishes for the node's display.
     pub viz: usize,
 }
 
 impl ModuleKind {
-    pub const ALL: [ModuleKind; 9] = [
+    pub const ALL: [ModuleKind; 12] = [
         ModuleKind::Drone,
         ModuleKind::Random,
         ModuleKind::Granular,
@@ -68,6 +86,9 @@ impl ModuleKind {
         ModuleKind::Reverb,
         ModuleKind::MidiCc,
         ModuleKind::MidiNote,
+        ModuleKind::Sequencer,
+        ModuleKind::Arpeggiator,
+        ModuleKind::MidiIn,
     ];
 
     pub fn def(self) -> &'static ModuleDef {
@@ -81,6 +102,9 @@ impl ModuleKind {
             ModuleKind::Reverb => &reverb::DEF,
             ModuleKind::MidiCc => &midi_cc::DEF,
             ModuleKind::MidiNote => &midi_note::DEF,
+            ModuleKind::Sequencer => &sequencer::DEF,
+            ModuleKind::Arpeggiator => &arpeggiator::DEF,
+            ModuleKind::MidiIn => &midi_in::DEF,
         }
     }
 
@@ -99,6 +123,9 @@ impl ModuleKind {
             ModuleKind::Reverb => Box::new(reverb::Reverb::new(params, sample_rate)),
             ModuleKind::MidiCc => Box::new(midi_cc::MidiCc::new(params, midi, sample_rate)),
             ModuleKind::MidiNote => Box::new(midi_note::MidiNote::new(params, midi, sample_rate)),
+            ModuleKind::Sequencer => Box::new(sequencer::Sequencer::new(params)),
+            ModuleKind::Arpeggiator => Box::new(arpeggiator::Arpeggiator::new(params, midi)),
+            ModuleKind::MidiIn => Box::new(midi_in::MidiIn::new(params, midi)),
         }
     }
 }
@@ -113,6 +140,8 @@ pub struct ModuleParams {
     pub meter: AtomicF32,
     /// Values published by the processor for the node's display.
     pub viz: Box<[AtomicF32]>,
+    /// Extra settings beyond the knobs (`ModuleDef::data`), saved too.
+    pub data: Box<[AtomicF32]>,
 }
 
 impl ModuleParams {
@@ -122,9 +151,10 @@ impl ModuleParams {
             kind,
             values: def.params.iter().map(|p| AtomicF32::new(p.default)).collect(),
             mode: AtomicU32::new(0),
-            toggle: AtomicBool::new(false),
+            toggle: AtomicBool::new(def.toggle_default),
             meter: AtomicF32::new(0.0),
             viz: (0..def.viz).map(|_| AtomicF32::new(0.0)).collect(),
+            data: def.data.iter().map(|&v| AtomicF32::new(v)).collect(),
         }
     }
 
@@ -160,6 +190,9 @@ impl ModuleParams {
         }
         p.set_mode(self.mode());
         p.set_toggle(self.toggled());
+        for (dst, src) in p.data.iter().zip(&self.data) {
+            dst.set(src.get());
+        }
         p
     }
 }

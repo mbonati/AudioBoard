@@ -3,7 +3,7 @@
 //! then a grid of knobs. Only the readout and the display are per kind.
 
 use egui::epaint::{Mesh, Vertex, WHITE_UV};
-use egui::{Align2, Color32, Id, Painter, Pos2, Rect, Shape, Stroke, Vec2, pos2, vec2};
+use egui::{Align2, Color32, CursorIcon, Id, Painter, Pos2, Rect, Sense, Shape, Stroke, StrokeKind, Vec2, pos2, vec2};
 
 use super::nodes::{KnobCell, NodeView, knob_cell, note_name, segmented};
 use super::theme::{self, alpha};
@@ -11,18 +11,17 @@ use super::widgets;
 use crate::audio::engine::NodeId;
 use crate::audio::midi::note_hz;
 use crate::audio::modules::{
-    ModuleDef, ModuleKind, ModuleParams, delay, drone, filter, granular, midi_cc, midi_note, random, resonator,
-    reverb,
+    ModuleDef, ModuleKind, ModuleParams, arpeggiator, delay, drone, filter, granular, midi_cc, midi_in, midi_note,
+    random, resonator, reverb, sequencer, steps,
 };
-use crate::audio::params::{format_hz, format_seconds};
+use crate::audio::params::{DIVISIONS, format_hz, format_seconds};
 use crate::graph::{ModuleNode, ParamRef};
 
 const PAD: f32 = 12.0;
 const COL_W: f32 = 64.0;
 const PORT_Y: f32 = 42.0;
 const PORT_DY: f32 = 18.0;
-const DISPLAY_Y: [f32; 2] = [72.0, 114.0];
-const SELECTOR_Y: [f32; 2] = [120.0, 140.0];
+const DISPLAY_TOP: f32 = 72.0;
 const ROW_H: f32 = 58.0;
 
 fn columns(def: &ModuleDef) -> usize {
@@ -33,9 +32,19 @@ fn columns(def: &ModuleDef) -> usize {
     }
 }
 
+fn display_bottom(def: &ModuleDef) -> f32 {
+    DISPLAY_TOP + def.display_h
+}
+
+/// Node-local top and bottom of the mode selector row.
+fn selector_y(def: &ModuleDef) -> [f32; 2] {
+    let d = display_bottom(def);
+    [d + 6.0, d + 26.0]
+}
+
 /// Node-local y of the first knob row's labels.
 fn knobs_top(def: &ModuleDef) -> f32 {
-    if def.modes.is_empty() && !def.map { 132.0 } else { 156.0 }
+    display_bottom(def) + if def.modes.is_empty() && !def.map { 18.0 } else { 42.0 }
 }
 
 pub fn size(def: &ModuleDef) -> Vec2 {
@@ -71,13 +80,15 @@ pub struct MapButton {
     pub rect: Option<Rect>,
 }
 
+/// `ports` says which audio inputs and outputs are patched, `midi` whether
+/// the MIDI input and output are.
 pub fn draw(
     v: &NodeView,
     id: NodeId,
     accent: Color32,
     m: &ModuleNode,
-    inputs: &[bool],
-    outputs: &[bool],
+    (inputs, outputs): (&[bool], &[bool]),
+    midi: (bool, bool),
     map: MapState,
 ) -> MapButton {
     let p = &m.params;
@@ -95,6 +106,14 @@ pub fn draw(
     for (i, label) in def.outputs.iter().enumerate() {
         let on = outputs.get(i).copied().unwrap_or(false);
         v.text(w - PAD, PORT_Y + PORT_DY * i as f32, Align2::RIGHT_CENTER, label, v.font(9.0), label_col(on));
+    }
+    if def.midi_in {
+        let y = PORT_Y + PORT_DY * def.inputs.len() as f32;
+        v.text(PAD, y, Align2::LEFT_CENTER, "MIDI", v.font(9.0), label_col(midi.0));
+    }
+    if def.midi_out {
+        let y = PORT_Y + PORT_DY * def.outputs.len() as f32;
+        v.text(w - PAD, y, Align2::RIGHT_CENTER, "MIDI", v.font(9.0), label_col(midi.1));
     }
 
     // Readout.
@@ -129,7 +148,7 @@ pub fn draw(
     }
 
     // Display.
-    let rect = v.r(PAD, DISPLAY_Y[0], w - PAD, DISPLAY_Y[1]);
+    let rect = v.r(PAD, DISPLAY_TOP, w - PAD, display_bottom(def));
     v.painter.rect_filled(rect, 4.0 * z, theme::INSET);
     let painter = v.painter.with_clip_rect(rect.intersect(v.painter.clip_rect()));
     let screen = Screen {
@@ -146,6 +165,8 @@ pub fn draw(
         ModuleKind::Filter => filter_display(&screen, p),
         ModuleKind::Delay => delay_display(&screen, p),
         ModuleKind::Reverb => reverb_display(&screen, p),
+        ModuleKind::Sequencer => step_grid(v, id, &screen, p),
+        ModuleKind::Arpeggiator | ModuleKind::MidiIn => keys_display(&screen, p),
     }
 
     // Mode selector, and the MAP button for MIDI nodes.
@@ -153,7 +174,8 @@ pub fn draw(
     let mut modes_right = w - PAD;
     if def.map {
         let left = if def.modes.is_empty() { PAD } else { w - PAD - 76.0 };
-        let rect = v.r(left, SELECTOR_Y[0], w - PAD, SELECTOR_Y[1]);
+        let [top, bottom] = selector_y(def);
+        let rect = v.r(left, top, w - PAD, bottom);
         let label = if map.picking {
             "PICK…"
         } else if map.target.is_some() {
@@ -174,7 +196,8 @@ pub fn draw(
         modes_right = left - 4.0;
     }
     if !def.modes.is_empty() {
-        let bar = v.r(PAD, SELECTOR_Y[0], modes_right, SELECTOR_Y[1]);
+        let [top, bottom] = selector_y(def);
+        let bar = v.r(PAD, top, modes_right, bottom);
         let picked = segmented(v, ("mode", id), bar, def.modes.len(), p.mode(), accent, |i, seg, col| {
             v.painter.text(seg.center(), Align2::CENTER_CENTER, def.modes[i], v.font(8.5), col);
             mode_name(kind, i)
@@ -212,6 +235,8 @@ fn mode_name(kind: ModuleKind, i: usize) -> &'static str {
         ModuleKind::Filter => filter::MODE_NAMES.get(i).copied(),
         ModuleKind::Granular => ["Forward", "Reverse", "Both directions"].get(i).copied(),
         ModuleKind::MidiCc => ["Unipolar 0…1", "Bipolar ±1"].get(i).copied(),
+        ModuleKind::Sequencer => sequencer::SCALES.get(i).map(|s| s.0),
+        ModuleKind::Arpeggiator => arpeggiator::MODE_NAMES.get(i).copied(),
         _ => kind.def().modes.get(i).copied(),
     }
     .unwrap_or("")
@@ -242,6 +267,31 @@ fn readout(kind: ModuleKind, p: &ModuleParams) -> (String, String) {
             let channel = midi_note::channel(p);
             let ch = if channel == 0 { "Omni".to_owned() } else { format!("Ch {channel}") };
             (main, format!("{ch} · play a key"))
+        }
+        ModuleKind::Sequencer => {
+            let step = p.viz[sequencer::STEP].get();
+            let note = p.viz[sequencer::NOTE].get();
+            let main = if step < 0.0 {
+                "Stopped".to_owned()
+            } else if note < 0.0 {
+                "—".to_owned()
+            } else {
+                note_name(note_hz(note))
+            };
+            let root = crate::audio::params::NOTE_NAMES[p.get(sequencer::ROOT).round() as usize % 12];
+            (main, format!("{root} {} · {}", mode.to_lowercase(), division(p.get(sequencer::RATE))))
+        }
+        ModuleKind::Arpeggiator => {
+            let octaves = p.get(arpeggiator::OCTAVES).round();
+            let oct = if octaves > 1.0 { format!(" · {octaves:.0} oct") } else { String::new() };
+            (current_note(p), format!("{mode} · {}{oct}", division(p.get(arpeggiator::RATE))))
+        }
+        ModuleKind::MidiIn => {
+            let channel = p.get(midi_in::CHANNEL).round();
+            let ch = if channel < 1.0 { "Omni".to_owned() } else { format!("Ch {channel:.0}") };
+            let t = p.get(midi_in::TRANSPOSE).round();
+            let sub = if t == 0.0 { format!("{ch} · play a key") } else { format!("{ch} · {t:+.0} st") };
+            (current_note(p), sub)
         }
         ModuleKind::Drone => {
             let f = p.get(drone::PITCH);
@@ -294,6 +344,16 @@ fn readout(kind: ModuleKind, p: &ModuleParams) -> (String, String) {
             (main, room.to_owned())
         }
     }
+}
+
+fn division(rate: f32) -> &'static str {
+    DIVISIONS[(rate.round().max(0.0) as usize).min(DIVISIONS.len() - 1)].0
+}
+
+/// The note a MIDI generator is sounding, or "—".
+fn current_note(p: &ModuleParams) -> String {
+    let note = p.viz[steps::viz::CURRENT].get();
+    if note < 0.0 { "—".to_owned() } else { note_name(note_hz(note)) }
 }
 
 // ---------------------------------------------------------------------------
@@ -522,4 +582,136 @@ fn reverb_display(s: &Screen, p: &ModuleParams) {
         })
         .collect();
     s.area(pts);
+}
+
+/// The sequencer's steps: one column each, the lit cell at its degree.
+/// Click a cell to move the step there (or, on its lit cell, to switch it
+/// on or off); drag across to draw a melody.
+fn step_grid(v: &NodeView, id: NodeId, s: &Screen, p: &ModuleParams) {
+    use sequencer::{DEGREE_MAX, LEN};
+    let r = s.rect;
+    let z = s.z;
+    let col_w = r.width() / LEN as f32;
+    let cell_h = r.height() / (DEGREE_MAX + 1) as f32;
+    let cell_at = |pos: Pos2| {
+        let step = (((pos.x - r.left()) / col_w).max(0.0) as usize).min(LEN - 1);
+        let degree = (((r.bottom() - pos.y) / cell_h).max(0.0) as usize).min(DEGREE_MAX);
+        (step, degree)
+    };
+    let resp = v
+        .ui
+        .interact(r, Id::unique(("steps", id)), Sense::CLICK | Sense::DRAG)
+        .on_hover_cursor(CursorIcon::Crosshair);
+    if let Some(pos) = resp.interact_pointer_pos() {
+        let (step, degree) = cell_at(pos);
+        if resp.clicked() && degree == sequencer::degree(p, step) {
+            sequencer::set_on(p, step, !sequencer::is_on(p, step));
+        } else if resp.clicked() || resp.dragged() {
+            sequencer::set_degree(p, step, degree);
+            sequencer::set_on(p, step, true);
+        }
+    }
+
+    // Rows of the root note, one per octave of the scale.
+    let scale_len = sequencer::SCALES[p.mode().min(sequencer::SCALES.len() - 1)].1.len();
+    for degree in (0..=DEGREE_MAX).step_by(scale_len) {
+        let y = r.bottom() - cell_h * (degree as f32 + 0.5);
+        s.p.hline(r.x_range(), y, Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.18)));
+    }
+    let len = sequencer::length(p);
+    let playing = p.viz[sequencer::STEP].get();
+    for i in 0..LEN {
+        let x0 = r.left() + col_w * i as f32;
+        if i % 4 == 0 && i > 0 {
+            s.p.vline(x0, r.y_range(), Stroke::new(1.0 * z, theme::GRID_MAJOR));
+        }
+        let column = Rect::from_x_y_ranges(x0..=x0 + col_w, r.y_range());
+        let now = playing >= 0.0 && playing.round() as usize == i;
+        if now {
+            s.p.rect_filled(column, 0.0, alpha(theme::TEXT, 0.07));
+        }
+        let degree = sequencer::degree(p, i);
+        let cell = Rect::from_x_y_ranges(
+            x0 + 1.5 * z..=x0 + col_w - 1.5 * z,
+            r.bottom() - cell_h * (degree + 1) as f32 + 0.5 * z..=r.bottom() - cell_h * degree as f32 - 0.5 * z,
+        );
+        let active = if i < len { 1.0 } else { 0.3 };
+        if sequencer::is_on(p, i) {
+            let stem = Rect::from_x_y_ranges(cell.x_range(), cell.bottom()..=r.bottom());
+            s.p.rect_filled(stem, 0.0, alpha(s.accent, 0.12 * active));
+            let color = if now { theme::mix(s.accent, Color32::WHITE, 0.45) } else { alpha(s.accent, 0.9 * active) };
+            s.p.rect_filled(cell, 1.0 * z, color);
+        } else {
+            s.p.rect_stroke(cell, 1.0 * z, Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.8 * active)), StrokeKind::Inside);
+        }
+    }
+
+    // The note under the pointer.
+    if let Some(pos) = resp.hover_pos() {
+        let (step, degree) = cell_at(pos);
+        let label = format!("{} · {}", step + 1, note_name(note_hz(sequencer::note_of(p, degree) as f32)));
+        s.p.text(
+            r.left_top() + vec2(2.0, 1.0) * z,
+            Align2::LEFT_TOP,
+            label,
+            egui::FontId::monospace(9.0 * z),
+            theme::TEXT,
+        );
+    }
+}
+
+/// A keyboard with the held notes lit and the one sounding brightest.
+fn keys_display(s: &Screen, p: &ModuleParams) {
+    use steps::viz;
+    let r = s.rect;
+    let z = s.z;
+    let count = (p.viz[viz::COUNT].get() as usize).min(viz::SHOWN);
+    let held: Vec<i32> = p.viz[viz::NOTES..viz::NOTES + count].iter().map(|n| n.get() as i32).collect();
+    let current = p.viz[viz::CURRENT].get();
+    let current = (current >= 0.0).then_some(current as i32);
+    // Whole octaves around the notes: three at least, five at most.
+    let lowest = held.iter().chain(&current).copied().min().unwrap_or(48);
+    let highest = held.iter().chain(&current).copied().max().unwrap_or(48);
+    let lo = lowest.div_euclid(12) * 12;
+    let hi = (lo + 36).max((highest.div_euclid(12) + 1) * 12).min(lo + 60);
+    let is_black = |n: i32| matches!(n.rem_euclid(12), 1 | 3 | 6 | 8 | 10);
+    let whites = (lo..hi).filter(|&n| !is_black(n)).count().max(1);
+    let key_w = r.width() / whites as f32;
+    let fill = |n: i32, base: Color32| {
+        if current == Some(n) {
+            s.accent
+        } else if held.contains(&n) {
+            alpha(s.accent, 0.45)
+        } else {
+            base
+        }
+    };
+    let mut x = r.left();
+    for n in lo..hi {
+        if is_black(n) {
+            continue;
+        }
+        let key = Rect::from_x_y_ranges(x + 0.5 * z..=x + key_w - 0.5 * z, r.y_range());
+        s.p.rect_filled(key, 1.0 * z, fill(n, theme::CONTROL_HI));
+        if n % 12 == 0 && key_w > 6.0 * z {
+            let octave = n / 12 - 1;
+            s.p.text(
+                pos2(key.center().x, key.bottom() - 1.0 * z),
+                Align2::CENTER_BOTTOM,
+                format!("{octave}"),
+                egui::FontId::proportional(7.0 * z),
+                theme::INSET,
+            );
+        }
+        x += key_w;
+    }
+    let mut x = r.left();
+    for n in lo..hi {
+        if !is_black(n) {
+            x += key_w;
+            continue;
+        }
+        let key = Rect::from_center_size(pos2(x, r.top() + r.height() * 0.3), vec2(key_w * 0.6, r.height() * 0.6));
+        s.p.rect_filled(key, 1.0 * z, fill(n, theme::INSET));
+    }
 }

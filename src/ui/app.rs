@@ -15,7 +15,7 @@ use super::plugin_node;
 use super::theme::{self, alpha};
 use crate::audio::engine::{BLOCK, NodeId};
 use crate::audio::modules::{ModuleKind, ModuleParams, delay, drone, filter, granular, random, reverb};
-use crate::audio::params::{EngineShared, Waveform};
+use crate::audio::params::{DEFAULT_TEMPO, EngineShared, TEMPO_RANGE, Waveform};
 use crate::audio::midi::MidiInputs;
 use crate::audio::{self, AudioHandle};
 use crate::graph::{Graph, NodeKind, PortRef};
@@ -494,6 +494,9 @@ impl AudioBoardApp {
                 if power_button(ui, self.running()).on_hover_text("Space").clicked() {
                     self.toggle_running();
                 }
+                ui.add_space(6.0);
+                let beat = self.running().then(|| self.shared.beat.get());
+                tempo_field(ui, &mut self.graph.tempo, beat);
                 ui.add_space(8.0);
                 if icon_button(ui, Icon::Monitor, self.show_monitor)
                     .on_hover_text(if self.show_monitor { "Hide analyzers" } else { "Show analyzers" })
@@ -642,6 +645,7 @@ impl eframe::App for AudioBoardApp {
         let (dt, now) = ui.input(|i| (i.stable_dt.min(0.1), i.time));
         self.file_shortcuts(ui, now);
         self.poll_midi(ui, now);
+        self.shared.tempo.set(self.graph.tempo);
         for node in &mut self.graph.nodes {
             node.update_meters(dt);
         }
@@ -949,6 +953,57 @@ fn power_button(ui: &mut Ui, on: bool) -> Response {
         text,
     );
     resp.on_hover_cursor(CursorIcon::PointingHand)
+}
+
+/// The global tempo: drag to change it (Shift: fine), double-click for the
+/// default. The light flashes on every beat while audio runs.
+fn tempo_field(ui: &mut Ui, tempo: &mut f32, beat: Option<f32>) -> Response {
+    let (rect, resp) = ui.allocate_exact_size(vec2(84.0, 24.0), Sense::CLICK | Sense::DRAG);
+    let resp = resp
+        .on_hover_cursor(CursorIcon::ResizeVertical)
+        .on_hover_text("Tempo for sequencers, arpeggiators and synced plugins\nDrag to change · Shift: fine · double-click: reset");
+    if resp.dragged() {
+        let fine = ui.input(|i| i.modifiers.shift);
+        let d = resp.drag_delta();
+        let step = if fine { 0.05 } else { 0.4 };
+        let (slowest, fastest) = TEMPO_RANGE;
+        *tempo = (*tempo + (d.x - d.y) * step).clamp(slowest, fastest);
+    }
+    if resp.double_clicked() {
+        *tempo = DEFAULT_TEMPO;
+    }
+    if !resp.dragged() {
+        *tempo = (*tempo * 10.0).round() / 10.0;
+    }
+    let p = ui.painter();
+    let hot = resp.hovered() || resp.dragged();
+    p.rect(
+        rect,
+        12.0,
+        if hot { theme::CONTROL } else { Color32::TRANSPARENT },
+        Stroke::new(1.0, theme::NODE_BORDER),
+        StrokeKind::Inside,
+    );
+    // Bright on the beat, fading over it.
+    let flash = beat.map_or(0.0, |b| (1.0 - b.fract() * 4.0).max(0.0));
+    let dot = theme::mix(theme::TEXT_FAINT, theme::ACCENT, flash);
+    p.circle_filled(pos2(rect.left() + 13.0, rect.center().y), 3.0, dot);
+    let text = if tempo.fract() == 0.0 { format!("{tempo:.0}") } else { format!("{tempo:.1}") };
+    let galley = p.layout_no_wrap(text, FontId::monospace(11.5), theme::TEXT);
+    let x = rect.left() + 23.0;
+    let w = galley.size().x;
+    p.galley(pos2(x, rect.center().y - galley.size().y * 0.5), galley, theme::TEXT);
+    p.text(
+        pos2(x + w + 4.0, rect.center().y + 0.5),
+        Align2::LEFT_CENTER,
+        "BPM",
+        FontId::proportional(9.5),
+        theme::TEXT_FAINT,
+    );
+    if beat.is_some() {
+        ui.ctx().request_repaint();
+    }
+    resp
 }
 
 fn shortcuts(ui: &mut Ui) {

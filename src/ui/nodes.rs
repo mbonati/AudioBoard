@@ -214,16 +214,20 @@ fn summary(node: &Node) -> String {
     }
 }
 
-/// Body of a collapsed node: port labels and the main value.
-pub fn collapsed(v: &NodeView, node: &Node, inputs: &[bool], output: bool) {
+/// Body of a collapsed node: port labels and the main value. `inputs` and
+/// `outputs` say which of [`Node::input_ports`] / [`Node::output_ports`]
+/// are patched.
+pub fn collapsed(v: &NodeView, node: &Node, inputs: &[bool], outputs: &[bool]) {
     let row_y = |i: usize| COLLAPSED_ROW0 + COLLAPSED_ROW_H * i as f32;
     let label_col = |on: bool| if on { theme::TEXT_DIM } else { theme::TEXT_FAINT };
-    for (i, label) in node.inputs().iter().enumerate() {
+    for (i, port) in node.input_ports().into_iter().enumerate() {
         let on = inputs.get(i).copied().unwrap_or(false);
-        v.text(12.0, row_y(i), Align2::LEFT_CENTER, label, v.font(9.0), label_col(on));
+        v.text(12.0, row_y(i), Align2::LEFT_CENTER, node.port_label(port, false), v.font(9.0), label_col(on));
     }
-    for (i, label) in node.outputs().iter().enumerate() {
-        v.text(COLLAPSED_W - 12.0, row_y(i), Align2::RIGHT_CENTER, label, v.font(9.0), label_col(output));
+    for (i, port) in node.output_ports().into_iter().enumerate() {
+        let on = outputs.get(i).copied().unwrap_or(false);
+        let label = node.port_label(port, true);
+        v.text(COLLAPSED_W - 12.0, row_y(i), Align2::RIGHT_CENTER, label, v.font(9.0), label_col(on));
     }
     v.text(COLLAPSED_W * 0.5, row_y(0), Align2::CENTER_CENTER, summary(node), v.mono(10.5), theme::TEXT);
     // The mixer is the output: keep its master meters in view.

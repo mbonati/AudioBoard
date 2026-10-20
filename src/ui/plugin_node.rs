@@ -1,6 +1,7 @@
-//! The panel of a VST3 plugin node: ports, name and maker, buttons for the
-//! plugin's own editor, its parameter list and MIDI input, and knobs for up
-//! to eight parameters.
+//! The panel of a VST3 plugin node: ports (audio, and MIDI for plugins that
+//! take it), name and maker, buttons for the plugin's own editor, its
+//! parameter list and the MIDI keyboard, and knobs for up to eight
+//! parameters.
 
 use egui::{Align2, Color32, Id, Popup, PopupCloseBehavior, RichText, ScrollArea, Vec2, vec2};
 
@@ -44,7 +45,7 @@ pub fn draw(
     id: NodeId,
     accent: Color32,
     p: &mut PluginNode,
-    input: bool,
+    (input, midi_in): (bool, bool),
     output: bool,
     now: f64,
 ) -> PluginEvents {
@@ -55,11 +56,15 @@ pub fn draw(
     if p.meta.inputs > 0 {
         v.text(PAD, PORT_Y, Align2::LEFT_CENTER, "IN", v.font(9.0), col(input));
     }
+    if p.meta.midi {
+        let y = if p.meta.inputs > 0 { PORT_Y + PORT_DY } else { PORT_Y };
+        v.text(PAD, y, Align2::LEFT_CENTER, "MIDI", v.font(9.0), col(midi_in));
+    }
     v.text(w - PAD, PORT_Y, Align2::RIGHT_CENTER, "OUT", v.font(9.0), col(output));
     v.text(w * 0.5, PORT_Y, Align2::CENTER_CENTER, category_label(&p.meta.category), v.font(11.0), theme::TEXT);
     v.text(w * 0.5, PORT_Y + PORT_DY, Align2::CENTER_CENTER, &p.meta.vendor, v.font(9.5), theme::TEXT_DIM);
 
-    // Buttons: EDITOR · PARAMS · MIDI IN.
+    // Buttons: EDITOR · PARAMS · KEYBOARD.
     let gap = 6.0;
     let bw = (w - 2.0 * PAD - 2.0 * gap) / 3.0;
     let slot = |k: usize| {
@@ -72,8 +77,12 @@ pub fn draw(
     let params = widgets::toggle(v.ui, v.painter, Id::unique(("plug_params", id)), slot(1), "PARAMS", false, accent, z)
         .on_hover_text("All parameters; pin up to eight as knobs");
     let midi_on = p.shared.midi_in.load(std::sync::atomic::Ordering::Relaxed);
-    let midi = widgets::toggle(v.ui, v.painter, Id::unique(("plug_midi", id)), slot(2), "MIDI IN", midi_on, accent, z)
-        .on_hover_text("Play it from the MIDI keyboard");
+    let midi = widgets::toggle(v.ui, v.painter, Id::unique(("plug_midi", id)), slot(2), "KEYBOARD", midi_on, accent, z)
+        .on_hover_text(if p.meta.midi {
+            "Play it from the MIDI keyboard (or patch a sequencer into its MIDI port)"
+        } else {
+            "Send the MIDI keyboard to it"
+        });
     if midi.clicked() {
         p.shared.midi_in.store(!midi_on, std::sync::atomic::Ordering::Relaxed);
     }

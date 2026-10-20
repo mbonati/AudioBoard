@@ -19,7 +19,7 @@ use super::theme::{self, alpha};
 use super::widgets;
 use crate::audio::AudioHandle;
 use crate::audio::engine::NodeId;
-use crate::graph::{Cable, Graph, Group, GroupId, NodeKind, NodeType, PortRef, Target};
+use crate::graph::{Cable, Graph, Group, GroupId, MIDI_PORT, NodeKind, NodeType, PortRef, Target, is_midi};
 use crate::project::{self, Preset};
 
 const GRID: f32 = 24.0;
@@ -488,10 +488,10 @@ impl Editor {
         let mut in_pos: HashMap<PortRef, Pos2> = HashMap::new();
         let mut out_pos: HashMap<PortRef, Pos2> = HashMap::new();
         for n in graph.nodes.iter().filter(|n| !hidden.contains(&n.id)) {
-            for port in 0..n.inputs().len() {
+            for port in n.input_ports() {
                 in_pos.insert(PortRef { node: n.id, port }, self.to_screen(n.input_pos(port)));
             }
-            for port in 0..n.outputs().len() {
+            for port in n.output_ports() {
                 out_pos.insert(PortRef { node: n.id, port }, self.to_screen(n.output_pos(port)));
             }
         }
@@ -510,6 +510,7 @@ impl Editor {
             b: Pos2,
             color: Color32,
             level: f32,
+            midi: bool,
         }
         let wires: Vec<Wire> = graph
             .cables
@@ -522,6 +523,7 @@ impl Editor {
                     b: *in_pos.get(&c.to)?,
                     color: src.accent,
                     level: src.signal_level(),
+                    midi: is_midi(c.to.port),
                 })
             })
             .collect();
@@ -554,11 +556,9 @@ impl Editor {
             let candidates = if d.from_output { &in_pos } else { &out_pos };
             let mut best: Option<(PortRef, Pos2, f32)> = None;
             for (&pr, &pos) in candidates {
-                let valid = if d.from_output {
-                    !graph.would_cycle(d.anchor.node, pr.node)
-                } else {
-                    !graph.would_cycle(pr.node, d.anchor.node)
-                };
+                // MIDI only into MIDI, audio only into audio.
+                let (from, to) = if d.from_output { (d.anchor.node, pr.node) } else { (pr.node, d.anchor.node) };
+                let valid = is_midi(pr.port) == is_midi(d.anchor.port) && !graph.would_cycle(from, to);
                 let dist = (pos - p).length();
                 if valid && dist < 22.0 * z.max(0.8) && best.is_none_or(|b| dist < b.2) {
                     best = Some((pr, pos, dist));
@@ -634,7 +634,7 @@ impl Editor {
 
         // --- Cables ------------------------------------------------------
         for w in &wires {
-            widgets::draw_cable(&painter, w.a, w.b, w.color, w.level, hovered_cable == Some(w.cable), z);
+            widgets::draw_cable(&painter, w.a, w.b, w.color, w.level, hovered_cable == Some(w.cable), w.midi, z);
         }
 
         // --- Nodes -------------------------------------------------------
@@ -691,22 +691,27 @@ impl Editor {
                 actions.push(Action::ToggleCollapse(id));
             }
 
-            let in_count = node.inputs().len();
-            let sources: Vec<Option<(Color32, String)>> = (0..in_count)
+            let in_ports = node.input_ports();
+            let out_ports = node.output_ports();
+            let sources: Vec<Option<(Color32, String)>> = (0..node.inputs().len())
                 .map(|i| inputs.get(&PortRef { node: id, port: i }).map(|(_, c, n)| (*c, n.clone())))
                 .collect();
             let accent = node.accent;
             let connected: Vec<bool> = sources.iter().map(Option::is_some).collect();
             let out = outputs.contains(&PortRef { node: id, port: 0 });
+            let midi_in = inputs.contains_key(&PortRef { node: id, port: MIDI_PORT });
+            let midi_out = outputs.contains(&PortRef { node: id, port: MIDI_PORT });
             if collapsed {
-                nodes::collapsed(&view, node, &connected, out);
+                let ins: Vec<bool> = in_ports.iter().map(|&port| inputs.contains_key(&PortRef { node: id, port })).collect();
+                let outs: Vec<bool> = out_ports.iter().map(|&port| outputs.contains(&PortRef { node: id, port })).collect();
+                nodes::collapsed(&view, node, &ins, &outs);
             } else {
                 match &mut node.kind {
                     NodeKind::Osc(o) => nodes::osc(&view, id, accent, o, &connected, out),
                     NodeKind::Mixer(m) => nodes::mixer(&view, id, accent, m, &sources),
                     NodeKind::Plugin(p) => {
                         let input = connected.first().copied().unwrap_or(false);
-                        let events = plugin_node::draw(&view, id, accent, p, input, out, now);
+                        let events = plugin_node::draw(&view, id, accent, p, (input, midi_in), out, now);
                         if events.toggle_editor
                             && let Err(e) = p.toggle_editor()
                         {
@@ -717,12 +722,13 @@ impl Editor {
                         let outs: Vec<bool> = (0..m.params.kind.def().outputs.len())
                             .map(|port| outputs.contains(&PortRef { node: id, port }))
                             .collect();
+                        let midi = (midi_in, midi_out);
                         let picking = self.mapping == Some(id);
                         let map = modules::MapState {
                             target: target_labels.get(&id).map(String::as_str),
                             picking,
                         };
-                        let button = modules::draw(&view, id, accent, m, &connected, &outs, map);
+                        let button = modules::draw(&view, id, accent, m, (&connected, &outs), midi, map);
                         if button.clicked {
                             actions.push(if picking {
                                 Action::CancelMapping
@@ -740,11 +746,11 @@ impl Editor {
             }
 
             // Ports last so they sit on top of everything else in the node.
-            for port in 0..in_count {
+            for port in in_ports {
                 let pr = PortRef { node: id, port };
                 self.port(ui, &painter, pr, true, in_pos[&pr], accent, &ctx, &mut actions);
             }
-            for port in 0..node.outputs().len() {
+            for port in out_ports {
                 let pr = PortRef { node: id, port };
                 self.port(ui, &painter, pr, false, out_pos[&pr], accent, &ctx, &mut actions);
             }
@@ -787,7 +793,7 @@ impl Editor {
                 let end = drop_target.map_or(p, |(_, pos)| pos);
                 let (a, b) = if d.from_output { (anchor, end) } else { (end, anchor) };
                 let color = if drop_target.is_some() { src.accent } else { alpha(src.accent, 0.7) };
-                widgets::draw_cable(&painter, a, b, color, 0.0, drop_target.is_some(), z);
+                widgets::draw_cable(&painter, a, b, color, 0.0, drop_target.is_some(), is_midi(d.anchor.port), z);
                 if drop_target.is_none() {
                     painter.circle_filled(p, 3.0 * z, color);
                 }
@@ -1080,12 +1086,12 @@ impl Editor {
                 });
             }
             let color = existing.map_or(accent, |(_, c, _)| *c);
-            widgets::port(painter, c, existing.is_some(), hot, color, z);
+            widgets::port(painter, c, existing.is_some(), hot, color, is_midi(pr.port), z);
         } else {
             if resp.drag_started() {
                 self.drag = Some(CableDrag { anchor: pr, from_output: true });
             }
-            widgets::port(painter, c, ctx.outputs.contains(&pr), hot, accent, z);
+            widgets::port(painter, c, ctx.outputs.contains(&pr), hot, accent, is_midi(pr.port), z);
         }
     }
 

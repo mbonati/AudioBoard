@@ -304,8 +304,8 @@ fn block_geometry(
     };
     let node_ports = |id: NodeId| -> Vec<(PortRef, bool, Pos2)> {
         let Some(n) = graph.node(id) else { return Vec::new() };
-        let ins = (0..n.inputs().len()).map(|port| (PortRef { node: id, port }, false));
-        let outs = (0..n.outputs().len()).map(|port| (PortRef { node: id, port }, true));
+        let ins = n.input_ports().into_iter().map(|port| (PortRef { node: id, port }, false));
+        let outs = n.output_ports().into_iter().map(|port| (PortRef { node: id, port }, true));
         ins.chain(outs)
             .filter_map(|(pr, out)| Some((pr, out, port_at(pr, out)?)))
             .collect()

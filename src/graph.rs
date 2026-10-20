@@ -14,11 +14,20 @@ use crate::audio::dsp::{Mixer, Oscillator};
 use crate::audio::engine::{Command, MAX_INPUTS, NodeId, Slot, TopoEntry, Topology};
 use crate::audio::midi::{MidiState, note_hz};
 use crate::audio::modules::{ModuleKind, ModuleParams, midi_cc, midi_note, random};
-use crate::audio::params::{AtomicF32, MIXER_CHANNELS, MixerParams, OSC_PARAMS, OscParams, ParamSpec, Unit, osc};
+use crate::audio::params::{
+    AtomicF32, DEFAULT_TEMPO, MIXER_CHANNELS, MixerParams, OSC_PARAMS, OscParams, ParamSpec, Unit, osc,
+};
 use crate::audio::plugin::{self, Control, Loaded, PluginMeta, PluginParam, PluginProcessor, PluginShared};
 use crate::ui::nodes;
 use crate::ui::theme;
 use crate::ui::widgets::MeterState;
+
+/// Port index of a node's MIDI input or output (audio ports count from 0).
+pub const MIDI_PORT: usize = 64;
+
+pub fn is_midi(port: usize) -> bool {
+    port == MIDI_PORT
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct PortRef {
@@ -65,7 +74,13 @@ impl NodeType {
         ),
         (
             "MIDI",
-            &[NodeType::Module(ModuleKind::MidiCc), NodeType::Module(ModuleKind::MidiNote)],
+            &[
+                NodeType::Module(ModuleKind::Sequencer),
+                NodeType::Module(ModuleKind::Arpeggiator),
+                NodeType::Module(ModuleKind::MidiIn),
+                NodeType::Module(ModuleKind::MidiNote),
+                NodeType::Module(ModuleKind::MidiCc),
+            ],
         ),
         ("Output", &[NodeType::Mixer]),
     ];
@@ -304,7 +319,7 @@ pub struct Node {
 impl Node {
     pub fn size(&self) -> Vec2 {
         if self.collapsed {
-            nodes::collapsed_size(self.inputs().len().max(self.outputs().len()))
+            nodes::collapsed_size(self.input_ports().len().max(self.output_ports().len()))
         } else {
             nodes::type_size(self.kind.node_type())
         }
@@ -329,21 +344,63 @@ impl Node {
         }
     }
 
-    pub fn input_pos(&self, i: usize) -> Pos2 {
+    /// Takes MIDI on a MIDI cable.
+    pub fn midi_in(&self) -> bool {
+        match &self.kind {
+            NodeKind::Module(m) => m.params.kind.def().midi_in,
+            NodeKind::Plugin(p) => p.meta.midi,
+            _ => false,
+        }
+    }
+
+    /// Sends MIDI on a MIDI cable.
+    pub fn midi_out(&self) -> bool {
+        match &self.kind {
+            NodeKind::Module(m) => m.params.kind.def().midi_out,
+            _ => false,
+        }
+    }
+
+    /// Every input port: the audio ones, then MIDI ([`MIDI_PORT`]).
+    pub fn input_ports(&self) -> Vec<usize> {
+        (0..self.inputs().len()).chain(self.midi_in().then_some(MIDI_PORT)).collect()
+    }
+
+    pub fn output_ports(&self) -> Vec<usize> {
+        (0..self.outputs().len()).chain(self.midi_out().then_some(MIDI_PORT)).collect()
+    }
+
+    pub fn port_label(&self, port: usize, output: bool) -> &'static str {
+        let names = if output { self.outputs() } else { self.inputs() };
+        if is_midi(port) { "MIDI" } else { names.get(port).copied().unwrap_or("?") }
+    }
+
+    /// Which row a port sits on: MIDI comes after the audio ports.
+    fn row(&self, port: usize, output: bool) -> usize {
+        match (is_midi(port), output) {
+            (true, false) => self.inputs().len(),
+            (true, true) => self.outputs().len(),
+            (false, _) => port,
+        }
+    }
+
+    pub fn input_pos(&self, port: usize) -> Pos2 {
+        let row = self.row(port, false);
         self.pos
             + if self.collapsed {
-                nodes::collapsed_port(i, false)
+                nodes::collapsed_port(row, false)
             } else {
-                nodes::input_offset(self.kind.node_type(), i)
+                nodes::input_offset(self.kind.node_type(), row)
             }
     }
 
-    pub fn output_pos(&self, i: usize) -> Pos2 {
+    pub fn output_pos(&self, port: usize) -> Pos2 {
+        let row = self.row(port, true);
         self.pos
             + if self.collapsed {
-                nodes::collapsed_port(i, true)
+                nodes::collapsed_port(row, true)
             } else {
-                nodes::output_offset(self.kind.node_type(), i)
+                nodes::output_offset(self.kind.node_type(), row)
             }
     }
 
@@ -451,11 +508,13 @@ enum Write {
     Note(f32),
 }
 
-#[derive(Default)]
 pub struct Graph {
     pub nodes: Vec<Node>,
     pub cables: Vec<Cable>,
     pub groups: Vec<Group>,
+    /// Beats per minute of the global clock (sequencers, arpeggiators,
+    /// tempo-synced plugins); the app passes it to the engine.
+    pub tempo: f32,
     next_id: NodeId,
     next_group: GroupId,
     /// Nodes given a colour so far; each new source/effect takes the next.
@@ -465,6 +524,22 @@ pub struct Graph {
     /// Removed plugins, kept until the audio thread lets go of them so they
     /// are destroyed here, never on the audio thread.
     graveyard: Vec<Arc<PluginShared>>,
+}
+
+impl Default for Graph {
+    fn default() -> Self {
+        Self {
+            nodes: Vec::new(),
+            cables: Vec::new(),
+            groups: Vec::new(),
+            tempo: DEFAULT_TEMPO,
+            next_id: 0,
+            next_group: 0,
+            accent_count: 0,
+            plugin_host: None,
+            graveyard: Vec::new(),
+        }
+    }
 }
 
 impl Graph {
@@ -484,6 +559,7 @@ impl Graph {
         }
         self.groups.clear();
         self.accent_count = 0;
+        self.tempo = DEFAULT_TEMPO;
     }
 
     fn alloc_id(&mut self) -> NodeId {
@@ -838,6 +914,11 @@ impl Graph {
                     let (value, seq) = midi.cc(channel, number);
                     (seq, Write::Norm(value))
                 }
+                ModuleKind::MidiNote if p.viz[midi_note::CABLE].get() > 0.5 => {
+                    // Played from a MIDI cable: the processor reports the notes.
+                    let seq = p.viz[midi_note::SEQ].get() as u32 | 1 << 31;
+                    (seq, Write::Note(p.viz[midi_note::NOTE].get().max(0.0)))
+                }
                 ModuleKind::MidiNote => {
                     let key = midi.note(midi_note::channel(p));
                     (key.seq, Write::Note(midi_note::played_note(p, key.note)))
@@ -959,13 +1040,13 @@ impl Graph {
         let inside = |n: NodeId| g.members.contains(&n);
         let (mut ins, mut outs) = (Vec::new(), Vec::new());
         for node in g.members.iter().filter_map(|m| self.node(*m)) {
-            for port in 0..node.inputs().len() {
+            for port in node.input_ports() {
                 let pr = PortRef { node: node.id, port };
                 if !self.cables.iter().any(|c| c.to == pr && inside(c.from.node)) {
                     ins.push(pr);
                 }
             }
-            for port in 0..node.outputs().len() {
+            for port in node.output_ports() {
                 let pr = PortRef { node: node.id, port };
                 let mut uses = self.cables.iter().filter(|c| c.from == pr).peekable();
                 let used = uses.peek().is_some();
@@ -980,7 +1061,10 @@ impl Graph {
     /// Connects an output to an input, replacing whatever fed that input.
     /// Refuses connections that would create a feedback loop.
     pub fn connect(&mut self, from: PortRef, to: PortRef, audio: &AudioHandle) -> bool {
-        if from.node == to.node || self.reaches(to.node, from.node) {
+        // MIDI only into MIDI, audio only into audio, between ports that exist.
+        let exists = self.node(from.node).is_some_and(|n| n.output_ports().contains(&from.port))
+            && self.node(to.node).is_some_and(|n| n.input_ports().contains(&to.port));
+        if !exists || is_midi(from.port) != is_midi(to.port) || from.node == to.node || self.reaches(to.node, from.node) {
             return false;
         }
         self.cables.retain(|c| c.to != to);
@@ -1037,12 +1121,15 @@ impl Graph {
         let mut order = Vec::with_capacity(self.nodes.len());
         while let Some(id) = ready.pop() {
             let mut inputs = [None; MAX_INPUTS];
+            let mut midi_input = None;
             for c in self.cables.iter().filter(|c| c.to.node == id) {
-                if c.to.port < MAX_INPUTS {
+                if is_midi(c.to.port) {
+                    midi_input = Some(c.from.node);
+                } else if c.to.port < MAX_INPUTS {
                     inputs[c.to.port] = Some((c.from.node, c.from.port));
                 }
             }
-            order.push(TopoEntry { id, inputs });
+            order.push(TopoEntry { id, inputs, midi_input });
             for c in self.cables.iter().filter(|c| c.from.node == id) {
                 let d = indegree.get_mut(&c.to.node).expect("cable to unknown node");
                 *d -= 1;

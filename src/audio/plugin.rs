@@ -1,7 +1,8 @@
 //! VST3 plugins as nodes. A plugin is shared between the UI (its editor
 //! window, parameter display, saved state) and the audio thread, which
-//! renders it. Knob moves reach it through a lock-free channel, and
-//! instruments can take the external MIDI stream (keyboards) directly.
+//! renders it. Knob moves reach it through a lock-free channel. Plugins that
+//! take MIDI play what arrives on their MIDI cable (a sequencer, an
+//! arpeggiator), and can also take the MIDI keyboard directly.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering::Relaxed};
@@ -9,10 +10,11 @@ use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex, TryLockError};
 use std::time::{Duration, Instant};
 
-use vst3_host::{AudioBuffers, MidiChannel, MidiEvent, Plugin, Vst3Host};
+use vst3_host::{AudioBuffers, MidiChannel, MidiEvent, Plugin, TransportPosition, Vst3Host};
 
 use super::engine::{BLOCK, Buf, Inputs, ProcessCtx, Processor};
 use super::midi::MidiState;
+use super::modules::steps::note_event;
 use super::params::AtomicF32;
 
 /// What the UI asks of a plugin, applied on the audio thread.
@@ -46,6 +48,8 @@ pub struct PluginMeta {
     pub outputs: usize,
     /// Has its own editor window.
     pub editor: bool,
+    /// Accepts MIDI (instruments, MIDI effects).
+    pub midi: bool,
 }
 
 /// A parameter the user can set.
@@ -94,6 +98,7 @@ pub fn load(host: &mut Vst3Host, path: &Path) -> Result<Loaded, String> {
         inputs: if info.audio_inputs > 0 { 2 } else { 0 },
         outputs: plugin.output_channel_count().max(1),
         editor: plugin.has_editor(),
+        midi: info.has_midi_input,
     };
     Ok(Loaded { plugin, meta, params })
 }
@@ -156,6 +161,12 @@ pub struct PluginProcessor {
     control: Receiver<Control>,
     midi: Arc<MidiState>,
     midi_cursor: u32,
+    /// Notes started from the MIDI cable: one bit per channel for each
+    /// note, so unplugging the cable can end them.
+    cable_notes: [u16; 128],
+    /// Tempo last told to the plugin, and samples it has rendered.
+    tempo: f64,
+    samples: i64,
     buffers: AudioBuffers,
 }
 
@@ -163,6 +174,9 @@ impl PluginProcessor {
     pub fn new(shared: Arc<PluginShared>, control: Receiver<Control>, midi: Arc<MidiState>, meta: &PluginMeta, sample_rate: f32) -> Self {
         Self {
             midi_cursor: midi.stream_head(),
+            cable_notes: [0; 128],
+            tempo: 0.0,
+            samples: 0,
             buffers: AudioBuffers::new(meta.inputs, meta.outputs, BLOCK, sample_rate as f64),
             shared,
             control,
@@ -172,7 +186,7 @@ impl PluginProcessor {
 }
 
 impl Processor for PluginProcessor {
-    fn process(&mut self, _ctx: &ProcessCtx, inputs: &Inputs, outputs: &mut [Buf], n: usize) {
+    fn process(&mut self, ctx: &ProcessCtx, inputs: &Inputs, outputs: &mut [Buf], n: usize) {
         let [out_l, out_r] = &mut outputs[0];
         // The UI holds the plugin only briefly; never wait long for it.
         let started = Instant::now();
@@ -191,6 +205,18 @@ impl Processor for PluginProcessor {
             return;
         };
 
+        // The global clock, for tempo-synced LFOs, delays and arpeggiators.
+        let tempo = ctx.beats_per_sample * 60.0 * ctx.sample_rate as f64;
+        if (tempo - self.tempo).abs() > 1e-6 && tempo > 0.0 {
+            if self.tempo == 0.0 {
+                let _ = plugin.set_playing(true);
+            }
+            let _ = plugin.set_tempo(tempo);
+            self.tempo = tempo;
+        }
+        let _ = plugin.set_transport_position(TransportPosition { samples: self.samples, quarter_notes: ctx.beat });
+        self.samples += n as i64;
+
         for command in self.control.try_iter() {
             match command {
                 Control::Param(id, value) => {
@@ -206,6 +232,29 @@ impl Processor for PluginProcessor {
             });
         } else {
             self.midi_cursor = self.midi.stream_head();
+        }
+        for e in inputs.midi.events() {
+            let [status, note, _] = e.data;
+            let bit = 1u16 << (status & 0x0F);
+            match note_event(e.data) {
+                Some(true) => self.cable_notes[note as usize & 0x7F] |= bit,
+                Some(false) => self.cable_notes[note as usize & 0x7F] &= !bit,
+                None => {}
+            }
+            if let Some(event) = midi_event(e.data) {
+                let _ = plugin.send_midi_event_at(event, e.frame as i32);
+            }
+        }
+        // Cable unplugged (or its source removed): end what it started.
+        if !inputs.midi_connected {
+            for (note, channels) in self.cable_notes.iter_mut().enumerate() {
+                for ch in (0..16).filter(|ch| *channels & 1 << ch != 0) {
+                    if let Some(event) = midi_event([0x80 | ch as u8, note as u8, 0]) {
+                        let _ = plugin.send_midi_event(event);
+                    }
+                }
+                *channels = 0;
+            }
         }
 
         // Within the capacity reserved up front: no allocation.

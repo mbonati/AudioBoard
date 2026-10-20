@@ -198,7 +198,8 @@ fn unplug_input(g: &mut Graph, a: &AudioHandle, m: u32) {
 
 #[test]
 fn every_module_stays_finite_across_settings() {
-    for kind in ModuleKind::ALL {
+    // MIDI generators make no sound of their own (tested below).
+    for kind in ModuleKind::ALL.into_iter().filter(|k| !k.def().outputs.is_empty()) {
         let def = kind.def();
         let (mut g, a, mut e) = setup();
         let (m, p) = patch(&mut g, &a, kind);
@@ -1195,4 +1196,243 @@ fn vst3_plugins_work_as_nodes() {
     render_buf(&mut e, 4800); // the engine lets go of them
     g.service_plugins(0.0);
     assert!(rms_of(&render_buf(&mut e, 4800)) < 1e-3, "nothing left reaches the mixer");
+}
+
+// ---------------------------------------------------------------------------
+// MIDI sequencing
+// ---------------------------------------------------------------------------
+
+use crate::audio::engine::{Inputs, MidiBuf, ProcessCtx, Processor};
+
+/// Runs a MIDI generator for `frames` at 120 BPM and returns every event
+/// it sent as (absolute frame, message). `feed` may add input events for
+/// each block (given its first frame).
+fn run_generator(
+    proc: &mut dyn Processor,
+    frames: usize,
+    mut feed: impl FnMut(usize, &mut MidiBuf),
+) -> Vec<(usize, [u8; 3])> {
+    const SR: f32 = 48_000.0;
+    let mut ctx = ProcessCtx { sample_rate: SR, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / SR as f64 };
+    let mut inputs = Box::new(Inputs {
+        bufs: [[[0.0; 64]; 2]; 8],
+        connected: [false; 8],
+        midi: MidiBuf::default(),
+        midi_connected: false,
+    });
+    let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
+    let mut events = Vec::new();
+    let mut done = 0;
+    while done < frames {
+        inputs.midi.clear();
+        feed(done, &mut inputs.midi);
+        inputs.midi_connected = !inputs.midi.events().is_empty() || inputs.midi_connected;
+        proc.process(&ctx, &inputs, &mut outputs, 64);
+        for e in proc.midi_out().expect("sends MIDI").events() {
+            events.push((done + e.frame as usize, e.data));
+        }
+        ctx.beat += ctx.beats_per_sample * 64.0;
+        done += 64;
+    }
+    events
+}
+
+fn note_ons(events: &[(usize, [u8; 3])]) -> Vec<(usize, u8)> {
+    events.iter().filter(|(_, m)| m[0] & 0xF0 == 0x90 && m[2] > 0).map(|(f, m)| (*f, m[1])).collect()
+}
+
+#[test]
+fn sequencer_plays_its_steps_in_time() {
+    use crate::audio::modules::sequencer::{self, Sequencer};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Sequencer));
+    for step in 0..sequencer::LEN {
+        sequencer::set_on(&p, step, true);
+    }
+    // 120 BPM, sixteenths: a step every 6000 frames, half of it sounding.
+    let events = run_generator(&mut Sequencer::new(p.clone()), 48_000, |_, _| {});
+    let ons = note_ons(&events);
+    let frames: Vec<usize> = ons.iter().map(|o| o.0).collect();
+    assert_eq!(frames, [0, 6000, 12000, 18000, 24000, 30000, 36000, 42000]);
+    // C3 major, degrees 0 2 4 2 5 4 2 1.
+    let notes: Vec<u8> = ons.iter().map(|o| o.1).collect();
+    assert_eq!(notes, [48, 52, 55, 52, 57, 55, 52, 50]);
+    let offs: Vec<usize> = events.iter().filter(|(_, m)| m[0] & 0xF0 == 0x80).map(|e| e.0).collect();
+    assert_eq!(offs[..3], [3000, 9000, 15000], "GATE 50% ends notes half way");
+    assert!(events.iter().all(|(_, m)| m[0] & 0x0F == 0), "channel 1");
+
+    // Swing pushes the off-beats late; switched-off steps rest.
+    p.set(sequencer::SWING, 1.0);
+    sequencer::set_on(&p, 2, false);
+    let ons = note_ons(&run_generator(&mut Sequencer::new(p.clone()), 24_000, |_, _| {}));
+    assert_eq!(ons.iter().map(|o| o.0).collect::<Vec<_>>(), [0, 9000, 21000]);
+
+    // Stopping it ends the note that is sounding.
+    p.set(sequencer::SWING, 0.0);
+    p.set(sequencer::GATE, 1.0);
+    let mut seq = Sequencer::new(p.clone());
+    run_generator(&mut seq, 1_000, |_, _| {});
+    p.set_toggle(false);
+    let events = run_generator(&mut seq, 64, |_, _| {});
+    assert_eq!(events, [(0, [0x80, 48, 0])]);
+}
+
+#[test]
+fn arpeggiator_walks_the_held_chord() {
+    use crate::audio::modules::arpeggiator::{self, Arpeggiator};
+    let (_g, a, _e) = setup();
+    let p = Arc::new(ModuleParams::new(ModuleKind::Arpeggiator));
+    p.set(arpeggiator::OCTAVES, 2.0);
+    let mut arp = Arpeggiator::new(p.clone(), a.midi.clone());
+    // A chord arrives on the cable (played out of order), held for a while.
+    let chord = |at: usize, buf: &mut MidiBuf| {
+        if at == 0 {
+            for key in [67, 60, 64] {
+                buf.push(0, [0x90, key, 90]);
+            }
+        }
+    };
+    let notes: Vec<u8> = note_ons(&run_generator(&mut arp, 48_000, chord)).iter().map(|o| o.1).collect();
+    assert_eq!(notes, [60, 64, 67, 72, 76, 79, 60, 64]);
+
+    // Down, as played.
+    p.set_mode(arpeggiator::DOWN);
+    let mut arp = Arpeggiator::new(p.clone(), a.midi.clone());
+    let notes: Vec<u8> = note_ons(&run_generator(&mut arp, 24_000, chord)).iter().map(|o| o.1).collect();
+    assert_eq!(notes, [79, 76, 72, 67]);
+
+    // Letting go stops it, unless LATCH holds the chord.
+    for latch in [false, true] {
+        p.set_mode(arpeggiator::UP);
+        p.set_toggle(latch);
+        let mut arp = Arpeggiator::new(p.clone(), a.midi.clone());
+        let play_and_release = |at: usize, buf: &mut MidiBuf| {
+            chord(at, buf);
+            if at == 12_032 {
+                for key in [60, 64, 67] {
+                    buf.push(0, [0x80, key, 0]);
+                }
+            }
+        };
+        let ons = note_ons(&run_generator(&mut arp, 48_000, play_and_release));
+        let late = ons.iter().filter(|o| o.0 > 13_000).count();
+        assert_eq!(late > 0, latch, "latch {latch}: {ons:?}");
+    }
+}
+
+#[test]
+fn midi_cables_only_join_midi_ports() {
+    use crate::graph::MIDI_PORT;
+    let (mut g, a, _e) = setup();
+    let seq = g.add_module(ModuleKind::Sequencer, pos2(0.0, 0.0), &a);
+    let arp = g.add_module(ModuleKind::Arpeggiator, pos2(300.0, 0.0), &a);
+    let osc = g.add_osc(pos2(600.0, 0.0), &a);
+    let filter = g.add_module(ModuleKind::Filter, pos2(600.0, 300.0), &a);
+    let node = |id| g.node(id).unwrap();
+    assert_eq!(node(seq).output_ports(), [MIDI_PORT]);
+    assert_eq!(node(arp).input_ports(), [MIDI_PORT]);
+    assert_eq!(node(osc).input_ports(), [0, 1], "no MIDI on an oscillator");
+
+    assert!(!g.connect(port(seq, MIDI_PORT), port(osc, 0), &a), "MIDI into audio");
+    assert!(!g.connect(port(osc, 0), port(arp, MIDI_PORT), &a), "audio into MIDI");
+    assert!(!g.connect(port(seq, MIDI_PORT), port(filter, MIDI_PORT), &a), "no such port");
+    assert!(!g.connect(port(seq, 0), port(filter, 0), &a), "the sequencer has no audio out");
+    assert!(g.connect(port(seq, MIDI_PORT), port(arp, MIDI_PORT), &a));
+    assert_eq!(g.cables.len(), 1);
+}
+
+#[test]
+fn a_sequencer_plays_a_midi_note_node_through_the_engine() {
+    use crate::audio::modules::{midi_note, sequencer};
+    use crate::graph::MIDI_PORT;
+    let (mut g, a, mut e) = setup();
+    let seq = g.add_module(ModuleKind::Sequencer, pos2(0.0, 0.0), &a);
+    let note = g.add_module(ModuleKind::MidiNote, pos2(300.0, 0.0), &a);
+    let mix = g.add_mixer(pos2(600.0, 0.0), &a);
+    assert!(g.connect(port(seq, MIDI_PORT), port(note, MIDI_PORT), &a));
+    g.connect(port(note, 0), port(mix, 0), &a);
+    let sp = module_params(&g, seq);
+    let np = module_params(&g, note);
+    np.set(midi_note::ATTACK, 0.002);
+
+    render_buf(&mut e, 24_000);
+    assert_eq!(np.viz[midi_note::CABLE].get(), 1.0);
+    assert!(np.viz[midi_note::SEQ].get() >= 2.0, "notes arrive on the cable");
+    let played = np.viz[midi_note::NOTE].get() as u8;
+    assert!((48..=72).contains(&played), "a note of the scale: {played}");
+    assert!(sp.viz[sequencer::STEP].get() >= 0.0);
+    // Its envelope follows the steps: the output moves.
+    let buf = render_buf(&mut e, 24_000);
+    assert!(rms_of(&buf) > 0.05);
+
+    // A stopped sequencer leaves the node silent once it releases.
+    sp.set_toggle(false);
+    np.set(midi_note::RELEASE, 0.01);
+    render_buf(&mut e, 12_000);
+    assert!(np.viz[midi_note::ENV].get() < 0.01);
+}
+
+#[test]
+fn tempo_and_steps_are_saved() {
+    use crate::audio::modules::sequencer;
+    use crate::graph::MIDI_PORT;
+    let (mut g, a, _e) = setup();
+    g.tempo = 128.5;
+    let seq = g.add_module(ModuleKind::Sequencer, pos2(0.0, 0.0), &a);
+    let note = g.add_module(ModuleKind::MidiNote, pos2(300.0, 0.0), &a);
+    g.connect(port(seq, MIDI_PORT), port(note, MIDI_PORT), &a);
+    let p = module_params(&g, seq);
+    sequencer::set_degree(&p, 3, 11);
+    sequencer::set_on(&p, 5, false);
+    let saved = crate::project::snapshot(&g);
+
+    let (mut h, b, _f) = setup();
+    assert_eq!(crate::project::restore(&mut h, &saved, &b), 0);
+    assert_eq!(h.tempo, 128.5);
+    assert_eq!(h.cables.len(), 1, "the MIDI cable is kept");
+    let q = module_params(&h, h.nodes[0].id);
+    assert_eq!(sequencer::degree(&q, 3), 11);
+    assert!(!sequencer::is_on(&q, 5) && sequencer::is_on(&q, 4));
+    assert_eq!(crate::project::snapshot(&h), saved);
+}
+
+/// An instrument plugin, if installed. Its samples load in the background
+/// on the app's run loop, so tests see silence: they check the wiring.
+fn installed_instrument() -> Option<std::path::PathBuf> {
+    let path = std::path::PathBuf::from("/Library/Audio/Plug-Ins/VST3/Originals - Cinematic Pads.vst3");
+    if path.exists() {
+        Some(path)
+    } else {
+        eprintln!("skipping: {} is not installed", path.display());
+        None
+    }
+}
+
+#[test]
+fn vst3_instruments_take_a_midi_cable() {
+    use crate::graph::MIDI_PORT;
+    let Some(path) = installed_instrument() else { return };
+    let (mut g, a, mut e) = setup();
+    let seq = g.add_module(ModuleKind::Sequencer, pos2(0.0, 0.0), &a);
+    let synth = g.add_plugin(&path, pos2(300.0, 0.0), &a).expect("loads");
+    let mix = g.add_mixer(pos2(600.0, 0.0), &a);
+    let node = g.node(synth).unwrap();
+    assert!(node.midi_in());
+    assert_eq!(node.input_ports(), [MIDI_PORT], "an instrument: MIDI in, no audio in");
+    assert!(g.connect(port(seq, MIDI_PORT), port(synth, MIDI_PORT), &a));
+    assert!(g.connect(port(synth, 0), port(mix, 0), &a));
+    let buf = render_buf(&mut e, 24_000);
+    assert!(buf.iter().all(|s| s.is_finite()));
+
+    // Unplugging mid-note is safe (the plugin gets note-offs).
+    let cable = *g.cables.iter().find(|c| c.to == port(synth, MIDI_PORT)).unwrap();
+    g.disconnect(cable, &a);
+    let buf = render_buf(&mut e, 4_800);
+    assert!(buf.iter().all(|s| s.is_finite()));
+
+    // The MIDI cable is saved with the project.
+    g.connect(port(seq, MIDI_PORT), port(synth, MIDI_PORT), &a);
+    let saved = crate::project::snapshot(&g);
+    let (mut h, b, _f) = setup();
+    assert_eq!(crate::project::restore(&mut h, &saved, &b), 0);
+    assert!(h.cables.iter().any(|c| c.to.port == MIDI_PORT));
 }

@@ -51,7 +51,12 @@ pub static DEF: ModuleDef = ModuleDef {
     cv_depth: &[(PITCH_MOD, 0), (TONE_MOD, 1)],
     modes: &["UNI", "5TH", "OCT", "MAJ", "MIN", "SUS"],
     toggle: None,
+    toggle_default: false,
     map: false,
+    midi_in: false,
+    midi_out: false,
+    data: &[],
+    display_h: 42.0,
     viz: 0,
 };
 
