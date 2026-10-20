@@ -13,7 +13,7 @@ use std::time::Instant;
 
 use cpal::{FromSample, Sample};
 
-use super::params::EngineShared;
+use super::params::{EngineShared, TEMPO_RANGE};
 
 pub type NodeId = u32;
 
@@ -25,6 +25,56 @@ pub struct ProcessCtx {
     pub sample_rate: f32,
     /// One-pole coefficient for ~10 ms parameter smoothing.
     pub smooth: f32,
+    /// Transport position at the start of the block, in beats. Advances only
+    /// while audio runs, so every rhythmic node shares one clock.
+    pub beat: f64,
+    /// Beats per sample at the current tempo.
+    pub beats_per_sample: f64,
+}
+
+/// Events a MIDI cable can hold per block (more are dropped).
+pub const MIDI_CAP: usize = 128;
+
+/// A raw MIDI message at a frame within the block.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct MidiMsg {
+    pub frame: u16,
+    pub data: [u8; 3],
+}
+
+/// One block of MIDI, fixed size so the audio thread never allocates.
+#[derive(Clone)]
+pub struct MidiBuf {
+    events: [MidiMsg; MIDI_CAP],
+    len: usize,
+}
+
+impl Default for MidiBuf {
+    fn default() -> Self {
+        Self { events: [MidiMsg::default(); MIDI_CAP], len: 0 }
+    }
+}
+
+impl MidiBuf {
+    pub fn clear(&mut self) {
+        self.len = 0;
+    }
+
+    pub fn push(&mut self, frame: usize, data: [u8; 3]) {
+        if self.len < MIDI_CAP {
+            self.events[self.len] = MidiMsg { frame: frame as u16, data };
+            self.len += 1;
+        }
+    }
+
+    pub fn events(&self) -> &[MidiMsg] {
+        &self.events[..self.len]
+    }
+
+    fn copy_from(&mut self, other: &MidiBuf) {
+        self.len = other.len;
+        self.events[..other.len].copy_from_slice(other.events());
+    }
 }
 
 /// One block of stereo audio, `[left, right]`. Every cable carries stereo;
@@ -34,6 +84,10 @@ pub type Buf = [[f32; BLOCK]; 2];
 pub struct Inputs {
     pub bufs: [Buf; MAX_INPUTS],
     pub connected: [bool; MAX_INPUTS],
+    /// MIDI arriving on the node's MIDI input this block.
+    pub midi: MidiBuf,
+    /// A cable is plugged into the MIDI input.
+    pub midi_connected: bool,
 }
 
 impl Inputs {
@@ -53,6 +107,11 @@ pub trait Processor: Send {
     /// Sinks feed the audio device: their first output is summed into the mix.
     fn is_sink(&self) -> bool {
         false
+    }
+
+    /// MIDI this node produced in its last `process` (nodes with a MIDI output).
+    fn midi_out(&self) -> Option<&MidiBuf> {
+        None
     }
 }
 
@@ -75,6 +134,8 @@ pub struct TopoEntry {
     pub id: NodeId,
     /// For each input port: (source node, source output port).
     pub inputs: [Option<(NodeId, usize)>; MAX_INPUTS],
+    /// Node feeding the MIDI input.
+    pub midi_input: Option<NodeId>,
 }
 
 /// Nodes in processing order (every node comes after its sources).
@@ -107,12 +168,16 @@ impl Engine {
             ctx: ProcessCtx {
                 sample_rate,
                 smooth: 1.0 - (-1.0 / (sample_rate * 0.010)).exp(),
+                beat: 0.0,
+                beats_per_sample: 0.0,
             },
             nodes: HashMap::with_capacity(256),
             topo: Box::default(),
             inputs: Box::new(Inputs {
                 bufs: [[[0.0; BLOCK]; 2]; MAX_INPUTS],
                 connected: [false; MAX_INPUTS],
+                midi: MidiBuf::default(),
+                midi_connected: false,
             }),
             mix: [[0.0; BLOCK]; 2],
         }
@@ -145,6 +210,8 @@ impl Engine {
         for ch in mix.iter_mut() {
             ch[..n].fill(0.0);
         }
+        let (slowest, fastest) = TEMPO_RANGE;
+        ctx.beats_per_sample = self.shared.tempo.get().clamp(slowest, fastest) as f64 / (60.0 * ctx.sample_rate as f64);
 
         for entry in &topo.order {
             for (k, src) in entry.inputs.iter().enumerate() {
@@ -168,6 +235,13 @@ impl Engine {
                 }
             }
 
+            let midi_source = entry.midi_input.and_then(|sid| nodes.get(&sid)).and_then(|s| s.proc.midi_out());
+            match midi_source {
+                Some(events) => inputs.midi.copy_from(events),
+                None => inputs.midi.clear(),
+            }
+            inputs.midi_connected = entry.midi_input.is_some();
+
             let Some(slot) = nodes.get_mut(&entry.id) else {
                 continue;
             };
@@ -181,6 +255,7 @@ impl Engine {
                 }
             }
         }
+        ctx.beat += ctx.beats_per_sample * n as f64;
     }
 
     /// Fills an interleaved device buffer.
@@ -222,6 +297,7 @@ impl Engine {
             self.shared.scope.write(&mono[..n]);
             done += n;
         }
+        self.shared.beat.set((self.ctx.beat % 1024.0) as f32);
 
         if frames > 0 {
             let available = frames as f32 / self.ctx.sample_rate;

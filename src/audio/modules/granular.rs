@@ -66,7 +66,12 @@ pub static DEF: ModuleDef = ModuleDef {
     cv_depth: &[],
     modes: &["FWD", "REV", "BOTH"],
     toggle: Some("FREEZE"),
+    toggle_default: false,
     map: false,
+    midi_in: false,
+    midi_out: false,
+    data: &[],
+    display_h: 42.0,
     viz: viz::LEN,
 };
 

@@ -3,6 +3,7 @@ pub mod engine;
 pub mod midi;
 pub mod modules;
 pub mod params;
+pub mod plugin;
 
 use std::sync::Arc;
 use std::sync::mpsc::{self, Sender};

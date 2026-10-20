@@ -2,10 +2,13 @@
 //! ATTACK, releasing it fades over RELEASE; VEL is the same shape scaled by
 //! velocity. Both swing −1…+1, so into an oscillator's AM (at 100%) they go
 //! from silence to full level. The played note can drive any pitch knob
-//! directly (see the MAP button in the UI).
+//! directly (see the MAP button in the UI). With a MIDI cable plugged in
+//! (from a sequencer or an arpeggiator) it plays that instead of the
+//! keyboard.
 
 use std::sync::Arc;
 
+use super::steps::{Held, note_event};
 use super::{ModuleDef, ModuleParams, time_coeff};
 use crate::audio::engine::{Buf, Inputs, ProcessCtx, Processor};
 use crate::audio::midi::MidiState;
@@ -27,6 +30,10 @@ const PARAMS: [ParamSpec; 4] = [
 pub const ENV: usize = 0;
 /// `viz[NOTE]`: the note being played (after TRANSPOSE), or −1 before any.
 pub const NOTE: usize = 1;
+/// `viz[CABLE]`: 1 while a MIDI cable plays the node.
+pub const CABLE: usize = 2;
+/// `viz[SEQ]`: notes played from the cable, so the UI sees each new one.
+pub const SEQ: usize = 3;
 
 pub static DEF: ModuleDef = ModuleDef {
     name: "MIDI Note",
@@ -38,8 +45,13 @@ pub static DEF: ModuleDef = ModuleDef {
     cv_depth: &[],
     modes: &[],
     toggle: None,
+    toggle_default: false,
     map: true,
-    viz: 2,
+    midi_in: true,
+    midi_out: false,
+    data: &[],
+    display_h: 42.0,
+    viz: 4,
 };
 
 pub fn channel(p: &ModuleParams) -> usize {
@@ -56,6 +68,11 @@ pub struct MidiNote {
     midi: Arc<MidiState>,
     sr: f32,
     env: f32,
+    /// Keys held on the MIDI cable, the last one's velocity, and how many
+    /// notes the cable has played.
+    held: Held,
+    velocity: f32,
+    played: u32,
 }
 
 impl MidiNote {
@@ -65,14 +82,40 @@ impl MidiNote {
             midi,
             sr: sample_rate,
             env: 0.0,
+            held: Held::new(),
+            velocity: 0.0,
+            played: 0,
         }
     }
 }
 
 impl Processor for MidiNote {
-    fn process(&mut self, _ctx: &ProcessCtx, _inputs: &Inputs, outputs: &mut [Buf], n: usize) {
+    fn process(&mut self, _ctx: &ProcessCtx, inputs: &Inputs, outputs: &mut [Buf], n: usize) {
         let p = &self.params;
-        let key = self.midi.note(channel(p));
+        let mut key = self.midi.note(channel(p));
+        if inputs.midi_connected {
+            for e in inputs.midi.events() {
+                let [status, note, velocity] = e.data;
+                let wanted = channel(p) == 0 || (status & 0x0F) as usize == channel(p) - 1;
+                match note_event(e.data) {
+                    Some(true) if wanted => {
+                        self.held.press(note);
+                        self.velocity = velocity as f32 / 127.0;
+                        self.played = self.played.wrapping_add(1);
+                    }
+                    Some(false) if wanted => self.held.release(note),
+                    _ => {}
+                }
+            }
+            key.gate = !self.held.is_empty();
+            key.velocity = self.velocity;
+            if let Some(&note) = self.held.notes().last() {
+                key.note = note;
+            }
+            key.seq = self.played;
+        } else {
+            self.held.clear();
+        }
         // Times are to ~95% of the way (three time constants).
         let attack = time_coeff(p.get(ATTACK) / 3.0, self.sr);
         let release = time_coeff(p.get(RELEASE) / 3.0, self.sr);
@@ -93,6 +136,8 @@ impl Processor for MidiNote {
         }
         p.viz[ENV].set(self.env);
         p.viz[NOTE].set(if key.seq == 0 { -1.0 } else { played_note(p, key.note) });
+        p.viz[CABLE].set(if inputs.midi_connected { 1.0 } else { 0.0 });
+        p.viz[SEQ].set((self.played % (1 << 24)) as f32);
         p.meter.fetch_max(peak);
     }
 }

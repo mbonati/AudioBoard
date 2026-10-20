@@ -2,8 +2,10 @@
 //! Every structural change is mirrored to the audio engine.
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::Arc;
-use std::sync::atomic::Ordering;
+use std::path::Path;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::mpsc::{self, Sender};
+use std::sync::{Arc, Mutex};
 
 use egui::{Color32, Pos2, Vec2};
 
@@ -12,10 +14,20 @@ use crate::audio::dsp::{Mixer, Oscillator};
 use crate::audio::engine::{Command, MAX_INPUTS, NodeId, Slot, TopoEntry, Topology};
 use crate::audio::midi::{MidiState, note_hz};
 use crate::audio::modules::{ModuleKind, ModuleParams, midi_cc, midi_note, random};
-use crate::audio::params::{MIXER_CHANNELS, MixerParams, OSC_PARAMS, OscParams, ParamSpec, Unit, osc};
+use crate::audio::params::{
+    AtomicF32, DEFAULT_TEMPO, MIXER_CHANNELS, MixerParams, OSC_PARAMS, OscParams, ParamSpec, Unit, osc,
+};
+use crate::audio::plugin::{self, Control, Loaded, PluginMeta, PluginParam, PluginProcessor, PluginShared};
 use crate::ui::nodes;
 use crate::ui::theme;
 use crate::ui::widgets::MeterState;
+
+/// Port index of a node's MIDI input or output (audio ports count from 0).
+pub const MIDI_PORT: usize = 64;
+
+pub fn is_midi(port: usize) -> bool {
+    port == MIDI_PORT
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct PortRef {
@@ -37,6 +49,8 @@ pub enum NodeType {
     Osc,
     Mixer,
     Module(ModuleKind),
+    /// A VST3 plugin (added from a path, not from the menu).
+    Plugin,
 }
 
 impl NodeType {
@@ -60,7 +74,13 @@ impl NodeType {
         ),
         (
             "MIDI",
-            &[NodeType::Module(ModuleKind::MidiCc), NodeType::Module(ModuleKind::MidiNote)],
+            &[
+                NodeType::Module(ModuleKind::Sequencer),
+                NodeType::Module(ModuleKind::Arpeggiator),
+                NodeType::Module(ModuleKind::MidiIn),
+                NodeType::Module(ModuleKind::MidiNote),
+                NodeType::Module(ModuleKind::MidiCc),
+            ],
         ),
         ("Output", &[NodeType::Mixer]),
     ];
@@ -70,6 +90,7 @@ impl NodeType {
             NodeType::Osc => "Oscillator",
             NodeType::Mixer => "Mixer",
             NodeType::Module(k) => k.def().name,
+            NodeType::Plugin => "VST3 plugin",
         }
     }
 
@@ -78,6 +99,7 @@ impl NodeType {
             NodeType::Osc => "sine · saw · pulse",
             NodeType::Mixer => "4 channels",
             NodeType::Module(k) => k.def().hint,
+            NodeType::Plugin => "",
         }
     }
 
@@ -105,6 +127,8 @@ pub enum ParamRef {
     Fader(usize),
     Pan(usize),
     Master,
+    /// A VST3 parameter id.
+    Plugin(u32),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -139,12 +163,136 @@ impl ModuleNode {
     }
 }
 
+/// Knobs shown on a plugin node.
+pub const PINNED_MAX: usize = 8;
+
+pub struct PluginNode {
+    pub shared: Arc<PluginShared>,
+    pub meta: PluginMeta,
+    pub params: Vec<PluginParam>,
+    /// Last known normalized value of each parameter (UI side).
+    pub values: Vec<f64>,
+    /// The plugin's own text for each pinned parameter's value.
+    pub texts: Vec<String>,
+    /// Parameters shown as knobs (indices into `params`).
+    pub pinned: Vec<usize>,
+    pub control: Sender<Control>,
+    pub meter: MeterState,
+    /// The plugin's own editor, while open.
+    pub window: Option<vst3_host::PluginWindow>,
+    /// Filter for the parameter list.
+    pub query: String,
+    /// Until when a parameter the user just moved ignores the plugin's
+    /// (not yet updated) value.
+    held_until: Vec<f64>,
+}
+
+impl PluginNode {
+    fn new(meta: PluginMeta, params: Vec<PluginParam>, shared: Arc<PluginShared>, control: Sender<Control>) -> Self {
+        let n = params.len();
+        Self {
+            values: params.iter().map(|p| p.default).collect(),
+            texts: vec![String::new(); n],
+            pinned: (0..n.min(PINNED_MAX)).collect(),
+            held_until: vec![0.0; n],
+            shared,
+            meta,
+            params,
+            control,
+            meter: MeterState::default(),
+            window: None,
+            query: String::new(),
+        }
+    }
+
+    /// Sets a parameter from the UI (applied on the audio thread).
+    pub fn set_param(&mut self, index: usize, value: f64, now: f64) {
+        let Some(p) = self.params.get(index) else { return };
+        let value = value.clamp(0.0, 1.0);
+        self.values[index] = value;
+        self.held_until[index] = now + 0.3;
+        let _ = self.control.send(Control::Param(p.id, value));
+    }
+
+    /// Keeps the knobs in step with the plugin (including edits made in its
+    /// own editor) and services the editor window. Skips a frame when the
+    /// audio thread has the plugin.
+    pub fn sync(&mut self, now: f64) {
+        if self.window.as_ref().is_some_and(|w| w.closed_by_user() || !w.is_open()) {
+            self.window = None;
+        }
+        if let Some(w) = &self.window {
+            let _ = w.service_platform_events();
+        }
+        let Ok(mut plugin) = self.shared.plugin.try_lock() else { return };
+        let _ = plugin.service_host_requests();
+        for &i in &self.pinned {
+            let id = self.params[i].id;
+            if self.held_until[i] < now
+                && let Ok(v) = plugin.get_parameter(id)
+            {
+                self.values[i] = v;
+            }
+            if let Ok(text) = plugin.format_parameter(id, self.values[i]) {
+                self.texts[i] = text;
+            }
+        }
+    }
+
+    /// Reads the current value of any parameter (for the parameter list).
+    pub fn refresh(&mut self, index: usize, now: f64) {
+        if self.held_until[index] >= now {
+            return;
+        }
+        let id = self.params[index].id;
+        if let Ok(plugin) = self.shared.plugin.try_lock()
+            && let Ok(v) = plugin.get_parameter(id)
+        {
+            self.values[index] = v;
+        }
+    }
+
+    /// Opens or closes the plugin's own window.
+    pub fn toggle_editor(&mut self) -> Result<(), String> {
+        if self.window.take().is_some() {
+            return Ok(());
+        }
+        let mut window = vst3_host::PluginWindow::new(self.shared.plugin.clone());
+        window.open().map_err(|e| e.to_string())?;
+        self.window = Some(window);
+        Ok(())
+    }
+
+    /// The plugin's complete state (its own format).
+    pub fn save_state(&self) -> Option<Vec<u8>> {
+        self.shared.plugin.lock().ok()?.save_state().ok()
+    }
+
+    pub fn load_state(&mut self, data: &[u8]) -> Result<(), String> {
+        let mut plugin = self.shared.plugin.lock().map_err(|e| e.to_string())?;
+        plugin.load_state(data).map_err(|e| e.to_string())?;
+        for (i, p) in self.params.iter().enumerate() {
+            if let Ok(v) = plugin.get_parameter(p.id) {
+                self.values[i] = v;
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Node title prefix for a plugin: "CINEMATIC PADS" for "Originals - Cinematic Pads".
+fn plugin_prefix(name: &str) -> String {
+    let short = name.rsplit(" - ").next().unwrap_or(name);
+    short.to_uppercase().chars().take(24).collect::<String>().trim().to_owned()
+}
+
 pub const TRACE_LEN: usize = 180;
 
 pub enum NodeKind {
     Osc(OscNode),
     Mixer(MixerNode),
     Module(ModuleNode),
+    Plugin(Box<PluginNode>),
 }
 
 impl NodeKind {
@@ -153,6 +301,7 @@ impl NodeKind {
             NodeKind::Osc(_) => NodeType::Osc,
             NodeKind::Mixer(_) => NodeType::Mixer,
             NodeKind::Module(m) => NodeType::Module(m.params.kind),
+            NodeKind::Plugin(_) => NodeType::Plugin,
         }
     }
 }
@@ -170,7 +319,7 @@ pub struct Node {
 impl Node {
     pub fn size(&self) -> Vec2 {
         if self.collapsed {
-            nodes::collapsed_size(self.inputs().len().max(self.outputs().len()))
+            nodes::collapsed_size(self.input_ports().len().max(self.output_ports().len()))
         } else {
             nodes::type_size(self.kind.node_type())
         }
@@ -181,6 +330,8 @@ impl Node {
             NodeKind::Osc(_) => &["FM", "AM"],
             NodeKind::Mixer(_) => &["1", "2", "3", "4"],
             NodeKind::Module(m) => m.params.kind.def().inputs,
+            NodeKind::Plugin(p) if p.meta.inputs > 0 => &["IN"],
+            NodeKind::Plugin(_) => &[],
         }
     }
 
@@ -189,24 +340,67 @@ impl Node {
             NodeKind::Osc(_) => &["OUT"],
             NodeKind::Mixer(_) => &[],
             NodeKind::Module(m) => m.params.kind.def().outputs,
+            NodeKind::Plugin(_) => &["OUT"],
         }
     }
 
-    pub fn input_pos(&self, i: usize) -> Pos2 {
+    /// Takes MIDI on a MIDI cable.
+    pub fn midi_in(&self) -> bool {
+        match &self.kind {
+            NodeKind::Module(m) => m.params.kind.def().midi_in,
+            NodeKind::Plugin(p) => p.meta.midi,
+            _ => false,
+        }
+    }
+
+    /// Sends MIDI on a MIDI cable.
+    pub fn midi_out(&self) -> bool {
+        match &self.kind {
+            NodeKind::Module(m) => m.params.kind.def().midi_out,
+            _ => false,
+        }
+    }
+
+    /// Every input port: the audio ones, then MIDI ([`MIDI_PORT`]).
+    pub fn input_ports(&self) -> Vec<usize> {
+        (0..self.inputs().len()).chain(self.midi_in().then_some(MIDI_PORT)).collect()
+    }
+
+    pub fn output_ports(&self) -> Vec<usize> {
+        (0..self.outputs().len()).chain(self.midi_out().then_some(MIDI_PORT)).collect()
+    }
+
+    pub fn port_label(&self, port: usize, output: bool) -> &'static str {
+        let names = if output { self.outputs() } else { self.inputs() };
+        if is_midi(port) { "MIDI" } else { names.get(port).copied().unwrap_or("?") }
+    }
+
+    /// Which row a port sits on: MIDI comes after the audio ports.
+    fn row(&self, port: usize, output: bool) -> usize {
+        match (is_midi(port), output) {
+            (true, false) => self.inputs().len(),
+            (true, true) => self.outputs().len(),
+            (false, _) => port,
+        }
+    }
+
+    pub fn input_pos(&self, port: usize) -> Pos2 {
+        let row = self.row(port, false);
         self.pos
             + if self.collapsed {
-                nodes::collapsed_port(i, false)
+                nodes::collapsed_port(row, false)
             } else {
-                nodes::input_offset(self.kind.node_type(), i)
+                nodes::input_offset(self.kind.node_type(), row)
             }
     }
 
-    pub fn output_pos(&self, i: usize) -> Pos2 {
+    pub fn output_pos(&self, port: usize) -> Pos2 {
+        let row = self.row(port, true);
         self.pos
             + if self.collapsed {
-                nodes::collapsed_port(i, true)
+                nodes::collapsed_port(row, true)
             } else {
-                nodes::output_offset(self.kind.node_type(), i)
+                nodes::output_offset(self.kind.node_type(), row)
             }
     }
 
@@ -218,6 +412,7 @@ impl Node {
             (NodeKind::Mixer(_), ParamRef::Fader(ch)) if ch < MIXER_CHANNELS => Some(format!("FADER {}", ch + 1)),
             (NodeKind::Mixer(_), ParamRef::Pan(ch)) if ch < MIXER_CHANNELS => Some(format!("PAN {}", ch + 1)),
             (NodeKind::Mixer(_), ParamRef::Master) => Some("MASTER".to_owned()),
+            (NodeKind::Plugin(p), ParamRef::Plugin(id)) => p.params.iter().find(|q| q.id == id).map(|q| q.name.clone()),
             _ => None,
         }
     }
@@ -227,6 +422,7 @@ impl Node {
         let specs: &[ParamSpec] = match &self.kind {
             NodeKind::Osc(_) => &OSC_PARAMS,
             NodeKind::Module(m) => m.params.kind.def().params,
+            NodeKind::Plugin(p) => return p.params.iter().find(|q| q.name == name).map(|q| ParamRef::Plugin(q.id)),
             NodeKind::Mixer(_) => &[],
         };
         let wrap = |i| match self.kind {
@@ -255,12 +451,14 @@ impl Node {
             NodeKind::Osc(o) => o.meter.level,
             NodeKind::Mixer(m) => m.master[0].level.max(m.master[1].level),
             NodeKind::Module(m) => m.meter.level,
+            NodeKind::Plugin(p) => p.meter.level,
         }
     }
 
     /// Pulls peaks from the audio thread into the display meters.
     pub fn update_meters(&mut self, dt: f32) {
         match &mut self.kind {
+            NodeKind::Plugin(p) => p.meter.update(p.shared.meter.take(), dt),
             NodeKind::Osc(o) => o.meter.update(o.params.meter.take(), dt),
             NodeKind::Mixer(m) => {
                 for (state, src) in m.channels.iter_mut().zip(&m.params.ch_meter) {
@@ -310,15 +508,38 @@ enum Write {
     Note(f32),
 }
 
-#[derive(Default)]
 pub struct Graph {
     pub nodes: Vec<Node>,
     pub cables: Vec<Cable>,
     pub groups: Vec<Group>,
+    /// Beats per minute of the global clock (sequencers, arpeggiators,
+    /// tempo-synced plugins); the app passes it to the engine.
+    pub tempo: f32,
     next_id: NodeId,
     next_group: GroupId,
     /// Nodes given a colour so far; each new source/effect takes the next.
     accent_count: usize,
+    /// Loads VST3 plugins; made on first use.
+    plugin_host: Option<vst3_host::Vst3Host>,
+    /// Removed plugins, kept until the audio thread lets go of them so they
+    /// are destroyed here, never on the audio thread.
+    graveyard: Vec<Arc<PluginShared>>,
+}
+
+impl Default for Graph {
+    fn default() -> Self {
+        Self {
+            nodes: Vec::new(),
+            cables: Vec::new(),
+            groups: Vec::new(),
+            tempo: DEFAULT_TEMPO,
+            next_id: 0,
+            next_group: 0,
+            accent_count: 0,
+            plugin_host: None,
+            graveyard: Vec::new(),
+        }
+    }
 }
 
 impl Graph {
@@ -338,6 +559,7 @@ impl Graph {
         }
         self.groups.clear();
         self.accent_count = 0;
+        self.tempo = DEFAULT_TEMPO;
     }
 
     fn alloc_id(&mut self) -> NodeId {
@@ -374,6 +596,8 @@ impl Graph {
             NodeType::Osc => self.add_osc(pos, audio),
             NodeType::Mixer => self.add_mixer(pos, audio),
             NodeType::Module(kind) => self.add_module(kind, pos, audio),
+            // Plugins come from a file: see `add_plugin`. The menus never offer this.
+            NodeType::Plugin => unreachable!("plugins are added with add_plugin"),
         }
     }
 
@@ -448,6 +672,55 @@ impl Graph {
         id
     }
 
+    /// Loads a VST3 plugin as a node. Runs plugin code (UI thread).
+    pub fn add_plugin(&mut self, path: &Path, pos: Pos2, audio: &AudioHandle) -> Result<NodeId, String> {
+        let host = match &mut self.plugin_host {
+            Some(h) => h,
+            None => self.plugin_host.insert(plugin::new_host(audio.info.sample_rate as f32)?),
+        };
+        let loaded = plugin::load(host, path)?;
+        Ok(self.add_plugin_loaded(loaded, pos, audio))
+    }
+
+    fn add_plugin_loaded(&mut self, loaded: Loaded, pos: Pos2, audio: &AudioHandle) -> NodeId {
+        let Loaded { plugin, meta, params } = loaded;
+        let id = self.alloc_id();
+        let accent = self.next_accent();
+        let title = self.next_title(&plugin_prefix(&meta.name));
+        let instrument = meta.instrument;
+        let shared = Arc::new(PluginShared {
+            plugin: Arc::new(Mutex::new(plugin)),
+            meter: AtomicF32::new(0.0),
+            midi_in: AtomicBool::new(instrument),
+            missed: AtomicU32::new(0),
+        });
+        let (tx, rx) = mpsc::channel();
+        let sample_rate = audio.info.sample_rate as f32;
+        let proc = PluginProcessor::new(shared.clone(), rx, audio.midi.clone(), &meta, sample_rate);
+        audio.send(Command::AddNode(id, Slot::new(Box::new(proc), 1)));
+        self.nodes.push(Node {
+            id,
+            pos,
+            title,
+            accent,
+            collapsed: false,
+            kind: NodeKind::Plugin(Box::new(PluginNode::new(meta, params, shared, tx))),
+        });
+        self.sync(audio);
+        id
+    }
+
+    /// Per frame, on the UI thread: keeps plugin nodes in step and destroys
+    /// removed plugins once the audio thread has let go of them.
+    pub fn service_plugins(&mut self, now: f64) {
+        self.graveyard.retain(|shared| Arc::strong_count(shared) > 1);
+        for n in &mut self.nodes {
+            if let NodeKind::Plugin(p) = &mut n.kind {
+                p.sync(now);
+            }
+        }
+    }
+
     /// Clones a node with its current settings (not its cables).
     pub fn duplicate(&mut self, id: NodeId, audio: &AudioHandle) -> Option<NodeId> {
         let node = self.node(id)?;
@@ -472,6 +745,19 @@ impl Graph {
                 }
                 p.master.set(m.params.master.get());
                 self.add_mixer_with(pos, Arc::new(p), audio)
+            }
+            NodeKind::Plugin(p) => {
+                let (path, state, pinned) = (p.meta.path.clone(), p.save_state(), p.pinned.clone());
+                let midi = p.shared.midi_in.load(Ordering::Relaxed);
+                let copy = self.add_plugin(&path, pos, audio).ok()?;
+                if let Some(NodeKind::Plugin(q)) = self.node_mut(copy).map(|n| &mut n.kind) {
+                    if let Some(state) = state {
+                        let _ = q.load_state(&state);
+                    }
+                    q.pinned = pinned;
+                    q.shared.midi_in.store(midi, Ordering::Relaxed);
+                }
+                copy
             }
             NodeKind::Module(m) => {
                 let p = Arc::new(m.params.duplicate());
@@ -508,7 +794,12 @@ impl Graph {
     }
 
     pub fn remove_node(&mut self, id: NodeId, audio: &AudioHandle) {
-        self.nodes.retain(|n| n.id != id);
+        if let Some(i) = self.nodes.iter().position(|n| n.id == id)
+            && let NodeKind::Plugin(mut p) = self.nodes.remove(i).kind
+        {
+            p.window = None; // closes the editor first
+            self.graveyard.push(p.shared.clone());
+        }
         self.cables.retain(|c| c.from.node != id && c.to.node != id);
         for g in &mut self.groups {
             g.members.retain(|m| *m != id);
@@ -623,6 +914,11 @@ impl Graph {
                     let (value, seq) = midi.cc(channel, number);
                     (seq, Write::Norm(value))
                 }
+                ModuleKind::MidiNote if p.viz[midi_note::CABLE].get() > 0.5 => {
+                    // Played from a MIDI cable: the processor reports the notes.
+                    let seq = p.viz[midi_note::SEQ].get() as u32 | 1 << 31;
+                    (seq, Write::Note(p.viz[midi_note::NOTE].get().max(0.0)))
+                }
                 ModuleKind::MidiNote => {
                     let key = midi.note(midi_note::channel(p));
                     (key.seq, Write::Note(midi_note::played_note(p, key.note)))
@@ -666,6 +962,9 @@ impl Graph {
             (NodeKind::Mixer(m), ParamRef::Fader(ch)) if ch < MIXER_CHANNELS => m.params.fader[ch].set(norm),
             (NodeKind::Mixer(m), ParamRef::Pan(ch)) if ch < MIXER_CHANNELS => m.params.pan[ch].set(norm * 2.0 - 1.0),
             (NodeKind::Mixer(m), ParamRef::Master) => m.params.master.set(norm),
+            (NodeKind::Plugin(p), ParamRef::Plugin(id)) => {
+                let _ = p.control.send(Control::Param(id, norm as f64));
+            }
             _ => {}
         }
     }
@@ -741,13 +1040,13 @@ impl Graph {
         let inside = |n: NodeId| g.members.contains(&n);
         let (mut ins, mut outs) = (Vec::new(), Vec::new());
         for node in g.members.iter().filter_map(|m| self.node(*m)) {
-            for port in 0..node.inputs().len() {
+            for port in node.input_ports() {
                 let pr = PortRef { node: node.id, port };
                 if !self.cables.iter().any(|c| c.to == pr && inside(c.from.node)) {
                     ins.push(pr);
                 }
             }
-            for port in 0..node.outputs().len() {
+            for port in node.output_ports() {
                 let pr = PortRef { node: node.id, port };
                 let mut uses = self.cables.iter().filter(|c| c.from == pr).peekable();
                 let used = uses.peek().is_some();
@@ -762,7 +1061,10 @@ impl Graph {
     /// Connects an output to an input, replacing whatever fed that input.
     /// Refuses connections that would create a feedback loop.
     pub fn connect(&mut self, from: PortRef, to: PortRef, audio: &AudioHandle) -> bool {
-        if from.node == to.node || self.reaches(to.node, from.node) {
+        // MIDI only into MIDI, audio only into audio, between ports that exist.
+        let exists = self.node(from.node).is_some_and(|n| n.output_ports().contains(&from.port))
+            && self.node(to.node).is_some_and(|n| n.input_ports().contains(&to.port));
+        if !exists || is_midi(from.port) != is_midi(to.port) || from.node == to.node || self.reaches(to.node, from.node) {
             return false;
         }
         self.cables.retain(|c| c.to != to);
@@ -819,12 +1121,15 @@ impl Graph {
         let mut order = Vec::with_capacity(self.nodes.len());
         while let Some(id) = ready.pop() {
             let mut inputs = [None; MAX_INPUTS];
+            let mut midi_input = None;
             for c in self.cables.iter().filter(|c| c.to.node == id) {
-                if c.to.port < MAX_INPUTS {
+                if is_midi(c.to.port) {
+                    midi_input = Some(c.from.node);
+                } else if c.to.port < MAX_INPUTS {
                     inputs[c.to.port] = Some((c.from.node, c.from.port));
                 }
             }
-            order.push(TopoEntry { id, inputs });
+            order.push(TopoEntry { id, inputs, midi_input });
             for c in self.cables.iter().filter(|c| c.from.node == id) {
                 let d = indegree.get_mut(&c.to.node).expect("cable to unknown node");
                 *d -= 1;

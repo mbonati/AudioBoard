@@ -45,7 +45,12 @@ pub static DEF: ModuleDef = ModuleDef {
     cv_depth: &[(MOD, 1)],
     modes: &["STRING", "PIPE", "BAR", "BELL"],
     toggle: None,
+    toggle_default: false,
     map: false,
+    midi_in: false,
+    midi_out: false,
+    data: &[],
+    display_h: 42.0,
     viz: 0,
 };
 
