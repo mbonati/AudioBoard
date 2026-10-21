@@ -78,6 +78,7 @@ impl NodeType {
             "MIDI",
             &[
                 NodeType::Module(ModuleKind::Sequencer),
+                NodeType::Module(ModuleKind::Midicer),
                 NodeType::Module(ModuleKind::Arpeggiator),
                 NodeType::Module(ModuleKind::MidiIn),
                 NodeType::Module(ModuleKind::MidiNote),

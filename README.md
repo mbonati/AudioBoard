@@ -91,11 +91,11 @@ semitone knobs the distance from middle C, and the others the key's position. Th
 messages that arrive after mapping. **UNMAP** removes the mapping. Mappings are saved in the project and in
 library modules.
 
-### MIDI sequences: Step Sequencer, Arpeggiator, MIDI In
+### MIDI sequences: Step Sequencer, MIDIcer, Arpeggiator, MIDI In
 
 Besides audio cables there are **MIDI cables**: square ports (audio ports are round) and dashed cables.
 A MIDI cable only joins a MIDI output to a MIDI input. VST3 plugins that accept MIDI (instruments), the
-Arpeggiator and MIDI Note have a MIDI input.
+Arpeggiator, MIDIcer and MIDI Note have a MIDI input.
 
 The **tempo** is global: the **BPM** field in the toolbar. Drag it to change it (Shift for fine steps),
 click it to type a value (Enter sets it, Esc cancels; "97,5" works too), Alt+click to go back to 90.
@@ -110,6 +110,37 @@ melody; hovering shows the note. RATE (from 1/4 to 1/32, triplets), STEPS (lengt
 SWING (delays the even-numbered steps), CHANCE (probability that a step plays), VELOCITY, ROOT and OCTAVE
 (the tonic), scale MAJ / MIN / DOR / PENT / CHR. **PLAY** stops and restarts it. Steps are saved in the
 project and in library modules.
+
+**MIDIcer**: a stochastic sequencer after Vermona's meloDICER: random values turn into notes only through
+your settings, so it is played like an instrument.
+- *Rhythm*: **NOTE** (base note value, 1/1 to 1/32 with triplets), **VARIATION** (off at the centre; to the
+  left it randomly brings in longer values, to the right shorter ones), **LEGATO** (probability that a note
+  runs into the next one without a new attack: overlapping notes, or a tie on the same pitch; at 100% every
+  note is legato) and **REST** (probability that a note becomes a rest).
+- *Melody*: **LOW** and **HIGH** set the note range; the display has a probability fader for each semitone
+  (click or drag; at the bottom it is off). Each note in the range plays as often as its semitone's fader
+  says; a fader lights while its note plays.
+- **DICE R / DICE M** keep a set of random values for the rhythm / melody, so the pattern repeats; click
+  again for new values. **LIVE R / LIVE M** draw new values all the time (no repeats); DICE brings the kept
+  values back. With separate sections, the rhythm can repeat while the melody keeps changing, or vice versa.
+- **FIRST / LAST** set the pattern's length in sixteenths (up to four beats), shown on the step strip under
+  the faders. **RESTART** starts it again from FIRST on the next beat. **MUTE** silences it while the pattern
+  runs. **LOCK** keeps playing with the current settings while you prepare new ones; unlocking applies them.
+- MIDI: **GATE** (note length for non-legato notes), **VELOCITY**, **DYNAMICS** (random softening) and the
+  output **CHANNEL**.
+- **SETUP** holds meloDICER's edit parameters: whether VARIATION may pick triplets and 1/32 notes, whether
+  unmuting restarts the pattern, and the routing of the two CV inputs: **CV1** (pitch) as pitch bend
+  (unquantized, like ADD SEQ) or transposition (±24 semitones, like TRANS SEQ), and/or moving LOW and HIGH;
+  **CV2** (rhythm) added to NOTE, VARIATION, LEGATO and/or REST.
+- Modes: **SEQ** (the sequencer); **SEQ+G** (no rhythm of its own: every note arriving on its MIDI input
+  plays a new note from the melody section, with LEGATO and REST); **QUANT1** (CV2 quantized to the enabled
+  notes on every beat; a raised fader pulls from further away); **QUANT2** (CV2 quantized while a note is held
+  on the MIDI input).
+- In SEQ mode, notes on its MIDI input are commands, like meloDICER's gate inputs: **C** restart, **D** / **E**
+  dice the rhythm / melody anew, **F** / **G** switch the rhythm / melody between DICE and LIVE, **A** mutes
+  while held. Without a MIDI cable these come from the MIDI keyboard.
+- The tempo is the global one (with TAP in the toolbar). Settings, faders and the kept random values are
+  saved in the project and in library modules, like meloDICER's patterns.
 
 **Arpeggiator**: plays the held notes one at a time, in time, over 1–4 octaves (OCTAVES), in UP, DOWN,
 U+D (up and down), RAND or ORDER (as played) order. RATE, GATE, SWING, CHANCE, VELOCITY as in the
@@ -270,7 +301,7 @@ src/
 │   ├── fastmath.rs fast sine, exp2 and tanh for per-sample DSP (error < 1e-6)
 │   ├── dsp.rs      Oscillator and Mixer
 │   ├── modules/    drone, random, granular, resonator, filter, delay, reverb, midi_cc, midi_note,
-│   │               sequencer, arpeggiator, midi_in
+│   │               sequencer, arpeggiator, midi_in, midicer (after Vermona's meloDICER)
 │   │   ├── steps.rs step grid on the global tempo, outgoing notes, held keys
 │   │   └── mod.rs  module descriptions (ModuleDef), generic parameters and DSP helpers
 │   ├── midi.rs     MIDI inputs (midir) and shared state read by the MIDI nodes

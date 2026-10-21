@@ -72,6 +72,7 @@ pub static DEF: ModuleDef = ModuleDef {
     midi_out: true,
     data: &DATA,
     display_h: 100.0,
+    controls_h: 0.0,
     viz: 2,
 };
 

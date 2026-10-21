@@ -61,6 +61,29 @@ pub enum Unit {
     Division,
     /// Pitch class, 0 = C.
     NoteName,
+    /// MIDI note number ("C4" = 60).
+    Note,
+    /// Index into [`NOTE_VALUES`].
+    NoteValue,
+}
+
+/// Note values for rhythm generators, longest first: (label, beats,
+/// triplet, thirty-second).
+pub const NOTE_VALUES: [(&str, f64, bool, bool); 9] = [
+    ("1/1", 4.0, false, false),
+    ("1/2", 2.0, false, false),
+    ("1/4", 1.0, false, false),
+    ("1/4T", 2.0 / 3.0, true, false),
+    ("1/8", 0.5, false, false),
+    ("1/8T", 1.0 / 3.0, true, false),
+    ("1/16", 0.25, false, false),
+    ("1/16T", 1.0 / 6.0, true, false),
+    ("1/32", 0.125, false, true),
+];
+
+/// "C4" for MIDI note 60.
+pub fn note_label(note: i32) -> String {
+    format!("{}{}", NOTE_NAMES[note.rem_euclid(12) as usize], note.div_euclid(12) - 1)
 }
 
 /// Note lengths for sequencers: (label, steps per beat).
@@ -139,6 +162,8 @@ impl ParamSpec {
             (Unit::Channel, _) => format!("Ch {:.0}", v.round()),
             (Unit::Division, _) => DIVISIONS[(v.round() as usize).min(DIVISIONS.len() - 1)].0.to_owned(),
             (Unit::NoteName, _) => NOTE_NAMES[(v.round() as usize) % 12].to_owned(),
+            (Unit::Note, _) => note_label(v.round() as i32),
+            (Unit::NoteValue, _) => NOTE_VALUES[(v.round().max(0.0) as usize).min(NOTE_VALUES.len() - 1)].0.to_owned(),
         }
     }
 }

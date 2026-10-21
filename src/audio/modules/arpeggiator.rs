@@ -51,6 +51,7 @@ pub static DEF: ModuleDef = ModuleDef {
     midi_out: true,
     data: &[],
     display_h: 42.0,
+    controls_h: 0.0,
     viz: viz::LEN,
 };
 

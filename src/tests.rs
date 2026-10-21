@@ -1567,3 +1567,161 @@ fn palette_categories_fold() {
     }
     assert!(!shows(&texts, "Drone") && shows(&texts, "Reverb"), "{:?}", texts.iter().map(|t| &t.0).collect::<Vec<_>>());
 }
+
+// ---------------------------------------------------------------------------
+// MIDIcer
+// ---------------------------------------------------------------------------
+
+fn midicer() -> (Arc<ModuleParams>, crate::audio::modules::midicer::Midicer) {
+    let (_g, a, _e) = setup();
+    let p = Arc::new(ModuleParams::new(ModuleKind::Midicer));
+    let m = crate::audio::modules::midicer::Midicer::new(p.clone(), a.midi.clone());
+    (p, m)
+}
+
+#[test]
+fn midicer_plays_the_manuals_basic_pattern() {
+    use crate::audio::modules::midicer::data;
+    let (p, mut m) = midicer();
+    // 120 BPM, 1/16 notes: one every 6000 frames, C3 or C4 only.
+    let events = run_generator(&mut m, 2 * 96_000, |_, _| {});
+    let ons = note_ons(&events);
+    assert_eq!(ons.len(), 32, "two bars of sixteenths");
+    assert!(ons.iter().all(|o| o.0 % 6000 == 0 && (o.1 == 48 || o.1 == 60)), "{ons:?}");
+    // DICE: the second bar repeats the first.
+    let bar = |b: usize| ons[b * 16..(b + 1) * 16].iter().map(|o| o.1).collect::<Vec<_>>();
+    assert_eq!(bar(0), bar(1));
+    assert!(bar(0).contains(&48) && bar(0).contains(&60), "both octaves: {:?}", bar(0));
+    // GATE 80%: each note ends before the next.
+    let offs: Vec<usize> = events.iter().filter(|(_, m)| m[0] & 0xF0 == 0x80).map(|e| e.0).collect();
+    assert_eq!(offs[0], 4800);
+
+    // Different dice, a different pattern.
+    p.data[data::SEED_M].set(777.0);
+    let (_, mut m2) = (p.clone(), crate::audio::modules::midicer::Midicer::new(p.clone(), setup().1.midi.clone()));
+    let other: Vec<u8> = note_ons(&run_generator(&mut m2, 96_000, |_, _| {})).iter().map(|o| o.1).collect();
+    assert_ne!(other, bar(0));
+}
+
+#[test]
+fn midicer_live_mode_never_repeats() {
+    use crate::audio::modules::midicer::{Midicer, data};
+    let (p, _) = midicer();
+    for pc in 0..12 {
+        p.data[data::WEIGHTS + pc].set(1.0);
+    }
+    let midi = setup().1.midi.clone();
+    let first_bar = |p: &Arc<ModuleParams>| -> Vec<u8> {
+        let mut m = Midicer::new(p.clone(), midi.clone());
+        note_ons(&run_generator(&mut m, 96_000, |_, _| {})).iter().map(|o| o.1).collect()
+    };
+    let kept = first_bar(&p);
+
+    p.data[data::DICE_M].set(0.0);
+    let mut m = Midicer::new(p.clone(), midi.clone());
+    let ons = note_ons(&run_generator(&mut m, 2 * 96_000, |_, _| {}));
+    let bar = |b: usize| ons[b * 16..(b + 1) * 16].iter().map(|o| o.1).collect::<Vec<_>>();
+    assert_ne!(bar(0), bar(1), "LIVE: no repeating pattern");
+
+    // Back to DICE: the kept values return.
+    p.data[data::DICE_M].set(1.0);
+    assert_eq!(first_bar(&p), kept);
+}
+
+#[test]
+fn midicer_rests_legato_and_mute() {
+    use crate::audio::modules::midicer::{LEGATO, REST, data};
+    let (p, mut m) = midicer();
+    p.set(REST, 1.0);
+    assert!(note_ons(&run_generator(&mut m, 96_000, |_, _| {})).is_empty(), "all rests");
+
+    let (p, mut m) = midicer();
+    p.set(LEGATO, 1.0);
+    let events = run_generator(&mut m, 96_000, |_, _| {});
+    let ons = note_ons(&events);
+    // Every note runs into the next: ties merge repeated pitches, and a new
+    // pitch starts before the old one stops.
+    assert!(ons.len() < 16, "ties: {}", ons.len());
+    for w in events.windows(2) {
+        if w[1].1[0] & 0xF0 == 0x80 {
+            assert_eq!(w[0].0, w[1].0, "a note-off only comes with the next note-on");
+        }
+    }
+
+    let (p, mut m) = midicer();
+    p.data[data::MUTE].set(1.0);
+    assert!(note_ons(&run_generator(&mut m, 96_000, |_, _| {})).is_empty(), "muted");
+}
+
+#[test]
+fn midicer_pattern_length_and_variation() {
+    use crate::audio::modules::midicer::{FIRST, LAST, NOTE, VARIATION, data};
+    let (p, mut m) = midicer();
+    // One beat long (steps 1…4): the dice repeat every beat.
+    p.set(FIRST, 1.0);
+    p.set(LAST, 4.0);
+    for pc in 0..12 {
+        p.data[data::WEIGHTS + pc].set(1.0);
+    }
+    let ons = note_ons(&run_generator(&mut m, 96_000, |_, _| {}));
+    let beat = |b: usize| ons[b * 4..(b + 1) * 4].iter().map(|o| o.1).collect::<Vec<_>>();
+    assert_eq!(beat(0), beat(1));
+    assert_eq!(beat(1), beat(3));
+
+    // VARIATION to the right adds shorter notes (1/32 allowed).
+    let (p, mut m) = midicer();
+    p.set(NOTE, 4.0); // 1/8: 12000 frames
+    p.set(VARIATION, 1.0);
+    p.data[data::THIRTY_SECOND].set(1.0);
+    let ons = note_ons(&run_generator(&mut m, 96_000, |_, _| {}));
+    let gaps: Vec<usize> = ons.windows(2).map(|w| w[1].0 - w[0].0).collect();
+    assert!(gaps.iter().all(|&g| [12_000, 6000, 3000].contains(&g)), "{gaps:?}");
+    assert!(gaps.iter().any(|&g| g < 12_000), "some shorter notes");
+    assert!(ons.len() > 8);
+}
+
+#[test]
+fn midicer_follows_gates_and_quantizes() {
+    use crate::audio::modules::midicer::{QUANT1, SEQ_GATE};
+    // SEQ+G: a note for each note on the MIDI input, ended by its note-off.
+    let (p, mut m) = midicer();
+    p.set_mode(SEQ_GATE);
+    let gates = |at: usize, buf: &mut MidiBuf| match at {
+        3200 => buf.push(10, [0x90, 70, 90]),
+        6400 => buf.push(0, [0x80, 70, 0]),
+        9600 => buf.push(5, [0x90, 72, 90]),
+        _ => {}
+    };
+    let events = run_generator(&mut m, 12_800, gates);
+    let ons = note_ons(&events);
+    assert_eq!(ons.iter().map(|o| o.0).collect::<Vec<_>>(), [3210, 9605]);
+    assert!(ons.iter().all(|o| o.1 == 48 || o.1 == 60));
+    assert!(events.iter().any(|(f, m)| *f == 6400 && m[0] & 0xF0 == 0x80));
+
+    // QUANT1: CV2 → the enabled notes, once a beat. With only C enabled and
+    // CV2 at +1 (the top of LOW…HIGH), that is C4 every beat.
+    let (p, mut m) = midicer();
+    p.set_mode(QUANT1);
+    const SR: f32 = 48_000.0;
+    let mut ctx = ProcessCtx { sample_rate: SR, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / SR as f64 };
+    let mut inputs = Box::new(Inputs {
+        bufs: [[[0.0; 64]; 2]; 8],
+        connected: [false; 8],
+        midi: MidiBuf::default(),
+        midi_connected: false,
+    });
+    inputs.connected[1] = true;
+    inputs.bufs[1] = [[1.0; 64]; 2];
+    let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
+    let mut ons = Vec::new();
+    for block in 0..1500 {
+        m.process(&ctx, &inputs, &mut outputs, 64);
+        for e in m.midi_out().unwrap().events() {
+            if e.data[0] & 0xF0 == 0x90 {
+                ons.push((block * 64 + e.frame as usize, e.data[1]));
+            }
+        }
+        ctx.beat += ctx.beats_per_sample * 64.0;
+    }
+    assert_eq!(ons, [(0, 60), (24_000, 60), (48_000, 60), (72_000, 60)]);
+}

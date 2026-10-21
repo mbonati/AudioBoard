@@ -10,6 +10,7 @@ pub mod filter;
 pub mod granular;
 pub mod midi_cc;
 pub mod midi_in;
+pub mod midicer;
 pub mod midi_note;
 pub mod random;
 pub mod resonator;
@@ -39,6 +40,7 @@ pub enum ModuleKind {
     Sequencer,
     Arpeggiator,
     MidiIn,
+    Midicer,
 }
 
 /// Static description of a module's panel and ports.
@@ -71,12 +73,14 @@ pub struct ModuleDef {
     pub data: &'static [f32],
     /// Height of the display, in node units.
     pub display_h: f32,
+    /// Height of extra controls under the display (buttons), if any.
+    pub controls_h: f32,
     /// Number of values the processor publishes for the node's display.
     pub viz: usize,
 }
 
 impl ModuleKind {
-    pub const ALL: [ModuleKind; 12] = [
+    pub const ALL: [ModuleKind; 13] = [
         ModuleKind::Drone,
         ModuleKind::Random,
         ModuleKind::Granular,
@@ -89,6 +93,7 @@ impl ModuleKind {
         ModuleKind::Sequencer,
         ModuleKind::Arpeggiator,
         ModuleKind::MidiIn,
+        ModuleKind::Midicer,
     ];
 
     pub fn def(self) -> &'static ModuleDef {
@@ -105,6 +110,7 @@ impl ModuleKind {
             ModuleKind::Sequencer => &sequencer::DEF,
             ModuleKind::Arpeggiator => &arpeggiator::DEF,
             ModuleKind::MidiIn => &midi_in::DEF,
+            ModuleKind::Midicer => &midicer::DEF,
         }
     }
 
@@ -126,6 +132,7 @@ impl ModuleKind {
             ModuleKind::Sequencer => Box::new(sequencer::Sequencer::new(params)),
             ModuleKind::Arpeggiator => Box::new(arpeggiator::Arpeggiator::new(params, midi)),
             ModuleKind::MidiIn => Box::new(midi_in::MidiIn::new(params, midi)),
+            ModuleKind::Midicer => Box::new(midicer::Midicer::new(params, midi)),
         }
     }
 }
