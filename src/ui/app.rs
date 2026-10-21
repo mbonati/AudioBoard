@@ -50,7 +50,7 @@ const SHORTCUTS: &[(&str, &str)] = &[
     ("F / Shift+F", "Fit all / fit selection"),
     ("A", "Auto-fit: keep the patch in view"),
     ("Cmd+= / Cmd+− / Cmd+0", "Zoom in / out / 100%"),
-    ("Space", "Audio on / off"),
+    ("Space", "Start / stop (stop goes back to the start)"),
     ("T", "Tap tempo (on each beat)"),
     ("Click BPM", "Type the tempo (drag to change it)"),
 ];
@@ -133,6 +133,8 @@ impl AudioBoardApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         theme::apply(&cc.egui_ctx);
         let shared = Arc::new(EngineShared::new());
+        // The patch waits for Start.
+        shared.running.store(false, Ordering::Relaxed);
         let audio = audio::start(shared.clone());
         let mut graph = Graph::default();
         demo_patch(&mut graph, &audio);
@@ -172,7 +174,12 @@ impl AudioBoardApp {
         self.shared.running.load(Ordering::Relaxed)
     }
 
+    /// Start plays from the top; Stop silences everything and rewinds the
+    /// transport, so sequencers start over on the next Start.
     fn toggle_running(&self) {
+        if self.running() {
+            self.shared.rewinds.fetch_add(1, Ordering::Relaxed);
+        }
         self.shared.running.fetch_xor(true, Ordering::Relaxed);
     }
 
@@ -506,7 +513,7 @@ impl AudioBoardApp {
 
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
-                if power_button(ui, self.running()).on_hover_text("Space").clicked() {
+                if transport_button(ui, self.running()).clicked() {
                     self.toggle_running();
                 }
                 ui.add_space(6.0);
@@ -968,29 +975,39 @@ fn icon_button(ui: &mut Ui, icon: Icon, active: bool) -> Response {
     resp.on_hover_cursor(CursorIcon::PointingHand)
 }
 
-fn power_button(ui: &mut Ui, on: bool) -> Response {
-    let (rect, resp) = ui.allocate_exact_size(vec2(80.0, 24.0), Sense::CLICK);
+/// Start / Stop: a play triangle while stopped; while playing, a stop
+/// square on green.
+fn transport_button(ui: &mut Ui, playing: bool) -> Response {
+    let (rect, resp) = ui.allocate_exact_size(vec2(74.0, 24.0), Sense::CLICK);
     let p = ui.painter();
-    let (fill, border, dot, text) = if on {
-        (alpha(theme::METER_GREEN, 0.10), alpha(theme::METER_GREEN, 0.45), theme::METER_GREEN, theme::TEXT)
+    let hot = resp.hovered();
+    let (fill, border) = if playing {
+        (alpha(theme::METER_GREEN, if hot { 0.18 } else { 0.10 }), alpha(theme::METER_GREEN, 0.45))
     } else {
-        (Color32::TRANSPARENT, theme::NODE_BORDER, theme::TEXT_FAINT, theme::TEXT_DIM)
+        (if hot { theme::CONTROL } else { Color32::TRANSPARENT }, theme::NODE_BORDER)
     };
-    let fill = if resp.hovered() && !on { theme::CONTROL } else { fill };
     p.rect(rect, 12.0, fill, Stroke::new(1.0, border), StrokeKind::Inside);
-    p.circle_filled(pos2(rect.left() + 13.0, rect.center().y), 3.0, dot);
+    let c = pos2(rect.left() + 15.0, rect.center().y);
+    if playing {
+        p.rect_filled(Rect::from_center_size(c, vec2(7.0, 7.0)), 1.5, theme::METER_GREEN);
+    } else {
+        let triangle = vec![c + vec2(-3.0, -4.5), c + vec2(4.5, 0.0), c + vec2(-3.0, 4.5)];
+        p.add(Shape::convex_polygon(triangle, theme::METER_GREEN, Stroke::NONE));
+    }
     p.text(
-        pos2(rect.left() + 23.0, rect.center().y),
+        pos2(rect.left() + 26.0, rect.center().y),
         Align2::LEFT_CENTER,
-        if on { "Audio on" } else { "Audio off" },
+        if playing { "Stop" } else { "Start" },
         FontId::proportional(11.5),
-        text,
+        theme::TEXT,
     );
-    resp.on_hover_cursor(CursorIcon::PointingHand)
+    resp.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(if playing {
+        "Stop, and go back to the start (Space)"
+    } else {
+        "Play from the start (Space)"
+    })
 }
 
-/// The global tempo: drag to change it (Shift: fine), double-click for the
-/// default. The light flashes on every beat while audio runs.
 fn shortcuts(ui: &mut Ui) {
     ui.label(RichText::new("Shortcuts").size(11.5).color(theme::TEXT));
     ui.add_space(4.0);

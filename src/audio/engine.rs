@@ -31,6 +31,9 @@ pub struct ProcessCtx {
     pub beat: f64,
     /// Beats per sample at the current tempo.
     pub beats_per_sample: f64,
+    /// The transport was just rewound to beat 0 (Stop, then Start): rhythm
+    /// generators start over and end the notes they were holding.
+    pub restart: bool,
 }
 
 /// Events a MIDI cable can hold per block (more are dropped).
@@ -177,6 +180,8 @@ type IdMap<V> = HashMap<NodeId, V, BuildHasherDefault<IdHasher>>;
 pub struct Engine {
     rx: Receiver<Command>,
     shared: Arc<EngineShared>,
+    /// `EngineShared::rewinds` as last seen.
+    rewinds: u32,
     ctx: ProcessCtx,
     nodes: IdMap<Box<Slot>>,
     topo: Box<Topology>,
@@ -188,12 +193,14 @@ impl Engine {
     pub fn new(rx: Receiver<Command>, shared: Arc<EngineShared>, sample_rate: f32) -> Self {
         Self {
             rx,
+            rewinds: shared.rewinds.load(Ordering::Relaxed),
             shared,
             ctx: ProcessCtx {
                 sample_rate,
                 smooth: 1.0 - (-1.0 / (sample_rate * 0.010)).exp(),
                 beat: 0.0,
                 beats_per_sample: 0.0,
+                restart: false,
             },
             nodes: IdMap::with_capacity_and_hasher(256, Default::default()),
             topo: Box::default(),
@@ -271,6 +278,7 @@ impl Engine {
             }
         }
         ctx.beat += ctx.beats_per_sample * n as f64;
+        ctx.restart = false;
     }
 
     /// Fills an interleaved device buffer.
@@ -278,6 +286,12 @@ impl Engine {
         let _ftz = FlushDenormals::new();
         let started = Instant::now();
         self.drain_commands();
+        let rewinds = self.shared.rewinds.load(Ordering::Relaxed);
+        if rewinds != self.rewinds {
+            self.rewinds = rewinds;
+            self.ctx.beat = 0.0;
+            self.ctx.restart = true;
+        }
 
         let channels = channels.max(1);
         let frames = data.len() / channels;

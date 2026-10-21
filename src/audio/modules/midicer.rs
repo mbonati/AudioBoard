@@ -649,6 +649,14 @@ impl Processor for Midicer {
             self.cursor = cursor;
         }
 
+        // Rewound (Stop, then Start): the pattern starts over at beat 0.
+        if ctx.restart {
+            self.release(0, s.channel);
+            self.next_at = f64::INFINITY;
+            self.restart_at = Some(ctx.beat.ceil());
+            self.quant_at = ctx.beat.ceil();
+            self.index = 0;
+        }
         // Restarts (RESTART, MIDI C) land on the next beat.
         let restarts = p.data[data::RESTART].get();
         if restarts != self.restarts_seen || !self.started || self.restart_at == Some(f64::NEG_INFINITY) {

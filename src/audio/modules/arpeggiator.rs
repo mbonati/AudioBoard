@@ -156,6 +156,12 @@ impl Processor for Arpeggiator {
     fn process(&mut self, ctx: &ProcessCtx, inputs: &Inputs, _outputs: &mut [Buf], n: usize) {
         self.out.clear();
         let p = self.params.clone();
+        if ctx.restart {
+            // Rewound: from the chord's first note again.
+            self.clock = StepClock::new();
+            self.voice.stop(&mut self.out, 0);
+            self.position = 0;
+        }
 
         // Switching between the cable and the keyboard drops held notes.
         if inputs.midi_connected != self.cable {

@@ -128,6 +128,11 @@ impl Sequencer {
 impl Processor for Sequencer {
     fn process(&mut self, ctx: &ProcessCtx, _inputs: &Inputs, _outputs: &mut [Buf], n: usize) {
         self.out.clear();
+        if ctx.restart {
+            // Rewound: from step 1 again, ending the note held.
+            self.clock = StepClock::new();
+            self.voice.stop(&mut self.out, 0);
+        }
         let p = &self.params;
         if !p.toggled() {
             self.voice.stop(&mut self.out, 0);

@@ -1213,7 +1213,7 @@ fn run_generator(
     mut feed: impl FnMut(usize, &mut MidiBuf),
 ) -> Vec<(usize, [u8; 3])> {
     const SR: f32 = 48_000.0;
-    let mut ctx = ProcessCtx { sample_rate: SR, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / SR as f64 };
+    let mut ctx = ProcessCtx { sample_rate: SR, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / SR as f64, restart: false };
     let mut inputs = Box::new(Inputs {
         bufs: [[[0.0; 64]; 2]; 8],
         connected: [false; 8],
@@ -1703,7 +1703,7 @@ fn midicer_follows_gates_and_quantizes() {
     let (p, mut m) = midicer();
     p.set_mode(QUANT1);
     const SR: f32 = 48_000.0;
-    let mut ctx = ProcessCtx { sample_rate: SR, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / SR as f64 };
+    let mut ctx = ProcessCtx { sample_rate: SR, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / SR as f64, restart: false };
     let mut inputs = Box::new(Inputs {
         bufs: [[[0.0; 64]; 2]; 8],
         connected: [false; 8],
@@ -1724,4 +1724,38 @@ fn midicer_follows_gates_and_quantizes() {
         ctx.beat += ctx.beats_per_sample * 64.0;
     }
     assert_eq!(ons, [(0, 60), (24_000, 60), (48_000, 60), (72_000, 60)]);
+}
+
+#[test]
+fn stop_rewinds_and_start_plays_from_the_top() {
+    use crate::audio::modules::{midi_note, sequencer};
+    use crate::graph::MIDI_PORT;
+    let shared = Arc::new(EngineShared::new());
+    shared.tempo.set(120.0);
+    let (a, mut e) = audio::offline(shared.clone(), 48_000);
+    let mut g = Graph::default();
+    let seq = g.add_module(ModuleKind::Sequencer, pos2(0.0, 0.0), &a);
+    let note = g.add_module(ModuleKind::MidiNote, pos2(300.0, 0.0), &a);
+    g.connect(port(seq, MIDI_PORT), port(note, MIDI_PORT), &a);
+    let sp = module_params(&g, seq);
+    let np = module_params(&g, note);
+    for step in 0..sequencer::LEN {
+        sequencer::set_on(&sp, step, true);
+    }
+
+    render_buf(&mut e, 62_400); // 2.6 beats
+    assert_eq!(sp.viz[sequencer::STEP].get(), 10.0);
+
+    // Stop: silence, and back to the start.
+    shared.rewinds.fetch_add(1, Ordering::Relaxed);
+    shared.running.store(false, Ordering::Relaxed);
+    let silence = render_buf(&mut e, 24_000);
+    assert!(silence.iter().all(|&s| s == 0.0));
+
+    // Start: from step 1 and its note (C3), on beat 0.
+    shared.running.store(true, Ordering::Relaxed);
+    render_buf(&mut e, 512);
+    assert_eq!(sp.viz[sequencer::STEP].get(), 0.0);
+    assert_eq!(np.viz[midi_note::NOTE].get(), 48.0);
+    assert!(shared.beat.get() < 0.05, "the transport starts at 0: {}", shared.beat.get());
 }

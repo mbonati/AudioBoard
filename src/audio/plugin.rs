@@ -315,6 +315,9 @@ impl Processor for PluginProcessor {
             let _ = plugin.set_tempo(tempo);
             self.tempo = tempo;
         }
+        if ctx.restart {
+            self.samples = 0;
+        }
         let _ = plugin.set_transport_position(TransportPosition { samples: self.samples, quarter_notes: ctx.beat });
         self.samples += n as i64;
 

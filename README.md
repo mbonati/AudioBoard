@@ -17,7 +17,7 @@ audio CPU, but a few minutes to compile):
 cargo run --profile dist
 ```
 
-On launch an ambient demo patch opens: a **Drone** (a chord of fifths on A1) goes into a **Filter** whose
+On launch an ambient demo patch opens, stopped: press **Start** in the toolbar (or Space) to hear it. The patch: a **Drone** (a chord of fifths on A1) goes into a **Filter** whose
 cutoff is slowly moved by a **Random**; the filter feeds a **Reverb** with a touch of shimmer and, an octave
 up, a **Granular** cloud that ends in a tape **Delay**. Everything flows into the **Mixer**.
 
@@ -97,10 +97,14 @@ Besides audio cables there are **MIDI cables**: square ports (audio ports are ro
 A MIDI cable only joins a MIDI output to a MIDI input. VST3 plugins that accept MIDI (instruments), the
 Arpeggiator, MIDIcer and MIDI Note have a MIDI input.
 
+**Start / Stop** (toolbar, or Space): Start plays from the beginning; Stop silences everything and goes back
+to the start, so on the next Start sequencers, arpeggiators and MIDIcer begin again from their first step
+(any note they were holding is ended).
+
 The **tempo** is global: the **BPM** field in the toolbar. Drag it to change it (Shift for fine steps),
 click it to type a value (Enter sets it, Esc cancels; "97,5" works too), Alt+click to go back to 90.
 **TAP** (or the T key) sets it from your taps: tap on each beat, and the last few intervals are averaged;
-a pause of two seconds starts a new count. The light flashes on every beat while audio is on. Sequencers
+a pause of two seconds starts a new count. The light flashes on every beat while playing. Sequencers
 and arpeggiators are locked to the same grid, so they always stay in time with each other; the tempo is
 also passed to plugins (synced LFOs and delays). It is saved in the project.
 
@@ -214,7 +218,7 @@ and a meter; a stereo master bus with L/R meters and a clip indicator. The mixer
 | Auto-fit (keep the whole patch in view) | A or the toolbar button |
 | New / open project | Cmd+N / Cmd+O, or the project name in the toolbar |
 | Save / save as | Cmd+S / Shift+Cmd+S |
-| Audio on/off | Space |
+| Start / stop | the Start / Stop button in the toolbar, or Space |
 | Tempo | drag the BPM field, click it to type, TAP or T to tap it |
 | Show / hide the oscilloscope and spectrum | panel button in the toolbar |
 

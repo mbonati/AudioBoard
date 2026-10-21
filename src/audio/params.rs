@@ -436,6 +436,9 @@ pub const TEMPO_RANGE: (f32, f32) = (20.0, 300.0);
 
 pub struct EngineShared {
     pub running: AtomicBool,
+    /// Bumped by Stop: the transport goes back to beat 0, and sequencers
+    /// start over on the next Start.
+    pub rewinds: AtomicU32,
     /// Transport tempo in BPM, shared by sequencers and arpeggiators.
     pub tempo: AtomicF32,
     /// Transport position in beats (wrapped), for the UI's beat light.
@@ -449,6 +452,7 @@ impl EngineShared {
     pub fn new() -> Self {
         Self {
             running: AtomicBool::new(true),
+            rewinds: AtomicU32::new(0),
             tempo: AtomicF32::new(DEFAULT_TEMPO),
             beat: AtomicF32::new(0.0),
             load: AtomicF32::new(0.0),
