@@ -4,11 +4,13 @@ use std::f32::consts::{FRAC_PI_4, TAU};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use super::engine::{Buf, Inputs, ProcessCtx, Processor};
+use super::engine::{BLOCK, Buf, Inputs, ProcessCtx, Processor};
+use super::fastmath;
 use super::params::{MIXER_CHANNELS, MixerParams, OscParams, Waveform, fader_gain, osc};
 
 /// Band-limited step correction (PolyBLEP) for the discontinuities of
 /// saw and pulse waves; removes most of the audible aliasing.
+#[inline]
 pub fn poly_blep(t: f32, dt: f32) -> f32 {
     if t < dt {
         let t = t / dt;
@@ -21,12 +23,13 @@ pub fn poly_blep(t: f32, dt: f32) -> f32 {
     }
 }
 
+#[inline]
 pub fn drive(x: f32, amount: f32) -> f32 {
     if amount < 0.001 {
         x
     } else {
         let k = 1.0 + amount * 9.0;
-        (k * x).tanh() / k.tanh()
+        fastmath::tanh(k * x) / fastmath::tanh(k)
     }
 }
 
@@ -107,7 +110,7 @@ impl Oscillator {
         let t = self.phase as f32;
         let adt = dt.abs().max(1e-9);
         match wave {
-            Waveform::Sine => drive((t * TAU).sin(), shape),
+            Waveform::Sine => drive(fastmath::sin_turns(t), shape),
             Waveform::Triangle => triangle(t, shape),
             Waveform::Saw => drive(2.0 * t - 1.0 - poly_blep(t, adt), shape),
             Waveform::Square => {
@@ -215,25 +218,34 @@ impl Processor for Mixer {
         let mut out_peak = [0.0f32; 2];
         let k = ctx.smooth;
 
-        for i in 0..n {
-            let (mut l, mut r) = (0.0, 0.0);
-            for ch in 0..MIXER_CHANNELS {
-                self.gain[ch] += (gain_t[ch] - self.gain[ch]) * k;
-                self.pan_l[ch] += (pan_lt[ch] - self.pan_l[ch]) * k;
-                self.pan_r[ch] += (pan_rt[ch] - self.pan_r[ch]) * k;
-                if !inputs.connected[ch] {
-                    continue;
-                }
+        // One channel at a time across the block; unpatched channels are
+        // skipped and their smoothing jumps to its target.
+        let mut sum = [[0.0f32; BLOCK]; 2];
+        for ch in 0..MIXER_CHANNELS {
+            let Some([xl, xr]) = inputs.get(ch) else {
+                self.gain[ch] = gain_t[ch];
+                self.pan_l[ch] = pan_lt[ch];
+                self.pan_r[ch] = pan_rt[ch];
+                continue;
+            };
+            let (mut gain, mut pan_l, mut pan_r) = (self.gain[ch], self.pan_l[ch], self.pan_r[ch]);
+            let mut peak = 0.0f32;
+            for i in 0..n {
+                gain += (gain_t[ch] - gain) * k;
+                pan_l += (pan_lt[ch] - pan_l) * k;
+                pan_r += (pan_rt[ch] - pan_r) * k;
                 // Stereo inputs: the pan acts as a balance control.
-                let [xl, xr] = &inputs.bufs[ch];
-                let (xl, xr) = (xl[i] * self.gain[ch], xr[i] * self.gain[ch]);
-                ch_peak[ch] = ch_peak[ch].max(xl.abs()).max(xr.abs());
-                l += xl * self.pan_l[ch];
-                r += xr * self.pan_r[ch];
+                let (l, r) = (xl[i] * gain, xr[i] * gain);
+                peak = peak.max(l.abs()).max(r.abs());
+                sum[0][i] += l * pan_l;
+                sum[1][i] += r * pan_r;
             }
+            (self.gain[ch], self.pan_l[ch], self.pan_r[ch]) = (gain, pan_l, pan_r);
+            ch_peak[ch] = peak;
+        }
+        for i in 0..n {
             self.master += (master_t - self.master) * k;
-            l *= self.master;
-            r *= self.master;
+            let (l, r) = (sum[0][i] * self.master, sum[1][i] * self.master);
             outputs[0][0][i] = l;
             outputs[0][1][i] = r;
             out_peak[0] = out_peak[0].max(l.abs());

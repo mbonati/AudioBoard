@@ -100,7 +100,7 @@ fn header(
             pos2(title.right() + 8.0 * z, cy),
             Align2::LEFT_CENTER,
             note,
-            egui::FontId::proportional(9.5 * z),
+            theme::font(9.5 * z),
             theme::TEXT_FAINT,
         );
     }
@@ -202,7 +202,7 @@ pub fn draw_card(
         let port = node.map_or("?", |n| n.port_label(pr.port, !input));
         format!("{title} · {port}")
     };
-    let font = egui::FontId::proportional(8.5 * z);
+    let font = theme::font(8.5 * z);
     let col = |on: bool| if on { theme::TEXT_DIM } else { theme::TEXT_FAINT };
     let (ins, outs) = ports;
     for (i, pr) in ins.iter().enumerate() {

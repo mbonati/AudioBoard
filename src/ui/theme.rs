@@ -56,9 +56,26 @@ pub fn mix(a: Color32, b: Color32, t: f32) -> Color32 {
     Color32::from_rgb(l(a.r(), b.r()), l(a.g(), b.g()), l(a.b(), b.b()))
 }
 
+/// Snaps a font size to half points. Text on the canvas is sized by the
+/// zoom; snapping lets zooming reuse a few dozen glyph sizes instead of
+/// laying out and rasterizing text at a new size every frame.
+pub fn snap(size: f32) -> f32 {
+    (size * 2.0).round().max(1.0) / 2.0
+}
+
+/// Proportional font at a (zoomed) size.
+pub fn font(size: f32) -> FontId {
+    FontId::proportional(snap(size))
+}
+
+/// Monospace font at a (zoomed) size.
+pub fn mono(size: f32) -> FontId {
+    FontId::monospace(snap(size))
+}
+
 /// Semibold proportional font, for titles.
 pub fn strong(size: f32) -> FontId {
-    FontId::new(size, FontFamily::Name("strong".into()))
+    FontId::new(snap(size), FontFamily::Name("strong".into()))
 }
 
 /// Uses the system UI fonts (SF Pro / SF Mono) when available, falling back

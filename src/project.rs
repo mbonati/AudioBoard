@@ -142,7 +142,8 @@ struct ModuleData {
 // Graph → data
 // ---------------------------------------------------------------------------
 
-fn node_data(graph: &Graph, n: &Node, numbers: &HashMap<NodeId, u32>, origin: Vec2) -> NodeData {
+/// `fresh`: read plugin states now rather than reuse recent copies.
+fn node_data(graph: &Graph, n: &Node, numbers: &HashMap<NodeId, u32>, origin: Vec2, fresh: bool) -> NodeData {
     let kind = match &n.kind {
         NodeKind::Osc(o) => KindData::Oscillator {
             waveform: o.params.waveform().name().to_owned(),
@@ -165,7 +166,7 @@ fn node_data(graph: &Graph, n: &Node, numbers: &HashMap<NodeId, u32>, origin: Ve
         },
         NodeKind::Plugin(p) => KindData::Plugin {
             path: p.meta.path.to_string_lossy().into_owned(),
-            state: p.save_state().map(|s| base64_encode(&s)).unwrap_or_default(),
+            state: p.state_base64(fresh).unwrap_or_default(),
             pinned: p.pinned.iter().map(|&i| p.params[i].id).collect(),
             midi: p.shared.midi_in.load(Ordering::Relaxed),
         },
@@ -204,12 +205,17 @@ fn node_data(graph: &Graph, n: &Node, numbers: &HashMap<NodeId, u32>, origin: Ve
 }
 
 /// Nodes (renumbered from 1, in the given order) and the cables between them.
-fn capture(graph: &Graph, ids: &[NodeId], origin: Vec2) -> (Vec<NodeData>, Vec<CableData>, HashMap<NodeId, u32>) {
+fn capture(
+    graph: &Graph,
+    ids: &[NodeId],
+    origin: Vec2,
+    fresh: bool,
+) -> (Vec<NodeData>, Vec<CableData>, HashMap<NodeId, u32>) {
     let numbers: HashMap<NodeId, u32> = ids.iter().enumerate().map(|(i, id)| (*id, i as u32 + 1)).collect();
     let nodes = ids
         .iter()
         .filter_map(|id| graph.node(*id))
-        .map(|n| node_data(graph, n, &numbers, origin))
+        .map(|n| node_data(graph, n, &numbers, origin, fresh))
         .collect();
     let cables = graph
         .cables
@@ -224,9 +230,21 @@ fn capture(graph: &Graph, ids: &[NodeId], origin: Vec2) -> (Vec<NodeData>, Vec<C
     (nodes, cables, numbers)
 }
 
+/// The whole patch, for saving.
 pub fn snapshot(graph: &Graph) -> Project {
+    snapshot_with(graph, true)
+}
+
+/// The patch for telling whether it changed: cheap enough to run several
+/// times a second, since plugin states are re-read only when they may
+/// have changed (and at most every couple of seconds).
+pub fn snapshot_cached(graph: &Graph) -> Project {
+    snapshot_with(graph, false)
+}
+
+fn snapshot_with(graph: &Graph, fresh: bool) -> Project {
     let ids: Vec<NodeId> = graph.nodes.iter().map(|n| n.id).collect();
-    let (nodes, cables, numbers) = capture(graph, &ids, Vec2::ZERO);
+    let (nodes, cables, numbers) = capture(graph, &ids, Vec2::ZERO, fresh);
     let modules = graph
         .groups
         .iter()
@@ -257,7 +275,7 @@ pub fn preset_from_group(graph: &Graph, gid: GroupId) -> Option<Preset> {
         .reduce(|a, b| a.union(b))?
         .min
         .to_vec2();
-    let (nodes, cables, _) = capture(graph, &g.members, origin);
+    let (nodes, cables, _) = capture(graph, &g.members, origin, true);
     Some(Preset {
         format: FORMAT.to_owned(),
         version: VERSION,

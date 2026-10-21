@@ -4,6 +4,7 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
+use egui::epaint::Mesh;
 use egui::{
     Align2, Color32, CursorIcon, FontId, Id, Key, Painter, PointerButton, Pos2, Rect, Response,
     Sense, Shape, Stroke, StrokeKind, Ui, Vec2, pos2, vec2,
@@ -26,12 +27,44 @@ const GRID: f32 = 24.0;
 const MIN_ZOOM: f32 = 0.3;
 const MAX_ZOOM: f32 = 2.0;
 /// Length of layout glides and view animations.
-const ANIM_SECS: f64 = 0.35;
+const ANIM_SECS: f64 = 0.5;
+/// Glides start in a wave from left to right, over this long.
+const GLIDE_STAGGER: f64 = 0.09;
 
-/// Nodes gliding to new positions: (node, from, to).
+/// Nodes gliding to new positions: (node, from, to, start delay).
 struct Glide {
-    moves: Vec<(NodeId, Pos2, Pos2)>,
+    moves: Vec<(NodeId, Pos2, Pos2, f64)>,
     start: f64,
+}
+
+impl Glide {
+    /// Each node sets off a little after the ones to its left, so the
+    /// patch flows into place rather than jumping all at once.
+    fn new(moves: Vec<(NodeId, Pos2, Pos2)>, start: f64) -> Self {
+        let (lo, hi) = moves
+            .iter()
+            .fold((f32::INFINITY, f32::NEG_INFINITY), |(lo, hi), m| (lo.min(m.2.x), hi.max(m.2.x)));
+        let span = (hi - lo).max(1.0);
+        let moves = moves
+            .into_iter()
+            .map(|(id, from, to)| (id, from, to, GLIDE_STAGGER * ((to.x - lo) / span) as f64))
+            .collect();
+        Self { moves, start }
+    }
+
+    fn end(&self) -> f64 {
+        self.start + ANIM_SECS + GLIDE_STAGGER
+    }
+}
+
+/// Animation curve: the motion of a critically damped spring, rescaled to
+/// land exactly at 1. It leaves gently, moves briskly and settles softly,
+/// with no overshoot.
+fn spring(t: f64) -> f32 {
+    const W: f64 = 8.0;
+    let t = t.clamp(0.0, 1.0);
+    let curve = |t: f64| 1.0 - (1.0 + W * t) * (-W * t).exp();
+    (curve(t) / curve(1.0)) as f32
 }
 
 /// The view moving to a new (pan, zoom).
@@ -355,7 +388,7 @@ impl Editor {
             }
         }
         self.layout_undo = Some(moves.iter().map(|(id, from, _)| (*id, *from)).collect());
-        self.glide = Some(Glide { moves, start: now });
+        self.glide = Some(Glide::new(moves, now));
         self.notices.push("Auto layout  ·  Cmd+Z to undo".to_owned());
     }
 
@@ -368,35 +401,39 @@ impl Editor {
             .into_iter()
             .filter_map(|(id, to)| Some((id, graph.node(id)?.pos, to)))
             .collect();
-        self.glide = Some(Glide { moves, start: now });
+        self.glide = Some(Glide::new(moves, now));
         self.notices.push("Layout undone".to_owned());
     }
 
     /// Advances node glides and view animations; true while one is running.
     fn animate(&mut self, graph: &mut Graph, now: f64) -> bool {
-        let ease = |start: f64| {
-            let t = ((now - start) / ANIM_SECS).clamp(0.0, 1.0) as f32;
-            (1.0 - (1.0 - t).powi(3), t >= 1.0)
-        };
         let mut busy = false;
         if let Some(g) = &self.glide {
-            let (e, done) = ease(g.start);
-            for &(id, from, to) in &g.moves {
+            for &(id, from, to, delay) in &g.moves {
                 if let Some(n) = graph.node_mut(id) {
-                    n.pos = from + (to - from) * e;
+                    n.pos = from + (to - from) * spring((now - g.start - delay) / ANIM_SECS);
                 }
             }
+            let done = now >= g.end();
             busy |= !done;
             if done {
                 self.glide = None;
             }
         }
         if let Some(a) = &self.view_anim {
-            let (e, done) = ease(a.start);
-            self.pan = a.from.0 + (a.to.0 - a.from.0) * e;
-            self.zoom = a.from.1 + (a.to.1 - a.from.1) * e;
-            busy |= !done;
-            if done {
+            let t = (now - a.start) / ANIM_SECS;
+            let e = spring(t);
+            // Zoom moves geometrically and the world point at the centre of
+            // the view moves in a straight line, so the patch neither
+            // swims sideways nor rushes through the zoom.
+            let ((p0, z0), (p1, z1)) = (a.from, a.to);
+            let centre = self.rect.size() * 0.5;
+            let (c0, c1) = ((centre - p0) / z0, (centre - p1) / z1);
+            self.zoom = z0 * (z1 / z0).powf(e);
+            self.pan = centre - (c0 + (c1 - c0) * e) * self.zoom;
+            busy |= t < 1.0;
+            if t >= 1.0 {
+                (self.pan, self.zoom) = (p1, z1);
                 self.view_anim = None;
             }
         }
@@ -1261,6 +1298,8 @@ impl Editor {
         }
     }
 
+    /// The background grid, as one mesh of pixel-aligned quads: a few
+    /// hundred lines cost one shape and four vertices each.
     fn draw_grid(&self, p: &Painter, rect: Rect) {
         let z = self.zoom;
         let mut step = GRID * z;
@@ -1270,6 +1309,8 @@ impl Editor {
             step *= 5.0;
             major_every = 1;
         }
+        let ppp = p.ctx().pixels_per_point();
+        let snap = |v: f32| (v * ppp).round() / ppp;
         let origin = rect.min + self.pan;
         let first = |o: f32, lo: f32| lo + (o - lo).rem_euclid(step);
         let color = |v: f32, o: f32| {
@@ -1280,16 +1321,20 @@ impl Editor {
             }
         };
 
+        let mut mesh = Mesh::default();
         let mut x = first(origin.x, rect.left());
         while x < rect.right() {
-            p.vline(x, rect.y_range(), Stroke::new(1.0, color(x, origin.x)));
+            let x0 = snap(x);
+            mesh.add_colored_rect(Rect::from_x_y_ranges(x0..=x0 + 1.0, rect.y_range()), color(x, origin.x));
             x += step;
         }
         let mut y = first(origin.y, rect.top());
         while y < rect.bottom() {
-            p.hline(rect.x_range(), y, Stroke::new(1.0, color(y, origin.y)));
+            let y0 = snap(y);
+            mesh.add_colored_rect(Rect::from_x_y_ranges(rect.x_range(), y0..=y0 + 1.0), color(y, origin.y));
             y += step;
         }
+        p.add(Shape::mesh(mesh));
     }
 }
 

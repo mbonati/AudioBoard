@@ -87,6 +87,8 @@ struct Grain {
     inc: f64,
     age: u32,
     len: u32,
+    /// Window entries per sample of age (`WINDOW / len`).
+    win_step: f32,
     gl: f32,
     gr: f32,
 }
@@ -99,6 +101,8 @@ pub struct Granular {
     /// Samples recorded so far; the newest sits at `write - 1`.
     write: u64,
     grains: [Grain; MAX_GRAINS],
+    /// One past the highest slot that may be playing.
+    top: usize,
     countdown: f32,
     rng: Rng,
     window: [f32; WINDOW + 1],
@@ -125,6 +129,7 @@ impl Granular {
             mask: len - 1,
             write: 0,
             grains: [Grain::default(); MAX_GRAINS],
+            top: 0,
             countdown: 0.0,
             rng: Rng::new(0x6A41_0001),
             window,
@@ -144,8 +149,8 @@ impl Granular {
         a + (b - a) * f
     }
 
-    fn envelope(&self, age: u32, len: u32) -> f32 {
-        let x = age as f32 / len as f32 * WINDOW as f32;
+    fn envelope(&self, g: &Grain) -> f32 {
+        let x = g.age as f32 * g.win_step;
         let i = (x as usize).min(WINDOW - 1);
         let f = x - i as f32;
         self.window[i] + (self.window[i + 1] - self.window[i]) * f
@@ -186,9 +191,11 @@ impl Granular {
             inc: if reverse { -ratio } else { ratio } as f64,
             age: 0,
             len: len as u32,
+            win_step: WINDOW as f32 / len as u32 as f32,
             gl,
             gr,
         };
+        self.top = self.top.max(slot + 1);
     }
 
     fn publish(&self) {
@@ -200,7 +207,7 @@ impl Granular {
             count += 1;
             if shown < VIZ_GRAINS {
                 viz[viz::GRAIN_AGE + shown].set(((head - g.pos) / self.sr as f64) as f32);
-                viz[viz::GRAIN_AMP + shown].set(self.envelope(g.age, g.len));
+                viz[viz::GRAIN_AMP + shown].set(self.envelope(g));
                 shown += 1;
             }
         }
@@ -276,20 +283,26 @@ impl Processor for Granular {
                 self.spawn(frozen, pos, &settings);
             }
 
+            // Only the slots up to the highest one playing.
             let (mut wl, mut wr) = (0.0, 0.0);
-            for k in 0..MAX_GRAINS {
+            let mut top = 0;
+            for k in 0..self.top {
                 let g = self.grains[k];
                 if !g.active {
                     continue;
                 }
-                let s = self.read(g.pos) * self.envelope(g.age, g.len);
+                let s = self.read(g.pos) * self.envelope(&g);
                 wl += s * g.gl;
                 wr += s * g.gr;
                 let g = &mut self.grains[k];
                 g.pos += g.inc;
                 g.age += 1;
                 g.active = g.age < g.len;
+                if g.active {
+                    top = k + 1;
+                }
             }
+            self.top = top;
 
             let (dry_g, wet_g) = mix_gains(self.mix);
             let wet = self.norm * wet_g;

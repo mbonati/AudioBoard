@@ -16,10 +16,12 @@ impl AtomicF32 {
         Self(AtomicU32::new(v.to_bits()))
     }
 
+    #[inline]
     pub fn get(&self) -> f32 {
         f32::from_bits(self.0.load(Ordering::Relaxed))
     }
 
+    #[inline]
     pub fn set(&self, v: f32) {
         self.0.store(v.to_bits(), Ordering::Relaxed);
     }

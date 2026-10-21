@@ -19,6 +19,8 @@ use std::cell::RefCell;
 use crate::graph::{MixerNode, Node, NodeKind, NodeType, OscNode, ParamRef};
 
 pub const HEADER_H: f32 = 26.0;
+/// Smallest text drawn on the canvas, in points.
+pub const MIN_TEXT: f32 = 4.0;
 pub const OSC_SIZE: Vec2 = vec2(216.0, 268.0);
 pub const MIX_SIZE: Vec2 = vec2(340.0, 244.0);
 
@@ -88,14 +90,18 @@ impl NodeView<'_> {
     }
 
     pub(super) fn font(&self, size: f32) -> FontId {
-        FontId::proportional(size * self.z)
+        theme::font(size * self.z)
     }
 
     pub(super) fn mono(&self, size: f32) -> FontId {
-        FontId::monospace(size * self.z)
+        theme::mono(size * self.z)
     }
 
+    /// Text too small to read when zoomed far out is skipped.
     pub(super) fn text(&self, x: f32, y: f32, align: Align2, text: impl ToString, font: FontId, color: Color32) -> Rect {
+        if font.size < MIN_TEXT {
+            return Rect::from_center_size(self.p(x, y), Vec2::ZERO);
+        }
         self.painter.text(self.p(x, y), align, text, font, color)
     }
 }

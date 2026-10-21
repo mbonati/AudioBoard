@@ -1,11 +1,11 @@
 //! Random: a modulation source that jumps or glides between random values,
 //! with optionally irregular timing. Patch it into any CV input.
 
-use std::f32::consts::PI;
 use std::sync::Arc;
 
 use super::{ModuleDef, ModuleParams, Rng};
 use crate::audio::engine::{Buf, Inputs, ProcessCtx, Processor};
+use crate::audio::fastmath;
 use crate::audio::params::{ParamSpec, Unit};
 
 pub const RATE: usize = 0;
@@ -87,7 +87,7 @@ impl Processor for Random {
             }
             // SMOOTH = 0: sample & hold; 1: glide over the whole segment.
             let g = (self.t / smooth.max(1e-3)).min(1.0);
-            let s = 0.5 - 0.5 * (g * PI).cos();
+            let s = 0.5 - 0.5 * fastmath::cos_turns(g * 0.5);
             y = (self.from + (self.to - self.from) * s) * level;
             *ol = y;
             *or = y;
