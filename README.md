@@ -106,9 +106,12 @@ Besides audio cables there are **MIDI cables**: square ports (audio ports are ro
 A MIDI cable only joins a MIDI output to a MIDI input. VST3 plugins that accept MIDI (instruments), the
 Arpeggiator, MIDIcer and MIDI Note have a MIDI input.
 
-**Start / Stop** (toolbar, or Space): Start plays from the beginning; Stop silences everything and goes back
-to the start, so on the next Start sequencers, arpeggiators and MIDIcer begin again from their first step
-(any note they were holding is ended).
+**Start / Stop** (toolbar, or Space) drive the transport, not the audio: Stop ends the sound's generation
+but lets it die away. Sequencers, arpeggiators and MIDIcer stop and end the notes they were holding (VST
+instruments and MIDI Note release them as usual), oscillators and Drones fade out in a few milliseconds,
+while effects (Delay, Ping Pong, Reverb, Granular, Resonator, Filter) and plugins keep running, so their
+tails ring on. Stop also goes back to the start: on the next Start everything begins again from its first
+step. The MIDI keyboard keeps playing plugins while stopped. The app opens stopped.
 
 The **tempo** is global: the **BPM** field in the toolbar. Drag it to change it (Shift for fine steps),
 click it to type a value (Enter sets it, Esc cancels; "97,5" works too), Alt+click to go back to 90.

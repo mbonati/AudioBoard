@@ -80,6 +80,8 @@ pub struct Oscillator {
     level: f32,
     rng: u32,
     noise_lp: f32,
+    /// Fades the output in on Start and out on Stop.
+    run: f32,
 }
 
 impl Oscillator {
@@ -93,6 +95,7 @@ impl Oscillator {
             level,
             rng: 0x9E37_79B9,
             noise_lp: 0.0,
+            run: 0.0,
         }
     }
 
@@ -142,6 +145,8 @@ impl Processor for Oscillator {
         let fm_in = inputs.cv(0);
         let am_in = inputs.cv(1);
         let sr = ctx.sample_rate;
+        // Sources sound only while the transport plays.
+        let run_t = if ctx.playing { 1.0 } else { 0.0 };
 
         let mut peak = 0.0f32;
         for i in 0..n {
@@ -164,7 +169,8 @@ impl Processor for Oscillator {
                 gain *= 1.0 - am_amount * 0.5 * (1.0 - am[i].clamp(-1.0, 1.0));
             }
 
-            let y = s * gain;
+            self.run += (run_t - self.run) * ctx.smooth;
+            let y = s * gain * self.run;
             outputs[0][0][i] = y;
             outputs[0][1][i] = y;
             peak = peak.max(y.abs());

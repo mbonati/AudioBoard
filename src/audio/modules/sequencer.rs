@@ -134,7 +134,8 @@ impl Processor for Sequencer {
             self.voice.stop(&mut self.out, 0);
         }
         let p = &self.params;
-        if !p.toggled() {
+        // Off, or the transport stopped: end the note held.
+        if !p.toggled() || !ctx.playing {
             self.voice.stop(&mut self.out, 0);
             p.viz[STEP].set(-1.0);
             p.viz[NOTE].set(-1.0);

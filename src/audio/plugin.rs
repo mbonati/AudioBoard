@@ -268,6 +268,8 @@ pub struct PluginProcessor {
     /// Tempo last told to the plugin, and samples it has rendered.
     tempo: f64,
     samples: i64,
+    /// Whether the plugin was last told the transport is playing.
+    transport: Option<bool>,
     buffers: AudioBuffers,
 }
 
@@ -278,6 +280,7 @@ impl PluginProcessor {
             cable_notes: [0; 128],
             tempo: 0.0,
             samples: 0,
+            transport: None,
             buffers: AudioBuffers::new(meta.inputs, meta.outputs, BLOCK, sample_rate as f64),
             shared,
             control,
@@ -309,11 +312,12 @@ impl Processor for PluginProcessor {
         // The global clock, for tempo-synced LFOs, delays and arpeggiators.
         let tempo = ctx.beats_per_sample * 60.0 * ctx.sample_rate as f64;
         if (tempo - self.tempo).abs() > 1e-6 && tempo > 0.0 {
-            if self.tempo == 0.0 {
-                let _ = plugin.set_playing(true);
-            }
             let _ = plugin.set_tempo(tempo);
             self.tempo = tempo;
+        }
+        if self.transport != Some(ctx.playing) {
+            let _ = plugin.set_playing(ctx.playing);
+            self.transport = Some(ctx.playing);
         }
         if ctx.restart {
             self.samples = 0;

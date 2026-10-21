@@ -188,6 +188,12 @@ impl Processor for Arpeggiator {
             self.cursor = cursor;
         }
 
+        // Stopped: the chord is still followed, but nothing plays.
+        if !ctx.playing {
+            self.voice.stop(&mut self.out, 0);
+            publish_notes(&p, None, self.chord.notes());
+            return;
+        }
         let per_beat = steps_per_beat(p.get(RATE));
         let mut steps = [Step { frame: 0, beat: 0.0, index: 0 }; MAX_STEPS];
         let count = self.clock.steps(ctx, n, per_beat, p.get(SWING), &mut steps);

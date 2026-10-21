@@ -77,6 +77,8 @@ pub struct Drone {
     tone: f32,
     level: f32,
     lp: [f32; 2],
+    /// Fades the output in on Start and out on Stop.
+    run: f32,
 }
 
 impl Drone {
@@ -96,6 +98,7 @@ impl Drone {
             pitch_drift,
             level_drift,
             lp: [0.0; 2],
+            run: 0.0,
         }
     }
 }
@@ -132,6 +135,8 @@ impl Processor for Drone {
         // Eight incoherent voices: about the loudness of one oscillator.
         let norm = 1.5 / (VOICES as f32).sqrt();
         let inv_sr = 1.0 / self.sr;
+        // Sources sound only while the transport plays.
+        let run_t = if ctx.playing { 1.0 } else { 0.0 };
         let mut peak = 0.0f32;
         for i in 0..n {
             approach(&mut self.pitch, pitch_t, ctx.smooth);
@@ -173,7 +178,8 @@ impl Processor for Drone {
             self.lp[0] += a * (l - self.lp[0]);
             self.lp[1] += a * (r - self.lp[1]);
 
-            let g = self.level * norm;
+            self.run += (run_t - self.run) * ctx.smooth;
+            let g = self.level * norm * self.run;
             let (yl, yr) = (soft_limit(self.lp[0] * g), soft_limit(self.lp[1] * g));
             outputs[0][0][i] = yl;
             outputs[0][1][i] = yr;

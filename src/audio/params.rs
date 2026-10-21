@@ -462,6 +462,8 @@ pub const DEFAULT_TEMPO: f32 = 90.0;
 pub const TEMPO_RANGE: (f32, f32) = (20.0, 300.0);
 
 pub struct EngineShared {
+    /// The transport is playing: sources sound and sequencers run. Stopped,
+    /// the engine keeps running, so effects and instruments ring out.
     pub running: AtomicBool,
     /// Bumped by Stop: the transport goes back to beat 0, and sequencers
     /// start over on the next Start.

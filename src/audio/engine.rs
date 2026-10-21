@@ -31,6 +31,10 @@ pub struct ProcessCtx {
     pub beat: f64,
     /// Beats per sample at the current tempo.
     pub beats_per_sample: f64,
+    /// The transport is playing. Stopped, sources fall silent and rhythm
+    /// generators end their notes, while effects keep processing their
+    /// tails; the beat stands still.
+    pub playing: bool,
     /// The transport was just rewound to beat 0 (Stop, then Start): rhythm
     /// generators start over and end the notes they were holding.
     pub restart: bool,
@@ -200,6 +204,7 @@ impl Engine {
                 smooth: 1.0 - (-1.0 / (sample_rate * 0.010)).exp(),
                 beat: 0.0,
                 beats_per_sample: 0.0,
+                playing: true,
                 restart: false,
             },
             nodes: IdMap::with_capacity_and_hasher(256, Default::default()),
@@ -243,6 +248,7 @@ impl Engine {
         }
         let (slowest, fastest) = TEMPO_RANGE;
         ctx.beats_per_sample = self.shared.tempo.get().clamp(slowest, fastest) as f64 / (60.0 * ctx.sample_rate as f64);
+        ctx.playing = self.shared.running.load(Ordering::Relaxed);
 
         for entry in &topo.order {
             // Copy connected inputs; unconnected ones are only flagged, since
@@ -277,7 +283,9 @@ impl Engine {
                 }
             }
         }
-        ctx.beat += ctx.beats_per_sample * n as f64;
+        if ctx.playing {
+            ctx.beat += ctx.beats_per_sample * n as f64;
+        }
         ctx.restart = false;
     }
 
@@ -295,19 +303,13 @@ impl Engine {
 
         let channels = channels.max(1);
         let frames = data.len() / channels;
-        let running = self.shared.running.load(Ordering::Relaxed);
         let mut mono = [0.0f32; BLOCK];
         let mut done = 0;
 
+        // Always processed, even when stopped: tails ring out.
         while done < frames {
             let n = (frames - done).min(BLOCK);
-            if running {
-                self.process_block(n);
-            } else {
-                for ch in self.mix.iter_mut() {
-                    ch[..n].fill(0.0);
-                }
-            }
+            self.process_block(n);
 
             for i in 0..n {
                 let l = self.mix[0][i].clamp(-1.0, 1.0);

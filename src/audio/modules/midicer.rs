@@ -312,6 +312,8 @@ pub struct Midicer {
     quant_at: f64,
     bend: Option<i32>,
     cable: bool,
+    /// The transport is playing (gates on the MIDI input play only then).
+    playing: bool,
 }
 
 impl Midicer {
@@ -342,6 +344,7 @@ impl Midicer {
             quant_at: 0.0,
             bend: None,
             cable: false,
+            playing: true,
         }
     }
 
@@ -454,7 +457,9 @@ impl Midicer {
                 _ => {}
             },
             SEQ_GATE => {
-                if down {
+                if down && !self.playing {
+                    self.held.press(key);
+                } else if down {
                     self.held.press(key);
                     let dice = (p.data[data::DICE_R].get() > 0.5, p.data[data::DICE_M].get() > 0.5);
                     // The random values repeat every FIRST…LAST sixteenths' worth of notes.
@@ -559,6 +564,7 @@ fn frame_of(ctx: &ProcessCtx, n: usize, beat: f64) -> usize {
 impl Processor for Midicer {
     fn process(&mut self, ctx: &ProcessCtx, inputs: &Inputs, _outputs: &mut [Buf], n: usize) {
         self.out.clear();
+        self.playing = ctx.playing;
         let p = self.params.clone();
 
         // New seeds (DICE pressed): new kept values.
@@ -675,11 +681,18 @@ impl Processor for Midicer {
             }
         }
 
-        match s.mode {
-            SEQ => self.sequence(ctx, n, &s, transpose, muted),
-            QUANT1 => self.quantize_beats(ctx, n, &s, cv2, muted),
-            QUANT2 => self.quantize_gate(&s, cv2, muted),
-            _ => {}
+        if !ctx.playing {
+            // Stopped: end the note; on Start the pattern begins again.
+            self.release(0, s.channel);
+            self.started = false;
+            self.next_at = f64::INFINITY;
+        } else {
+            match s.mode {
+                SEQ => self.sequence(ctx, n, &s, transpose, muted),
+                QUANT1 => self.quantize_beats(ctx, n, &s, cv2, muted),
+                QUANT2 => self.quantize_gate(&s, cv2, muted),
+                _ => {}
+            }
         }
 
         p.viz[CURRENT].set(self.sounding.map_or(-1.0, |s| s.note as f32));

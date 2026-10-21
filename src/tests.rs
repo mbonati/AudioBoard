@@ -1213,7 +1213,7 @@ fn run_generator(
     mut feed: impl FnMut(usize, &mut MidiBuf),
 ) -> Vec<(usize, [u8; 3])> {
     const SR: f32 = 48_000.0;
-    let mut ctx = ProcessCtx { sample_rate: SR, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / SR as f64, restart: false };
+    let mut ctx = ProcessCtx { sample_rate: SR, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / SR as f64, playing: true, restart: false };
     let mut inputs = Box::new(Inputs {
         bufs: [[[0.0; 64]; 2]; 8],
         connected: [false; 8],
@@ -1703,7 +1703,7 @@ fn midicer_follows_gates_and_quantizes() {
     let (p, mut m) = midicer();
     p.set_mode(QUANT1);
     const SR: f32 = 48_000.0;
-    let mut ctx = ProcessCtx { sample_rate: SR, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / SR as f64, restart: false };
+    let mut ctx = ProcessCtx { sample_rate: SR, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / SR as f64, playing: true, restart: false };
     let mut inputs = Box::new(Inputs {
         bufs: [[[0.0; 64]; 2]; 8],
         connected: [false; 8],
@@ -1768,7 +1768,7 @@ fn stop_rewinds_and_start_plays_from_the_top() {
 /// left and right outputs.
 fn click_response(proc: &mut dyn Processor, frames: usize) -> (Vec<f32>, Vec<f32>) {
     const SR: f32 = 48_000.0;
-    let mut ctx = ProcessCtx { sample_rate: SR, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / SR as f64, restart: false };
+    let mut ctx = ProcessCtx { sample_rate: SR, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / SR as f64, playing: true, restart: false };
     let mut inputs = Box::new(Inputs {
         bufs: [[[0.0; 64]; 2]; 8],
         connected: [false; 8],
@@ -1858,4 +1858,66 @@ fn ping_pong_ducks_under_the_input() {
         levels.push(rms_of(&render_buf(&mut e, 24_000)));
     }
     assert!(levels[1] < levels[0] * 0.3, "ducked {} vs {}", levels[1], levels[0]);
+}
+
+#[test]
+fn stop_silences_sources_but_tails_ring_on() {
+    use crate::audio::modules::reverb;
+    let shared = Arc::new(EngineShared::new());
+    let (a, mut e) = audio::offline(shared.clone(), 48_000);
+    let mut g = Graph::default();
+    let src = source(&mut g, &a);
+    let rev = g.add_module(ModuleKind::Reverb, pos2(300.0, 0.0), &a);
+    let mix = g.add_mixer(pos2(600.0, 0.0), &a);
+    g.connect(port(src, 0), port(rev, 0), &a);
+    g.connect(port(rev, 0), port(mix, 0), &a);
+    let rp = module_params(&g, rev);
+    rp.set(reverb::MIX, 0.5);
+    rp.set(reverb::DECAY, 6.0);
+    render_buf(&mut e, 48_000);
+
+    // Stop: the oscillator fades out within a few tens of ms, while the
+    // reverb's tail goes on.
+    shared.rewinds.fetch_add(1, Ordering::Relaxed);
+    shared.running.store(false, Ordering::Relaxed);
+    let after = render_buf(&mut e, 48_000);
+    assert!(rms_of(&after[..96]) > 0.05, "no cut: it fades");
+    assert!(rms_of(&after[40_000..]) > 0.005, "the tail rings on: {}", rms_of(&after[40_000..]));
+    // The source itself is silent once faded.
+    let dry = g.add_mixer(pos2(600.0, 300.0), &a);
+    g.connect(port(src, 0), port(dry, 0), &a);
+    rp.set(reverb::MIX, 0.0);
+    render_buf(&mut e, 4_800);
+    assert!(rms_of(&render_buf(&mut e, 4_800)) < 1e-4);
+
+    // Start: it sounds again.
+    shared.running.store(true, Ordering::Relaxed);
+    render_buf(&mut e, 4_800);
+    assert!(rms_of(&render_buf(&mut e, 4_800)) > 0.05);
+}
+
+#[test]
+fn stop_ends_the_notes_of_sequencers() {
+    use crate::audio::modules::{midi_note, sequencer};
+    use crate::graph::MIDI_PORT;
+    let shared = Arc::new(EngineShared::new());
+    shared.tempo.set(120.0);
+    let (a, mut e) = audio::offline(shared.clone(), 48_000);
+    let mut g = Graph::default();
+    let seq = g.add_module(ModuleKind::Sequencer, pos2(0.0, 0.0), &a);
+    let note = g.add_module(ModuleKind::MidiNote, pos2(300.0, 0.0), &a);
+    g.connect(port(seq, MIDI_PORT), port(note, MIDI_PORT), &a);
+    let sp = module_params(&g, seq);
+    let np = module_params(&g, note);
+    sp.set(sequencer::GATE, 1.0);
+    np.set(midi_note::RELEASE, 0.05);
+    for step in 0..sequencer::LEN {
+        sequencer::set_on(&sp, step, true);
+    }
+    render_buf(&mut e, 24_000);
+    assert!(np.viz[midi_note::ENV].get() > 0.5, "a note is held");
+    shared.running.store(false, Ordering::Relaxed);
+    render_buf(&mut e, 24_000);
+    assert!(np.viz[midi_note::ENV].get() < 0.01, "Stop ended it: the envelope released");
+    assert_eq!(sp.viz[sequencer::STEP].get(), -1.0);
 }
