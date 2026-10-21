@@ -24,7 +24,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use super::AudioHandle;
 use super::fastmath;
-use super::engine::Processor;
+use super::engine::{Buf, Processor};
 use super::params::{AtomicF32, ParamSpec};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -312,6 +312,13 @@ impl DelayLine {
         unsafe { *self.buf.get_unchecked_mut(self.pos) = x };
     }
 
+    /// The sample written `d` pushes ago (0 = the latest), for a whole
+    /// number of samples: no interpolation.
+    #[inline]
+    pub fn tap_at(&self, d: usize) -> f32 {
+        self.at(self.pos.wrapping_sub(d))
+    }
+
     /// The sample written `d` pushes ago (0 = the latest), linearly
     /// interpolated. A feedback delay of `D` samples reads `tap(D - 1)`
     /// before pushing.
@@ -324,6 +331,49 @@ impl DelayLine {
         let a = self.at(self.pos.wrapping_sub(i));
         let b = self.at(self.pos.wrapping_sub(i + 1));
         a + (b - a) * f
+    }
+}
+
+/// Tells when an effect has gone quiet: its input silent and its own
+/// signal (its echoes, its tail) below hearing (−100 dB) for as long as it
+/// can remember sound (a delay line's length). Resting, it skips its work
+/// and outputs silence until input returns, so idle effects cost nothing.
+/// Anything that keeps sounding on its own (a frozen reverb, an endless
+/// delay) never rests.
+pub struct Quiet {
+    /// Samples of silence so far, and how many make it rest.
+    quiet: usize,
+    memory: usize,
+}
+
+impl Quiet {
+    /// Rests after `memory` samples of silence (and at least ~40 ms).
+    pub fn new(memory: usize) -> Self {
+        Self { quiet: 0, memory: memory.max(32 * crate::audio::engine::BLOCK) }
+    }
+
+    /// No input, or a silent one.
+    pub fn silent(input: Option<&Buf>, n: usize) -> bool {
+        input.is_none_or(|b| b[0][..n].iter().chain(&b[1][..n]).all(|s| s.abs() < 1e-6))
+    }
+
+    /// After a block of `n` samples: was its input silent, and how loud was
+    /// the effect's own signal.
+    pub fn update(&mut self, input_silent: bool, peak: f32, n: usize) {
+        self.quiet = if input_silent && peak < 1e-5 { self.quiet.saturating_add(n) } else { 0 };
+    }
+
+    pub fn resting(&self) -> bool {
+        self.quiet >= self.memory
+    }
+}
+
+/// Silence on every output (for nodes that skip their work).
+pub fn silence(outputs: &mut [Buf], n: usize) {
+    for out in outputs.iter_mut() {
+        for ch in out.iter_mut() {
+            ch[..n].fill(0.0);
+        }
     }
 }
 

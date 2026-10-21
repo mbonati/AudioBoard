@@ -1921,3 +1921,74 @@ fn stop_ends_the_notes_of_sequencers() {
     assert!(np.viz[midi_note::ENV].get() < 0.01, "Stop ended it: the envelope released");
     assert_eq!(sp.viz[sequencer::STEP].get(), -1.0);
 }
+
+#[test]
+fn idle_effects_rest_and_wake_up() {
+    use crate::audio::modules::reverb;
+    let (mut g, a, mut e) = setup();
+    let (m, p) = patch(&mut g, &a, ModuleKind::Reverb);
+    p.set(reverb::DECAY, 0.3);
+    p.set(reverb::MIX, 1.0);
+    render_buf(&mut e, 24_000);
+    // Input gone: the tail dies away, then the reverb rests (exact silence).
+    unplug_input(&mut g, &a, m);
+    assert!(rms_of(&render_buf(&mut e, 4_800)) > 1e-3, "the tail first");
+    render_buf(&mut e, 96_000);
+    assert!(render_buf(&mut e, 4_800).iter().all(|&s| s == 0.0), "resting");
+    // Input back: it sounds at once.
+    let src = g.nodes.iter().find(|n| matches!(n.kind, NodeKind::Osc(_))).unwrap().id;
+    g.connect(port(src, 0), port(m, 0), &a);
+    assert!(rms_of(&render_buf(&mut e, 4_800)) > 1e-3, "awake");
+}
+
+#[test]
+fn the_output_is_limited_not_clipped() {
+    let shared = Arc::new(EngineShared::new());
+    let (a, mut e) = audio::offline(shared.clone(), 48_000);
+    let mut g = Graph::default();
+    let mix = g.add_mixer(pos2(600.0, 0.0), &a);
+    let m = mixer_params(&g, mix);
+    m.master.set(1.0);
+    for ch in 0..3 {
+        let x = source(&mut g, &a);
+        osc_params(&g, x).set(osc::LEVEL, 1.0);
+        osc_params(&g, x).set(osc::FREQ, 110.0 * (ch + 1) as f32);
+        m.fader[ch].set(1.0);
+        g.connect(port(x, 0), port(mix, ch), &a);
+    }
+    render_buf(&mut e, 24_000);
+    let out = render_buf(&mut e, 24_000);
+    let peak = out.iter().fold(0.0f32, |p, s| p.max(s.abs()));
+    assert!(peak <= 0.967, "kept under the ceiling: {peak}");
+    // No flat tops: hard clipping would hold full scale for many samples.
+    let left: Vec<f32> = out.iter().step_by(2).copied().collect();
+    let at_top = left.windows(2).filter(|w| w[0].abs() > 0.96 && w[0] == w[1]).count();
+    assert_eq!(at_top, 0);
+    assert!(shared.limiting.take() > 3.0, "the limiter worked");
+}
+
+#[test]
+fn removed_nodes_are_freed_off_the_audio_thread() {
+    use crate::audio::engine::{Command, Slot};
+    use std::sync::atomic::AtomicBool;
+    struct Probe(Arc<AtomicBool>);
+    impl Drop for Probe {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::Relaxed);
+        }
+    }
+    impl Processor for Probe {
+        fn process(&mut self, _: &ProcessCtx, _: &Inputs, _: &mut [crate::audio::engine::Buf], _: usize) {}
+    }
+    let (tx, rx) = std::sync::mpsc::channel();
+    let mut e = Engine::new(rx, Arc::new(EngineShared::new()), 48_000.0);
+    let trash = e.take_trash().unwrap();
+    let freed = Arc::new(AtomicBool::new(false));
+    tx.send(Command::AddNode(1, Slot::new(Box::new(Probe(freed.clone())), 1))).unwrap();
+    render_buf(&mut e, 512);
+    tx.send(Command::RemoveNode(1)).unwrap();
+    render_buf(&mut e, 512);
+    assert!(!freed.load(Ordering::Relaxed), "the engine did not free it");
+    drop(trash.try_recv().expect("handed back"));
+    assert!(freed.load(Ordering::Relaxed), "freed where it was received");
+}

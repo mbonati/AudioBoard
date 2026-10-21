@@ -254,8 +254,10 @@ fn midi_event([status, d1, d2]: [u8; 3]) -> Option<MidiEvent> {
     })
 }
 
-/// How long the audio thread waits for the UI to let go of a plugin.
-const LOCK_WAIT: Duration = Duration::from_micros(200);
+/// How long the audio thread waits for the UI to let go of a plugin. The UI
+/// calls plugins only between callbacks (see `engine::audio_idle`), so a
+/// wait is rare and short; past this the block is skipped.
+const LOCK_WAIT: Duration = Duration::from_micros(800);
 
 pub struct PluginProcessor {
     shared: Arc<PluginShared>,

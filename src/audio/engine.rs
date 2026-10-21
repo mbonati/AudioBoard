@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::hash::{BuildHasherDefault, Hasher};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
-use std::sync::mpsc::Receiver;
+use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::time::Instant;
 
 use cpal::{FromSample, Sample};
@@ -158,6 +158,17 @@ pub enum Command {
     SetTopology(Box<Topology>),
 }
 
+/// What the engine lets go of (removed nodes, old topologies), sent back to
+/// be freed on the UI thread: freeing memory (a delay line is megabytes)
+/// can stall the audio thread long enough to click.
+pub struct Garbage {
+    _slot: Option<Box<Slot>>,
+    _topology: Option<Box<Topology>>,
+}
+
+/// Room in the garbage channel; when full, the engine frees in place.
+const GARBAGE_CAP: usize = 1024;
+
 /// Hasher for node ids: they are small distinct integers, so a multiply
 /// spreads them well enough, far cheaper than SipHash on every lookup.
 #[derive(Default)]
@@ -183,6 +194,8 @@ type IdMap<V> = HashMap<NodeId, V, BuildHasherDefault<IdHasher>>;
 
 pub struct Engine {
     rx: Receiver<Command>,
+    trash: SyncSender<Garbage>,
+    trash_rx: Option<Receiver<Garbage>>,
     shared: Arc<EngineShared>,
     /// `EngineShared::rewinds` as last seen.
     rewinds: u32,
@@ -191,12 +204,93 @@ pub struct Engine {
     topo: Box<Topology>,
     inputs: Box<Inputs>,
     mix: [[f32; BLOCK]; 2],
+    limiter: Limiter,
+}
+
+/// Keeps the output under full scale. A sum of loud plugins would otherwise
+/// be cut off hard at ±1, a harsh crackle. The output is delayed by
+/// [`LOOKAHEAD`] frames so the level can be turned down smoothly *before* a
+/// peak arrives: the gain each frame needs is tracked over the lookahead
+/// window, averaged over it (a ramp down that is still low enough at the
+/// peak), and recovers over about 150 ms. Below the ceiling it does nothing.
+struct Limiter {
+    /// The delayed frames, and the gain each one needs.
+    delay: [[f32; 2]; LOOKAHEAD],
+    need: [f32; LOOKAHEAD],
+    /// Recent window minima, averaged into the ramp.
+    mins: [f32; LOOKAHEAD],
+    sum: f32,
+    pos: usize,
+    gain: f32,
+    release: f32,
+    /// Frames in the window that need turning down, and window minima
+    /// below 1 still in the average: while both are zero (almost always)
+    /// the limiter only delays.
+    pending: usize,
+    ramping: usize,
+}
+
+/// Limiter lookahead: 1.3 ms at 48 kHz.
+const LOOKAHEAD: usize = 64;
+
+impl Limiter {
+    /// −0.3 dBFS.
+    const CEILING: f32 = 0.966;
+
+    fn new(sample_rate: f32) -> Self {
+        Self {
+            delay: [[0.0; 2]; LOOKAHEAD],
+            need: [1.0; LOOKAHEAD],
+            mins: [1.0; LOOKAHEAD],
+            sum: LOOKAHEAD as f32,
+            pos: 0,
+            gain: 1.0,
+            release: 1.0 - (-1.0 / (0.15 * sample_rate)).exp(),
+            pending: 0,
+            ramping: 0,
+        }
+    }
+
+    /// Takes a frame in, gives the frame from [`LOOKAHEAD`] frames ago out,
+    /// limited, with the gain applied.
+    #[inline]
+    fn frame(&mut self, l: f32, r: f32) -> (f32, f32, f32) {
+        let peak = l.abs().max(r.abs());
+        let need = if peak > Self::CEILING { Self::CEILING / peak } else { 1.0 };
+        let [out_l, out_r] = self.delay[self.pos];
+        self.delay[self.pos] = [l, r];
+        // Nothing to limit, nothing ramping: just the delay.
+        if need >= 1.0 && self.pending == 0 && self.ramping == 0 && self.gain >= 1.0 {
+            self.pos = (self.pos + 1) % LOOKAHEAD;
+            return (out_l, out_r, 1.0);
+        }
+        // The lowest gain any frame between the one leaving and this one needs.
+        let window = self.need.iter().fold(need, |m, &g| m.min(g));
+        self.pending = self.pending + usize::from(need < 1.0) - usize::from(self.need[self.pos] < 1.0);
+        self.ramping = self.ramping + usize::from(window < 1.0) - usize::from(self.mins[self.pos] < 1.0);
+        self.need[self.pos] = need;
+        // Averaged over the window: every value averaged is at most the
+        // outgoing frame's need, so the ramp is low enough when it leaves.
+        self.sum += window - self.mins[self.pos];
+        self.mins[self.pos] = window;
+        self.pos = (self.pos + 1) % LOOKAHEAD;
+        if self.pos == 0 {
+            // Re-sum now and then: no drift from rounding.
+            self.sum = self.mins.iter().sum();
+        }
+        let ramp = (self.sum / LOOKAHEAD as f32).min(1.0);
+        self.gain = if ramp < self.gain { ramp } else { self.gain + (ramp - self.gain) * self.release };
+        (out_l * self.gain, out_r * self.gain, self.gain)
+    }
 }
 
 impl Engine {
     pub fn new(rx: Receiver<Command>, shared: Arc<EngineShared>, sample_rate: f32) -> Self {
+        let (trash, trash_rx) = sync_channel(GARBAGE_CAP);
         Self {
             rx,
+            trash,
+            trash_rx: Some(trash_rx),
             rewinds: shared.rewinds.load(Ordering::Relaxed),
             shared,
             ctx: ProcessCtx {
@@ -216,19 +310,39 @@ impl Engine {
                 midi_connected: false,
             }),
             mix: [[0.0; BLOCK]; 2],
+            limiter: Limiter::new(sample_rate),
         }
+    }
+
+    /// Where what the engine lets go of is freed: the UI thread drains it.
+    /// Taken once.
+    pub fn take_trash(&mut self) -> Option<Receiver<Garbage>> {
+        self.trash_rx.take()
+    }
+
+    fn discard(&self, slot: Option<Box<Slot>>, topology: Option<Box<Topology>>) {
+        // A bounded channel's sending side never allocates; if it is full
+        // (nobody draining), the value is simply freed here.
+        let _ = self.trash.try_send(Garbage { _slot: slot, _topology: topology });
     }
 
     fn drain_commands(&mut self) {
         while let Ok(cmd) = self.rx.try_recv() {
             match cmd {
                 Command::AddNode(id, slot) => {
-                    self.nodes.insert(id, slot);
+                    let old = self.nodes.insert(id, slot);
+                    if old.is_some() {
+                        self.discard(old, None);
+                    }
                 }
                 Command::RemoveNode(id) => {
-                    self.nodes.remove(&id);
+                    let old = self.nodes.remove(&id);
+                    self.discard(old, None);
                 }
-                Command::SetTopology(t) => self.topo = t,
+                Command::SetTopology(t) => {
+                    let old = std::mem::replace(&mut self.topo, t);
+                    self.discard(None, Some(old));
+                }
             }
         }
     }
@@ -292,6 +406,7 @@ impl Engine {
     /// Fills an interleaved device buffer.
     pub fn render<T: Sample + FromSample<f32>>(&mut self, data: &mut [T], channels: usize) {
         let _ftz = FlushDenormals::new();
+        clock::begin();
         let started = Instant::now();
         self.drain_commands();
         let rewinds = self.shared.rewinds.load(Ordering::Relaxed);
@@ -311,9 +426,11 @@ impl Engine {
             let n = (frames - done).min(BLOCK);
             self.process_block(n);
 
+            let mut lowest = 1.0f32;
             for i in 0..n {
-                let l = self.mix[0][i].clamp(-1.0, 1.0);
-                let r = self.mix[1][i].clamp(-1.0, 1.0);
+                let (l, r, gain) = self.limiter.frame(self.mix[0][i], self.mix[1][i]);
+                lowest = lowest.min(gain);
+                let (l, r) = (l.clamp(-1.0, 1.0), r.clamp(-1.0, 1.0));
                 mono[i] = 0.5 * (l + r);
                 let frame = &mut data[(done + i) * channels..(done + i + 1) * channels];
                 if channels == 1 {
@@ -327,6 +444,9 @@ impl Engine {
                 }
             }
             self.shared.scope.write(&mono[..n]);
+            if lowest < 0.9999 {
+                self.shared.limiting.fetch_max(-20.0 * lowest.log10());
+            }
             done += n;
         }
         self.shared.beat.set((self.ctx.beat % 1024.0) as f32);
@@ -336,9 +456,74 @@ impl Engine {
             let load = started.elapsed().as_secs_f32() / available;
             let prev = self.shared.load.get();
             self.shared.load.set(prev + (load - prev) * 0.05);
+            self.shared.peak_load.fetch_max(load);
+            if load > 1.0 {
+                self.shared.overloads.fetch_add(1, Ordering::Relaxed);
+            }
+            self.shared.frames.store(frames as u32, Ordering::Relaxed);
+            clock::end(std::time::Duration::from_secs_f32(available));
         }
     }
 }
+
+/// When the audio thread works, so the UI can call into plugins, which
+/// share a lock with it, while it is idle: right after a callback, with
+/// most of a buffer's time before the next one. One audio output per app.
+mod clock {
+    use std::sync::OnceLock;
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering::Relaxed};
+    use std::time::{Duration, Instant};
+
+    static EPOCH: OnceLock<Instant> = OnceLock::new();
+    static BUSY: AtomicBool = AtomicBool::new(false);
+    /// When the last callback ended, and the callbacks' period (ns).
+    static END: AtomicU64 = AtomicU64::new(0);
+    static PERIOD: AtomicU64 = AtomicU64::new(0);
+
+    fn now() -> u64 {
+        EPOCH.get_or_init(Instant::now).elapsed().as_nanos() as u64
+    }
+
+    pub(super) fn begin() {
+        BUSY.store(true, Relaxed);
+    }
+
+    pub(super) fn end(period: Duration) {
+        END.store(now(), Relaxed);
+        PERIOD.store(period.as_nanos() as u64, Relaxed);
+        BUSY.store(false, Relaxed);
+    }
+
+    /// The audio thread is between callbacks, early enough that a short call
+    /// into a plugin ends before it needs the plugin again (or there is no
+    /// audio running at all).
+    pub fn audio_idle() -> bool {
+        let period = PERIOD.load(Relaxed);
+        if period == 0 {
+            return true;
+        }
+        let since = now().saturating_sub(END.load(Relaxed));
+        if since > 4 * period {
+            // No callbacks lately: the device is gone or stopped.
+            return true;
+        }
+        !BUSY.load(Relaxed) && since < period / 2
+    }
+
+    /// Waits (briefly) for [`audio_idle`]; false if it did not come.
+    pub fn wait_audio_idle(limit: Duration) -> bool {
+        let start = Instant::now();
+        while !audio_idle() {
+            if start.elapsed() > limit {
+                return false;
+            }
+            std::thread::sleep(Duration::from_micros(250));
+        }
+        true
+    }
+}
+
+pub use clock::{audio_idle, wait_audio_idle};
 
 /// Flushes denormal floats to zero while alive. Decaying tails (reverb,
 /// resonators, filters) otherwise end in denormals, which are many times

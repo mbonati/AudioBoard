@@ -6,7 +6,7 @@
 use std::f32::consts::TAU;
 use std::sync::Arc;
 
-use super::{DelayLine, ModuleDef, ModuleParams, approach, mix_gains, soft_limit, time_coeff};
+use super::{DelayLine, ModuleDef, ModuleParams, approach, mix_gains, soft_limit, time_coeff, Quiet, silence};
 use crate::audio::engine::{Buf, Inputs, ProcessCtx, Processor};
 use crate::audio::fastmath;
 use crate::audio::params::{DEFAULT_TEMPO, ParamSpec, SYNC_DIVISIONS, Unit, sync_division};
@@ -80,6 +80,7 @@ pub fn loop_gain(feedback: f32) -> f32 {
 
 pub struct Delay {
     params: Arc<ModuleParams>,
+    quiet: Quiet,
     sr: f32,
     lines: [DelayLine; 2],
     time: f32,
@@ -94,6 +95,7 @@ impl Delay {
     pub fn new(params: Arc<ModuleParams>, sample_rate: f32) -> Self {
         let len = ((MAX_SYNC_TIME + 0.05) * sample_rate) as usize;
         Self {
+            quiet: Quiet::new(len),
             // Set on the first block (synced, it depends on the tempo).
             time: 0.0,
             mix: params.get(MIX),
@@ -121,6 +123,12 @@ impl Processor for Delay {
         let ping = p.get(PING);
         let mix_t = p.get(MIX);
         let input = inputs.get(0);
+        let silent_in = Quiet::silent(input, n);
+        if silent_in && self.quiet.resting() {
+            // Gone quiet: nothing to compute until input returns.
+            silence(outputs, n);
+            return;
+        }
 
         let sr = self.sr;
         let lp_a = (TAU * 800.0 * (tone * 4.6).exp2() / sr).min(1.0);
@@ -131,13 +139,18 @@ impl Processor for Delay {
         let max_d = (self.lines[0].len() - 4) as f32;
 
         let mut peak = 0.0f32;
+        // The effect's own signal, for resting.
+        let mut inner = 0.0f32;
         for i in 0..n {
             approach(&mut self.time, time_t, self.glide);
             approach(&mut self.mix, mix_t, ctx.smooth);
             self.wow_phase[0] = (self.wow_phase[0] + 0.43 / sr).fract();
             self.wow_phase[1] = (self.wow_phase[1] + 5.3 / sr).fract();
-            let modulation = wow_depth * fastmath::sin_turns(self.wow_phase[0])
-                + flutter_depth * fastmath::sin_turns(self.wow_phase[1]);
+            let modulation = if wow > 0.0 {
+                wow_depth * fastmath::sin_turns(self.wow_phase[0]) + flutter_depth * fastmath::sin_turns(self.wow_phase[1])
+            } else {
+                0.0
+            };
             let d = (self.time * sr + modulation).clamp(1.0, max_d);
 
             let (in_l, in_r) = match input {
@@ -145,6 +158,7 @@ impl Processor for Delay {
                 None => (0.0, 0.0),
             };
             let wet = [self.lines[0].tap(d - 1.0), self.lines[1].tap(d - 1.0)];
+            inner = inner.max(wet[0].abs()).max(wet[1].abs());
 
             // Feedback path: darken, remove rumble, cross-feed for ping-pong.
             let mut ret = [0.0; 2];
@@ -169,6 +183,7 @@ impl Processor for Delay {
             outputs[0][1][i] = yr;
             peak = peak.max(yl.abs()).max(yr.abs());
         }
+        self.quiet.update(silent_in, inner, n);
         p.meter.fetch_max(peak);
     }
 }

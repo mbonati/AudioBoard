@@ -207,6 +207,22 @@ Plugins run inside AudioBoard: a faulty plugin can make the application quit. VS
 **Mixer (4 channels)**: for each channel a volume fader, pan (balance on stereo signals), Mute/Solo
 and a meter; a stereo master bus with L/R meters and a clip indicator. The mixer feeds the audio device.
 
+### Audio buffer, load and limiter
+
+The status bar shows the audio buffer in samples and its latency ("512 smp · 10.7 ms"): click it to choose
+another size, as in a DAW. Larger buffers give heavy patches and plugins more headroom (fewer clicks) at
+the cost of latency; smaller ones respond faster. The choice is kept between launches; "Device default"
+uses the sound card's own size. Changing it keeps the patch playing.
+
+Next to it, **DSP** is the average load and **peak** the heaviest callback of the last seconds: near 100%
+the audio can't keep up. If that happens, a red **dropouts** counter appears for a while: try a larger
+buffer.
+
+The output goes through a safety **limiter** just under full scale (−0.3 dBFS) with 1.3 ms of lookahead:
+when the sum gets too loud (several plugins, high faders) it turns the level down smoothly instead of
+clipping it into crackles, and recovers over about 150 ms. While it works, the status bar shows
+"limit −x dB": lower the master or the plugins. Below full scale it does nothing.
+
 ## Controls
 
 | Action | Gesture |
@@ -346,11 +362,17 @@ src/
 The UI never blocks the audio thread: knob values travel through atomics, while structural changes
 (nodes added/removed, a new processing order) reach the engine as commands on a channel.
 Buffers (delay, reverb, granular loop) are allocated on the UI thread when the node is created.
-VST3 plugins are shared through a lock: the UI takes it for one call at a time, at most ten times a
-second, and the plugin's state is read again only when it may have changed, so the audio thread is not
-kept waiting.
+VST3 plugins are shared through a lock: the UI calls into a plugin only between audio callbacks (when
+the audio thread has just finished and won't need the plugin for most of a buffer), one call at a time, at
+most ten times a second, and the plugin's state is read again only when it may have changed, so the audio
+thread is not kept waiting. Removed nodes and old processing orders are handed back to the UI thread to be
+freed: freeing memory (a delay line is megabytes) inside the audio callback could stall it into a click.
 
-**Performance.** The UI redraws at full rate only during interaction and animations; meters, analyzers and
+**Performance.** Effects rest when they have gone quiet: with a silent input, once their own signal (echoes,
+tails) has stayed below −100 dB for as long as they can remember sound, they skip their work and output
+silence until input returns; a frozen reverb or an endless delay never rests. Stopped sources rest too, so a
+stopped patch costs almost nothing once its tails are gone. Denormal numbers are flushed to zero, and the
+per-sample maths uses fast approximations of sine, exp2 and tanh. The UI redraws at full rate only during interaction and animations; meters, analyzers and
 step lights update at 30 fps (not at all while the window is minimized). Zoom uses font sizes rounded to
 half a point, so animations don't re-create glyphs every frame; from far away, unreadable text is not drawn
 and the grid is a single mesh. Auto layout and zoom transitions follow a spring curve with no bounce: nodes

@@ -320,3 +320,61 @@ fn perf_layout() {
         eprintln!("layout {} nodes: {:?}", g.nodes.len(), start.elapsed() / 10);
     }
 }
+
+/// Cost of real plugins per second of audio, processed in blocks of 64 vs 512.
+#[test]
+#[ignore]
+fn perf_plugins_block_size() {
+    let dir = std::path::Path::new("/Library/Audio/Plug-Ins/VST3");
+    for name in ["Vital", "ValhallaSupermassive", "ValhallaFreqEcho", "Originals - Cinematic Pads"] {
+        let path = dir.join(format!("{name}.vst3"));
+        if !path.exists() {
+            continue;
+        }
+        for block in [64usize, 512] {
+            let mut host = vst3_host::Vst3Host::builder()
+                .sample_rate(48_000.0)
+                .block_size(block)
+                .with_process_isolation(false)
+                .build()
+                .unwrap();
+            let mut l = crate::audio::plugin::load(&mut host, &path).unwrap();
+            let mut b = vst3_host::AudioBuffers::new(l.meta.inputs, l.meta.outputs, block, 48_000.0);
+            for ch in b.inputs.iter_mut() {
+                for (i, s) in ch.iter_mut().enumerate() {
+                    *s = ((i as f32) * 0.05).sin() * 0.3;
+                }
+            }
+            let chan = vst3_host::MidiChannel::from_index(0).unwrap();
+            let _ = l.plugin.send_midi_event(vst3_host::MidiEvent::NoteOn { channel: chan, note: 60, velocity: 100 });
+            let blocks = 48_000 * 4 / block;
+            for _ in 0..blocks / 4 {
+                let _ = l.plugin.process_audio(&mut b);
+            }
+            let start = Instant::now();
+            for _ in 0..blocks {
+                let _ = l.plugin.process_audio(&mut b);
+            }
+            let share = start.elapsed().as_secs_f64() / 4.0;
+            eprintln!("{name:<28} block {block:>4}: {:>6.2}% of real time", share * 100.0);
+        }
+    }
+}
+
+/// The big patch playing, then stopped: once the tails are gone, effects
+/// and sources rest.
+#[test]
+#[ignore]
+fn perf_stopped_patch() {
+    let shared = Arc::new(EngineShared::new());
+    let (a, mut e) = audio::offline(shared.clone(), SR);
+    let mut g = Graph::default();
+    big_patch(&mut g, &a, 16);
+    report("84 nodes, playing", load(&mut e, 2.0));
+    shared.running.store(false, std::sync::atomic::Ordering::Relaxed);
+    let mut buf = vec![0.0f32; 512 * 2];
+    for _ in 0..(SR as usize * 20 / 512) {
+        e.render(&mut buf, 2);
+    }
+    report("84 nodes, stopped (tails gone)", load(&mut e, 2.0));
+}

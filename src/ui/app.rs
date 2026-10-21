@@ -14,7 +14,7 @@ use super::palette::{self, Palette, PluginEntry, Spawn};
 use super::plugin_node;
 use super::tempo::TempoControl;
 use super::theme::{self, alpha};
-use crate::audio::engine::{BLOCK, NodeId};
+use crate::audio::engine::NodeId;
 use crate::audio::modules::{ModuleKind, ModuleParams, delay, drone, filter, granular, random, reverb};
 use crate::audio::params::{EngineShared, Waveform};
 use crate::audio::midi::MidiInputs;
@@ -125,6 +125,13 @@ pub struct AudioBoardApp {
     /// MIDI messages seen so far, and when the count last moved.
     midi_events: (u32, f64),
     tempo: TempoControl,
+    settings: AppSettings,
+    /// The highest DSP load shown, and since when.
+    peak_load: (f32, f64),
+    /// Dropouts seen so far, and when the last one happened.
+    overloads: (u32, f64),
+    /// The output limiter's deepest reduction shown (dB), and since when.
+    limiting: (f32, f64),
     #[cfg(target_os = "macos")]
     window: Option<super::macos::NativeWindow>,
 }
@@ -135,7 +142,8 @@ impl AudioBoardApp {
         let shared = Arc::new(EngineShared::new());
         // The patch waits for Start.
         shared.running.store(false, Ordering::Relaxed);
-        let audio = audio::start(shared.clone());
+        let settings = load_settings();
+        let audio = audio::start(shared.clone(), settings.buffer_size);
         let mut graph = Graph::default();
         demo_patch(&mut graph, &audio);
         let library = Library::open(
@@ -165,6 +173,10 @@ impl AudioBoardApp {
             midi_scanned: f64::NEG_INFINITY,
             midi_events: (0, f64::NEG_INFINITY),
             tempo: TempoControl::default(),
+            settings,
+            peak_load: (0.0, f64::NEG_INFINITY),
+            overloads: (0, f64::NEG_INFINITY),
+            limiting: (0.0, f64::NEG_INFINITY),
             #[cfg(target_os = "macos")]
             window: super::macos::NativeWindow::new(cc),
         }
@@ -650,23 +662,96 @@ impl AudioBoardApp {
                     self.graph.nodes.len(),
                     self.graph.cables.len()
                 )));
-                let info = &self.audio.info;
-                ui.label(item(format!(
-                    "{:.1} kHz · {} ch · {BLOCK} smp",
-                    info.sample_rate as f32 / 1000.0,
-                    info.channels
-                )));
-                let load = self.shared.load.get();
-                let load_col = if load > 0.7 {
-                    theme::METER_RED
-                } else if load > 0.4 {
-                    theme::METER_YELLOW
-                } else {
-                    theme::TEXT_DIM
-                };
-                ui.label(item(format!("DSP {:>4.1}%", load * 100.0)).color(load_col));
+                self.audio_status(ui, now, &item);
             });
         });
+    }
+}
+
+impl AudioBoardApp {
+    /// Status bar, right to left: buffer size and latency (click to
+    /// change), sample rate, DSP load with its recent peak, and dropouts.
+    fn audio_status(&mut self, ui: &mut Ui, now: f64, item: &dyn Fn(String) -> RichText) {
+        let info = &self.audio.info;
+        let sr = info.sample_rate as f32;
+        let ms = |frames: u32| frames as f32 / sr * 1000.0;
+        let frames = self.shared.frames.load(Ordering::Relaxed);
+        let buffer = ui
+            .add(egui::Label::new(item(format!("{frames} smp · {:.1} ms", ms(frames)))).sense(Sense::click()))
+            .on_hover_cursor(CursorIcon::PointingHand)
+            .on_hover_text("Audio buffer: larger gives heavy patches and plugins more headroom\n(fewer clicks), smaller gives less latency. Click to change.");
+        let range = info.buffer_range;
+        let current = info.buffer_size;
+        let picked = egui::Popup::menu(&buffer)
+            .show(|ui| {
+                ui.label(RichText::new("Buffer size").size(10.0).color(theme::TEXT_FAINT));
+                let mut picked = None;
+                let mut option = |ui: &mut Ui, size: Option<u32>, label: String| {
+                    let mark = if size == current { "●  " } else { "    " };
+                    if ui.button(RichText::new(format!("{mark}{label}")).size(11.5)).clicked() {
+                        picked = Some(size);
+                        ui.close();
+                    }
+                };
+                option(ui, None, "Device default".to_owned());
+                for size in BUFFER_SIZES {
+                    if range.is_none_or(|(lo, hi)| (lo..=hi).contains(&size)) {
+                        option(ui, Some(size), format!("{size} samples · {:.1} ms", ms(size)));
+                    }
+                }
+                picked
+            })
+            .and_then(|r| r.inner);
+        if let Some(size) = picked {
+            match self.audio.set_buffer_size(size) {
+                Ok(()) => self.notify(now, "Audio buffer changed", false),
+                Err(e) => self.notify(now, format!("Could not use that buffer size: {e}"), true),
+            }
+            self.settings.buffer_size = self.audio.info.buffer_size;
+            save_settings(&self.settings);
+        }
+        let info = &self.audio.info;
+        ui.label(item(format!("{:.1} kHz · {} ch", info.sample_rate as f32 / 1000.0, info.channels)));
+
+        // Load: the average, and the worst callback of the last two seconds.
+        let peak = self.shared.peak_load.take();
+        if peak >= self.peak_load.0 || now - self.peak_load.1 > 2.0 {
+            self.peak_load = (peak, now);
+        }
+        let load = self.shared.load.get();
+        let color = |l: f32| {
+            if l > 0.85 {
+                theme::METER_RED
+            } else if l > 0.5 {
+                theme::METER_YELLOW
+            } else {
+                theme::TEXT_DIM
+            }
+        };
+        ui.label(item(format!("peak {:>3.0}%", self.peak_load.0 * 100.0)).color(color(self.peak_load.0)))
+            .on_hover_text("The heaviest audio callback of the last seconds: near 100% the audio drops out");
+        ui.label(item(format!("DSP {:>4.1}%", load * 100.0)).color(color(load)));
+
+        // The output limiter, while it works.
+        let reduction = self.shared.limiting.take();
+        if reduction >= self.limiting.0 || now - self.limiting.1 > 2.0 {
+            self.limiting = (reduction, now);
+        }
+        if self.limiting.0 > 0.1 {
+            ui.label(item(format!("limit −{:.1} dB", self.limiting.0)).color(theme::METER_YELLOW)).on_hover_text(
+                "The output is louder than full scale, so the limiter turns it down\n(instead of clipping): lower the master or the plugins",
+            );
+        }
+
+        // Dropouts: shown for a while after each one.
+        let total = self.shared.overloads.load(Ordering::Relaxed);
+        if total != self.overloads.0 {
+            self.overloads = (total, now);
+        }
+        if total > 0 && now - self.overloads.1 < 10.0 {
+            ui.label(item(format!("{total} dropout{}", if total == 1 { "" } else { "s" })).color(theme::METER_RED))
+                .on_hover_text("The audio could not keep up: try a larger buffer size");
+        }
     }
 }
 
@@ -732,6 +817,7 @@ impl eframe::App for AudioBoardApp {
             self.handle_request(request, now);
         }
         self.graph.service_plugins(now);
+        self.audio.collect_garbage();
         self.remember_plugins();
         self.track_document(ui, now);
 
@@ -1041,6 +1127,37 @@ fn view_menu(ui: &mut Ui) -> Option<ViewCommand> {
 fn catalog_path() -> Option<PathBuf> {
     project::data_dir().map(|d| d.join("plugins.json"))
 }
+
+/// Preferences kept between launches.
+#[derive(serde::Serialize, serde::Deserialize, Default, Clone, Debug, PartialEq)]
+struct AppSettings {
+    /// Audio buffer size in frames (None: the device's own).
+    #[serde(default)]
+    buffer_size: Option<u32>,
+}
+
+fn settings_path() -> Option<PathBuf> {
+    project::data_dir().map(|d| d.join("settings.json"))
+}
+
+fn load_settings() -> AppSettings {
+    settings_path()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
+}
+
+fn save_settings(settings: &AppSettings) {
+    if let Some(path) = settings_path()
+        && let Ok(json) = serde_json::to_string_pretty(settings)
+    {
+        let _ = path.parent().map(std::fs::create_dir_all);
+        let _ = std::fs::write(path, json);
+    }
+}
+
+/// Buffer sizes offered, in frames.
+const BUFFER_SIZES: [u32; 6] = [64, 128, 256, 512, 1024, 2048];
 
 /// What a plugin's first load told us about it.
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]

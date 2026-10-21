@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use super::{ModuleDef, ModuleParams, Rng, approach, mix_gains, pan_gains, soft_limit};
+use super::{ModuleDef, ModuleParams, Rng, approach, mix_gains, pan_gains, soft_limit, Quiet, silence};
 use crate::audio::engine::{Buf, Inputs, ProcessCtx, Processor};
 use crate::audio::params::{ParamSpec, Unit};
 
@@ -96,6 +96,7 @@ struct Grain {
 
 pub struct Granular {
     params: Arc<ModuleParams>,
+    quiet: Quiet,
     sr: f32,
     buf: Box<[f32]>,
     mask: usize,
@@ -123,6 +124,7 @@ impl Granular {
         });
         params.viz[viz::LOOP_SECONDS].set(len as f32 / sample_rate);
         Self {
+            quiet: Quiet::new(len),
             mix: params.get(MIX),
             params,
             sr: sample_rate,
@@ -248,11 +250,19 @@ impl Processor for Granular {
         let position = p.get(POSITION);
         let mix_t = p.get(MIX);
         let input = inputs.get(0);
+        let silent_in = Quiet::silent(input, n);
+        if silent_in && self.quiet.resting() {
+            // Gone quiet: nothing to compute until input returns.
+            silence(outputs, n);
+            return;
+        }
         let pos_cv = inputs.cv(1);
         // Overlapping grains add up: keep the cloud's level steady.
         let norm_t = 1.8 / (density * settings.size).max(1.0).sqrt();
 
         let mut peak = 0.0f32;
+        // The effect's own signal, for resting.
+        let mut inner = 0.0f32;
         for i in 0..n {
             approach(&mut self.mix, mix_t, ctx.smooth);
             approach(&mut self.norm, norm_t, ctx.smooth);
@@ -307,6 +317,7 @@ impl Processor for Granular {
 
             let (dry_g, wet_g) = mix_gains(self.mix);
             let wet = self.norm * wet_g;
+            inner = inner.max(wl.abs()).max(wr.abs());
             let yl = soft_limit(dry_l * dry_g + wl * wet);
             let yr = soft_limit(dry_r * dry_g + wr * wet);
             outputs[0][0][i] = yl;
@@ -314,6 +325,7 @@ impl Processor for Granular {
             peak = peak.max(yl.abs()).max(yr.abs());
         }
         self.publish();
+        self.quiet.update(silent_in, inner, n);
         p.meter.fetch_max(peak);
     }
 }

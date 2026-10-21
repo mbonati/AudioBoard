@@ -13,7 +13,7 @@ use egui::{Color32, Pos2, Vec2};
 
 use crate::audio::AudioHandle;
 use crate::audio::dsp::{Mixer, Oscillator};
-use crate::audio::engine::{Command, MAX_INPUTS, NodeId, Slot, TopoEntry, Topology};
+use crate::audio::engine::{Command, MAX_INPUTS, NodeId, Slot, TopoEntry, Topology, audio_idle, wait_audio_idle};
 use crate::audio::midi::{MidiState, note_hz};
 use crate::audio::modules::{ModuleKind, ModuleParams, midi_cc, midi_note, random};
 use crate::audio::params::{
@@ -252,6 +252,11 @@ impl PluginNode {
         if self.window.as_ref().is_some_and(|w| w.closed_by_user() || !w.is_open()) {
             self.window = None;
         }
+        // Every call below takes the plugin's lock, which the audio thread
+        // needs for each callback: only between callbacks.
+        if !audio_idle() {
+            return;
+        }
         if let Some(w) = &self.window {
             let _ = w.service_platform_events();
             // Its editor can change anything, presets included.
@@ -270,6 +275,9 @@ impl PluginNode {
         for k in 0..self.pinned.len() {
             let i = self.pinned[k];
             let id = self.params[i].id;
+            if !audio_idle() {
+                return;
+            }
             let Ok(plugin) = self.shared.plugin.try_lock() else { return };
             if self.held_until[i] < now
                 && let Ok(v) = plugin.get_parameter(id)
@@ -287,7 +295,7 @@ impl PluginNode {
 
     /// Reads the current value of any parameter (for the parameter list).
     pub fn refresh(&mut self, index: usize, now: f64) {
-        if self.held_until[index] >= now || now - self.read_at[index] < PLUGIN_SYNC_EVERY {
+        if self.held_until[index] >= now || now - self.read_at[index] < PLUGIN_SYNC_EVERY || !audio_idle() {
             return;
         }
         self.read_at[index] = now;
@@ -321,17 +329,21 @@ impl PluginNode {
             return Ok(());
         }
         let mut window = vst3_host::PluginWindow::new(self.shared.plugin.clone());
+        wait_audio_idle(Duration::from_millis(50));
         window.open().map_err(|e| e.to_string())?;
         self.window = Some(window);
         Ok(())
     }
 
-    /// The plugin's complete state (its own format).
+    /// The plugin's complete state (its own format). Waits for a gap
+    /// between audio callbacks, so as not to hold the audio thread up.
     pub fn save_state(&self) -> Option<Vec<u8>> {
+        wait_audio_idle(Duration::from_millis(50));
         self.shared.plugin.lock().ok()?.save_state().ok()
     }
 
     pub fn load_state(&mut self, data: &[u8]) -> Result<(), String> {
+        wait_audio_idle(Duration::from_millis(50));
         let mut plugin = self.shared.plugin.lock().map_err(|e| e.to_string())?;
         plugin.load_state(data).map_err(|e| e.to_string())?;
         self.state_stale.set(true);
