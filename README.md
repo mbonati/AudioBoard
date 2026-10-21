@@ -1,309 +1,310 @@
 # AudioBoard
 
-Sintetizzatore modulare a nodi in Rust, nello spirito di Max/MSP e Pure Data:
-piccoli blocchi (nodi) collegati con cavi virtuali generano il suono in tempo reale.
-È pensato in particolare per suoni ambient, droni, texture organiche e granulari.
+A node-based modular synthesizer in Rust, in the spirit of Max/MSP and Pure Data:
+small blocks (nodes) joined by virtual cables generate sound in real time.
+It is designed especially for ambient sounds, drones, and organic and granular textures.
 
-## Avvio
+## Getting started
 
 ```bash
 cargo run --release
 ```
 
-Per suonare con patch grandi conviene la build più ottimizzata (ottimizzazione dell'intero programma, circa
-il 10–15% di CPU audio in meno, ma qualche minuto di compilazione):
+For playing large patches, use the most optimized build (whole-program optimization, about 10–15% less
+audio CPU, but a few minutes to compile):
 
 ```bash
 cargo run --profile dist
 ```
 
-All'avvio si apre una patch demo ambient: un **Drone** (accordo di quinte su La1) passa in un **Filter**
-il cui cutoff è mosso lentamente da un **Random**; il filtro alimenta un **Reverb** con un po' di shimmer
-e, un'ottava sopra, una nuvola **Granular** che finisce in un **Delay** a nastro. Tutto confluisce nel **Mixer**.
+On launch an ambient demo patch opens: a **Drone** (a chord of fifths on A1) goes into a **Filter** whose
+cutoff is slowly moved by a **Random**; the filter feeds a **Reverb** with a touch of shimmer and, an octave
+up, a **Granular** cloud that ends in a tape **Delay**. Everything flows into the **Mixer**.
 
-Ogni cavo è stereo; le sorgenti mono scrivono lo stesso segnale su entrambi i canali.
+Every cable is stereo; mono sources write the same signal to both channels.
 
-## Nodi
+## Nodes
 
-### Sorgenti
+### Sources
 
-**Oscillator**: forme d'onda Sine, Triangle, Saw, Pulse e Noise (saw e pulse sono band-limited con PolyBLEP).
+**Oscillator**: Sine, Triangle, Saw, Pulse and Noise waveforms (saw and pulse are band-limited with PolyBLEP).
 
-| Knob  | Funzione |
+| Knob  | Function |
 |-------|----------|
-| FREQ  | 0.1 Hz – 20 kHz (scala logaritmica; sotto 20 Hz funziona da LFO) |
-| FINE  | ±100 cent |
-| LEVEL | ampiezza di uscita |
-| SHAPE | dipende dall'onda: Drive (sine/saw), Skew (tri), Width (pulse), Color (noise) |
-| FM    | profondità della modulazione di frequenza dall'ingresso FM |
-| AM    | profondità della modulazione d'ampiezza dall'ingresso AM |
+| FREQ  | 0.1 Hz – 20 kHz (logarithmic scale; below 20 Hz it works as an LFO) |
+| FINE  | ±100 cents |
+| LEVEL | output amplitude |
+| SHAPE | depends on the waveform: Drive (sine/saw), Skew (tri), Width (pulse), Color (noise) |
+| FM    | depth of frequency modulation from the FM input |
+| AM    | depth of amplitude modulation from the AM input |
 
-**Drone**: otto voci detunate disposte in un accordo (Unison, Fifths, Octaves, Major, Minor, Suspended).
-Ogni voce deriva lentamente in intonazione e volume, così il suono non sta mai fermo.
-Knob: PITCH, DETUNE (cent), DRIFT, TONE (da sinusoidi scure a saw brillanti), SPREAD (ampiezza stereo),
-P.MOD / T.MOD (profondità degli ingressi PITCH e TONE), LEVEL.
+**Drone**: eight detuned voices arranged in a chord (Unison, Fifths, Octaves, Major, Minor, Suspended).
+Each voice drifts slowly in pitch and level, so the sound never stands still.
+Knobs: PITCH, DETUNE (cents), DRIFT, TONE (from dark sines to bright saws), SPREAD (stereo width),
+P.MOD / T.MOD (depth of the PITCH and TONE inputs), LEVEL.
 
-**Random**: sorgente di modulazione casuale. RATE, CHAOS (tempi irregolari), SMOOTH (da sample & hold a
-glide continuo), LEVEL. Da collegare a qualunque ingresso di controllo (cutoff, pitch, posizione dei grani…).
+**Random**: a random modulation source. RATE, CHAOS (irregular timing), SMOOTH (from sample & hold to
+continuous glide), LEVEL. Patch it into any control input (cutoff, pitch, grain position…).
 
 ### Texture
 
-**Granular**: registra l'ingresso in un loop di 8 secondi e lo riproduce come una nuvola di grani.
-POS (quanto indietro leggere), SIZE, DENSITY (grani al secondo), PITCH (semitoni), JITTER (casualità di
-posizione e tempi), SPRAY (pitch casuale), SPREAD (stereo), MIX. Direzione FWD / REV / BOTH.
-**FREEZE** smette di registrare: la nuvola continua a esplorare il suono catturato. L'ingresso POS
-sposta la posizione di lettura (es. con un Random o un LFO). Il display mostra il loop e i grani attivi.
+**Granular**: records its input into an 8-second loop and plays it back as a cloud of grains.
+POS (how far back to read), SIZE, DENSITY (grains per second), PITCH (semitones), JITTER (randomness of
+position and timing), SPRAY (random pitch), SPREAD (stereo), MIX. Direction FWD / REV / BOTH.
+**FREEZE** stops recording: the cloud keeps exploring the captured sound. The POS input moves the read
+position (e.g. with a Random or an LFO). The display shows the loop and the active grains.
 
-**Resonator**: banco di otto modi risonanti accordati (String, Pipe, Bar, Bell) eccitato dall'ingresso.
-Con rumore o grani in ingresso dà timbri fisici e organici. PITCH, DECAY, BRIGHT, SPREAD, P.MOD, MIX.
+**Resonator**: a bank of eight tuned resonant modes (String, Pipe, Bar, Bell) excited by its input.
+With noise or grains as input it gives physical, organic timbres. PITCH, DECAY, BRIGHT, SPREAD, P.MOD, MIX.
 
-### Effetti
+### Effects
 
-**Filter**: state-variable filter stereo LP / BP / HP / Notch. CUTOFF, RESO, DRIVE, MOD
-(profondità dell'ingresso CUT in ottave, anche negativa). Il display mostra la risposta in frequenza.
+**Filter**: stereo state-variable filter, LP / BP / HP / Notch. CUTOFF, RESO, DRIVE, MOD
+(depth of the CUT input in octaves, negative too). The display shows the frequency response.
 
-**Delay**: eco stereo a nastro fino a 2 s. TIME (le variazioni scivolano, come un nastro), FEEDBACK,
-TONE (scurisce le ripetizioni), WOW (wow & flutter), PING (ping-pong), MIX.
+**Delay**: stereo tape echo up to 2 s. TIME (changes glide, like tape), FEEDBACK,
+TONE (darkens the repeats), WOW (wow & flutter), PING (ping-pong), MIX.
 
-**Reverb**: rete di 8 linee di ritardo con diffusione, modulazione e smorzamento. SIZE (da stanza a
-cattedrale), DECAY (0.3 – 60 s), DAMP, MOD, SHIMMER (un'ottava sopra, rientra nella coda), MIX.
-**FREEZE** congela la coda all'infinito.
+**Reverb**: an 8-line delay network with diffusion, modulation and damping. SIZE (from room to
+cathedral), DECAY (0.3 – 60 s), DAMP, MOD, SHIMMER (an octave up, fed back into the tail), MIX.
+**FREEZE** holds the tail forever.
 
 ### MIDI
 
-I nodi MIDI ricevono da qualsiasi dispositivo MIDI collegato: vengono collegati automaticamente, anche se
-inseriti dopo l'avvio. L'indicatore **MIDI** nella barra di stato mostra quanti ingressi sono attivi
-(passa il mouse per i nomi) e si accende quando arrivano messaggi.
+MIDI nodes receive from any connected MIDI device: devices are connected automatically, even when plugged
+in after launch. The **MIDI** indicator in the status bar shows how many inputs are active
+(hover for their names) and lights up when messages arrive.
 
-**MIDI CC**: un controller esterno (knob, fader, rotella) come segnale. CC, CHANNEL (Omni o 1–16),
-SMOOTH (glide), uscita 0…1 o ±1. **LEARN** prende il prossimo controller che muovi.
+**MIDI CC**: an external controller (knob, fader, wheel) as a signal. CC, CHANNEL (Omni or 1–16),
+SMOOTH (glide), output 0…1 or ±1. **LEARN** picks up the next controller you move.
 
-**MIDI Note**: una tastiera come inviluppo. Tenendo un tasto, ENV sale in ATTACK; rilasciandolo scende in
-RELEASE; VEL è lo stesso inviluppo scalato dalla velocity. Entrambe le uscite vanno da −1 a +1, quindi
-nell'ingresso AM di un oscillatore (AM al 100%) passano dal silenzio al volume pieno. Priorità all'ultima
-nota premuta; TRANSPOSE in semitoni.
+**MIDI Note**: a keyboard as an envelope. Holding a key, ENV rises over ATTACK; releasing it, it falls over
+RELEASE; VEL is the same envelope scaled by velocity. Both outputs go from −1 to +1, so into an
+oscillator's AM input (AM at 100%) they go from silence to full level. Last-note priority;
+TRANSPOSE in semitones.
 
-**Pilotare un controllo (MAP).** Oltre a collegare le uscite con i cavi, un nodo MIDI può muovere
-direttamente qualsiasi knob o fader: premi **MAP** sul nodo, poi clicca il controllo (Esc annulla). Una
-linea tratteggiata collega il nodo al controllo, e il nodo mostra "→ FILTER 1 · CUTOFF". Con MIDI CC il
-controllo segue il controller; con MIDI Note i knob di frequenza prendono la frequenza della nota (es.
-PITCH del Drone o FREQ dell'oscillatore), quelli in semitoni la distanza dal Do centrale, gli altri la
-posizione del tasto. Il controllo si muove solo con i messaggi che arrivano dopo la mappatura. **UNMAP**
-la rimuove. Le mappature si salvano nel progetto e nei moduli della libreria.
+**Driving a control (MAP).** Besides patching outputs with cables, a MIDI node can move any knob or fader
+directly: press **MAP** on the node, then click the control (Esc cancels). A dashed line joins the node to
+the control, and the node shows "→ FILTER 1 · CUTOFF". With MIDI CC the control follows the controller;
+with MIDI Note, frequency knobs take the note's frequency (e.g. the Drone's PITCH or the oscillator's FREQ),
+semitone knobs the distance from middle C, and the others the key's position. The control moves only with
+messages that arrive after mapping. **UNMAP** removes the mapping. Mappings are saved in the project and in
+library modules.
 
-### Sequenze MIDI: Step Sequencer, Arpeggiator, MIDI In
+### MIDI sequences: Step Sequencer, Arpeggiator, MIDI In
 
-Oltre ai cavi audio esistono i **cavi MIDI**: porte quadrate (le porte audio sono tonde) e cavi
-tratteggiati. Un cavo MIDI collega solo un'uscita MIDI a un ingresso MIDI. Hanno un ingresso MIDI i plugin
-VST3 che accettano MIDI (gli strumenti), l'Arpeggiator e MIDI Note.
+Besides audio cables there are **MIDI cables**: square ports (audio ports are round) and dashed cables.
+A MIDI cable only joins a MIDI output to a MIDI input. VST3 plugins that accept MIDI (instruments), the
+Arpeggiator and MIDI Note have a MIDI input.
 
-Il **tempo** è globale: il campo **BPM** nella toolbar (trascina per cambiarlo, Shift per i decimali, doppio
-clic torna a 90); la luce lampeggia a ogni battito mentre l'audio è acceso. Sequencer e arpeggiatori sono
-agganciati alla stessa griglia, quindi restano sempre a tempo tra loro; il tempo viene passato anche ai
-plugin (LFO e delay sincronizzati). Si salva nel progetto.
+The **tempo** is global: the **BPM** field in the toolbar (drag to change it, Shift for fine steps,
+double-click to go back to 90); the light flashes on every beat while audio is on. Sequencers and
+arpeggiators are locked to the same grid, so they always stay in time with each other; the tempo is also
+passed to plugins (synced LFOs and delays). It is saved in the project.
 
-**Step Sequencer**: fino a 16 step su una scala. Nella griglia ogni colonna è uno step e la cella accesa è
-la sua nota: clicca una cella per spostarci lo step (sulla cella accesa lo spegni o lo riaccendi),
-trascina per disegnare una melodia; passando col mouse si vede la nota. RATE (da 1/4 a 1/32, terzine),
-STEPS (lunghezza), GATE (durata della nota), SWING (sposta in ritardo gli step pari), CHANCE (probabilità
-che uno step suoni), VELOCITY, ROOT e OCTAVE (la tonica), scala MAJ / MIN / DOR / PENT / CHR. **PLAY**
-lo ferma e lo riavvia. Gli step si salvano nel progetto e nei moduli della libreria.
+**Step Sequencer**: up to 16 steps on a scale. In the grid each column is a step and the lit cell is its
+note: click a cell to move the step there (on the lit cell, to switch it off or back on), drag to draw a
+melody; hovering shows the note. RATE (from 1/4 to 1/32, triplets), STEPS (length), GATE (note length),
+SWING (delays the even-numbered steps), CHANCE (probability that a step plays), VELOCITY, ROOT and OCTAVE
+(the tonic), scale MAJ / MIN / DOR / PENT / CHR. **PLAY** stops and restarts it. Steps are saved in the
+project and in library modules.
 
-**Arpeggiator**: suona una alla volta le note tenute, a tempo, su 1–4 ottave (OCTAVES), in ordine UP,
-DOWN, U+D (su e giù), RAND o ORDER (come suonate). RATE, GATE, SWING, CHANCE, VELOCITY come nel
-sequencer. Le note arrivano dal suo cavo MIDI oppure, senza cavo, direttamente dalla tastiera MIDI.
-**LATCH** tiene l'accordo dopo aver lasciato i tasti, finché non ne suoni uno nuovo.
+**Arpeggiator**: plays the held notes one at a time, in time, over 1–4 octaves (OCTAVES), in UP, DOWN,
+U+D (up and down), RAND or ORDER (as played) order. RATE, GATE, SWING, CHANCE, VELOCITY as in the
+sequencer. Notes come from its MIDI cable or, with no cable, straight from the MIDI keyboard.
+**LATCH** keeps the chord going after you let go of the keys, until you play a new one.
 
-**MIDI In**: la tastiera MIDI su un cavo, per mandarla in un arpeggiatore o in un plugin; CHANNEL filtra un
-canale, TRANSPOSE sposta le note (controller e pitch bend passano invariati).
+**MIDI In**: the MIDI keyboard on a cable, to send it into an arpeggiator or a plugin; CHANNEL filters one
+channel, TRANSPOSE shifts the notes (controllers and pitch bend pass through unchanged).
 
-Esempi:
-- *Step Sequencer → strumento VST*: il plugin suona la sequenza (lascia **KEYBOARD** acceso per suonarci
-  sopra anche dalla tastiera);
-- *MIDI In → Arpeggiator → strumento VST*: arpeggi da quello che suoni;
-- *Step Sequencer → MIDI Note*, con ENV nell'AM di un oscillatore e MAP sulla sua FREQ: la sequenza suona
-  i nodi interni.
+Examples:
+- *Step Sequencer → VST instrument*: the plugin plays the sequence (leave **KEYBOARD** on to play over it
+  from the keyboard too);
+- *MIDI In → Arpeggiator → VST instrument*: arpeggios from what you play;
+- *Step Sequencer → MIDI Note*, with ENV into an oscillator's AM and MAP on its FREQ: the sequence plays
+  the built-in nodes.
 
-Staccando un cavo MIDI (o eliminando il nodo che lo alimenta) il plugin riceve i note-off delle note
-rimaste accese, quindi niente note appese.
+Unplugging a MIDI cable (or deleting the node feeding it) sends the plugin note-offs for the notes still
+sounding, so no notes hang.
 
-### Plugin VST3
+### VST3 plugins
 
-I plugin VST3 installati (`/Library/Audio/Plug-Ins/VST3` e `~/Library/Audio/Plug-Ins/VST3`) compaiono nella
-sezione **Plugins** della palette e del menu del tasto destro, e si inseriscono come qualsiasi altro nodo.
-Per elencarli non viene caricato nessun plugin; categoria e produttore compaiono dopo il primo caricamento.
-**Rescan plugins** aggiorna l'elenco.
+Installed VST3 plugins (`/Library/Audio/Plug-Ins/VST3` and `~/Library/Audio/Plug-Ins/VST3`) appear in the
+**Plugins** section of the palette and of the right-click menu, and are added like any other node.
+No plugin is loaded to list them; category and maker appear after the first load.
+**Rescan plugins** refreshes the list.
 
-Un nodo plugin ha un ingresso stereo (effetti) e un'uscita stereo; se accetta MIDI ha anche un ingresso
-MIDI (porta quadrata) per sequencer e arpeggiatori. Mostra:
-- **EDITOR**: apre la finestra del plugin stesso (suoni, preset, tutte le sue impostazioni);
-- **PARAMS**: l'elenco di tutti i parametri, con ricerca e cursori; il pallino fissa fino a 8 parametri
-  come knob sul nodo (all'inizio sono i primi 8);
-- **KEYBOARD**: suona il plugin dalla tastiera MIDI esterna (attivo da solo per gli strumenti), insieme a
-  quello che arriva dal cavo MIDI.
+A plugin node has a stereo input (effects) and a stereo output; if it accepts MIDI it also has a MIDI
+input (square port) for sequencers and arpeggiators. It shows:
+- **EDITOR**: opens the plugin's own window (sounds, presets, all its settings);
+- **PARAMS**: the list of all parameters, with search and sliders; the dot pins up to 8 parameters
+  as knobs on the node (at first, the first 8);
+- **KEYBOARD**: plays the plugin from the external MIDI keyboard (on by default for instruments), along
+  with whatever arrives on the MIDI cable.
 
-I knob del nodo si possono mappare con un nodo MIDI CC (MAP), come gli altri. Il progetto salva il percorso
-del plugin e il suo stato completo, quindi anche il suono scelto nel suo editor; su un altro computer il
-plugin viene cercato per nome nelle cartelle VST3. Lo stesso vale per i moduli della libreria.
+The node's knobs can be mapped with a MIDI CC node (MAP), like the others. The project saves the plugin's
+path and its complete state, so the sound chosen in its editor too; on another computer the plugin is
+looked up by name in the VST3 folders. The same goes for library modules.
 
-I plugin girano dentro AudioBoard: un plugin difettoso può far chiudere l'applicazione. Sono supportati i VST3
-(non VST2, AU o CLAP).
+Plugins run inside AudioBoard: a faulty plugin can make the application quit. VST3 is supported
+(not VST2, AU or CLAP).
 
-### Uscita
+### Output
 
-**Mixer (4 canali)**: per ogni canale fader di volume, pan (bilanciamento sui segnali stereo), Mute/Solo
-e meter; bus master stereo con meter L/R e indicatore di clip. Il mixer alimenta la scheda audio.
+**Mixer (4 channels)**: for each channel a volume fader, pan (balance on stereo signals), Mute/Solo
+and a meter; a stereo master bus with L/R meters and a clip indicator. The mixer feeds the audio device.
 
-## Comandi
+## Controls
 
-| Azione | Gesto |
-|--------|-------|
-| Aggiungere un nodo o un modulo della libreria | trascinarlo dalla palette sul canvas (o cliccarlo), oppure tasto destro sul canvas |
-| Collegare | trascinare da una porta a quella opposta (output → input o viceversa) |
-| Ricollegare / staccare un cavo | trascinarlo via dall'ingresso a cui è collegato |
-| Eliminare un cavo | doppio clic sul cavo, oppure tasto destro → Disconnect |
-| Regolare knob / fader | trascinare (Shift = regolazione fine), doppio clic = reset |
-| Selezionare più nodi | trascinare un rettangolo sul canvas vuoto, oppure Shift+clic (Cmd+A tutti, Esc nessuno) |
-| Spostare la vista | scroll a due dita, trascinare col tasto destro o centrale, oppure Alt+trascina |
-| Zoom | pinch o Cmd+scroll; Cmd+= / Cmd+− / Cmd+0 (100%); oppure clic sulla percentuale nella barra di stato |
-| Spostare / eliminare / duplicare la selezione | trascinare un nodo selezionato / Del / Cmd+D (i cavi interni vengono copiati) |
-| Creare un modulo dalla selezione | Cmd+G, oppure tasto destro → Make module |
-| Rinominare un modulo | Invio o F2 con il modulo selezionato, oppure tasto destro → Rename… (Invio conferma, Esc annulla) |
-| Sciogliere un modulo | Cmd+Shift+G, la × nell'intestazione del modulo, oppure tasto destro → Ungroup |
-| Ridurre / espandere un nodo o un modulo | freccia nell'intestazione, doppio clic sul titolo, tasto C, oppure tasto destro → Collapse |
-| Ridurre / espandere tutto | Shift+C, pulsante nella toolbar, oppure tasto destro sul canvas |
-| Inquadrare tutto / la selezione | F / Shift+F |
-| Auto layout | L, il pulsante nella toolbar o tasto destro sul canvas; Cmd+Z annulla |
-| Auto-fit (tenere tutta la patch in vista) | A o il pulsante nella toolbar |
-| Nuovo / apri progetto | Cmd+N / Cmd+O, oppure il nome del progetto nella toolbar |
-| Salvare / salvare con nome | Cmd+S / Shift+Cmd+S |
-| Audio on/off | Spazio |
-| Mostrare / nascondere oscilloscopio e spettro | pulsante pannello nella toolbar |
+| Action | Gesture |
+|--------|---------|
+| Add a node or a library module | drag it from the palette onto the canvas (or click it), or right-click the canvas |
+| Connect | drag from a port to the opposite kind (output → input or vice versa) |
+| Reconnect / unplug a cable | drag it away from the input it is plugged into |
+| Delete a cable | double-click the cable, or right-click → Disconnect |
+| Adjust knobs / faders | drag (Shift = fine adjustment), double-click = reset |
+| Select several nodes | drag a rectangle on empty canvas, or Shift+click (Cmd+A all, Esc none) |
+| Move the view | two-finger scroll, drag with the right or middle button, or Alt+drag |
+| Zoom | pinch or Cmd+scroll; Cmd+= / Cmd+− / Cmd+0 (100%); or click the percentage in the status bar |
+| Move / delete / duplicate the selection | drag a selected node / Del / Cmd+D (inner cables are copied) |
+| Make a module from the selection | Cmd+G, or right-click → Make module |
+| Rename a module | Enter or F2 with the module selected, or right-click → Rename… (Enter confirms, Esc cancels) |
+| Dissolve a module | Cmd+Shift+G, the × in the module's header, or right-click → Ungroup |
+| Collapse / expand a node or a module | arrow in the header, double-click the title, the C key, or right-click → Collapse |
+| Collapse / expand everything | Shift+C, the toolbar button, or right-click the canvas |
+| Frame everything / the selection | F / Shift+F |
+| Auto layout | L, the toolbar button or right-click the canvas; Cmd+Z undoes it |
+| Auto-fit (keep the whole patch in view) | A or the toolbar button |
+| New / open project | Cmd+N / Cmd+O, or the project name in the toolbar |
+| Save / save as | Cmd+S / Shift+Cmd+S |
+| Audio on/off | Space |
+| Show / hide the oscilloscope and spectrum | panel button in the toolbar |
 
-L'elenco completo delle scorciatoie compare passando il mouse sul pulsante **?** della toolbar.
+The full list of shortcuts appears when hovering the **?** button in the toolbar.
 
-Il tasto destro (o Ctrl+clic su macOS) apre il menu di ciò che si trova sotto il puntatore: canvas, nodo
-(anche cliccando su un knob o un display), modulo o cavo.
+Right-click (or Ctrl+click on macOS) opens the menu for whatever is under the pointer: canvas, node
+(also when clicking a knob or a display), module or cable.
 
-Un nodo ridotto occupa solo una striscia con titolo, porte e valore principale (frequenza, cutoff, RT…);
-il mixer ridotto mostra anche i meter del master. Cavi e audio continuano a funzionare normalmente.
+A collapsed node takes up only a strip with its title, ports and main value (frequency, cutoff, RT…);
+a collapsed mixer also shows the master meters. Cables and audio keep working normally.
 
-I collegamenti che creerebbero un loop di feedback vengono rifiutati; ogni ingresso accetta un solo cavo.
-Il feedback si ottiene dentro i nodi (Delay, Reverb).
+Connections that would create a feedback loop are refused; each input takes a single cable.
+Feedback is available inside nodes (Delay, Reverb).
 
-### Moduli
+### Modules
 
-Un **modulo** raggruppa più nodi in uno solo, per spostarli, ridurli e duplicarli insieme.
-Si crea selezionando i nodi e premendo Cmd+G. Per rinominarlo selezionalo e premi Invio (o F2, o tasto destro →
-Rename…): il nome si modifica direttamente nell'intestazione.
+A **module** groups several nodes into one, to move, collapse and duplicate them together.
+Create one by selecting nodes and pressing Cmd+G. To rename it, select it and press Enter (or F2, or
+right-click → Rename…): the name is edited right in the header.
 
-- **Espanso**: una cornice attorno ai nodi, che restano modificabili sul posto. Trascinando l'intestazione
-  si sposta tutto il modulo; la cornice si adatta quando sposti un nodo al suo interno.
-- **Ridotto**: un'unica scheda che mostra solo le porte di confine, cioè gli ingressi non alimentati da un
-  altro nodo del modulo e le uscite libere o collegate all'esterno (es. `DRONE 1 · PITCH`, `FILTER 1 · OUT`).
-  I cavi esterni si attaccano alla scheda e si possono collegare e staccare come su un nodo normale.
-- **Duplicare** un modulo (selezionalo cliccando l'intestazione, poi Cmd+D) copia i nodi, i cavi tra loro e
-  il modulo stesso. **Del** elimina il modulo con i suoi nodi; **Ungroup** lo scioglie e tiene i nodi.
+- **Expanded**: a frame around the nodes, which stay editable in place. Dragging the header moves the
+  whole module; the frame adapts when you move a node inside it.
+- **Collapsed**: a single card showing only the boundary ports, that is the inputs not fed by another node
+  of the module and the outputs that are free or patched outside (e.g. `DRONE 1 · PITCH`, `FILTER 1 · OUT`).
+  External cables attach to the card and can be plugged and unplugged as on a normal node.
+- **Duplicating** a module (select it by clicking its header, then Cmd+D) copies the nodes, the cables
+  between them and the module itself. **Del** deletes the module with its nodes; **Ungroup** dissolves it
+  and keeps the nodes.
 
-Il raggruppamento è solo visivo: il suono non cambia. Un nodo appartiene al massimo a un modulo.
+Grouping is only visual: the sound does not change. A node belongs to at most one module.
 
-## Auto layout e zoom
+## Auto layout and zoom
 
-**Auto layout** (L) dispone la patch seguendo il flusso del segnale: colonne da sinistra a destra, dalle
-sorgenti al mixer. In ogni colonna i blocchi si allineano alle porte a cui sono collegati, così i cavi sono
-il più dritti possibile; i modulatori (Random, LFO, nodi MIDI) finiscono subito prima di ciò che modulano;
-i cavi che saltano una colonna hanno un corridoio libero, così non passano dietro altri nodi. I moduli si
-spostano come blocchi interi e vengono riordinati anche all'interno. Con due o più nodi selezionati (o un
-modulo) viene sistemata solo la selezione. I nodi scivolano nelle nuove posizioni e la vista si adatta al
-risultato; **Cmd+Z** riporta la disposizione precedente.
+**Auto layout** (L) arranges the patch following the signal flow: columns from left to right, from the
+sources to the mixer. In each column, blocks line up with the ports they are connected to, so cables are as
+straight as possible; modulators (Random, LFOs, MIDI nodes) end up right before what they modulate;
+cables that skip a column get a clear corridor, so they don't run behind other nodes. Modules move as
+whole blocks and are rearranged inside too. With two or more nodes selected (or a module), only the
+selection is arranged. Nodes glide into their new positions and the view adapts to the result;
+**Cmd+Z** restores the previous arrangement.
 
-**Zoom.** F adatta la vista a tutta la patch, Shift+F alla selezione, con un'animazione breve. Cliccando la
-percentuale di zoom nella barra di stato si apre il menu della vista. **Auto-fit** (A) tiene sempre tutta la
-patch in vista mentre aggiungi, togli, riduci o sposti nodi o ridimensioni la finestra; nella barra di stato
-compare "auto". Si spegne da solo appena fai zoom o sposti la vista a mano.
+**Zoom.** F fits the view to the whole patch, Shift+F to the selection, with a short animation. Clicking the
+zoom percentage in the status bar opens the view menu. **Auto-fit** (A) keeps the whole patch in view
+while you add, remove, collapse or move nodes or resize the window; "auto" appears in the status bar. It
+turns itself off as soon as you zoom or move the view by hand.
 
 ## Palette
 
-Il pannello a sinistra (si mostra e si nasconde con il pulsante accanto al nome del progetto) elenca tutti i
-nodi per categoria e i moduli della libreria, con un campo di ricerca. Trascina una voce sul canvas per
-posizionarla dove vuoi (un riquadro mostra dove atterra), oppure cliccala per aggiungerla al centro della
-vista. Sulle voci della libreria, la × rimuove il modulo dalla libreria.
+The panel on the left (shown and hidden with the button next to the project name) lists all nodes by
+category and the library modules, with a search field. Drag an entry onto the canvas to place it where you
+want (an outline shows where it lands), or click it to add it in the middle of the view. On library
+entries, the × removes the module from the library.
 
-## Progetti e libreria
+## Projects and library
 
-**Progetti.** Il nome del progetto nella toolbar apre il menu File (New project, Open…, Save, Save as…).
-Un pallino accanto al nome, e "(edited)" nel titolo della finestra, segnalano modifiche non salvate:
-prima di creare un nuovo progetto, aprirne un altro o chiudere la finestra, AudioBoard chiede se salvarle.
-Un progetto (`.audioboard`) è un file JSON con nodi e parametri, posizioni, colori, nodi ridotti,
-cavi e moduli; i parametri sono salvati per nome. All'avvio si apre sempre la patch demo.
+**Projects.** The project name in the toolbar opens the File menu (New project, Open…, Save, Save as…).
+A dot next to the name, and "(edited)" in the window title, flag unsaved changes: before creating a new
+project, opening another one or closing the window, AudioBoard asks whether to save them.
+A project (`.audioboard`) is a JSON file with nodes and parameters, positions, colors, collapsed nodes,
+cables and modules; parameters are saved by name. The demo patch always opens on launch.
 
-**Libreria dei moduli.** Tasto destro sull'intestazione di un modulo → **Save to library** lo salva con
-il suo nome (se esiste già, chiede se sostituirlo). I moduli salvati compaiono nella sezione **Library**
-della palette e del menu del tasto destro: inserirne uno aggiunge i nodi, i cavi tra loro e le impostazioni
-come nuovo modulo, già **ridotto** a una scheda. La × accanto al nome lo rimuove dalla libreria, e
-**Open library folder** apre la cartella dei file `.abmodule`
-(`~/Library/Application Support/AudioBoard/Library` su macOS), utile per copiarli o condividerli.
+**Module library.** Right-click a module's header → **Save to library** saves it under its name (if it
+already exists, it asks whether to replace it). Saved modules appear in the **Library** section of the
+palette and of the right-click menu: inserting one adds the nodes, the cables between them and their
+settings as a new module, already **collapsed** to a card. The × next to the name removes it from the
+library, and **Open library folder** opens the folder of `.abmodule` files
+(`~/Library/Application Support/AudioBoard/Library` on macOS), useful for copying or sharing them.
 
-## Architettura
+## Architecture
 
 ```
 src/
 ├── audio/
-│   ├── params.rs   parametri condivisi lock-free (atomics) tra UI e thread audio
-│   ├── engine.rs   grafo lato audio: blocchi stereo da 64 frame, eventi MIDI per blocco, clock
-│   │               globale in battiti, ordine topologico precalcolato, denormali azzerati
-│   ├── fastmath.rs seno, exp2 e tanh veloci per il DSP per campione (errore < 1e-6)
-│   ├── dsp.rs      Oscillator e Mixer
+│   ├── params.rs   parameters shared lock-free (atomics) between the UI and the audio thread
+│   ├── engine.rs   audio-side graph: 64-frame stereo blocks, per-block MIDI events, global clock
+│   │               in beats, precomputed topological order, denormals flushed to zero
+│   ├── fastmath.rs fast sine, exp2 and tanh for per-sample DSP (error < 1e-6)
+│   ├── dsp.rs      Oscillator and Mixer
 │   ├── modules/    drone, random, granular, resonator, filter, delay, reverb, midi_cc, midi_note,
 │   │               sequencer, arpeggiator, midi_in
-│   │   ├── steps.rs griglia degli step sul tempo globale, note in uscita, tasti tenuti
-│   │   └── mod.rs  descrizione dei moduli (ModuleDef), parametri generici e helper DSP
-│   ├── midi.rs     ingressi MIDI (midir) e stato condiviso letto dai nodi MIDI
-│   ├── plugin.rs   plugin VST3 (vst3-host): caricamento, scansione, elaborazione sul thread audio
-│   └── mod.rs      apertura dello stream di uscita (cpal)
-├── graph.rs        modello della patch lato UI (nodi, cavi, moduli, ordinamento di Kahn)
-├── project.rs      salvataggio/caricamento dei progetti e libreria dei moduli (JSON)
+│   │   ├── steps.rs step grid on the global tempo, outgoing notes, held keys
+│   │   └── mod.rs  module descriptions (ModuleDef), generic parameters and DSP helpers
+│   ├── midi.rs     MIDI inputs (midir) and shared state read by the MIDI nodes
+│   ├── plugin.rs   VST3 plugins (vst3-host): loading, scanning, processing on the audio thread
+│   └── mod.rs      opening the output stream (cpal)
+├── graph.rs        UI-side patch model (nodes, cables, modules, Kahn ordering)
+├── project.rs      saving/loading projects and the module library (JSON)
 ├── ui/
-│   ├── canvas.rs   canvas con pan/zoom, selezione, drag & drop dei cavi, menu contestuali
-│   ├── groups.rs   moduli: cornice (espansi) e scheda con le porte di confine (ridotti)
-│   ├── layout.rs   auto layout per flusso del segnale (colonne, porte allineate, corridoi per i cavi)
-│   ├── palette.rs  palette dei nodi e della libreria, con trascinamento sul canvas
-│   ├── plugin_node.rs pannello dei nodi plugin (editor, parametri, MIDI, knob)
-│   ├── nodes.rs    layout e disegno di oscillatore e mixer, controlli condivisi
-│   ├── modules.rs  pannello comune dei moduli e i loro display
-│   ├── widgets.rs  knob, fader, meter, porte e cavi disegnati a mano
-│   ├── monitor.rs  pannello inferiore: oscilloscopio e spettro (FFT)
-│   ├── theme.rs    palette, font di sistema e stile
-│   └── app.rs      finestra, toolbar, pannelli, patch demo
-├── tests.rs        test del grafo, dei moduli e rendering offline del motore
-└── perf.rs         benchmark (audio per modulo, patch grandi, frame della UI, auto layout)
+│   ├── canvas.rs   canvas with pan/zoom, selection, cable drag & drop, context menus
+│   ├── groups.rs   modules: frame (expanded) and card with the boundary ports (collapsed)
+│   ├── layout.rs   auto layout by signal flow (columns, aligned ports, corridors for cables)
+│   ├── palette.rs  palette of nodes and library modules, with dragging onto the canvas
+│   ├── plugin_node.rs panel of plugin nodes (editor, parameters, MIDI, knobs)
+│   ├── nodes.rs    layout and drawing of the oscillator and mixer, shared controls
+│   ├── modules.rs  common module panel and their displays
+│   ├── widgets.rs  hand-drawn knobs, faders, meters, ports and cables
+│   ├── monitor.rs  bottom panel: oscilloscope and spectrum (FFT)
+│   ├── theme.rs    colors, system fonts and style
+│   └── app.rs      window, toolbar, panels, demo patch
+├── tests.rs        tests of the graph, the modules and offline engine rendering
+└── perf.rs         benchmarks (audio per module, large patches, UI frames, auto layout)
 ```
 
-La UI non blocca mai il thread audio: i valori dei knob passano tramite atomics, mentre le modifiche
-strutturali (nodi aggiunti/rimossi, nuovo ordine di elaborazione) arrivano al motore come comandi su un canale.
-I buffer (delay, riverbero, loop granulare) sono allocati sul thread della UI quando il nodo viene creato.
-I plugin VST3 sono condivisi con un lock: la UI lo prende per una chiamata alla volta, al massimo dieci
-volte al secondo, e lo stato del plugin si rilegge solo quando può essere cambiato, così il thread audio non
-resta in attesa.
+The UI never blocks the audio thread: knob values travel through atomics, while structural changes
+(nodes added/removed, a new processing order) reach the engine as commands on a channel.
+Buffers (delay, reverb, granular loop) are allocated on the UI thread when the node is created.
+VST3 plugins are shared through a lock: the UI takes it for one call at a time, at most ten times a
+second, and the plugin's state is read again only when it may have changed, so the audio thread is not
+kept waiting.
 
-**Prestazioni.** La UI ridisegna a pieno ritmo solo durante interazioni e animazioni; meter, analizzatori e
-luci degli step si aggiornano a 30 fps (niente, con la finestra ridotta a icona). Lo zoom usa dimensioni dei
-caratteri arrotondate al mezzo punto, così le animazioni non ricreano i glifi a ogni frame; da lontano il
-testo illeggibile non viene disegnato e la griglia è un'unica mesh. Le transizioni di auto layout e di zoom
-seguono una curva a molla senza rimbalzo: i nodi partono a onda da sinistra a destra e lo zoom procede in
-scala logaritmica attorno al centro, senza scivolamenti laterali.
+**Performance.** The UI redraws at full rate only during interaction and animations; meters, analyzers and
+step lights update at 30 fps (not at all while the window is minimized). Zoom uses font sizes rounded to
+half a point, so animations don't re-create glyphs every frame; from far away, unreadable text is not drawn
+and the grid is a single mesh. Auto layout and zoom transitions follow a spring curve with no bounce: nodes
+set off in a wave from left to right, and zoom proceeds on a logarithmic scale around the center, with no
+sideways drift.
 
-Per aggiungere un nuovo modulo: un file in `audio/modules/` con la sua `ModuleDef` (knob, porte, modi,
-toggle) e un `Processor`, una voce in `ModuleKind` e, in `ui/modules.rs`, la lettura e il display.
-Il pannello (porte, selettore, knob) è generato dalla definizione.
+To add a new module: a file in `audio/modules/` with its `ModuleDef` (knobs, ports, modes, toggle) and a
+`Processor`, an entry in `ModuleKind` and, in `ui/modules.rs`, the readout and the display.
+The panel (ports, selector, knobs) is generated from the definition.
 
-## Test
+## Tests
 
 ```bash
 cargo test
 ```
 
-I benchmark non girano con i test normali:
+Benchmarks don't run with the normal tests:
 
 ```bash
 cargo test --release perf -- --ignored --nocapture --test-threads=1
