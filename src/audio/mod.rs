@@ -1,5 +1,6 @@
 pub mod dsp;
 pub mod engine;
+pub mod fastmath;
 pub mod midi;
 pub mod modules;
 pub mod params;

@@ -798,7 +798,7 @@ impl Ui {
 
     /// Lets animations finish.
     fn settle(&mut self, g: &mut Graph, a: &AudioHandle) {
-        for _ in 0..12 {
+        for _ in 0..16 {
             self.frame(g, a, vec![]);
         }
     }

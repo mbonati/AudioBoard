@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use super::{DelayLine, ModuleDef, ModuleParams, approach, mix_gains, soft_limit, time_coeff};
 use crate::audio::engine::{Buf, Inputs, ProcessCtx, Processor};
+use crate::audio::fastmath;
 use crate::audio::params::{ParamSpec, Unit};
 
 pub const TIME: usize = 0;
@@ -106,8 +107,8 @@ impl Processor for Delay {
             approach(&mut self.mix, mix_t, ctx.smooth);
             self.wow_phase[0] = (self.wow_phase[0] + 0.43 / sr).fract();
             self.wow_phase[1] = (self.wow_phase[1] + 5.3 / sr).fract();
-            let modulation = wow_depth * (TAU * self.wow_phase[0]).sin()
-                + flutter_depth * (TAU * self.wow_phase[1]).sin();
+            let modulation = wow_depth * fastmath::sin_turns(self.wow_phase[0])
+                + flutter_depth * fastmath::sin_turns(self.wow_phase[1]);
             let d = (self.time * sr + modulation).clamp(1.0, max_d);
 
             let (in_l, in_r) = match input {
@@ -129,8 +130,8 @@ impl Processor for Delay {
             let mid = 0.5 * (in_l + in_r);
             let feed_l = in_l + (mid - in_l) * ping;
             let feed_r = in_r * (1.0 - ping);
-            self.lines[0].push((feed_l + fb_l).tanh());
-            self.lines[1].push((feed_r + fb_r).tanh());
+            self.lines[0].push(fastmath::tanh(feed_l + fb_l));
+            self.lines[1].push(fastmath::tanh(feed_r + fb_r));
 
             let (dry_g, wet_g) = mix_gains(self.mix);
             let yl = soft_limit(in_l * dry_g + wet[0] * wet_g);

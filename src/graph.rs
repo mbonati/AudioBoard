@@ -1,11 +1,13 @@
 //! The patch as the UI sees it: nodes with positions, and cables.
 //! Every structural change is mirrored to the audio engine.
 
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use egui::{Color32, Pos2, Vec2};
 
@@ -185,7 +187,22 @@ pub struct PluginNode {
     /// Until when a parameter the user just moved ignores the plugin's
     /// (not yet updated) value.
     held_until: Vec<f64>,
+    /// When each parameter was last read from the plugin, and when the
+    /// pinned ones were. Reading takes the plugin's lock, which the audio
+    /// thread needs too, so it happens a few times a second at most.
+    read_at: Vec<f64>,
+    synced_at: f64,
+    /// The plugin's saved state (base64) as last read, for telling whether
+    /// the project changed without asking the plugin every time, and
+    /// whether it may have changed since.
+    state: RefCell<Option<(String, Instant)>>,
+    state_stale: Cell<bool>,
 }
+
+/// How often the UI reads plugin parameters (seconds).
+const PLUGIN_SYNC_EVERY: f64 = 0.1;
+/// How often the saved state is re-read while it may be changing.
+const PLUGIN_STATE_EVERY: Duration = Duration::from_secs(2);
 
 impl PluginNode {
     fn new(meta: PluginMeta, params: Vec<PluginParam>, shared: Arc<PluginShared>, control: Sender<Control>) -> Self {
@@ -195,6 +212,10 @@ impl PluginNode {
             texts: vec![String::new(); n],
             pinned: (0..n.min(PINNED_MAX)).collect(),
             held_until: vec![0.0; n],
+            read_at: vec![f64::NEG_INFINITY; n],
+            synced_at: f64::NEG_INFINITY,
+            state: RefCell::new(None),
+            state_stale: Cell::new(true),
             shared,
             meta,
             params,
@@ -211,45 +232,85 @@ impl PluginNode {
         let value = value.clamp(0.0, 1.0);
         self.values[index] = value;
         self.held_until[index] = now + 0.3;
+        self.state_stale.set(true);
         let _ = self.control.send(Control::Param(p.id, value));
     }
 
+    /// Sends a parameter change from a MIDI mapping.
+    pub fn send_param(&self, id: u32, value: f64) {
+        self.state_stale.set(true);
+        let _ = self.control.send(Control::Param(id, value));
+    }
+
     /// Keeps the knobs in step with the plugin (including edits made in its
-    /// own editor) and services the editor window. Skips a frame when the
-    /// audio thread has the plugin.
+    /// own editor) and services the editor window. The plugin's lock is
+    /// taken for one call at a time and never waited for, so the audio
+    /// thread is held up as little as possible.
     pub fn sync(&mut self, now: f64) {
         if self.window.as_ref().is_some_and(|w| w.closed_by_user() || !w.is_open()) {
             self.window = None;
         }
         if let Some(w) = &self.window {
             let _ = w.service_platform_events();
+            // Its editor can change anything, presets included.
+            self.state_stale.set(true);
         }
-        let Ok(mut plugin) = self.shared.plugin.try_lock() else { return };
-        let _ = plugin.service_host_requests();
-        for &i in &self.pinned {
+        if now - self.synced_at < PLUGIN_SYNC_EVERY {
+            return;
+        }
+        self.synced_at = now;
+        match self.shared.plugin.try_lock() {
+            Ok(mut plugin) => {
+                let _ = plugin.service_host_requests();
+            }
+            Err(_) => return,
+        }
+        for k in 0..self.pinned.len() {
+            let i = self.pinned[k];
             let id = self.params[i].id;
+            let Ok(plugin) = self.shared.plugin.try_lock() else { return };
             if self.held_until[i] < now
                 && let Ok(v) = plugin.get_parameter(id)
+                && v != self.values[i]
             {
                 self.values[i] = v;
+                self.state_stale.set(true);
             }
             if let Ok(text) = plugin.format_parameter(id, self.values[i]) {
                 self.texts[i] = text;
             }
+            self.read_at[i] = now;
         }
     }
 
     /// Reads the current value of any parameter (for the parameter list).
     pub fn refresh(&mut self, index: usize, now: f64) {
-        if self.held_until[index] >= now {
+        if self.held_until[index] >= now || now - self.read_at[index] < PLUGIN_SYNC_EVERY {
             return;
         }
+        self.read_at[index] = now;
         let id = self.params[index].id;
         if let Ok(plugin) = self.shared.plugin.try_lock()
             && let Ok(v) = plugin.get_parameter(id)
         {
             self.values[index] = v;
         }
+    }
+
+    /// The saved state as base64. `fresh` asks the plugin now (saving);
+    /// otherwise the last copy is reused unless the state may have changed
+    /// and a couple of seconds have passed (checking for edits).
+    pub fn state_base64(&self, fresh: bool) -> Option<String> {
+        let mut cache = self.state.borrow_mut();
+        let due = match &*cache {
+            None => true,
+            Some((_, at)) => fresh || (self.state_stale.get() && at.elapsed() >= PLUGIN_STATE_EVERY),
+        };
+        if due && let Some(bytes) = self.save_state() {
+            *cache = Some((crate::project::base64_encode(&bytes), Instant::now()));
+            self.state_stale.set(false);
+        }
+        cache.as_ref().map(|(s, _)| s.clone())
     }
 
     /// Opens or closes the plugin's own window.
@@ -271,6 +332,7 @@ impl PluginNode {
     pub fn load_state(&mut self, data: &[u8]) -> Result<(), String> {
         let mut plugin = self.shared.plugin.lock().map_err(|e| e.to_string())?;
         plugin.load_state(data).map_err(|e| e.to_string())?;
+        self.state_stale.set(true);
         for (i, p) in self.params.iter().enumerate() {
             if let Ok(v) = plugin.get_parameter(p.id) {
                 self.values[i] = v;
@@ -963,7 +1025,7 @@ impl Graph {
             (NodeKind::Mixer(m), ParamRef::Pan(ch)) if ch < MIXER_CHANNELS => m.params.pan[ch].set(norm * 2.0 - 1.0),
             (NodeKind::Mixer(m), ParamRef::Master) => m.params.master.set(norm),
             (NodeKind::Plugin(p), ParamRef::Plugin(id)) => {
-                let _ = p.control.send(Control::Param(id, norm as f64));
+                p.send_param(id, norm as f64);
             }
             _ => {}
         }

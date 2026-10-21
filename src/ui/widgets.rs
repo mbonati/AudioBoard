@@ -2,7 +2,7 @@
 
 use egui::epaint::{CubicBezierShape, Shadow};
 use egui::{
-    Align2, Color32, CursorIcon, FontId, Id, Painter, Pos2, Rect, Response, Sense, Shape, Stroke,
+    Align2, Color32, CursorIcon, Id, Painter, Pos2, Rect, Response, Sense, Shape, Stroke,
     Ui, emath, pos2, vec2,
 };
 
@@ -88,7 +88,8 @@ const KNOB_START: f32 = 0.75 * std::f32::consts::PI;
 const KNOB_SWEEP: f32 = 1.5 * std::f32::consts::PI;
 
 fn arc(c: Pos2, r: f32, a0: f32, a1: f32) -> Vec<Pos2> {
-    let n = (((a1 - a0).abs() * r) / 3.0).ceil().max(2.0) as usize;
+    // About one segment per 4 px of arc: smooth, with few vertices.
+    let n = (((a1 - a0).abs() * r) / 4.0).ceil().max(2.0) as usize;
     (0..=n)
         .map(|i| {
             let a = emath::lerp(a0..=a1, i as f32 / n as f32);
@@ -232,7 +233,7 @@ pub fn toggle(
         rect.center(),
         Align2::CENTER_CENTER,
         label,
-        FontId::proportional(9.0 * z),
+        theme::font(9.0 * z),
         if on { theme::INSET } else { theme::TEXT_DIM },
     );
     resp

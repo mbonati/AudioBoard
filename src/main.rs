@@ -5,6 +5,8 @@ mod ui;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod perf;
 
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
