@@ -182,6 +182,12 @@ and a meter; a stereo master bus with L/R meters and a clip indicator. The mixer
 
 The full list of shortcuts appears when hovering the **?** button in the toolbar.
 
+Resting the pointer on a node or a module for a moment shows a small translucent label just above it with
+its type, since titles can be renamed: "Reverb · hall · shimmer · freeze", "Originals - Cinematic Pads ·
+VST3 instrument · Spitfire Audio", or for a module the nodes it holds ("Module · Drone · Filter · 2× Reverb").
+The label stays put rather than following the pointer, takes no clicks, and hides while dragging, in menus
+and while renaming.
+
 Right-click (or Ctrl+click on macOS) opens the menu for whatever is under the pointer: canvas, node
 (also when clicking a knob or a display), module or cable.
 

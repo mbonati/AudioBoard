@@ -1436,3 +1436,64 @@ fn vst3_instruments_take_a_midi_cable() {
     assert_eq!(crate::project::restore(&mut h, &saved, &b), 0);
     assert!(h.cables.iter().any(|c| c.to.port == MIDI_PORT));
 }
+
+#[test]
+fn resting_on_a_node_or_module_shows_its_type() {
+    let (mut g, a, _e) = setup();
+    let reverb = g.add_module(ModuleKind::Reverb, pos2(0.0, 300.0), &a);
+    g.node_mut(reverb).unwrap().title = "MY SPACE".to_owned();
+    let pair = [
+        g.add_module(ModuleKind::Drone, pos2(0.0, 0.0), &a),
+        g.add_module(ModuleKind::Filter, pos2(300.0, 0.0), &a),
+    ];
+    let gid = g.create_group(&pair).unwrap();
+    g.rename_group(gid, "Pad voice");
+    g.set_group_collapsed(gid, true);
+
+    let ctx = egui::Context::default();
+    let mut editor = crate::ui::canvas::Editor::new();
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 900.0));
+    // Runs a frame at `time` and returns every text drawn.
+    let run = |editor: &mut crate::ui::canvas::Editor, g: &mut Graph, time: f64, events: Vec<egui::Event>| {
+        let input = egui::RawInput { screen_rect: Some(screen), time: Some(time), events, ..Default::default() };
+        let mut out = ctx.run_ui(input, |ui| editor.show(ui, g, &a));
+        out.textures_delta.clear();
+        fn texts(shape: &egui::Shape, into: &mut Vec<String>) {
+            match shape {
+                egui::Shape::Text(t) => into.push(t.galley.job.text.clone()),
+                egui::Shape::Vec(v) => v.iter().for_each(|s| texts(s, into)),
+                _ => {}
+            }
+        }
+        let mut found = Vec::new();
+        out.shapes.iter().for_each(|c| texts(&c.shape, &mut found));
+        found
+    };
+    run(&mut editor, &mut g, 0.0, vec![]);
+    let to_screen = |e: &crate::ui::canvas::Editor, p: egui::Pos2| (e.pan + p.to_vec2() * e.zoom).to_pos2();
+    let on_reverb = to_screen(&editor, g.node(reverb).unwrap().pos + egui::vec2(100.0, 90.0));
+    let on_card = to_screen(&editor, crate::ui::groups::frame_rect(&g, g.group(gid).unwrap()).unwrap().min)
+        + egui::vec2(100.0, 12.0) * editor.zoom;
+    let label = |texts: &[String], what: &str| texts.iter().any(|t| t.contains(what));
+
+    // Only once the pointer has rested a moment.
+    let texts = run(&mut editor, &mut g, 1.0, vec![egui::Event::PointerMoved(on_reverb)]);
+    assert!(!label(&texts, "hall · shimmer"), "no label straight away");
+    let texts = run(&mut editor, &mut g, 1.6, vec![]);
+    assert!(label(&texts, "Reverb") && label(&texts, "hall · shimmer · freeze"), "{texts:?}");
+
+    // A renamed module says what it holds.
+    run(&mut editor, &mut g, 2.0, vec![egui::Event::PointerMoved(on_card)]);
+    let texts = run(&mut editor, &mut g, 2.6, vec![]);
+    assert!(label(&texts, "Module") && label(&texts, "Drone · Filter"), "{texts:?}");
+
+    // Not while dragging.
+    let press = egui::Event::PointerButton {
+        pos: on_card,
+        button: egui::PointerButton::Primary,
+        pressed: true,
+        modifiers: egui::Modifiers::NONE,
+    };
+    let texts = run(&mut editor, &mut g, 2.7, vec![press]);
+    assert!(!label(&texts, "Drone · Filter"));
+}
