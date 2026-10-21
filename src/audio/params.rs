@@ -65,6 +65,32 @@ pub enum Unit {
     Note,
     /// Index into [`NOTE_VALUES`].
     NoteValue,
+    /// Index into [`SYNC_DIVISIONS`].
+    Sync,
+}
+
+/// Note values a tempo-synced time can take, shortest first: (label,
+/// beats). "D" is dotted, "T" triplet.
+pub const SYNC_DIVISIONS: [(&str, f64); 14] = [
+    ("1/32", 0.125),
+    ("1/16T", 1.0 / 6.0),
+    ("1/16", 0.25),
+    ("1/8T", 1.0 / 3.0),
+    ("1/16D", 0.375),
+    ("1/8", 0.5),
+    ("1/4T", 2.0 / 3.0),
+    ("1/8D", 0.75),
+    ("1/4", 1.0),
+    ("1/2T", 4.0 / 3.0),
+    ("1/4D", 1.5),
+    ("1/2", 2.0),
+    ("1/2D", 3.0),
+    ("1/1", 4.0),
+];
+
+/// The note value a DIV knob points at.
+pub fn sync_division(v: f32) -> (&'static str, f64) {
+    SYNC_DIVISIONS[(v.round().max(0.0) as usize).min(SYNC_DIVISIONS.len() - 1)]
 }
 
 /// Note values for rhythm generators, longest first: (label, beats,
@@ -163,6 +189,7 @@ impl ParamSpec {
             (Unit::Division, _) => DIVISIONS[(v.round() as usize).min(DIVISIONS.len() - 1)].0.to_owned(),
             (Unit::NoteName, _) => NOTE_NAMES[(v.round() as usize) % 12].to_owned(),
             (Unit::Note, _) => note_label(v.round() as i32),
+            (Unit::Sync, _) => sync_division(v).0.to_owned(),
             (Unit::NoteValue, _) => NOTE_VALUES[(v.round().max(0.0) as usize).min(NOTE_VALUES.len() - 1)].0.to_owned(),
         }
     }

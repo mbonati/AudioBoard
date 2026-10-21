@@ -11,6 +11,7 @@ pub mod granular;
 pub mod midi_cc;
 pub mod midi_in;
 pub mod midicer;
+pub mod pingpong;
 pub mod midi_note;
 pub mod random;
 pub mod resonator;
@@ -34,6 +35,7 @@ pub enum ModuleKind {
     Resonator,
     Filter,
     Delay,
+    PingPong,
     Reverb,
     MidiCc,
     MidiNote,
@@ -80,13 +82,14 @@ pub struct ModuleDef {
 }
 
 impl ModuleKind {
-    pub const ALL: [ModuleKind; 13] = [
+    pub const ALL: [ModuleKind; 14] = [
         ModuleKind::Drone,
         ModuleKind::Random,
         ModuleKind::Granular,
         ModuleKind::Resonator,
         ModuleKind::Filter,
         ModuleKind::Delay,
+        ModuleKind::PingPong,
         ModuleKind::Reverb,
         ModuleKind::MidiCc,
         ModuleKind::MidiNote,
@@ -104,6 +107,7 @@ impl ModuleKind {
             ModuleKind::Resonator => &resonator::DEF,
             ModuleKind::Filter => &filter::DEF,
             ModuleKind::Delay => &delay::DEF,
+            ModuleKind::PingPong => &pingpong::DEF,
             ModuleKind::Reverb => &reverb::DEF,
             ModuleKind::MidiCc => &midi_cc::DEF,
             ModuleKind::MidiNote => &midi_note::DEF,
@@ -126,6 +130,7 @@ impl ModuleKind {
             ModuleKind::Resonator => Box::new(resonator::Resonator::new(params, sample_rate)),
             ModuleKind::Filter => Box::new(filter::Filter::new(params, sample_rate)),
             ModuleKind::Delay => Box::new(delay::Delay::new(params, sample_rate)),
+            ModuleKind::PingPong => Box::new(pingpong::PingPong::new(params, sample_rate)),
             ModuleKind::Reverb => Box::new(reverb::Reverb::new(params, sample_rate)),
             ModuleKind::MidiCc => Box::new(midi_cc::MidiCc::new(params, midi, sample_rate)),
             ModuleKind::MidiNote => Box::new(midi_note::MidiNote::new(params, midi, sample_rate)),

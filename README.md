@@ -63,7 +63,16 @@ With noise or grains as input it gives physical, organic timbres. PITCH, DECAY, 
 (depth of the CUT input in octaves, negative too). The display shows the frequency response.
 
 **Delay**: stereo tape echo up to 2 s. TIME (changes glide, like tape), FEEDBACK,
-TONE (darkens the repeats), WOW (wow & flutter), PING (ping-pong), MIX.
+TONE (darkens the repeats), WOW (wow & flutter), PING (ping-pong), MIX. **SYNC** locks the time to the
+global tempo: DIV picks the note value (1/32 to 1/1, with dotted "D" and triplet "T" values, up to 4 s) and
+follows tempo changes; the knob not in use (TIME or DIV) is dimmed. The readout shows the value and the
+time ("1/8D · 375 ms").
+
+**Ping Pong**: a stereo delay whose echoes bounce from side to side: the input (summed to mono) enters one
+side and every repeat crosses to the other. TIME or, with **SYNC** (on by default), DIV as for the Delay;
+FEEDBACK; WIDTH (100%: hard left and right; 0%: every echo in the middle); TONE (darkens the repeats); DUCK
+(lowers the echoes while the input plays, so they bloom in the gaps); MIX. **L → R / R → L** picks the side
+of the first echo. The display shows the echoes alternating left (up) and right (down).
 
 **Reverb**: an 8-line delay network with diffusion, modulation and damping. SIZE (from room to
 cathedral), DECAY (0.3 – 60 s), DAMP, MOD, SHIMMER (an octave up, fed back into the tail), MIX.
@@ -304,7 +313,7 @@ src/
 │   │               in beats, precomputed topological order, denormals flushed to zero
 │   ├── fastmath.rs fast sine, exp2 and tanh for per-sample DSP (error < 1e-6)
 │   ├── dsp.rs      Oscillator and Mixer
-│   ├── modules/    drone, random, granular, resonator, filter, delay, reverb, midi_cc, midi_note,
+│   ├── modules/    drone, random, granular, resonator, filter, delay, pingpong, reverb, midi_cc, midi_note,
 │   │               sequencer, arpeggiator, midi_in, midicer (after Vermona's meloDICER)
 │   │   ├── steps.rs step grid on the global tempo, outgoing notes, held keys
 │   │   └── mod.rs  module descriptions (ModuleDef), generic parameters and DSP helpers

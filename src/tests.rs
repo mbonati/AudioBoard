@@ -1759,3 +1759,103 @@ fn stop_rewinds_and_start_plays_from_the_top() {
     assert_eq!(np.viz[midi_note::NOTE].get(), 48.0);
     assert!(shared.beat.get() < 0.05, "the transport starts at 0: {}", shared.beat.get());
 }
+
+// ---------------------------------------------------------------------------
+// Delays
+// ---------------------------------------------------------------------------
+
+/// Runs an effect on a single click at frame 0 (120 BPM) and returns the
+/// left and right outputs.
+fn click_response(proc: &mut dyn Processor, frames: usize) -> (Vec<f32>, Vec<f32>) {
+    const SR: f32 = 48_000.0;
+    let mut ctx = ProcessCtx { sample_rate: SR, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / SR as f64, restart: false };
+    let mut inputs = Box::new(Inputs {
+        bufs: [[[0.0; 64]; 2]; 8],
+        connected: [false; 8],
+        midi: MidiBuf::default(),
+        midi_connected: false,
+    });
+    inputs.connected[0] = true;
+    let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
+    let (mut l, mut r) = (Vec::new(), Vec::new());
+    for block in 0..frames / 64 {
+        let click = if block == 0 { 1.0 } else { 0.0 };
+        inputs.bufs[0] = [[0.0; 64]; 2];
+        inputs.bufs[0][0][0] = click;
+        inputs.bufs[0][1][0] = click;
+        proc.process(&ctx, &inputs, &mut outputs, 64);
+        l.extend_from_slice(&outputs[0][0]);
+        r.extend_from_slice(&outputs[0][1]);
+        ctx.beat += ctx.beats_per_sample * 64.0;
+    }
+    (l, r)
+}
+
+/// Where the loudest sample is between `from` and `to`, and how loud.
+fn loudest(x: &[f32], from: usize, to: usize) -> (usize, f32) {
+    (from..to.min(x.len())).map(|i| (i, x[i].abs())).fold((from, 0.0), |a, b| if b.1 > a.1 { b } else { a })
+}
+
+#[test]
+fn delay_syncs_to_the_tempo() {
+    use crate::audio::modules::delay::{self, Delay};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Delay));
+    p.set(delay::MIX, 1.0);
+    p.set(delay::FEEDBACK, 0.0);
+    p.set(delay::PING, 0.0);
+    p.set(delay::WOW, 0.0);
+    p.set_toggle(true);
+    // 1/8D at 120 BPM: 0.75 beat = 375 ms = 18000 frames.
+    p.set(delay::DIV, 7.0);
+    let (l, _) = click_response(&mut Delay::new(p.clone(), 48_000.0), 48_000);
+    let (at, level) = loudest(&l, 1000, 48_000);
+    assert!(level > 0.1 && at.abs_diff(18_000) <= 2, "echo at {at} ({level})");
+    // Off sync: TIME rules.
+    p.set_toggle(false);
+    p.set(delay::TIME, 0.25);
+    let (l, _) = click_response(&mut Delay::new(p.clone(), 48_000.0), 48_000);
+    assert!(loudest(&l, 1000, 48_000).0.abs_diff(12_000) <= 2);
+}
+
+#[test]
+fn ping_pong_echoes_alternate_sides() {
+    use crate::audio::modules::pingpong::{self, PingPong};
+    let p = Arc::new(ModuleParams::new(ModuleKind::PingPong));
+    p.set(pingpong::MIX, 1.0);
+    p.set(pingpong::FEEDBACK, 0.8);
+    p.set(pingpong::TONE, 1.0);
+    // Synced 1/8 at 120 BPM: an echo every 250 ms (12000 frames).
+    p.set(pingpong::DIV, 5.0);
+    let d = 12_000;
+    let (l, r) = click_response(&mut PingPong::new(p.clone(), 48_000.0), 4 * d + 2000);
+    let near = |x: &[f32], k: usize| loudest(x, k * d - 300, k * d + 300).1;
+    // Left, right, left: each echo on one side only (WIDTH 100%).
+    assert!(near(&l, 1) > 0.2 && near(&r, 1) < 0.01, "1st: L {} R {}", near(&l, 1), near(&r, 1));
+    assert!(near(&r, 2) > 0.1 && near(&l, 2) < 0.01, "2nd: L {} R {}", near(&l, 2), near(&r, 2));
+    assert!(near(&l, 3) > 0.05 && near(&r, 3) < 0.01);
+    assert!(near(&l, 3) < near(&l, 1), "they fade");
+
+    // R → L starts on the right; WIDTH 0 puts every echo in the middle.
+    p.set_mode(pingpong::RIGHT_FIRST);
+    let (l, r) = click_response(&mut PingPong::new(p.clone(), 48_000.0), 2 * d + 2000);
+    assert!(near(&r, 1) > 0.2 && near(&l, 1) < 0.01);
+    p.set(pingpong::WIDTH, 0.0);
+    let (l, r) = click_response(&mut PingPong::new(p.clone(), 48_000.0), 2 * d + 2000);
+    assert!((near(&l, 1) - near(&r, 1)).abs() < 1e-3);
+}
+
+#[test]
+fn ping_pong_ducks_under_the_input() {
+    use crate::audio::modules::pingpong;
+    let mut levels = Vec::new();
+    for duck in [0.0, 1.0] {
+        let (mut g, a, mut e) = setup();
+        let (m, p) = patch(&mut g, &a, ModuleKind::PingPong);
+        let _ = m;
+        p.set(pingpong::MIX, 1.0);
+        p.set(pingpong::DUCK, duck);
+        render_buf(&mut e, 48_000);
+        levels.push(rms_of(&render_buf(&mut e, 24_000)));
+    }
+    assert!(levels[1] < levels[0] * 0.3, "ducked {} vs {}", levels[1], levels[0]);
+}

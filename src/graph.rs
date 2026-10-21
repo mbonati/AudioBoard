@@ -71,6 +71,7 @@ impl NodeType {
             &[
                 NodeType::Module(ModuleKind::Filter),
                 NodeType::Module(ModuleKind::Delay),
+                NodeType::Module(ModuleKind::PingPong),
                 NodeType::Module(ModuleKind::Reverb),
             ],
         ),

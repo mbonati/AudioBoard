@@ -703,6 +703,7 @@ impl Editor {
             .filter_map(|n| Some((n.id, graph.target_label(graph.target_of(n.id)?)?)))
             .collect();
         let mut map_button = None;
+        let tempo = graph.tempo;
         for (idx, node) in graph.nodes.iter_mut().enumerate() {
             let Some(rect_s) = node_rects[idx] else {
                 continue;
@@ -731,6 +732,7 @@ impl Editor {
                 z,
                 node: id,
                 hits: &hits,
+                tempo,
             };
             let header = nodes::frame(&view, node, selected);
             if header.close {

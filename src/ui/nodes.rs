@@ -73,6 +73,8 @@ pub struct NodeView<'a> {
     pub node: NodeId,
     /// Collects every knob and fader drawn.
     pub hits: &'a RefCell<Vec<KnobHit>>,
+    /// The global tempo, for tempo-synced displays.
+    pub tempo: f32,
 }
 
 impl NodeView<'_> {
@@ -211,11 +213,11 @@ pub fn collapsed_port(i: usize, output: bool) -> Vec2 {
 }
 
 /// The node's main value, shown when it is collapsed.
-fn summary(node: &Node) -> String {
+fn summary(node: &Node, tempo: f32) -> String {
     match &node.kind {
         NodeKind::Osc(o) => format_hz(o.params.get(osc::FREQ) * (o.params.get(osc::FINE) / 1200.0).exp2()),
         NodeKind::Mixer(m) => format_db(gain_to_db(fader_gain(m.params.master.get()))),
-        NodeKind::Module(m) => modules::summary(&m.params),
+        NodeKind::Module(m) => modules::summary(&m.params, tempo),
         NodeKind::Plugin(p) => p.meta.vendor.clone(),
     }
 }
@@ -235,7 +237,7 @@ pub fn collapsed(v: &NodeView, node: &Node, inputs: &[bool], outputs: &[bool]) {
         let label = node.port_label(port, true);
         v.text(COLLAPSED_W - 12.0, row_y(i), Align2::RIGHT_CENTER, label, v.font(9.0), label_col(on));
     }
-    v.text(COLLAPSED_W * 0.5, row_y(0), Align2::CENTER_CENTER, summary(node), v.mono(10.5), theme::TEXT);
+    v.text(COLLAPSED_W * 0.5, row_y(0), Align2::CENTER_CENTER, summary(node, v.tempo), v.mono(10.5), theme::TEXT);
     // The mixer is the output: keep its master meters in view.
     if let NodeKind::Mixer(m) = &node.kind {
         for (i, meter) in m.master.iter().enumerate() {

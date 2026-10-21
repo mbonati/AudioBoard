@@ -12,9 +12,11 @@ use crate::audio::engine::NodeId;
 use crate::audio::midi::note_hz;
 use crate::audio::modules::{
     ModuleDef, ModuleKind, ModuleParams, arpeggiator, delay, drone, filter, granular, midi_cc, midi_in, midi_note,
-    midicer, random, resonator, reverb, sequencer, steps,
+    midicer, pingpong, random, resonator, reverb, sequencer, steps,
 };
-use crate::audio::params::{DIVISIONS, NOTE_NAMES, NOTE_VALUES, format_hz, format_seconds, note_label};
+use crate::audio::params::{
+    DIVISIONS, NOTE_NAMES, NOTE_VALUES, format_hz, format_seconds, note_label, sync_division,
+};
 use crate::graph::{ModuleNode, ParamRef};
 
 const PAD: f32 = 12.0;
@@ -127,7 +129,7 @@ pub fn draw(
     }
 
     // Readout.
-    let (main, sub) = readout(kind, p);
+    let (main, sub) = readout(kind, p, v.tempo);
     let sub = if map.picking {
         "Click a knob or fader…".to_owned()
     } else if let Some(target) = map.target {
@@ -173,7 +175,8 @@ pub fn draw(
         ModuleKind::Granular => granular_display(&screen, p),
         ModuleKind::Resonator => resonator_display(&screen, p),
         ModuleKind::Filter => filter_display(&screen, p),
-        ModuleKind::Delay => delay_display(&screen, p),
+        ModuleKind::Delay => delay_display(&screen, p, echo_seconds(p, v.tempo)),
+        ModuleKind::PingPong => pingpong_display(&screen, p, echo_seconds(p, v.tempo)),
         ModuleKind::Reverb => reverb_display(&screen, p),
         ModuleKind::Sequencer => step_grid(v, id, &screen, p),
         ModuleKind::Arpeggiator | ModuleKind::MidiIn => keys_display(&screen, p),
@@ -225,7 +228,8 @@ pub fn draw(
     let cols = columns(def);
     let top = knobs_top(def);
     for (k, spec) in def.params.iter().enumerate() {
-        let dimmed = def.cv_depth.iter().any(|&(param, input)| param == k && !patched(input));
+        let dimmed =
+            def.cv_depth.iter().any(|&(param, input)| param == k && !patched(input)) || knob_unused(kind, p, k);
         let cell = KnobCell {
             cx: PAD + COL_W * ((k % cols) as f32 + 0.5),
             row_y: top + ROW_H * (k / cols) as f32,
@@ -258,11 +262,42 @@ fn mode_name(kind: ModuleKind, i: usize) -> &'static str {
 }
 
 /// The main readout line, shown on collapsed nodes.
-pub fn summary(p: &ModuleParams) -> String {
-    readout(p.kind, p).0
+pub fn summary(p: &ModuleParams, tempo: f32) -> String {
+    readout(p.kind, p, tempo).0
 }
 
-fn readout(kind: ModuleKind, p: &ModuleParams) -> (String, String) {
+/// A delay's echo time in seconds (TIME, or DIV at `tempo` with SYNC).
+/// Delay and Ping Pong share their TIME, DIV and SYNC layout.
+fn echo_seconds(p: &ModuleParams, tempo: f32) -> f32 {
+    delay::delay_seconds(p.toggled(), p.get(delay::TIME), p.get(delay::DIV), 60.0 / tempo.max(1.0) as f64)
+}
+
+/// "1/8D · 375 ms" with SYNC, else "375 ms".
+fn echo_label(p: &ModuleParams, tempo: f32) -> String {
+    let t = format_seconds(echo_seconds(p, tempo));
+    if p.toggled() { format!("{} · {t}", sync_division(p.get(delay::DIV)).0) } else { t }
+}
+
+/// "Tail ≈ 4.2 s": how long the repeats take to fall by 60 dB.
+fn tail_label(seconds: f32, loop_gain: f32) -> String {
+    if loop_gain >= 0.995 {
+        "Endless".to_owned()
+    } else if loop_gain < 0.01 {
+        "Single echo".to_owned()
+    } else {
+        let repeats = 0.001f32.ln() / loop_gain.ln();
+        format!("Tail ≈ {}", format_seconds(seconds * repeats))
+    }
+}
+
+/// Knobs that do nothing in the current setting, drawn dimmed: a delay's
+/// TIME while it is synced, and DIV while it is not.
+fn knob_unused(kind: ModuleKind, p: &ModuleParams, k: usize) -> bool {
+    matches!(kind, ModuleKind::Delay | ModuleKind::PingPong)
+        && ((k == delay::TIME && p.toggled()) || (k == delay::DIV && !p.toggled()))
+}
+
+fn readout(kind: ModuleKind, p: &ModuleParams, tempo: f32) -> (String, String) {
     let mode = mode_name(kind, p.mode());
     match kind {
         ModuleKind::MidiCc => {
@@ -352,18 +387,12 @@ fn readout(kind: ModuleKind, p: &ModuleParams) -> (String, String) {
         }
         ModuleKind::Filter => (format_hz(p.get(filter::CUTOFF)), mode.to_owned()),
         ModuleKind::Delay => {
-            let t = p.get(delay::TIME);
             let fb = delay::loop_gain(p.get(delay::FEEDBACK));
-            let tail = if fb >= 0.995 {
-                "Endless".to_owned()
-            } else if fb < 0.01 {
-                "Single echo".to_owned()
-            } else {
-                // Time for the repeats to fall by 60 dB.
-                let repeats = 0.001f32.ln() / fb.ln();
-                format!("Tail ≈ {}", format_seconds(t * repeats))
-            };
-            (format_seconds(t), tail)
+            (echo_label(p, tempo), tail_label(echo_seconds(p, tempo), fb))
+        }
+        ModuleKind::PingPong => {
+            let fb = pingpong::loop_gain(p.get(pingpong::FEEDBACK));
+            (echo_label(p, tempo), tail_label(echo_seconds(p, tempo), fb))
         }
         ModuleKind::Reverb => {
             let main = format!("RT {}", format_seconds(p.get(reverb::DECAY)));
@@ -576,11 +605,10 @@ fn filter_display(s: &Screen, p: &ModuleParams) {
 }
 
 /// Echoes over 4 seconds: left channel up, right channel down.
-fn delay_display(s: &Screen, p: &ModuleParams) {
+fn delay_display(s: &Screen, p: &ModuleParams, t: f32) {
     s.center_line();
     let r = s.rect;
     let span = 4.0;
-    let t = p.get(delay::TIME);
     let fb = delay::loop_gain(p.get(delay::FEEDBACK)).min(1.0);
     let ping = p.get(delay::PING);
     let half = r.height() * 0.5;
@@ -599,6 +627,33 @@ fn delay_display(s: &Screen, p: &ModuleParams) {
             fb * ((1.0 - ping) * e[0] + ping * e[1]),
             fb * ((1.0 - ping) * e[1] + ping * e[0]),
         ];
+    }
+}
+
+/// Ping Pong's echoes over 4 seconds, alternating sides: left up, right
+/// down, the first on the side the mode picks; WIDTH pulls them together.
+fn pingpong_display(s: &Screen, p: &ModuleParams, t: f32) {
+    s.center_line();
+    let r = s.rect;
+    let span = 4.0;
+    let fb = pingpong::loop_gain(p.get(pingpong::FEEDBACK));
+    let width = p.get(pingpong::WIDTH);
+    let first_right = p.mode() == pingpong::RIGHT_FIRST;
+    let half = r.height() * 0.5;
+    let stroke = |a: f32| Stroke::new(2.0 * s.z, alpha(s.accent, 0.3 + 0.7 * a.min(1.0)));
+    let mut level = 1.0f32;
+    for k in 1..=64 {
+        let x = r.left() + r.width() * k as f32 * t / span;
+        if x > r.right() || level < 0.02 {
+            break;
+        }
+        // Odd echoes on the first side; the other side gets what WIDTH leaks.
+        let right = (k % 2 == 1) == first_right;
+        let (main, leak) = (level * (0.5 + 0.5 * width), level * (0.5 - 0.5 * width));
+        let (l, rr) = if right { (leak, main) } else { (main, leak) };
+        s.p.line_segment([pos2(x, r.center().y), pos2(x, r.center().y - l * half)], stroke(l));
+        s.p.line_segment([pos2(x, r.center().y), pos2(x, r.center().y + rr * half)], stroke(rr));
+        level *= fb;
     }
 }
 
