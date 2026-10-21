@@ -138,6 +138,107 @@ pub fn bundle_name(path: &Path) -> String {
     path.file_stem().map_or_else(String::new, |s| s.to_string_lossy().into_owned())
 }
 
+/// The maker of a plugin bundle, from its metadata files: no plugin code
+/// runs. Tries the VST3 module info, then the bundle's copyright notice,
+/// then its identifier ("com.maker.Plugin").
+pub fn bundle_vendor(path: &Path) -> Option<String> {
+    let contents = path.join("Contents");
+    if let Ok(info) = std::fs::read_to_string(contents.join("Resources").join("moduleinfo.json"))
+        && let Some(vendor) = json_string(&info, "Vendor").filter(|v| !v.trim().is_empty())
+    {
+        return Some(clean_vendor(&vendor));
+    }
+    // Binary property lists aren't text, and are skipped.
+    let plist = std::fs::read_to_string(contents.join("Info.plist")).ok()?;
+    plist_string(&plist, "NSHumanReadableCopyright")
+        .and_then(|c| vendor_from_copyright(&c))
+        .or_else(|| plist_string(&plist, "CFBundleIdentifier").and_then(|id| vendor_from_bundle_id(&id)))
+}
+
+/// A maker's name without its legal form: "Valhalla DSP" for
+/// "Valhalla DSP, LLC".
+pub fn clean_vendor(name: &str) -> String {
+    const FORMS: [&str; 14] = [
+        "llc", "l.l.c.", "inc.", "inc", "ltd.", "ltd", "limited", "gmbh", "s.r.l.", "srl", "corp.", "corp", "co.", "ab",
+    ];
+    let mut name = name.trim().trim_end_matches(['.', ',', ' ']).to_owned();
+    loop {
+        let lower = name.to_lowercase();
+        let Some(form) = FORMS.iter().find(|f| lower.ends_with(&format!(" {f}")) || lower.ends_with(&format!(",{f}"))) else {
+            break;
+        };
+        name.truncate(name.len() - form.len());
+        name = name.trim_end_matches(['.', ',', ' ']).to_owned();
+    }
+    name
+}
+
+/// Groups spellings of one maker: "Valhalla DSP" and "ValhallaDSP" match.
+pub fn vendor_key(name: &str) -> String {
+    clean_vendor(name).chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect()
+}
+
+/// "Valhalla DSP" from "Copyright (c) 2022, Valhalla DSP, LLC. All Rights Reserved."
+fn vendor_from_copyright(notice: &str) -> Option<String> {
+    let mut text = notice.to_owned();
+    for noise in ["all rights reserved", "copyright", "(c)", "©"] {
+        while let Some(i) = text.to_lowercase().find(noise) {
+            text.replace_range(i..i + noise.len(), " ");
+        }
+    }
+    // Drop years ("2022", "2019-2024") and the punctuation around them.
+    let words: Vec<&str> = text
+        .split_whitespace()
+        .filter(|w| !w.trim_matches([',', '.', '-', '–']).chars().all(|c| c.is_ascii_digit() || c == '-' || c == '–'))
+        .collect();
+    let vendor = clean_vendor(words.join(" ").trim_matches([',', '.', ' ', '-']));
+    (!vendor.is_empty()).then_some(vendor)
+}
+
+/// "ValhallaDSP" from "com.ValhallaDSP.ValhallaFreqEcho".
+fn vendor_from_bundle_id(id: &str) -> Option<String> {
+    const TOP: [&str; 10] = ["com", "net", "org", "io", "co", "de", "uk", "fr", "it", "audio"];
+    let mut parts = id.split('.').filter(|p| !p.is_empty());
+    let first = parts.next()?;
+    let maker = if TOP.contains(&first.to_lowercase().as_str()) { parts.next()? } else { first };
+    let mut chars = maker.chars();
+    let head = chars.next()?;
+    Some(head.to_uppercase().chain(chars).collect())
+}
+
+/// The first string value of `"key"` in JSON-like text. Module info files
+/// are JSON5 (trailing commas), which strict parsers refuse.
+fn json_string(text: &str, key: &str) -> Option<String> {
+    let after = &text[text.find(&format!("\"{key}\""))? + key.len() + 2..];
+    let after = after.trim_start().strip_prefix(':')?.trim_start().strip_prefix('"')?;
+    let mut value = String::new();
+    let mut chars = after.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => return Some(value),
+            '\\' => value.extend(chars.next()),
+            c => value.push(c),
+        }
+    }
+    None
+}
+
+/// The `<string>` after `<key>key</key>` in an XML property list.
+fn plist_string(xml: &str, key: &str) -> Option<String> {
+    let after = &xml[xml.find(&format!("<key>{key}</key>"))? + key.len() + 11..];
+    let value = after.trim_start().strip_prefix("<string>")?;
+    let value = &value[..value.find("</string>")?];
+    Some(
+        value
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&quot;", "\"")
+            .replace("&apos;", "'")
+            .replace("&#169;", "©")
+            .replace("&amp;", "&"),
+    )
+}
+
 /// A raw MIDI message as a plugin event.
 fn midi_event([status, d1, d2]: [u8; 3]) -> Option<MidiEvent> {
     let channel = MidiChannel::from_index(status & 0x0F)?;
@@ -282,5 +383,54 @@ impl Processor for PluginProcessor {
         out_r[..n].copy_from_slice(&right[..n]);
         let peak = left[..n].iter().chain(&right[..n]).fold(0.0f32, |m, s| m.max(s.abs()));
         self.shared.meter.fetch_max(peak);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn vendor_names() {
+        let c = |s| vendor_from_copyright(s);
+        assert_eq!(c("Copyright (c) 2022, Valhalla DSP, LLC. All Rights Reserved.").as_deref(), Some("Valhalla DSP"));
+        assert_eq!(c("© 2019-2024 Acme Audio Ltd.").as_deref(), Some("Acme Audio"));
+        assert_eq!(c("Vital Audio").as_deref(), Some("Vital Audio"));
+        assert_eq!(c(""), None);
+        assert_eq!(vendor_from_bundle_id("com.ValhallaDSP.ValhallaFreqEcho").as_deref(), Some("ValhallaDSP"));
+        assert_eq!(vendor_from_bundle_id("audio.vital.synth").as_deref(), Some("Vital"));
+        assert_eq!(vendor_key("Valhalla DSP, LLC"), vendor_key("ValhallaDSP"));
+        assert_eq!(vendor_key("Spitfire Audio"), vendor_key("spitfireaudio"));
+        assert_eq!(clean_vendor("Native Instruments GmbH"), "Native Instruments");
+        assert_eq!(clean_vendor("FabFilter"), "FabFilter");
+    }
+
+    #[test]
+    fn vendor_from_bundle_files() {
+        let dir = std::env::temp_dir().join(format!("audioboard-vendor-{}", std::process::id()));
+        let bundle = |name: &str, files: &[(&str, &str)]| {
+            let path = dir.join(format!("{name}.vst3"));
+            for (file, text) in files {
+                let f = path.join("Contents").join(file);
+                std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+                std::fs::write(f, text).unwrap();
+            }
+            path
+        };
+        let plist = |key: &str, value: &str| {
+            format!("<?xml version=\"1.0\"?><plist><dict><key>{key}</key>\n\t<string>{value}</string></dict></plist>")
+        };
+        let module = bundle(
+            "A",
+            &[("Resources/moduleinfo.json", "{ \"Name\": \"A\", \"Factory Info\": { \"Vendor\": \"Spitfire Audio\", }, }")],
+        );
+        let copyright = bundle("B", &[("Info.plist", &plist("NSHumanReadableCopyright", "Copyright &#169; 2024 Big &amp; Small, Inc."))]);
+        let id = bundle("C", &[("Info.plist", &plist("CFBundleIdentifier", "com.u-he.Diva"))]);
+        let nothing = bundle("D", &[]);
+        assert_eq!(bundle_vendor(&module).as_deref(), Some("Spitfire Audio"));
+        assert_eq!(bundle_vendor(&copyright).as_deref(), Some("Big & Small"));
+        assert_eq!(bundle_vendor(&id).as_deref(), Some("U-he"));
+        assert_eq!(bundle_vendor(&nothing), None);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

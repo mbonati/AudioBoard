@@ -2,6 +2,7 @@
 //! Drag an entry onto the canvas to place it there, or click it to add it
 //! in the middle of the view.
 
+use egui::collapsing_header::CollapsingState;
 use egui::{Align2, Color32, CursorIcon, FontId, Id, LayerId, Order, Rect, RichText, Sense, Stroke, Ui, Vec2, pos2, vec2};
 
 use super::canvas::Request;
@@ -26,8 +27,37 @@ pub enum Spawn {
 pub struct PluginEntry {
     pub path: std::path::PathBuf,
     pub name: String,
-    /// Category and maker once it has been loaded, else "VST3".
+    /// Its category once it has been loaded, else "VST3".
     pub hint: String,
+    /// Its maker, or empty if unknown.
+    pub vendor: String,
+}
+
+/// Plugins grouped by maker: (maker, indices into `plugins`), makers in
+/// alphabetical order and unknown ones last as "Other". Spellings of one
+/// maker ("Valhalla DSP", "ValhallaDSP") share a group, named by the
+/// fullest spelling.
+pub fn by_vendor(plugins: &[PluginEntry]) -> Vec<(String, Vec<usize>)> {
+    use crate::audio::plugin::vendor_key;
+    let mut groups: Vec<(String, String, Vec<usize>)> = Vec::new();
+    for (i, p) in plugins.iter().enumerate() {
+        let key = vendor_key(&p.vendor);
+        match groups.iter_mut().find(|g| g.0 == key) {
+            Some(g) => {
+                let fuller = |s: &str| (s.matches(' ').count(), s.len());
+                if fuller(&p.vendor) > fuller(&g.1) {
+                    g.1 = p.vendor.clone();
+                }
+                g.2.push(i);
+            }
+            None => groups.push((key, p.vendor.clone(), vec![i])),
+        }
+    }
+    groups.sort_by_key(|g| (g.0.is_empty(), g.1.to_lowercase()));
+    groups
+        .into_iter()
+        .map(|(key, name, members)| (if key.is_empty() { "Other".to_owned() } else { name }, members))
+        .collect()
 }
 
 pub struct Palette {
@@ -72,6 +102,7 @@ impl Palette {
             query.is_empty() || name.to_lowercase().contains(&query) || hint.to_lowercase().contains(&query)
         };
 
+        let searching = !query.is_empty();
         egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
             for (group, types) in NodeType::MENU {
@@ -79,55 +110,72 @@ impl Palette {
                 if shown.is_empty() {
                     continue;
                 }
-                heading(ui, group);
-                for ty in shown {
-                    let entry = Entry {
-                        name: ty.name(),
-                        hint: ty.hint(),
-                        color: group_color(group),
-                        spawn: Spawn::Node(ty),
-                        removable: false,
-                    };
-                    let r = row(ui, &entry);
-                    if r.clicked {
-                        picked = Some(entry.spawn);
+                section(ui, group, shown.len(), searching, |ui| {
+                    for ty in shown {
+                        let entry = Entry {
+                            name: ty.name(),
+                            hint: ty.hint(),
+                            color: group_color(group),
+                            spawn: Spawn::Node(ty),
+                            removable: false,
+                        };
+                        if row(ui, &entry).clicked {
+                            picked = Some(entry.spawn);
+                        }
                     }
-                }
+                });
             }
 
-            let shown: Vec<(usize, &PluginEntry)> =
-                plugins.iter().enumerate().filter(|(_, p)| matches(&p.name, &p.hint)).collect();
-            if !shown.is_empty() || query.is_empty() {
-                heading(ui, "Plugins");
-            }
-            if plugins.is_empty() && query.is_empty() {
-                ui.label(
-                    RichText::new("No VST3 plugins in the system plug-in folders.")
-                        .size(10.5)
-                        .color(theme::TEXT_FAINT),
-                );
-            }
-            for (i, plugin) in shown {
-                let entry = Entry {
-                    name: &plugin.name,
-                    hint: &plugin.hint,
-                    color: theme::OSC_ACCENTS[4],
-                    spawn: Spawn::Plugin(i),
-                    removable: false,
-                };
-                if row(ui, &entry).clicked {
-                    picked = Some(entry.spawn);
-                }
-            }
-            if query.is_empty() {
-                ui.add_space(6.0);
-                let rescan = ui.add(
-                    egui::Label::new(RichText::new("Rescan plugins").size(10.5).color(theme::TEXT_DIM))
-                        .sense(Sense::click()),
-                );
-                if rescan.on_hover_cursor(CursorIcon::PointingHand).clicked() {
-                    requests.push(Request::RescanPlugins);
-                }
+            // Plugins, by maker; a search also matches the maker's name.
+            let shown: Vec<usize> = (0..plugins.len())
+                .filter(|&i| matches(&plugins[i].name, &plugins[i].hint) || matches(&plugins[i].vendor, ""))
+                .collect();
+            if !shown.is_empty() || !searching {
+                section(ui, "Plugins", shown.len(), searching, |ui| {
+                    if plugins.is_empty() && !searching {
+                        ui.label(
+                            RichText::new("No VST3 plugins in the system plug-in folders.")
+                                .size(10.5)
+                                .color(theme::TEXT_FAINT),
+                        );
+                    }
+                    for (vendor, members) in by_vendor(plugins) {
+                        let members: Vec<usize> = members.into_iter().filter(|i| shown.contains(i)).collect();
+                        if members.is_empty() {
+                            continue;
+                        }
+                        vendor_section(ui, &vendor, members.len(), searching, |ui| {
+                            // One step in, under their maker.
+                            let mut rows = ui.available_rect_before_wrap();
+                            rows.min.x += 10.0;
+                            ui.scope_builder(egui::UiBuilder::new().max_rect(rows), |ui| {
+                                for i in members {
+                                    let plugin = &plugins[i];
+                                    let entry = Entry {
+                                        name: &plugin.name,
+                                        hint: &plugin.hint,
+                                        color: theme::OSC_ACCENTS[4],
+                                        spawn: Spawn::Plugin(i),
+                                        removable: false,
+                                    };
+                                    if row(ui, &entry).clicked {
+                                        picked = Some(entry.spawn);
+                                    }
+                                }
+                            });
+                        });
+                    }
+                    if !searching {
+                        ui.add_space(6.0);
+                        let rescan = ui.add(
+                            egui::Label::new(RichText::new("Rescan plugins").size(10.5).color(theme::TEXT_DIM))
+                                .sense(Sense::click()),
+                        );
+                        if rescan.on_hover_cursor(CursorIcon::PointingHand).clicked() {
+                            requests.push(Request::RescanPlugins);
+                        }
+                    }
+                });
             }
 
             let presets: Vec<(usize, &Preset)> = library
@@ -135,44 +183,45 @@ impl Palette {
                 .enumerate()
                 .filter(|(_, p)| matches(&p.name, "module library"))
                 .collect();
-            if !presets.is_empty() || query.is_empty() {
-                heading(ui, "Library");
-            }
-            if library.is_empty() && query.is_empty() {
-                ui.add_space(2.0);
-                ui.label(
-                    RichText::new("Right-click a module → Save to library to keep it here.")
-                        .size(10.5)
-                        .color(theme::TEXT_FAINT),
-                );
-            }
-            for (i, preset) in presets {
-                let n = preset.node_count();
-                let hint = if n == 1 { "module · 1 node".to_owned() } else { format!("module · {n} nodes") };
-                let entry = Entry {
-                    name: &preset.name,
-                    hint: &hint,
-                    color: theme::ACCENT,
-                    spawn: Spawn::Preset(i),
-                    removable: true,
-                };
-                let r = row(ui, &entry);
-                if r.clicked {
-                    picked = Some(entry.spawn);
-                }
-                if r.removed {
-                    requests.push(Request::DeletePreset(i));
-                }
-            }
-            if query.is_empty() {
-                ui.add_space(6.0);
-                let open = ui.add(
-                    egui::Label::new(RichText::new("Open library folder").size(10.5).color(theme::TEXT_DIM))
-                        .sense(Sense::click()),
-                );
-                if open.on_hover_cursor(CursorIcon::PointingHand).clicked() {
-                    requests.push(Request::RevealLibrary);
-                }
+            if !presets.is_empty() || !searching {
+                section(ui, "Library", presets.len(), searching, |ui| {
+                    if library.is_empty() && !searching {
+                        ui.add_space(2.0);
+                        ui.label(
+                            RichText::new("Right-click a module → Save to library to keep it here.")
+                                .size(10.5)
+                                .color(theme::TEXT_FAINT),
+                        );
+                    }
+                    for (i, preset) in presets {
+                        let n = preset.node_count();
+                        let hint = if n == 1 { "module · 1 node".to_owned() } else { format!("module · {n} nodes") };
+                        let entry = Entry {
+                            name: &preset.name,
+                            hint: &hint,
+                            color: theme::ACCENT,
+                            spawn: Spawn::Preset(i),
+                            removable: true,
+                        };
+                        let r = row(ui, &entry);
+                        if r.clicked {
+                            picked = Some(entry.spawn);
+                        }
+                        if r.removed {
+                            requests.push(Request::DeletePreset(i));
+                        }
+                    }
+                    if !searching {
+                        ui.add_space(6.0);
+                        let open = ui.add(
+                            egui::Label::new(RichText::new("Open library folder").size(10.5).color(theme::TEXT_DIM))
+                                .sense(Sense::click()),
+                        );
+                        if open.on_hover_cursor(CursorIcon::PointingHand).clicked() {
+                            requests.push(Request::RevealLibrary);
+                        }
+                    }
+                });
             }
         });
 
@@ -181,10 +230,65 @@ impl Palette {
     }
 }
 
-fn heading(ui: &mut Ui, text: &str) {
-    ui.add_space(10.0);
-    ui.label(RichText::new(text.to_uppercase()).size(9.5).color(theme::TEXT_FAINT));
-    ui.add_space(4.0);
+/// How a fold's heading looks.
+#[derive(Clone, Copy, PartialEq)]
+enum Level {
+    /// "SOURCES", "PLUGINS".
+    Category,
+    /// A plugin maker, inside Plugins.
+    Vendor,
+}
+
+/// A category: a heading that folds and unfolds its entries (open at
+/// first; folded ones show how many entries they hold). While searching,
+/// every category with matches is open, and the folds are kept for later.
+fn section(ui: &mut Ui, name: &str, count: usize, searching: bool, body: impl FnOnce(&mut Ui)) {
+    fold(ui, Level::Category, name, count, searching, body);
+}
+
+/// A plugin maker inside Plugins: folds like a category, one step in.
+fn vendor_section(ui: &mut Ui, name: &str, count: usize, searching: bool, body: impl FnOnce(&mut Ui)) {
+    fold(ui, Level::Vendor, name, count, searching, body);
+}
+
+fn fold(ui: &mut Ui, level: Level, name: &str, count: usize, searching: bool, body: impl FnOnce(&mut Ui)) {
+    let vendor = level == Level::Vendor;
+    let id = Id::unique(("palette_section", vendor, name));
+    let mut state = CollapsingState::load_with_default_open(ui.ctx(), id, true);
+    ui.add_space(if vendor { 2.0 } else { 6.0 });
+    let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), if vendor { 22.0 } else { 24.0 }), Sense::click());
+    let resp = if searching {
+        resp
+    } else {
+        resp.on_hover_cursor(CursorIcon::PointingHand)
+    };
+    if resp.clicked() && !searching {
+        state.toggle(ui);
+    }
+    let openness = if searching { 1.0 } else { state.openness(ui.ctx()) };
+
+    let p = ui.painter();
+    let (rest, hot) = if vendor { (theme::TEXT_DIM, theme::TEXT) } else { (theme::TEXT_FAINT, theme::TEXT_DIM) };
+    let color = if resp.hovered() && !searching { hot } else { rest };
+    let indent = if vendor { 10.0 } else { 0.0 };
+    // A chevron that turns from pointing right (folded) to down (open).
+    let c = pos2(rect.left() + indent + 6.0, rect.center().y);
+    let angle = openness * std::f32::consts::FRAC_PI_2;
+    let turn = |v: Vec2| c + Vec2::angled(v.angle() + angle) * v.length();
+    let chevron = vec![turn(vec2(-2.0, -3.5)), turn(vec2(3.0, 0.0)), turn(vec2(-2.0, 3.5))];
+    p.add(egui::Shape::convex_polygon(chevron, color, Stroke::NONE));
+    let (label, size) = if vendor { (name.to_owned(), 11.0) } else { (name.to_uppercase(), 9.5) };
+    p.text(pos2(rect.left() + indent + 16.0, rect.center().y), Align2::LEFT_CENTER, label, FontId::proportional(size), color);
+    if openness < 1.0 {
+        let fade = alpha(theme::TEXT_FAINT, 1.0 - openness);
+        p.text(pos2(rect.right() - 6.0, rect.center().y), Align2::RIGHT_CENTER, count.to_string(), FontId::proportional(9.5), fade);
+    }
+
+    if searching {
+        body(ui);
+    } else {
+        state.show_body_unindented(ui, body);
+    }
 }
 
 struct Entry<'a> {
@@ -268,4 +372,30 @@ fn drag_ghost(ui: &Ui, library: &[Preset], plugins: &[PluginEntry]) {
     let pill = Rect::from_min_size(p + vec2(14.0, 10.0), galley.size() + vec2(20.0, 10.0));
     painter.rect(pill, 6.0, theme::NODE_HEADER, Stroke::new(1.0, theme::ACCENT), egui::StrokeKind::Inside);
     painter.galley(pill.min + vec2(10.0, 5.0), galley, theme::TEXT);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entry(name: &str, vendor: &str) -> PluginEntry {
+        PluginEntry { path: name.into(), name: name.to_owned(), hint: "VST3".to_owned(), vendor: vendor.to_owned() }
+    }
+
+    #[test]
+    fn plugins_group_by_maker() {
+        let plugins = [
+            entry("Vital", "Vital Audio"),
+            entry("Mystery", ""),
+            entry("FreqEcho", "Valhalla DSP"),
+            entry("SpaceModulator", "ValhallaDSP"),
+            entry("BBC SO", "Spitfire Audio"),
+            entry("Supermassive", "Valhalla DSP"),
+        ];
+        let groups = by_vendor(&plugins);
+        let names: Vec<&str> = groups.iter().map(|g| g.0.as_str()).collect();
+        assert_eq!(names, ["Spitfire Audio", "Valhalla DSP", "Vital Audio", "Other"]);
+        assert_eq!(groups[1].1, [2, 3, 5], "spellings of one maker share a group");
+        assert_eq!(groups[3].1, [1]);
+    }
 }

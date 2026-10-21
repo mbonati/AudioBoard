@@ -117,7 +117,7 @@ pub struct AudioBoardApp {
     doc: Document,
     library: Library,
     /// Category and maker of plugins loaded before, by bundle path.
-    plugin_catalog: BTreeMap<String, String>,
+    plugin_catalog: BTreeMap<String, PluginInfo>,
     toast: Option<Toast>,
     window_title: String,
     midi: MidiInputs,
@@ -458,7 +458,10 @@ impl AudioBoardApp {
             if let NodeKind::Plugin(p) = &n.kind {
                 let key = p.meta.path.to_string_lossy().into_owned();
                 if let std::collections::btree_map::Entry::Vacant(slot) = self.plugin_catalog.entry(key) {
-                    slot.insert(format!("{} · {}", plugin_node::category_label(&p.meta.category), p.meta.vendor));
+                    slot.insert(PluginInfo {
+                        category: plugin_node::category_label(&p.meta.category),
+                        vendor: p.meta.vendor.clone(),
+                    });
                     changed = true;
                 }
             }
@@ -1022,14 +1025,36 @@ fn catalog_path() -> Option<PathBuf> {
     project::data_dir().map(|d| d.join("plugins.json"))
 }
 
-fn load_catalog() -> BTreeMap<String, String> {
+/// What a plugin's first load told us about it.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+struct PluginInfo {
+    /// "Fx · Delay".
+    category: String,
+    vendor: String,
+}
+
+fn load_catalog() -> BTreeMap<String, PluginInfo> {
     catalog_path()
         .and_then(|p| std::fs::read_to_string(p).ok())
-        .and_then(|text| serde_json::from_str(&text).ok())
+        .map(|text| parse_catalog(&text))
         .unwrap_or_default()
 }
 
-fn save_catalog(catalog: &BTreeMap<String, String>) {
+/// The catalog file; older ones held "Fx · Delay · Maker" strings.
+fn parse_catalog(text: &str) -> BTreeMap<String, PluginInfo> {
+    if let Ok(catalog) = serde_json::from_str(text) {
+        return catalog;
+    }
+    let old: BTreeMap<String, String> = serde_json::from_str(text).unwrap_or_default();
+    old.into_iter()
+        .map(|(path, hint)| {
+            let (category, vendor) = hint.rsplit_once(" · ").unwrap_or((hint.as_str(), ""));
+            (path, PluginInfo { category: category.to_owned(), vendor: vendor.to_owned() })
+        })
+        .collect()
+}
+
+fn save_catalog(catalog: &BTreeMap<String, PluginInfo>) {
     if let Some(path) = catalog_path()
         && let Ok(json) = serde_json::to_string_pretty(catalog)
     {
@@ -1038,17 +1063,40 @@ fn save_catalog(catalog: &BTreeMap<String, String>) {
     }
 }
 
-/// Installed plugins, with what is known about each.
-fn plugin_entries(catalog: &BTreeMap<String, String>) -> Vec<PluginEntry> {
+/// Installed plugins, with what is known about each: what their first
+/// load told, else the maker named in the bundle's files.
+fn plugin_entries(catalog: &BTreeMap<String, PluginInfo>) -> Vec<PluginEntry> {
+    use crate::audio::plugin::{bundle_name, bundle_vendor, clean_vendor};
     crate::audio::plugin::scan()
         .into_iter()
-        .map(|path| PluginEntry {
-            name: crate::audio::plugin::bundle_name(&path),
-            hint: catalog
-                .get(path.to_string_lossy().as_ref())
-                .cloned()
-                .unwrap_or_else(|| "VST3".to_owned()),
-            path,
+        .map(|path| {
+            let known = catalog.get(path.to_string_lossy().as_ref());
+            let vendor = known
+                .map(|k| clean_vendor(&k.vendor))
+                .filter(|v| !v.is_empty())
+                .or_else(|| bundle_vendor(&path))
+                .unwrap_or_default();
+            PluginEntry {
+                name: bundle_name(&path),
+                hint: known.map_or_else(|| "VST3".to_owned(), |k| k.category.clone()),
+                vendor,
+                path,
+            }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn plugin_catalogs_old_and_new() {
+        let old = r#"{ "/a.vst3": "Fx · Delay · Valhalla DSP, LLC", "/b.vst3": "VST3" }"#;
+        let catalog = parse_catalog(old);
+        assert_eq!(catalog["/a.vst3"], PluginInfo { category: "Fx · Delay".into(), vendor: "Valhalla DSP, LLC".into() });
+        assert_eq!(catalog["/b.vst3"].vendor, "");
+        let new = serde_json::to_string(&catalog).unwrap();
+        assert_eq!(parse_catalog(&new), catalog);
+    }
 }

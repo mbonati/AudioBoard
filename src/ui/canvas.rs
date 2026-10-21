@@ -1522,11 +1522,16 @@ pub fn add_menu(ui: &mut Ui, library: &[Preset], plugins: &[PluginEntry]) -> Opt
 
     if !plugins.is_empty() {
         menu_heading(ui, "Plugins");
-        for (i, plugin) in plugins.iter().enumerate() {
-            if menu_item(ui, &plugin.name, &plugin.hint) {
-                picked = Some(AddChoice::Plugin(i));
-                ui.close();
-            }
+        // One submenu per maker.
+        for (vendor, members) in super::palette::by_vendor(plugins) {
+            ui.menu_button(format!("{vendor}  ({})", members.len()), |ui| {
+                for i in members {
+                    if menu_item(ui, &plugins[i].name, &plugins[i].hint) {
+                        picked = Some(AddChoice::Plugin(i));
+                        ui.close();
+                    }
+                }
+            });
         }
     }
 

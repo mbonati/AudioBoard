@@ -132,8 +132,11 @@ sounding, so no notes hang.
 ### VST3 plugins
 
 Installed VST3 plugins (`/Library/Audio/Plug-Ins/VST3` and `~/Library/Audio/Plug-Ins/VST3`) appear in the
-**Plugins** section of the palette and of the right-click menu, and are added like any other node.
-No plugin is loaded to list them; category and maker appear after the first load.
+**Plugins** section of the palette and of the right-click menu, grouped by maker (foldable groups in the
+palette, submenus in the menu), and are added like any other node. No plugin is loaded to list them: the
+maker is read from the bundle's files (VST3 module info, copyright notice or bundle identifier), and the
+category appears after the first load, which also confirms the maker. Makers that can't be found are under
+"Other"; the search matches makers too.
 **Rescan plugins** refreshes the list.
 
 A plugin node has a stereo input (effects) and a stereo output; if it accepts MIDI it also has a MIDI
@@ -236,7 +239,8 @@ turns itself off as soon as you zoom or move the view by hand.
 ## Palette
 
 The panel on the left (shown and hidden with the button next to the project name) lists all nodes by
-category and the library modules, with a search field. Drag an entry onto the canvas to place it where you
+category and the library modules, with a search field. Click a category's heading to fold or unfold it
+(a folded one shows how many entries it holds); while searching, every category with matches opens. Drag an entry onto the canvas to place it where you
 want (an outline shows where it lands), or click it to add it in the middle of the view. On library
 entries, the × removes the module from the library.
 

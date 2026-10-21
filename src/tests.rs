@@ -1497,3 +1497,73 @@ fn resting_on_a_node_or_module_shows_its_type() {
     let texts = run(&mut editor, &mut g, 2.7, vec![press]);
     assert!(!label(&texts, "Drone · Filter"));
 }
+
+#[test]
+fn palette_categories_fold() {
+    use crate::ui::palette::Palette;
+    let ctx = egui::Context::default();
+    let mut palette = Palette::new();
+    let mut time = 0.0;
+    // Runs a frame; returns each text drawn and where.
+    let mut run = |palette: &mut Palette, events: Vec<egui::Event>| {
+        time += 0.1;
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(240.0, 900.0))),
+            time: Some(time),
+            events,
+            ..Default::default()
+        };
+        let mut requests = Vec::new();
+        let mut out = ctx.run_ui(input, |ui| {
+            palette.show(ui, &[], &[], &mut requests);
+        });
+        out.textures_delta.clear();
+        let mut texts = Vec::new();
+        for c in &out.shapes {
+            if let egui::Shape::Text(t) = &c.shape {
+                texts.push((t.galley.job.text.clone(), t.pos + t.galley.rect.center().to_vec2()));
+            }
+        }
+        texts
+    };
+    let shows = |texts: &[(String, egui::Pos2)], what: &str| texts.iter().any(|(t, _)| t == what);
+    let click = |p: egui::Pos2| {
+        let button = |pressed| egui::Event::PointerButton {
+            pos: p,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        vec![egui::Event::PointerMoved(p), button(true), button(false)]
+    };
+
+    let texts = run(&mut palette, vec![]);
+    assert!(shows(&texts, "Oscillator") && shows(&texts, "Drone"), "open at first");
+    let heading = texts.iter().find(|(t, _)| t == "SOURCES").unwrap().1;
+    run(&mut palette, click(heading));
+    let mut texts = Vec::new();
+    for _ in 0..10 {
+        texts = run(&mut palette, vec![]);
+    }
+    assert!(!shows(&texts, "Oscillator") && shows(&texts, "SOURCES"), "folded");
+    assert!(shows(&texts, "3"), "a folded category shows its count");
+    assert!(shows(&texts, "Reverb"), "the others stay open");
+
+    // Searching opens what matches; clearing it folds it again.
+    let field = egui::pos2(100.0, 14.0);
+    run(&mut palette, click(field));
+    let texts = run(&mut palette, vec![egui::Event::Text("drone".into())]);
+    assert!(shows(&texts, "Drone") && !shows(&texts, "Reverb"));
+    run(&mut palette, vec![egui::Event::Key {
+        key: egui::Key::Backspace,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers { command: true, mac_cmd: true, ..Default::default() },
+    }]);
+    let mut texts = Vec::new();
+    for _ in 0..3 {
+        texts = run(&mut palette, vec![]);
+    }
+    assert!(!shows(&texts, "Drone") && shows(&texts, "Reverb"), "{:?}", texts.iter().map(|t| &t.0).collect::<Vec<_>>());
+}
