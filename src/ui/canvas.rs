@@ -764,10 +764,17 @@ impl Editor {
                     NodeKind::Plugin(p) => {
                         let input = connected.first().copied().unwrap_or(false);
                         let events = plugin_node::draw(&view, id, accent, p, (input, midi_in), out, now);
-                        if events.toggle_editor
-                            && let Err(e) = p.toggle_editor()
-                        {
-                            self.notices.push(format!("Could not open the editor: {e}"));
+                        if events.toggle_editor {
+                            #[cfg(target_os = "macos")]
+                            let before = super::macos::windows();
+                            match p.toggle_editor() {
+                                // The editor stays in front of the board.
+                                #[cfg(target_os = "macos")]
+                                Ok(()) => super::macos::float_new_windows(&before),
+                                #[cfg(not(target_os = "macos"))]
+                                Ok(()) => {}
+                                Err(e) => self.notices.push(format!("Could not open the editor: {e}")),
+                            }
                         }
                     }
                     NodeKind::Module(m) => {

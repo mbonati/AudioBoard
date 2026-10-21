@@ -13,6 +13,12 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 vst3-host = { version = "0.10.0", default-features = false }
 
+# The native window, for what winit doesn't expose (see ui/macos.rs).
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSResponder", "NSView", "NSWindow"] }
+raw-window-handle = "0.6"
+
 # Fastest build for playing: whole-program optimisation inlines the
 # per-sample DSP across modules and crates (10–15% less audio CPU), but
 # takes minutes to build. `cargo build --profile dist`.

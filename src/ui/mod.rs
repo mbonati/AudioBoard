@@ -2,10 +2,13 @@ pub mod app;
 pub mod canvas;
 pub mod groups;
 pub mod layout;
+#[cfg(target_os = "macos")]
+pub mod macos;
 pub mod modules;
 pub mod monitor;
 pub mod nodes;
 pub mod palette;
 pub mod plugin_node;
+pub mod tempo;
 pub mod theme;
 pub mod widgets;

@@ -97,10 +97,12 @@ Besides audio cables there are **MIDI cables**: square ports (audio ports are ro
 A MIDI cable only joins a MIDI output to a MIDI input. VST3 plugins that accept MIDI (instruments), the
 Arpeggiator and MIDI Note have a MIDI input.
 
-The **tempo** is global: the **BPM** field in the toolbar (drag to change it, Shift for fine steps,
-double-click to go back to 90); the light flashes on every beat while audio is on. Sequencers and
-arpeggiators are locked to the same grid, so they always stay in time with each other; the tempo is also
-passed to plugins (synced LFOs and delays). It is saved in the project.
+The **tempo** is global: the **BPM** field in the toolbar. Drag it to change it (Shift for fine steps),
+click it to type a value (Enter sets it, Esc cancels; "97,5" works too), Alt+click to go back to 90.
+**TAP** (or the T key) sets it from your taps: tap on each beat, and the last few intervals are averaged;
+a pause of two seconds starts a new count. The light flashes on every beat while audio is on. Sequencers
+and arpeggiators are locked to the same grid, so they always stay in time with each other; the tempo is
+also passed to plugins (synced LFOs and delays). It is saved in the project.
 
 **Step Sequencer**: up to 16 steps on a scale. In the grid each column is a step and the lit cell is its
 note: click a cell to move the step there (on the lit cell, to switch it off or back on), drag to draw a
@@ -136,7 +138,8 @@ No plugin is loaded to list them; category and maker appear after the first load
 
 A plugin node has a stereo input (effects) and a stereo output; if it accepts MIDI it also has a MIDI
 input (square port) for sequencers and arpeggiators. It shows:
-- **EDITOR**: opens the plugin's own window (sounds, presets, all its settings);
+- **EDITOR**: opens the plugin's own window (sounds, presets, all its settings). It floats in front of the
+  board while AudioBoard is the active app, and hides while you are in another app;
 - **PARAMS**: the list of all parameters, with search and sliders; the dot pins up to 8 parameters
   as knobs on the node (at first, the first 8);
 - **KEYBOARD**: plays the plugin from the external MIDI keyboard (on by default for instruments), along
@@ -178,6 +181,7 @@ and a meter; a stereo master bus with L/R meters and a clip indicator. The mixer
 | New / open project | Cmd+N / Cmd+O, or the project name in the toolbar |
 | Save / save as | Cmd+S / Shift+Cmd+S |
 | Audio on/off | Space |
+| Tempo | drag the BPM field, click it to type, TAP or T to tap it |
 | Show / hide the oscilloscope and spectrum | panel button in the toolbar |
 
 The full list of shortcuts appears when hovering the **?** button in the toolbar.
@@ -280,6 +284,8 @@ src/
 │   ├── modules.rs  common module panel and their displays
 │   ├── widgets.rs  hand-drawn knobs, faders, meters, ports and cables
 │   ├── monitor.rs  bottom panel: oscilloscope and spectrum (FFT)
+│   ├── tempo.rs    the toolbar's tempo: BPM field (drag or type), beat light, tap tempo
+│   ├── macos.rs    native windows: toolbar controls don't drag the window; plugin editors float
 │   ├── theme.rs    colors, system fonts and style
 │   └── app.rs      window, toolbar, panels, demo patch
 ├── tests.rs        tests of the graph, the modules and offline engine rendering

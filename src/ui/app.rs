@@ -12,10 +12,11 @@ use super::canvas::{Editor, Request, menu_item};
 use super::monitor::Monitor;
 use super::palette::{self, Palette, PluginEntry, Spawn};
 use super::plugin_node;
+use super::tempo::TempoControl;
 use super::theme::{self, alpha};
 use crate::audio::engine::{BLOCK, NodeId};
 use crate::audio::modules::{ModuleKind, ModuleParams, delay, drone, filter, granular, random, reverb};
-use crate::audio::params::{DEFAULT_TEMPO, EngineShared, TEMPO_RANGE, Waveform};
+use crate::audio::params::{EngineShared, Waveform};
 use crate::audio::midi::MidiInputs;
 use crate::audio::{self, AudioHandle};
 use crate::graph::{Graph, NodeKind, PortRef};
@@ -50,6 +51,8 @@ const SHORTCUTS: &[(&str, &str)] = &[
     ("A", "Auto-fit: keep the patch in view"),
     ("Cmd+= / Cmd+− / Cmd+0", "Zoom in / out / 100%"),
     ("Space", "Audio on / off"),
+    ("T", "Tap tempo (on each beat)"),
+    ("Click BPM", "Type the tempo (drag to change it)"),
 ];
 
 /// The open project: where it lives and what was last saved.
@@ -121,6 +124,9 @@ pub struct AudioBoardApp {
     midi_scanned: f64,
     /// MIDI messages seen so far, and when the count last moved.
     midi_events: (u32, f64),
+    tempo: TempoControl,
+    #[cfg(target_os = "macos")]
+    window: Option<super::macos::NativeWindow>,
 }
 
 impl AudioBoardApp {
@@ -156,6 +162,9 @@ impl AudioBoardApp {
             midi: MidiInputs::new(),
             midi_scanned: f64::NEG_INFINITY,
             midi_events: (0, f64::NEG_INFINITY),
+            tempo: TempoControl::default(),
+            #[cfg(target_os = "macos")]
+            window: super::macos::NativeWindow::new(cc),
         }
     }
 
@@ -499,7 +508,15 @@ impl AudioBoardApp {
                 }
                 ui.add_space(6.0);
                 let beat = self.running().then(|| self.shared.beat.get());
-                tempo_field(ui, &mut self.graph.tempo, beat);
+                let on_tempo = self.tempo.show(ui, &mut self.graph.tempo, beat, now);
+                // Dragging the BPM (or selecting typed text) must not drag
+                // the window: the toolbar is also the title bar.
+                #[cfg(target_os = "macos")]
+                if let Some(w) = &self.window {
+                    w.set_movable(!on_tempo);
+                }
+                #[cfg(not(target_os = "macos"))]
+                let _ = on_tempo;
                 ui.add_space(8.0);
                 if icon_button(ui, Icon::Monitor, self.show_monitor)
                     .on_hover_text(if self.show_monitor { "Hide analyzers" } else { "Show analyzers" })
@@ -656,8 +673,13 @@ impl eframe::App for AudioBoardApp {
         for node in &mut self.graph.nodes {
             node.update_meters(dt);
         }
-        if ui.input(|i| i.key_pressed(Key::Space)) && ui.memory(|m| m.focused().is_none()) {
-            self.toggle_running();
+        if ui.memory(|m| m.focused().is_none()) {
+            if ui.input(|i| i.key_pressed(Key::Space)) {
+                self.toggle_running();
+            }
+            if ui.input(|i| i.key_pressed(Key::T) && !i.modifiers.any()) {
+                self.tempo.tap(&mut self.graph.tempo, now);
+            }
         }
 
         let bar_frame = |margin: Margin| Frame::NONE.fill(theme::PANEL).inner_margin(margin);
@@ -966,52 +988,6 @@ fn power_button(ui: &mut Ui, on: bool) -> Response {
 
 /// The global tempo: drag to change it (Shift: fine), double-click for the
 /// default. The light flashes on every beat while audio runs.
-fn tempo_field(ui: &mut Ui, tempo: &mut f32, beat: Option<f32>) -> Response {
-    let (rect, resp) = ui.allocate_exact_size(vec2(84.0, 24.0), Sense::CLICK | Sense::DRAG);
-    let resp = resp
-        .on_hover_cursor(CursorIcon::ResizeVertical)
-        .on_hover_text("Tempo for sequencers, arpeggiators and synced plugins\nDrag to change · Shift: fine · double-click: reset");
-    if resp.dragged() {
-        let fine = ui.input(|i| i.modifiers.shift);
-        let d = resp.drag_delta();
-        let step = if fine { 0.05 } else { 0.4 };
-        let (slowest, fastest) = TEMPO_RANGE;
-        *tempo = (*tempo + (d.x - d.y) * step).clamp(slowest, fastest);
-    }
-    if resp.double_clicked() {
-        *tempo = DEFAULT_TEMPO;
-    }
-    if !resp.dragged() {
-        *tempo = (*tempo * 10.0).round() / 10.0;
-    }
-    let p = ui.painter();
-    let hot = resp.hovered() || resp.dragged();
-    p.rect(
-        rect,
-        12.0,
-        if hot { theme::CONTROL } else { Color32::TRANSPARENT },
-        Stroke::new(1.0, theme::NODE_BORDER),
-        StrokeKind::Inside,
-    );
-    // Bright on the beat, fading over it.
-    let flash = beat.map_or(0.0, |b| (1.0 - b.fract() * 4.0).max(0.0));
-    let dot = theme::mix(theme::TEXT_FAINT, theme::ACCENT, flash);
-    p.circle_filled(pos2(rect.left() + 13.0, rect.center().y), 3.0, dot);
-    let text = if tempo.fract() == 0.0 { format!("{tempo:.0}") } else { format!("{tempo:.1}") };
-    let galley = p.layout_no_wrap(text, FontId::monospace(11.5), theme::TEXT);
-    let x = rect.left() + 23.0;
-    let w = galley.size().x;
-    p.galley(pos2(x, rect.center().y - galley.size().y * 0.5), galley, theme::TEXT);
-    p.text(
-        pos2(x + w + 4.0, rect.center().y + 0.5),
-        Align2::LEFT_CENTER,
-        "BPM",
-        FontId::proportional(9.5),
-        theme::TEXT_FAINT,
-    );
-    resp
-}
-
 fn shortcuts(ui: &mut Ui) {
     ui.label(RichText::new("Shortcuts").size(11.5).color(theme::TEXT));
     ui.add_space(4.0);
