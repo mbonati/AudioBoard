@@ -7,6 +7,7 @@ use std::sync::Arc;
 use super::{ModuleDef, ModuleParams, Rng, Wander, approach, pan_gains, soft_limit};
 use crate::audio::dsp::poly_blep;
 use crate::audio::engine::{Buf, Inputs, ProcessCtx, Processor};
+use crate::audio::fastmath;
 use crate::audio::params::{ParamSpec, Unit};
 
 pub const PITCH: usize = 0;
@@ -129,6 +130,7 @@ impl Processor for Drone {
 
         // Eight incoherent voices: about the loudness of one oscillator.
         let norm = 1.5 / (VOICES as f32).sqrt();
+        let inv_sr = 1.0 / self.sr;
         let mut peak = 0.0f32;
         for i in 0..n {
             approach(&mut self.pitch, pitch_t, ctx.smooth);
@@ -137,7 +139,7 @@ impl Processor for Drone {
 
             let mut f = self.pitch;
             if let Some(cv) = pitch_cv {
-                f *= (cv[i].clamp(-1.0, 1.0) * pitch_mod).exp2();
+                f *= fastmath::exp2(cv[i].clamp(-1.0, 1.0) * pitch_mod);
             }
             let tone = match tone_cv {
                 Some(cv) => (self.tone + cv[i] * tone_mod).clamp(0.0, 1.0),
@@ -146,23 +148,27 @@ impl Processor for Drone {
             let saw_mix = tone * tone;
 
             let (mut l, mut r) = (0.0, 0.0);
+            let step = f * inv_sr;
             for v in 0..VOICES {
-                let dt = (f * ratio[v] / self.sr).min(0.45);
+                let dt = (step * ratio[v]).min(0.45);
                 let t = self.phase[v];
-                let sine = (t * TAU).sin();
-                let saw = 2.0 * t - 1.0 - poly_blep(t, dt);
-                let s = sine + (saw - sine) * saw_mix;
+                let sine = fastmath::sin_turns(t);
+                // Pure sine at TONE 0: skip the saw (and its anti-aliasing).
+                let s = if saw_mix > 0.0 {
+                    let saw = 2.0 * t - 1.0 - poly_blep(t, dt);
+                    sine + (saw - sine) * saw_mix
+                } else {
+                    sine
+                };
                 l += s * gl[v];
                 r += s * gr[v];
-                self.phase[v] += dt;
-                if self.phase[v] >= 1.0 {
-                    self.phase[v] -= 1.0;
-                }
+                let next = t + dt;
+                self.phase[v] = if next >= 1.0 { next - 1.0 } else { next };
             }
 
             // Warmth: a gentle low-pass that opens with TONE.
-            let fc = 150.0 * (tone * 7.0).exp2();
-            let a = (TAU * fc / self.sr).min(1.0);
+            let fc = 150.0 * fastmath::exp2(tone * 7.0);
+            let a = (TAU * fc * inv_sr).min(1.0);
             self.lp[0] += a * (l - self.lp[0]);
             self.lp[1] += a * (r - self.lp[1]);
 

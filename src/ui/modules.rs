@@ -654,7 +654,7 @@ fn step_grid(v: &NodeView, id: NodeId, s: &Screen, p: &ModuleParams) {
             r.left_top() + vec2(2.0, 1.0) * z,
             Align2::LEFT_TOP,
             label,
-            egui::FontId::monospace(9.0 * z),
+            theme::mono(9.0 * z),
             theme::TEXT,
         );
     }
@@ -699,7 +699,7 @@ fn keys_display(s: &Screen, p: &ModuleParams) {
                 pos2(key.center().x, key.bottom() - 1.0 * z),
                 Align2::CENTER_BOTTOM,
                 format!("{octave}"),
-                egui::FontId::proportional(7.0 * z),
+                theme::font(7.0 * z),
                 theme::INSET,
             );
         }

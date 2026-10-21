@@ -6,6 +6,7 @@
 //! node's inputs from upstream output buffers and runs the processor.
 
 use std::collections::HashMap;
+use std::hash::{BuildHasherDefault, Hasher};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::Receiver;
@@ -150,11 +151,34 @@ pub enum Command {
     SetTopology(Box<Topology>),
 }
 
+/// Hasher for node ids: they are small distinct integers, so a multiply
+/// spreads them well enough, far cheaper than SipHash on every lookup.
+#[derive(Default)]
+pub struct IdHasher(u64);
+
+impl Hasher for IdHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        for &b in bytes {
+            self.0 = (self.0 << 8 | b as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        }
+    }
+
+    fn write_u32(&mut self, n: u32) {
+        self.0 = (n as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+    }
+}
+
+type IdMap<V> = HashMap<NodeId, V, BuildHasherDefault<IdHasher>>;
+
 pub struct Engine {
     rx: Receiver<Command>,
     shared: Arc<EngineShared>,
     ctx: ProcessCtx,
-    nodes: HashMap<NodeId, Box<Slot>>,
+    nodes: IdMap<Box<Slot>>,
     topo: Box<Topology>,
     inputs: Box<Inputs>,
     mix: [[f32; BLOCK]; 2],
@@ -171,7 +195,7 @@ impl Engine {
                 beat: 0.0,
                 beats_per_sample: 0.0,
             },
-            nodes: HashMap::with_capacity(256),
+            nodes: IdMap::with_capacity_and_hasher(256, Default::default()),
             topo: Box::default(),
             inputs: Box::new(Inputs {
                 bufs: [[[0.0; BLOCK]; 2]; MAX_INPUTS],
@@ -214,23 +238,14 @@ impl Engine {
         ctx.beats_per_sample = self.shared.tempo.get().clamp(slowest, fastest) as f64 / (60.0 * ctx.sample_rate as f64);
 
         for entry in &topo.order {
+            // Copy connected inputs; unconnected ones are only flagged, since
+            // processors read inputs through `connected`.
             for (k, src) in entry.inputs.iter().enumerate() {
-                let upstream = src.and_then(|(sid, port)| {
-                    nodes.get(&sid).and_then(|s| s.outputs.get(port))
-                });
-                let dst = &mut inputs.bufs[k];
-                match upstream {
-                    Some(buf) => {
-                        for (d, s) in dst.iter_mut().zip(buf) {
-                            d[..n].copy_from_slice(&s[..n]);
-                        }
-                        inputs.connected[k] = true;
-                    }
-                    None => {
-                        for d in dst.iter_mut() {
-                            d[..n].fill(0.0);
-                        }
-                        inputs.connected[k] = false;
+                let upstream = src.and_then(|(sid, port)| nodes.get(&sid).and_then(|s| s.outputs.get(port)));
+                inputs.connected[k] = upstream.is_some();
+                if let Some(buf) = upstream {
+                    for (d, s) in inputs.bufs[k].iter_mut().zip(buf) {
+                        d[..n].copy_from_slice(&s[..n]);
                     }
                 }
             }
@@ -260,6 +275,7 @@ impl Engine {
 
     /// Fills an interleaved device buffer.
     pub fn render<T: Sample + FromSample<f32>>(&mut self, data: &mut [T], channels: usize) {
+        let _ftz = FlushDenormals::new();
         let started = Instant::now();
         self.drain_commands();
 
@@ -306,4 +322,61 @@ impl Engine {
             self.shared.load.set(prev + (load - prev) * 0.05);
         }
     }
+}
+
+/// Flushes denormal floats to zero while alive. Decaying tails (reverb,
+/// resonators, filters) otherwise end in denormals, which are many times
+/// slower to compute on x86 and cause CPU spikes as sounds fade out.
+struct FlushDenormals {
+    #[cfg(target_arch = "x86_64")]
+    saved: u32,
+    #[cfg(target_arch = "aarch64")]
+    saved: u64,
+}
+
+impl FlushDenormals {
+    #[cfg(target_arch = "x86_64")]
+    #[allow(deprecated)]
+    fn new() -> Self {
+        use std::arch::x86_64::{_mm_getcsr, _mm_setcsr};
+        // SAFETY: only the flush-to-zero (bit 15) and denormals-are-zero
+        // (bit 6) modes change, and the previous state is restored on drop.
+        let saved = unsafe { _mm_getcsr() };
+        unsafe { _mm_setcsr(saved | 0x8040) };
+        Self { saved }
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    fn new() -> Self {
+        let saved: u64;
+        // SAFETY: sets only the FZ bit (24) of FPCR, restored on drop.
+        unsafe {
+            std::arch::asm!("mrs {}, fpcr", out(reg) saved);
+            std::arch::asm!("msr fpcr, {}", in(reg) saved | 1 << 24);
+        }
+        Self { saved }
+    }
+
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+    fn new() -> Self {
+        Self {}
+    }
+}
+
+impl Drop for FlushDenormals {
+    #[cfg(target_arch = "x86_64")]
+    #[allow(deprecated)]
+    fn drop(&mut self) {
+        // SAFETY: restores the state read in `new`.
+        unsafe { std::arch::x86_64::_mm_setcsr(self.saved) };
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    fn drop(&mut self) {
+        // SAFETY: restores the state read in `new`.
+        unsafe { std::arch::asm!("msr fpcr, {}", in(reg) self.saved) };
+    }
+
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+    fn drop(&mut self) {}
 }

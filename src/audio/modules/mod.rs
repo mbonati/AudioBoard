@@ -17,11 +17,11 @@ pub mod reverb;
 pub mod sequencer;
 pub mod steps;
 
-use std::f32::consts::PI;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use super::AudioHandle;
+use super::fastmath;
 use super::engine::Processor;
 use super::params::{AtomicF32, ParamSpec};
 
@@ -209,6 +209,7 @@ impl Rng {
         Self(seed.max(1))
     }
 
+    #[inline]
     fn next_u32(&mut self) -> u32 {
         let mut x = self.0;
         x ^= x << 13;
@@ -219,11 +220,13 @@ impl Rng {
     }
 
     /// Uniform in [0, 1).
+    #[inline]
     pub fn unit(&mut self) -> f32 {
         (self.next_u32() >> 8) as f32 / (1u32 << 24) as f32
     }
 
     /// Uniform in [-1, 1).
+    #[inline]
     pub fn bipolar(&mut self) -> f32 {
         self.unit() * 2.0 - 1.0
     }
@@ -254,7 +257,7 @@ impl Wander {
             self.from = self.to;
             self.to = rng.bipolar();
         }
-        let s = 0.5 - 0.5 * (self.t * PI).cos();
+        let s = 0.5 - 0.5 * fastmath::cos_turns(self.t * 0.5);
         self.from + (self.to - self.from) * s
     }
 }
@@ -264,6 +267,8 @@ pub struct DelayLine {
     buf: Box<[f32]>,
     mask: usize,
     pos: usize,
+    /// Longest delay `tap` accepts.
+    max_d: f32,
 }
 
 impl DelayLine {
@@ -273,6 +278,7 @@ impl DelayLine {
             buf: vec![0.0; len].into_boxed_slice(),
             mask: len - 1,
             pos: 0,
+            max_d: (len - 2) as f32,
         }
     }
 
@@ -280,20 +286,31 @@ impl DelayLine {
         self.buf.len()
     }
 
+    #[inline]
+    fn at(&self, i: usize) -> f32 {
+        // SAFETY: the length is a power of two and `mask` is length − 1,
+        // so the masked index is always in bounds.
+        unsafe { *self.buf.get_unchecked(i & self.mask) }
+    }
+
+    #[inline]
     pub fn push(&mut self, x: f32) {
         self.pos = (self.pos + 1) & self.mask;
-        self.buf[self.pos] = x;
+        // SAFETY: `pos` is masked as in `at`.
+        unsafe { *self.buf.get_unchecked_mut(self.pos) = x };
     }
 
     /// The sample written `d` pushes ago (0 = the latest), linearly
     /// interpolated. A feedback delay of `D` samples reads `tap(D - 1)`
     /// before pushing.
+    #[inline]
     pub fn tap(&self, d: f32) -> f32 {
-        let d = d.clamp(0.0, (self.buf.len() - 2) as f32);
-        let i = d as usize;
+        let d = d.clamp(0.0, self.max_d);
+        // Through u32: float to u64 conversion is slow on x86.
+        let i = d as u32 as usize;
         let f = d - i as f32;
-        let a = self.buf[self.pos.wrapping_sub(i) & self.mask];
-        let b = self.buf[self.pos.wrapping_sub(i + 1) & self.mask];
+        let a = self.at(self.pos.wrapping_sub(i));
+        let b = self.at(self.pos.wrapping_sub(i + 1));
         a + (b - a) * f
     }
 }
@@ -311,14 +328,15 @@ pub fn time_coeff(seconds: f32, sample_rate: f32) -> f32 {
 
 /// Equal-power (cos, sin) gains for a pan position in [-1, 1].
 pub fn pan_gains(pan: f32) -> (f32, f32) {
-    let theta = (pan.clamp(-1.0, 1.0) + 1.0) * std::f32::consts::FRAC_PI_4;
-    (theta.cos(), theta.sin())
+    let turns = (pan.clamp(-1.0, 1.0) + 1.0) * 0.125;
+    (fastmath::cos_turns(turns), fastmath::sin_turns(turns))
 }
 
-/// Equal-power dry/wet gains.
+/// Equal-power dry/wet gains. Cheap enough to call per sample.
+#[inline]
 pub fn mix_gains(mix: f32) -> (f32, f32) {
-    let theta = mix.clamp(0.0, 1.0) * std::f32::consts::FRAC_PI_2;
-    (theta.cos(), theta.sin())
+    let turns = mix.clamp(0.0, 1.0) * 0.25;
+    (fastmath::cos_turns(turns), fastmath::sin_turns(turns))
 }
 
 /// Transparent below 0.9, then bends smoothly towards ±1. Keeps module
@@ -329,7 +347,7 @@ pub fn soft_limit(x: f32) -> f32 {
     if a <= 0.9 {
         x
     } else {
-        x.signum() * (0.9 + 0.1 * ((a - 0.9) * 10.0).tanh())
+        x.signum() * (0.9 + 0.1 * fastmath::tanh((a - 0.9) * 10.0))
     }
 }
 
@@ -340,6 +358,6 @@ pub fn soft_ceiling(x: f32) -> f32 {
     if a <= 1.0 {
         x
     } else {
-        x.signum() * (1.0 + 0.5 * ((a - 1.0) * 2.0).tanh())
+        x.signum() * (1.0 + 0.5 * fastmath::tanh((a - 1.0) * 2.0))
     }
 }

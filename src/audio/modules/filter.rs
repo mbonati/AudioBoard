@@ -1,12 +1,12 @@
 //! Filter: stereo state-variable filter (Simper's trapezoidal SVF) with
 //! low/band/high-pass and notch outputs, drive and cutoff modulation.
 
-use std::f32::consts::PI;
 use std::sync::Arc;
 
 use super::{ModuleDef, ModuleParams, approach, soft_limit};
 use crate::audio::dsp::drive;
 use crate::audio::engine::{Buf, Inputs, ProcessCtx, Processor};
+use crate::audio::fastmath;
 use crate::audio::params::{ParamSpec, Unit};
 
 pub const CUTOFF: usize = 0;
@@ -91,16 +91,21 @@ impl Processor for Filter {
 
         let max_fc = self.sr * 0.45;
         let mut peak = 0.0f32;
+        // Coefficients for the last cutoff (recomputed only when it moves).
+        let (mut last_fc, mut a1, mut a2, mut a3) = (f32::NAN, 0.0, 0.0, 0.0);
         for i in 0..n {
             approach(&mut self.cutoff, cutoff_t, ctx.smooth);
             let mut fc = self.cutoff;
             if let Some(cv) = cv {
-                fc *= (cv[i].clamp(-1.0, 1.0) * depth).exp2();
+                fc *= fastmath::exp2(cv[i].clamp(-1.0, 1.0) * depth);
             }
-            let g = (PI * fc.clamp(10.0, max_fc) / self.sr).tan();
-            let a1 = 1.0 / (1.0 + g * (g + k));
-            let a2 = g * a1;
-            let a3 = g * a2;
+            if fc != last_fc {
+                last_fc = fc;
+                let g = fastmath::tan_turns(fc.clamp(10.0, max_fc) / (2.0 * self.sr));
+                a1 = 1.0 / (1.0 + g * (g + k));
+                a2 = g * a1;
+                a3 = g * a2;
+            }
 
             for ch in 0..2 {
                 let v0 = drive(input[ch][i], amount);

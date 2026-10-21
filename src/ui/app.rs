@@ -177,8 +177,11 @@ impl AudioBoardApp {
 
     // --- Projects -----------------------------------------------------------
 
-    fn refresh_dirty(&mut self) {
-        self.doc.dirty = project::snapshot(&self.graph) != self.doc.saved;
+    /// `fresh`: ask plugins for their state now (before closing the
+    /// document), rather than reuse a recent copy (the periodic check).
+    fn refresh_dirty(&mut self, fresh: bool) {
+        let now = if fresh { project::snapshot(&self.graph) } else { project::snapshot_cached(&self.graph) };
+        self.doc.dirty = now != self.doc.saved;
     }
 
     /// Where file dialogs start: next to the open project, else Documents.
@@ -193,7 +196,7 @@ impl AudioBoardApp {
 
     /// Offers to save unsaved changes. False if the user cancelled.
     fn confirm_discard(&mut self, now: f64) -> bool {
-        self.refresh_dirty();
+        self.refresh_dirty(true);
         if !self.doc.dirty {
             return true;
         }
@@ -399,7 +402,7 @@ impl AudioBoardApp {
     fn track_document(&mut self, ui: &Ui, now: f64) {
         if now - self.doc.checked_at > 0.3 {
             self.doc.checked_at = now;
-            self.refresh_dirty();
+            self.refresh_dirty(false);
         }
         let edited = if self.doc.dirty { " (edited)" } else { "" };
         let title = format!("{}{edited} — AudioBoard", self.doc.name());
@@ -640,6 +643,10 @@ impl AudioBoardApp {
     }
 }
 
+/// Frame interval for meters, analyzers and step lights when nothing
+/// else asks for a frame: smooth to the eye at a fraction of the work.
+const AMBIENT_FRAME: std::time::Duration = std::time::Duration::from_millis(33);
+
 impl eframe::App for AudioBoardApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let (dt, now) = ui.input(|i| (i.stable_dt.min(0.1), i.time));
@@ -696,10 +703,12 @@ impl eframe::App for AudioBoardApp {
         self.remember_plugins();
         self.track_document(ui, now);
 
-        // Meters and analyzers only move while there is signal; otherwise
-        // egui repaints on input alone.
-        if self.running() || self.graph.nodes.iter().any(|n| n.signal_level() > 1e-3) {
-            ui.ctx().request_repaint();
+        // Meters, analyzers and step lights move while audio runs or a
+        // signal is dying away: redraw them at an easy pace. Input and
+        // animations still get every frame (egui and the canvas ask).
+        let minimized = ui.input(|i| i.viewport().minimized == Some(true));
+        if !minimized && (self.running() || self.graph.nodes.iter().any(|n| n.signal_level() > 1e-3)) {
+            ui.ctx().request_repaint_after(AMBIENT_FRAME);
         }
     }
 }
@@ -1000,9 +1009,6 @@ fn tempo_field(ui: &mut Ui, tempo: &mut f32, beat: Option<f32>) -> Response {
         FontId::proportional(9.5),
         theme::TEXT_FAINT,
     );
-    if beat.is_some() {
-        ui.ctx().request_repaint();
-    }
     resp
 }
 

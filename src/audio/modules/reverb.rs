@@ -2,11 +2,12 @@
 //! modulated lines, frequency-dependent decay, an octave-up "shimmer" in the
 //! loop and FREEZE for endless pads.
 
-use std::f32::consts::{PI, TAU};
+use std::f32::consts::TAU;
 use std::sync::Arc;
 
 use super::{DelayLine, ModuleDef, ModuleParams, approach, mix_gains, soft_ceiling, soft_limit, time_coeff};
 use crate::audio::engine::{Buf, Inputs, ProcessCtx, Processor};
+use crate::audio::fastmath;
 use crate::audio::params::{ParamSpec, Unit};
 
 pub const SIZE: usize = 0;
@@ -106,8 +107,9 @@ impl Shifter {
         self.line.push(x);
         self.phase = (self.phase + 1.0 / self.window).fract();
         let p2 = (self.phase + 0.5).fract();
-        let a = self.line.tap((1.0 - self.phase) * self.window) * (PI * self.phase).sin();
-        let b = self.line.tap((1.0 - p2) * self.window) * (PI * p2).sin();
+        // sin(π·phase) windows: sin_turns takes half turns here.
+        let a = self.line.tap((1.0 - self.phase) * self.window) * fastmath::sin_turns(self.phase * 0.5);
+        let b = self.line.tap((1.0 - p2) * self.window) * fastmath::sin_turns(p2 * 0.5);
         a + b
     }
 }
@@ -217,7 +219,7 @@ impl Processor for Reverb {
             };
 
             // Input: diffuse each channel, plus the shimmer return.
-            let shim = (self.shimmer_fb * shimmer * 0.7).tanh();
+            let shim = if shimmer > 0.0 { fastmath::tanh(self.shimmer_fb * shimmer * 0.7) } else { 0.0 };
             let mut x = [dry_l * self.feed + shim, dry_r * self.feed + shim];
             for (ch, xc) in x.iter_mut().enumerate() {
                 let stretch = if ch == 0 { 1.0 } else { 1.07 };
@@ -248,10 +250,15 @@ impl Processor for Reverb {
             let wet_l = (taps[0] - taps[2] + taps[4] - taps[6]) * 0.5;
             let wet_r = (taps[1] - taps[3] + taps[5] - taps[7]) * 0.5;
 
-            // Shimmer: octave-up copy of the tail, high-passed, fed back.
-            let shifted = self.shifter.process(0.5 * (wet_l + wet_r));
-            self.shimmer_hp += shimmer_hp_a * (shifted - self.shimmer_hp);
-            self.shimmer_fb = shifted - self.shimmer_hp;
+            // Shimmer: octave-up copy of the tail, high-passed, fed back
+            // (skipped while SHIMMER is off; the shifter keeps listening).
+            if shimmer > 0.0 {
+                let shifted = self.shifter.process(0.5 * (wet_l + wet_r));
+                self.shimmer_hp += shimmer_hp_a * (shifted - self.shimmer_hp);
+                self.shimmer_fb = shifted - self.shimmer_hp;
+            } else {
+                self.shifter.line.push(0.5 * (wet_l + wet_r));
+            }
 
             let (dry_g, wet_g) = mix_gains(self.mix);
             let wet_g = wet_g * wet_trim;

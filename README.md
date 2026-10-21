@@ -10,6 +10,13 @@ piccoli blocchi (nodi) collegati con cavi virtuali generano il suono in tempo re
 cargo run --release
 ```
 
+Per suonare con patch grandi conviene la build più ottimizzata (ottimizzazione dell'intero programma, circa
+il 10–15% di CPU audio in meno, ma qualche minuto di compilazione):
+
+```bash
+cargo run --profile dist
+```
+
 All'avvio si apre una patch demo ambient: un **Drone** (accordo di quinte su La1) passa in un **Filter**
 il cui cutoff è mosso lentamente da un **Random**; il filtro alimenta un **Reverb** con un po' di shimmer
 e, un'ottava sopra, una nuvola **Granular** che finisce in un **Delay** a nastro. Tutto confluisce nel **Mixer**.
@@ -244,7 +251,8 @@ src/
 ├── audio/
 │   ├── params.rs   parametri condivisi lock-free (atomics) tra UI e thread audio
 │   ├── engine.rs   grafo lato audio: blocchi stereo da 64 frame, eventi MIDI per blocco, clock
-│   │               globale in battiti, ordine topologico precalcolato
+│   │               globale in battiti, ordine topologico precalcolato, denormali azzerati
+│   ├── fastmath.rs seno, exp2 e tanh veloci per il DSP per campione (errore < 1e-6)
 │   ├── dsp.rs      Oscillator e Mixer
 │   ├── modules/    drone, random, granular, resonator, filter, delay, reverb, midi_cc, midi_note,
 │   │               sequencer, arpeggiator, midi_in
@@ -267,12 +275,23 @@ src/
 │   ├── monitor.rs  pannello inferiore: oscilloscopio e spettro (FFT)
 │   ├── theme.rs    palette, font di sistema e stile
 │   └── app.rs      finestra, toolbar, pannelli, patch demo
-└── tests.rs        test del grafo, dei moduli e rendering offline del motore
+├── tests.rs        test del grafo, dei moduli e rendering offline del motore
+└── perf.rs         benchmark (audio per modulo, patch grandi, frame della UI, auto layout)
 ```
 
 La UI non blocca mai il thread audio: i valori dei knob passano tramite atomics, mentre le modifiche
 strutturali (nodi aggiunti/rimossi, nuovo ordine di elaborazione) arrivano al motore come comandi su un canale.
 I buffer (delay, riverbero, loop granulare) sono allocati sul thread della UI quando il nodo viene creato.
+I plugin VST3 sono condivisi con un lock: la UI lo prende per una chiamata alla volta, al massimo dieci
+volte al secondo, e lo stato del plugin si rilegge solo quando può essere cambiato, così il thread audio non
+resta in attesa.
+
+**Prestazioni.** La UI ridisegna a pieno ritmo solo durante interazioni e animazioni; meter, analizzatori e
+luci degli step si aggiornano a 30 fps (niente, con la finestra ridotta a icona). Lo zoom usa dimensioni dei
+caratteri arrotondate al mezzo punto, così le animazioni non ricreano i glifi a ogni frame; da lontano il
+testo illeggibile non viene disegnato e la griglia è un'unica mesh. Le transizioni di auto layout e di zoom
+seguono una curva a molla senza rimbalzo: i nodi partono a onda da sinistra a destra e lo zoom procede in
+scala logaritmica attorno al centro, senza scivolamenti laterali.
 
 Per aggiungere un nuovo modulo: un file in `audio/modules/` con la sua `ModuleDef` (knob, porte, modi,
 toggle) e un `Processor`, una voce in `ModuleKind` e, in `ui/modules.rs`, la lettura e il display.
@@ -282,4 +301,10 @@ Il pannello (porte, selettore, knob) è generato dalla definizione.
 
 ```bash
 cargo test
+```
+
+I benchmark non girano con i test normali:
+
+```bash
+cargo test --release perf -- --ignored --nocapture --test-threads=1
 ```
