@@ -1,4 +1,4 @@
-//! Panel of the Fractal node, in three pages like Motion: Fractal's main
+//! Panel of the Frakture node, in three pages like Motion: Fractal's main
 //! view and its two side panels: HEXAGON (the macro sliders, their
 //! mappings and the global controls), EFFECTS (grains, gate, repeat, space
 //! and their routing) and MOTION (cursor, path and timeline).
@@ -11,8 +11,8 @@ use super::theme::{self, alpha};
 use super::widgets;
 use crate::audio::engine::NodeId;
 use crate::audio::modules::ModuleParams;
-use crate::audio::modules::fractal::motion::{self, PathPoint, SLIDERS};
-use crate::audio::modules::fractal::{self as fx, data, layer, lp, viz};
+use crate::audio::modules::frakture::motion::{self, PathPoint, SLIDERS};
+use crate::audio::modules::frakture::{self as fx, data, layer, lp, viz};
 use crate::audio::params::gain_to_db;
 use crate::graph::{ModuleNode, ParamRef};
 
@@ -96,7 +96,7 @@ impl Panel<'_, '_> {
     }
 
     fn uid(&self, salt: impl std::hash::Hash + std::fmt::Debug) -> Id {
-        Id::unique(("fractal", self.id)).with(salt)
+        Id::unique(("frakture", self.id)).with(salt)
     }
 
     fn on(&self, i: usize) -> bool {

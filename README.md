@@ -54,7 +54,7 @@ position and timing), SPRAY (random pitch), SPREAD (stereo), MIX. Direction FWD 
 **FREEZE** stops recording: the cloud keeps exploring the captured sound. The POS input moves the read
 position (e.g. with a Random or an LFO). The display shows the loop and the active grains.
 
-**Fractal**: a granular rhythm effect after Excite Audio's Motion: Fractal. Its panel has three pages.
+**Frakture**: a granular rhythm effect after Excite Audio's Motion: Fractal. Its panel has three pages.
 
 - **EFFECTS**: four effects in a chain. Drag their names in the ROUTING row to change the order.
   - **Grains** records its input into a buffer locked to the tempo. BUFFER sets its length, from 1/4 to
@@ -97,7 +97,7 @@ position (e.g. with a Random or an LFO). The display shows the loop and the acti
     (TIMELINE) or at the recorded speed (RECORDED). Direction →, ← or ⇄ pendulum; LOOP; OFFSET into the
     path. Retrigger: OFF, ON (starts over with the transport) or SYNC (locked to the transport).
 
-A new Fractal starts with a circular path and six mappings on grain layer 1 and the reverb: press ▶ PATH
+A new Frakture starts with a circular path and six mappings on grain layer 1 and the reverb: press ▶ PATH
 and it moves on its own. Its settings, paths and mappings are saved with the project. To keep one as a
 preset, group the node (Cmd+G) and save it to the library.
 
@@ -389,8 +389,8 @@ src/
 │   ├── dsp.rs      Oscillator and Mixer
 │   ├── modules/    drone, random, granular, resonator, filter, delay, pingpong, reverb, midi_cc, midi_note,
 │   │               sequencer, arpeggiator, midi_in, midicer (after Vermona's meloDICER)
-│   │   ├── fractal.rs  Fractal (after Excite Audio's Motion: Fractal): parameters, mappings, the chain
-│   │   ├── fractal/    grains (tempo-locked buffer, two layers), rhythm (gate, repeat), space (hall),
+│   │   ├── frakture.rs Frakture (after Excite Audio's Motion: Fractal): parameters, mappings, the chain
+│   │   ├── frakture/   grains (tempo-locked buffer, two layers), rhythm (gate, repeat), space (hall),
 │   │   │               motion (hexagon sliders, magnet, drawn/recorded paths, timeline)
 │   │   ├── steps.rs step grid on the global tempo, outgoing notes, held keys
 │   │   └── mod.rs  module descriptions (ModuleDef), generic parameters and DSP helpers
@@ -407,7 +407,7 @@ src/
 │   ├── plugin_node.rs panel of plugin nodes (editor, parameters, MIDI, knobs)
 │   ├── nodes.rs    layout and drawing of the oscillator and mixer, shared controls
 │   ├── modules.rs  common module panel and their displays
-│   ├── fractal.rs  the Fractal node's panel: HEXAGON, EFFECTS and MOTION pages
+│   ├── frakture.rs the Frakture node's panel: HEXAGON, EFFECTS and MOTION pages
 │   ├── widgets.rs  hand-drawn knobs, faders, meters, ports and cables
 │   ├── monitor.rs  bottom panel: oscilloscope and spectrum (FFT)
 │   ├── tempo.rs    the toolbar's tempo: BPM field (drag or type), beat light, tap tempo
@@ -443,8 +443,8 @@ sideways drift.
 
 To add a new module: a file in `audio/modules/` with its `ModuleDef` (knobs, ports, modes, toggle) and a
 `Processor`, an entry in `ModuleKind` and, in `ui/modules.rs`, the readout and the display.
-The panel (ports, selector, knobs) is generated from the definition; Fractal, too large for the generic
-panel, draws its own (`ui/fractal.rs`). Its hexagon runs on the audio thread, block by block: the panel
+The panel (ports, selector, knobs) is generated from the definition; Frakture, too large for the generic
+panel, draws its own (`ui/frakture.rs`). Its hexagon runs on the audio thread, block by block: the panel
 hands it the mouse through the module's display values, so paths keep time even when the window doesn't
 redraw.
 

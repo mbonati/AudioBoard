@@ -7,7 +7,7 @@ pub mod arpeggiator;
 pub mod delay;
 pub mod drone;
 pub mod filter;
-pub mod fractal;
+pub mod frakture;
 pub mod granular;
 pub mod midi_cc;
 pub mod midi_in;
@@ -33,7 +33,7 @@ pub enum ModuleKind {
     Drone,
     Random,
     Granular,
-    Fractal,
+    Frakture,
     Resonator,
     Filter,
     Delay,
@@ -88,7 +88,7 @@ impl ModuleKind {
         ModuleKind::Drone,
         ModuleKind::Random,
         ModuleKind::Granular,
-        ModuleKind::Fractal,
+        ModuleKind::Frakture,
         ModuleKind::Resonator,
         ModuleKind::Filter,
         ModuleKind::Delay,
@@ -107,7 +107,7 @@ impl ModuleKind {
             ModuleKind::Drone => &drone::DEF,
             ModuleKind::Random => &random::DEF,
             ModuleKind::Granular => &granular::DEF,
-            ModuleKind::Fractal => &fractal::DEF,
+            ModuleKind::Frakture => &frakture::DEF,
             ModuleKind::Resonator => &resonator::DEF,
             ModuleKind::Filter => &filter::DEF,
             ModuleKind::Delay => &delay::DEF,
@@ -131,7 +131,7 @@ impl ModuleKind {
             ModuleKind::Drone => Box::new(drone::Drone::new(params, sample_rate)),
             ModuleKind::Random => Box::new(random::Random::new(params, sample_rate)),
             ModuleKind::Granular => Box::new(granular::Granular::new(params, sample_rate)),
-            ModuleKind::Fractal => Box::new(fractal::Fractal::new(params, sample_rate)),
+            ModuleKind::Frakture => Box::new(frakture::Frakture::new(params, sample_rate)),
             ModuleKind::Resonator => Box::new(resonator::Resonator::new(params, sample_rate)),
             ModuleKind::Filter => Box::new(filter::Filter::new(params, sample_rate)),
             ModuleKind::Delay => Box::new(delay::Delay::new(params, sample_rate)),

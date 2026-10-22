@@ -460,7 +460,7 @@ impl Motion {
 mod tests {
     use super::*;
     use crate::audio::modules::ModuleKind;
-    use crate::audio::modules::fractal::{CIRCLE_R, CUR_HOLD, CUR_RELEASE, CUR_STRENGTH};
+    use crate::audio::modules::frakture::{CIRCLE_R, CUR_HOLD, CUR_RELEASE, CUR_STRENGTH};
 
     const DT: f32 = 64.0 / 48_000.0;
 
@@ -483,7 +483,7 @@ mod tests {
 
     #[test]
     fn magnet_pulls_holds_and_releases() {
-        let p = ModuleParams::new(ModuleKind::Fractal);
+        let p = ModuleParams::new(ModuleKind::Frakture);
         p.set(CUR_STRENGTH, 1.0);
         p.set(CUR_HOLD, 0.5);
         p.set(CUR_RELEASE, 0.5);
@@ -511,7 +511,7 @@ mod tests {
 
     #[test]
     fn the_path_drives_the_cursor() {
-        let p = ModuleParams::new(ModuleKind::Fractal);
+        let p = ModuleParams::new(ModuleKind::Frakture);
         p.data[data::PATH_PLAYING].set(1.0);
         let mut m = Motion::new(&p);
         let mut seen = Vec::new();

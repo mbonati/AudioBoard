@@ -2023,15 +2023,15 @@ fn drive(proc: &mut dyn Processor, frames: usize, from: usize, input: impl Fn(us
     (l, r)
 }
 
-/// A Fractal with only the given effects on and nothing mapped.
-fn fractal_with(sections: &[usize]) -> Arc<ModuleParams> {
-    use crate::audio::modules::fractal::{self, data};
-    let p = Arc::new(ModuleParams::new(ModuleKind::Fractal));
+/// A Frakture with only the given effects on and nothing mapped.
+fn frakture_with(sections: &[usize]) -> Arc<ModuleParams> {
+    use crate::audio::modules::frakture::{self, data};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Frakture));
     for s in 0..4 {
         p.data[data::SECTION_ON + s].set(if sections.contains(&s) { 1.0 } else { 0.0 });
     }
-    for i in 0..fractal::MAPPABLE {
-        fractal::set_mapping(&p, i, None);
+    for i in 0..frakture::MAPPABLE {
+        frakture::set_mapping(&p, i, None);
     }
     p
 }
@@ -2042,31 +2042,31 @@ fn saw(frame: usize) -> f32 {
 }
 
 #[test]
-fn fractal_gate_drops_the_off_steps() {
-    use crate::audio::modules::fractal::{self, Fractal, data};
-    let p = fractal_with(&[fractal::GATE]);
-    p.set(fractal::GATE_STEPS, 2.0);
-    p.set(fractal::GATE_RATE, 10.0); // 1/4: a beat, 24000 frames at 120 BPM
-    p.set(fractal::GATE_ATTACK, 0.0);
-    p.set(fractal::GATE_RELEASE, 0.0);
+fn frakture_gate_drops_the_off_steps() {
+    use crate::audio::modules::frakture::{self, Frakture, data};
+    let p = frakture_with(&[frakture::GATE]);
+    p.set(frakture::GATE_STEPS, 2.0);
+    p.set(frakture::GATE_RATE, 10.0); // 1/4: a beat, 24000 frames at 120 BPM
+    p.set(frakture::GATE_ATTACK, 0.0);
+    p.set(frakture::GATE_RELEASE, 0.0);
     p.data[data::GATE_PATTERN].set(1.0);
     p.data[data::GATE_PATTERN + 1].set(0.0);
-    let (l, _) = drive(&mut Fractal::new(p, 48_000.0), 48_000, 0, |_| 0.5);
+    let (l, _) = drive(&mut Frakture::new(p, 48_000.0), 48_000, 0, |_| 0.5);
     assert!(l[2_000..22_000].iter().all(|s| (s - 0.5).abs() < 0.01), "the on step passes");
     assert!(l[26_000..46_000].iter().all(|s| s.abs() < 0.01), "the off step is silent");
 }
 
 #[test]
-fn fractal_repeat_plays_the_slice_again() {
-    use crate::audio::modules::fractal::{self, Fractal, REPEAT_DIVS, data, div_norm};
-    let p = fractal_with(&[fractal::REPEAT]);
-    p.set(fractal::REP_AMOUNT, 4.0);
-    p.set(fractal::REP_TRIGGER, 15.0); // every bar: 96000 frames
-    p.set(fractal::REP_OFFSET, 0.0);
-    p.set(fractal::REP_DUCK, 1.0);
+fn frakture_repeat_plays_the_slice_again() {
+    use crate::audio::modules::frakture::{self, Frakture, REPEAT_DIVS, data, div_norm};
+    let p = frakture_with(&[frakture::REPEAT]);
+    p.set(frakture::REP_AMOUNT, 4.0);
+    p.set(frakture::REP_TRIGGER, 15.0); // every bar: 96000 frames
+    p.set(frakture::REP_OFFSET, 0.0);
+    p.set(frakture::REP_DUCK, 1.0);
     p.data[data::REPEAT_SYNC].set(1.0);
-    p.set(fractal::REP_RATE, div_norm(4, REPEAT_DIVS)); // 1/16: 6000 frames
-    let (l, _) = drive(&mut Fractal::new(p, 48_000.0), 130_000, 0, saw);
+    p.set(frakture::REP_RATE, div_norm(4, REPEAT_DIVS)); // 1/16: 6000 frames
+    let (l, _) = drive(&mut Frakture::new(p, 48_000.0), 130_000, 0, saw);
     // A slice taken on the bar (96000…102000), then played again 4 times
     // (the dry signal ducks out over the first few milliseconds).
     let slice = 6_000;
@@ -2080,14 +2080,14 @@ fn fractal_repeat_plays_the_slice_again() {
 }
 
 #[test]
-fn fractal_freeze_keeps_the_grains_playing() {
-    use crate::audio::modules::fractal::{self, Fractal, data, layer, lp};
-    let p = fractal_with(&[fractal::GRAINS]);
-    p.data[data::PLAYHEAD_MODE].set(fractal::MANUAL as f32);
+fn frakture_freeze_keeps_the_grains_playing() {
+    use crate::audio::modules::frakture::{self, Frakture, data, layer, lp};
+    let p = frakture_with(&[frakture::GRAINS]);
+    p.data[data::PLAYHEAD_MODE].set(frakture::MANUAL as f32);
     p.set(lp(0, layer::PLAYHEAD), 0.5);
     p.set(lp(0, layer::DRY), 0.001);
     p.set(lp(0, layer::WET), 1.0);
-    let mut fx = Fractal::new(p.clone(), 48_000.0);
+    let mut fx = Frakture::new(p.clone(), 48_000.0);
     drive(&mut fx, 96_000, 0, saw);
     p.data[data::FREEZE].set(1.0);
     let (held, _) = drive(&mut fx, 192_000, 96_000, |_| 0.0);
@@ -2100,26 +2100,26 @@ fn fractal_freeze_keeps_the_grains_playing() {
 }
 
 #[test]
-fn fractal_hexagon_moves_mapped_knobs() {
-    use crate::audio::modules::fractal::{self, Fractal, data, viz};
-    let p = fractal_with(&[]);
-    fractal::set_mapping(&p, fractal::SPACE_MIX, Some((2, 0.2, 0.8)));
+fn frakture_hexagon_moves_mapped_knobs() {
+    use crate::audio::modules::frakture::{self, Frakture, data, viz};
+    let p = frakture_with(&[]);
+    frakture::set_mapping(&p, frakture::SPACE_MIX, Some((2, 0.2, 0.8)));
     p.data[data::SLIDER_START + 1].set(1.0);
-    p.data[data::MAGNET].set(fractal::motion::SELECT as f32);
-    let mut fx = Fractal::new(p.clone(), 48_000.0);
+    p.data[data::MAGNET].set(frakture::motion::SELECT as f32);
+    let mut fx = Frakture::new(p.clone(), 48_000.0);
     drive(&mut fx, 640, 0, |_| 0.0);
-    assert!((p.viz[viz::EFFECTIVE + fractal::SPACE_MIX].get() - 0.8).abs() < 1e-4);
-    assert_eq!(p.viz[viz::EFFECTIVE + fractal::SPACE_LENGTH].get(), -1.0, "not mapped");
+    assert!((p.viz[viz::EFFECTIVE + frakture::SPACE_MIX].get() - 0.8).abs() < 1e-4);
+    assert_eq!(p.viz[viz::EFFECTIVE + frakture::SPACE_LENGTH].get(), -1.0, "not mapped");
 }
 
 #[test]
-fn fractal_paths_and_mappings_are_saved() {
-    use crate::audio::modules::fractal::{self, data, motion};
+fn frakture_paths_and_mappings_are_saved() {
+    use crate::audio::modules::frakture::{self, data, motion};
     let (mut g, a, _e) = setup();
-    let fr = g.add_module(ModuleKind::Fractal, pos2(0.0, 0.0), &a);
+    let fr = g.add_module(ModuleKind::Frakture, pos2(0.0, 0.0), &a);
     let p = module_params(&g, fr);
-    fractal::set_mapping(&p, fractal::REP_DUCK, Some((3, 0.1, 0.9)));
-    p.set(fractal::lp(1, fractal::layer::PITCH), -7.0);
+    frakture::set_mapping(&p, frakture::REP_DUCK, Some((3, 0.1, 0.9)));
+    p.set(frakture::lp(1, frakture::layer::PITCH), -7.0);
     p.data[data::ROUTING].set(3.0);
     p.data[data::ROUTING + 3].set(0.0);
     let pts = [
@@ -2134,12 +2134,23 @@ fn fractal_paths_and_mappings_are_saved() {
     let (mut h, b, _f) = setup();
     assert_eq!(crate::project::restore(&mut h, &saved, &b), 0);
     let q = module_params(&h, h.nodes[0].id);
-    assert_eq!(fractal::mapping(&q, fractal::REP_DUCK), Some((3, 0.1, 0.9)));
-    assert_eq!(q.get(fractal::lp(1, fractal::layer::PITCH)), -7.0);
-    assert_eq!(fractal::routing(&q), [fractal::SPACE, fractal::GATE, fractal::REPEAT, fractal::GRAINS]);
+    assert_eq!(frakture::mapping(&q, frakture::REP_DUCK), Some((3, 0.1, 0.9)));
+    assert_eq!(q.get(frakture::lp(1, frakture::layer::PITCH)), -7.0);
+    assert_eq!(frakture::routing(&q), [frakture::SPACE, frakture::GATE, frakture::REPEAT, frakture::GRAINS]);
     assert_eq!(motion::drawn_count(&q), 2);
     assert_eq!(motion::drawn_point(&q, 0), pts[0]);
     assert_eq!(motion::drawn_point(&q, 1), pts[1]);
     assert_eq!(motion::rec_point(&q, 0).x, 0.25);
     assert_eq!(crate::project::snapshot(&h), saved);
+}
+
+#[test]
+fn projects_with_the_old_fractal_name_still_load() {
+    let (mut g, a, _e) = setup();
+    g.add_module(ModuleKind::Frakture, pos2(0.0, 0.0), &a);
+    let json = serde_json::to_string(&crate::project::snapshot(&g)).unwrap();
+    let saved: crate::project::Project = serde_json::from_str(&json.replace("\"Frakture\"", "\"Fractal\"")).unwrap();
+    let (mut h, b, _f) = setup();
+    assert_eq!(crate::project::restore(&mut h, &saved, &b), 0);
+    assert_eq!(module_params(&h, h.nodes[0].id).kind, ModuleKind::Frakture);
 }

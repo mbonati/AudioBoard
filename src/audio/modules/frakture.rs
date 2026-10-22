@@ -1,4 +1,4 @@
-//! Fractal: a granular rhythm effect after Excite Audio's Motion: Fractal.
+//! Frakture: a granular rhythm effect after Excite Audio's Motion: Fractal.
 //! Four effects in a chain whose order can be changed — GRAINS (two grain
 //! layers playing from a tempo-synced buffer of the input), GATE (a trance
 //! gate of up to 32 steps), REPEAT (a stutter repeating slices of the
@@ -505,8 +505,8 @@ pub mod viz {
 }
 
 pub static DEF: ModuleDef = ModuleDef {
-    name: "Fractal",
-    prefix: "FRACTAL",
+    name: "Frakture",
+    prefix: "FRAKTURE",
     hint: "granular rhythms · hexagon",
     inputs: &["IN"],
     outputs: &["OUT"],
@@ -795,7 +795,7 @@ impl Band {
 // Processor
 // ---------------------------------------------------------------------------
 
-pub struct Fractal {
+pub struct Frakture {
     params: Arc<ModuleParams>,
     sr: f32,
     grains: Grains,
@@ -824,7 +824,7 @@ pub struct Fractal {
     publish_in: u32,
 }
 
-impl Fractal {
+impl Frakture {
     pub fn new(params: Arc<ModuleParams>, sample_rate: f32) -> Self {
         let grains = Grains::new(sample_rate);
         let memory = grains.capacity() + (sample_rate * 4.0) as usize;
@@ -963,7 +963,7 @@ impl Fractal {
     }
 }
 
-impl Processor for Fractal {
+impl Processor for Frakture {
     fn process(&mut self, ctx: &ProcessCtx, inputs: &Inputs, outputs: &mut [Buf], n: usize) {
         let p = self.params.clone();
         let sr = self.sr;
@@ -1117,7 +1117,7 @@ mod tests {
 
     #[test]
     fn every_parameter_has_a_name_and_a_readout() {
-        let p = ModuleParams::new(super::super::ModuleKind::Fractal);
+        let p = ModuleParams::new(super::super::ModuleKind::Frakture);
         let mut names = std::collections::HashSet::new();
         for (i, spec) in PARAMS.iter().enumerate() {
             assert!(names.insert(spec.name), "{} twice", spec.name);
