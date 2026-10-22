@@ -108,6 +108,11 @@ enum Action {
     UndoLayout,
     FitAll,
     FitSelection,
+    /// Fill the view with these nodes, in front; the view to go back to is
+    /// kept (see `Editor::focus`).
+    Focus(Vec<NodeId>),
+    FocusSelection,
+    Unfocus,
     ZoomBy(f32),
     ZoomActual,
     ToggleAutoFit,
@@ -212,6 +217,8 @@ pub struct Editor {
     view_anim: Option<ViewAnim>,
     /// Positions before the last auto layout, for Cmd+Z.
     layout_undo: Option<Vec<(NodeId, Pos2)>>,
+    /// Zoomed onto these nodes (Z): them, and the view to go back to.
+    focus: Option<(Vec<NodeId>, (Vec2, f32))>,
     /// Short messages for the status bar, drained by the app.
     pub notices: Vec<String>,
     /// Time of the current frame.
@@ -239,6 +246,7 @@ impl Editor {
             glide: None,
             view_anim: None,
             layout_undo: None,
+            focus: None,
             notices: Vec::new(),
             now: 0.0,
         }
@@ -255,6 +263,7 @@ impl Editor {
         self.glide = None;
         self.view_anim = None;
         self.layout_undo = None;
+        self.focus = None;
         self.needs_framing = true;
     }
 
@@ -340,6 +349,55 @@ impl Editor {
     pub fn fit_all(&mut self, graph: &Graph, now: f64) {
         if let Some(bounds) = content_bounds(graph) {
             let (pan, zoom) = self.fit_params(bounds);
+            self.animate_view(pan, zoom, now);
+        }
+    }
+
+    /// The node under a screen point, topmost first (not one folded into a
+    /// collapsed module).
+    fn node_under(&self, graph: &Graph, q: Pos2) -> Option<NodeId> {
+        graph
+            .nodes
+            .iter()
+            .rev()
+            .filter(|n| graph.group_of(n.id).is_none_or(|g| !g.collapsed))
+            .find(|n| self.to_screen_rect(Rect::from_min_size(n.pos, n.size())).contains(q))
+            .map(|n| n.id)
+    }
+
+    /// Zooms until `ids` fill the view (past 100%, unlike fitting), brings
+    /// them to the front and selects them. The view before the first
+    /// focus is kept for going back.
+    fn focus_on(&mut self, graph: &mut Graph, ids: Vec<NodeId>, now: f64) {
+        let mut bounds: Option<Rect> = None;
+        for id in &ids {
+            if let Some(n) = graph.node(*id) {
+                let r = Rect::from_min_size(n.pos, n.size());
+                bounds = Some(bounds.map_or(r, |b| b.union(r)));
+            }
+        }
+        let Some(bounds) = bounds else { return };
+        let avail = self.rect.size() - vec2(48.0, 48.0);
+        let zoom = (avail.x / bounds.width()).min(avail.y / bounds.height()).clamp(MIN_ZOOM, MAX_ZOOM);
+        let pan = self.rect.size() * 0.5 - bounds.center().to_vec2() * zoom;
+        let back = self.focus.take().map_or_else(|| self.view_target(), |f| f.1);
+        self.auto_fit = false;
+        self.animate_view(pan, zoom, now);
+        for id in &ids {
+            graph.bring_to_front(*id);
+        }
+        self.selected = ids.iter().copied().collect();
+        if let [one] = ids.as_slice()
+            && let Some(n) = graph.node(*one)
+        {
+            self.notices.push(format!("{}  ·  Z or Esc to go back", n.title));
+        }
+        self.focus = Some((ids, back));
+    }
+
+    /// Back to the view from before the zoom onto a node.
+    fn unfocus(&mut self, now: f64) {
+        if let Some((_, (pan, zoom))) = self.focus.take() {
             self.animate_view(pan, zoom, now);
         }
     }
@@ -1156,7 +1214,26 @@ impl Editor {
             actions.push(Action::SelectAll);
         }
         if pressed(Key::Escape) {
-            actions.push(if self.mapping.is_some() { Action::CancelMapping } else { Action::Deselect });
+            actions.push(if self.mapping.is_some() {
+                Action::CancelMapping
+            } else if self.focus.is_some() {
+                Action::Unfocus
+            } else {
+                Action::Deselect
+            });
+        }
+        if !cmd && !shift && pressed(Key::Z) {
+            // The node under the pointer, else the selection; Z again (on
+            // the same node, or off any) goes back.
+            let hovered = ui.input(|i| i.pointer.hover_pos()).and_then(|q| self.node_under(graph, q));
+            let focused = self.focus.as_ref().map(|f| f.0.clone());
+            match (hovered, focused) {
+                (Some(id), Some(f)) if f != [id] => actions.push(Action::Focus(vec![id])),
+                (_, Some(_)) => actions.push(Action::Unfocus),
+                (Some(id), None) => actions.push(Action::Focus(vec![id])),
+                (None, None) if has_selection => actions.push(Action::FocusSelection),
+                (None, None) => {}
+            }
         }
         if (pressed(Key::Enter) || pressed(Key::F2))
             && let Some(g) = self.selected_group(graph)
@@ -1327,8 +1404,20 @@ impl Editor {
                 Action::MoveSelection(delta) => graph.move_nodes(&self.selected, delta),
                 Action::AutoLayout => self.auto_layout(graph, self.now),
                 Action::UndoLayout => self.undo_layout(graph, self.now),
-                Action::FitAll => self.fit_all(graph, self.now),
-                Action::FitSelection => self.fit_selection(graph, self.now),
+                Action::FitAll => {
+                    self.focus = None;
+                    self.fit_all(graph, self.now);
+                }
+                Action::FitSelection => {
+                    self.focus = None;
+                    self.fit_selection(graph, self.now);
+                }
+                Action::Focus(ids) => self.focus_on(graph, ids, self.now),
+                Action::FocusSelection => {
+                    let ids = self.ordered_selection(graph);
+                    self.focus_on(graph, ids, self.now);
+                }
+                Action::Unfocus => self.unfocus(self.now),
                 Action::ZoomBy(f) => self.zoom_by(f, self.now),
                 Action::ZoomActual => self.zoom_actual(self.now),
                 Action::ToggleAutoFit => self.set_auto_fit(!self.auto_fit, graph, self.now),
@@ -1651,6 +1740,7 @@ fn node_menu(ui: &mut Ui, collapsed: bool, in_group: bool, actions: &mut Vec<Act
         }
     };
     item(fold, "C", Action::CollapseSelection);
+    item("Zoom to node", "Z", Action::FocusSelection);
     item("Make module", "Cmd+G", Action::GroupSelection);
     item("Duplicate", "Cmd+D", Action::DuplicateSelection);
     item("Delete", "Del", Action::RemoveSelection);

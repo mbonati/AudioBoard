@@ -372,6 +372,7 @@ clipping it into crackles, and recovers over about 150 ms. While it works, the s
 | Collapse / expand a node or a module | arrow in the header, double-click the title, the C key, or right-click → Collapse |
 | Collapse / expand everything | Shift+C, the toolbar button, or right-click the canvas |
 | Frame everything / the selection | F / Shift+F |
+| Zoom in on one node | Z with the mouse over it (or on the selection), or right-click → Zoom to node: it fills the view, in front of the others; Z again or Esc goes back to the view you had |
 | Auto layout | L, the toolbar button or right-click the canvas; Cmd+Z undoes it |
 | Auto-fit (keep the whole patch in view) | A or the toolbar button |
 | New / open project | Cmd+N / Cmd+O, or the project name in the toolbar |
