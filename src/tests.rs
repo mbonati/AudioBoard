@@ -1546,7 +1546,7 @@ fn palette_categories_fold() {
         texts = run(&mut palette, vec![]);
     }
     assert!(!shows(&texts, "Oscillator") && shows(&texts, "SOURCES"), "folded");
-    assert!(shows(&texts, "3"), "a folded category shows its count");
+    assert!(shows(&texts, "4"), "a folded category shows its count");
     assert!(shows(&texts, "Reverb"), "the others stay open");
 
     // Searching opens what matches; clearing it folds it again.
@@ -2494,4 +2494,117 @@ fn magma_live_values_are_only_for_modulated_knobs() {
     magma::add_slot(&p, modulation::SRC_XY, fp(0, filt::FREQ));
     drive_stereo(&mut fx, 640, |_| (0.0, 0.0), None);
     assert!(p.viz[freq].get() >= 0.0, "live while resting");
+}
+
+/// Runs a Pops 66 at 120 BPM (transport playing unless `stopped`), with
+/// `midi` fed at given (block, message); returns the left channel and the
+/// MIDI it sent, with absolute frames.
+fn run_pops(
+    p: &Arc<ModuleParams>,
+    blocks: usize,
+    playing: bool,
+    midi: &[(usize, [u8; 3])],
+) -> (Vec<f32>, Vec<(usize, [u8; 3])>) {
+    use crate::audio::modules::pops::Pops;
+    let mut proc = Pops::new(p.clone(), 48_000.0);
+    let mut ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing, restart: false };
+    let mut inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; 8], connected: [false; 8], midi: MidiBuf::default(), midi_connected: true });
+    let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
+    let (mut left, mut sent) = (Vec::new(), Vec::new());
+    for b in 0..blocks {
+        inputs.midi.clear();
+        for (_, msg) in midi.iter().filter(|(at, _)| *at == b) {
+            inputs.midi.push(0, *msg);
+        }
+        proc.process(&ctx, &inputs, &mut outputs, 64);
+        left.extend_from_slice(&outputs[0][0]);
+        if let Some(out) = proc.midi_out() {
+            sent.extend(out.events().iter().map(|e| (b * 64 + e.frame as usize, e.data)));
+        }
+        if playing {
+            ctx.beat += ctx.beats_per_sample * 64.0;
+        }
+    }
+    (left, sent)
+}
+
+fn pops_params() -> Arc<ModuleParams> {
+    Arc::new(ModuleParams::new(ModuleKind::Pops))
+}
+
+#[test]
+fn pops_rhythms_are_well_formed_and_combine() {
+    use crate::audio::modules::pops::rhythms::{RHYTHMS, combine};
+    use crate::audio::modules::pops::voices::{BASE, HIHAT};
+    for r in &RHYTHMS {
+        assert!(r.len >= 6 && r.len <= 32 && matches!(r.per_beat, 3 | 4), "{}", r.name);
+        assert!(r.rows.iter().any(|&b| b != 0), "{} plays something", r.name);
+        assert_eq!(r.len % r.per_beat, 0, "{}: whole beats", r.name);
+    }
+    // ROCK 1 + ROCK 2: ROCK 1's grid, ROCK 2's sixteenth hats added.
+    let both = combine(&[6, 16]).unwrap();
+    assert_eq!(both.rows[HIHAT].count_ones(), 32);
+    assert_eq!(both.rows[BASE], RHYTHMS[6].rows[BASE] | RHYTHMS[16].rows[BASE]);
+    assert!(combine(&[]).is_none());
+}
+
+#[test]
+fn pops_follows_the_board_tempo() {
+    use crate::audio::modules::pops::{data, voices::BASE, INSTRUMENTS};
+    let p = pops_params(); // ROCK 1, SYNC on
+    let (left, sent) = run_pops(&p, 1500, true, &[]);
+    // At 120 BPM a sixteenth is 6000 frames: bass drum on steps 0, 8, 16, 24.
+    let kicks: Vec<usize> = sent.iter().filter(|(_, m)| m[0] == 0x99 && m[1] == INSTRUMENTS[BASE].note).map(|(f, _)| *f).collect();
+    assert_eq!(kicks, [0, 48_000]);
+    assert!(rms_of(&left) > 0.01, "makes sound");
+    // Transport stopped: nothing.
+    let (left, sent) = run_pops(&p, 400, false, &[]);
+    assert!(sent.is_empty() && peak_of(&left) == 0.0);
+    // Its own clock: SYNC off, PLAY, 60 BPM → a sixteenth every 12000 frames.
+    p.data[data::SYNC].set(0.0);
+    p.data[data::RUNNING].set(1.0);
+    p.set(crate::audio::modules::pops::TEMPO, 60.0);
+    let (_, sent) = run_pops(&p, 1600, false, &[]);
+    let kicks: Vec<usize> = sent.iter().filter(|(_, m)| m[0] == 0x99 && m[1] == 36).map(|(f, _)| *f).collect();
+    assert_eq!(kicks, [0, 96_000]);
+}
+
+#[test]
+fn pops_plays_midi_notes_user_patterns_and_mutes() {
+    use crate::audio::modules::pops::{self, data, voices::{BASE, SNARE1}, viz};
+    let p = pops_params();
+    p.data[data::POWER].set(0.0);
+    // A MIDI note plays its instrument, rhythm off.
+    let (left, sent) = run_pops(&p, 200, true, &[(10, [0x99, 38, 120])]);
+    assert!(sent.is_empty(), "notes played in are not sent out");
+    assert!(peak_of(&left[..640]) == 0.0 && rms_of(&left[640..640 + 9600]) > 0.01, "snare from MIDI");
+    assert_eq!(p.viz[viz::HITS + SNARE1].get(), 1.0);
+    // A user pattern: one snare on step 4 of 8.
+    p.data[data::POWER].set(1.0);
+    p.data[data::SOURCE].set(1.0);
+    p.data[data::PATTERN].set(7.0);
+    pops::set_shape(&p, 7, 8, false);
+    pops::set_hit(&p, 7, SNARE1, 4, true);
+    let (_, sent) = run_pops(&p, 1600, true, &[]);
+    let snares: Vec<usize> = sent.iter().filter(|(_, m)| m[0] == 0x99 && m[1] == 38).map(|(f, _)| *f).collect();
+    assert_eq!(snares, [24_000, 72_000]);
+    // Mute it.
+    p.data[data::MUTE + SNARE1].set(1.0);
+    let (_, sent) = run_pops(&p, 1600, true, &[]);
+    assert!(sent.iter().all(|(_, m)| m[1] != 38));
+    let _ = BASE;
+}
+
+#[test]
+fn pops_every_instrument_sounds() {
+    use crate::audio::modules::pops::{INSTRUMENTS, data};
+    for info in &INSTRUMENTS {
+        let p = pops_params();
+        p.data[data::POWER].set(0.0);
+        let note = info.note;
+        let (left, _) = run_pops(&p, 400, true, &[(0, [0x99, note, 127]), (50, [0x89, note, 0])]);
+        assert!(left.iter().all(|s| s.is_finite()));
+        assert!(rms_of(&left[..12_000]) > 0.002, "{} is silent: {}", info.name, rms_of(&left[..12_000]));
+        assert!(peak_of(&left) <= 1.0);
+    }
 }

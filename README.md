@@ -46,6 +46,41 @@ P.MOD / T.MOD (depth of the PITCH and TONE inputs), LEVEL.
 **Random**: a random modulation source. RATE, CHAOS (irregular timing), SMOOTH (from sample & hold to
 continuous glide), LEVEL. Patch it into any control input (cutoff, pitch, grain position…).
 
+**Pops 66**: a rhythm box in the spirit of the KORG Mini Pops-7 (1966). No samples: its fifteen instruments
+are synthesized the way the original's circuits made them. Ringing resonators (damped sines) make the base
+drum, bongos, conga, claves and rimshot; square waves make the cowbell; filtered noise makes the two snares,
+hihat, two cymbals and tambourine (with jingles); gated noise bursts make the guiro; and a decaying rattle
+makes the quijada.
+
+- **Rhythms.** Twenty rhythms sit in two rows, as on the panel: Waltz, Samba, Mambo, Rumba, Tango,
+  Bossanova, Rock 1, Rock 3, March 2/4, Swing on top; Jazz Waltz, Meringue, Cha-Cha, Beguine, Habanera,
+  Slow Rock, Rock 2, Rock 4, March 6/8, Latin Swing below. Click a key to play that rhythm alone;
+  shift-click or right-click adds it to the ones playing. Combined rhythms are merged on the first one's
+  grid, as the original's buttons did. The waltzes, swing and 6/8 rhythms run on triplets.
+- **Tempo.** With **SYNC** on, the machine follows the board's tempo and Start/Stop. With SYNC off, **PLAY**
+  runs it on its own TEMPO (40–240 BPM). SWING delays the off-beat steps.
+- **MIDI.** Notes on the MIDI input play the instruments (General MIDI drum notes: 36 base drum, 38/40
+  snares, 42 hihat, 49/51 cymbals…). The guiro scrapes for as long as the key is held. The rhythm also goes
+  out as notes on the MIDI output (channel 10), so it can drive another drum machine or a plugin.
+- **User patterns.** Eight patterns, P1–P8, of up to 32 steps of sixteenths or triplets. Seven start as
+  copies of presets and the eighth is empty. Choose **USER** to play them.
+
+The panel has three detail levels, chosen with its switch:
+
+- **MACHINE**: the rhythm keys and the main knobs: TEMPO, VOLUME, BALANCE (base drum against
+  hihat/cymbals), SWING, and the quijada, guiro and tambourine levels, as on the original. Below them are
+  the step lights.
+- **MIXER**: adds one strip per instrument: a pad that flashes on each hit (click it to hear the
+  instrument), LEVEL, PAN and mute.
+- **EDITOR**: adds the pattern editor. Set the length, 16ths or triplets, **COPY FROM…** a preset or another
+  pattern, and **CLEAR**. Click a step in the grid to toggle it, or drag to paint. A sound panel sets the
+  selected instrument's TUNE, ATTACK, DECAY and its own extras: resonance, tick and high-pass for the
+  snares; second partial for the conga and cowbell; rate and density for the guiro and quijada.
+
+Like any node, it also collapses entirely to its title bar (C).
+
+The preset rhythms are new patterns written in each style, not decoded from the original's diode matrix.
+
 ### Texture
 
 **Granular**: records its input into an 8-second loop and plays it back as a cloud of grains.
@@ -472,6 +507,8 @@ src/
 │   │   ├── frakture.rs Frakture (after Excite Audio's Motion: Fractal): parameters, mappings, the chain
 │   │   ├── frakture/   grains (tempo-locked buffer, two layers), rhythm (gate, repeat), space (hall),
 │   │   │               motion (hexagon sliders, magnet, drawn/recorded paths, timeline)
+│   │   ├── pops.rs     Pops 66 (after the KORG Mini Pops-7): instruments, user patterns, clock, MIDI in/out
+│   │   ├── pops/       voices (the fifteen synthesized instruments), rhythms (the twenty presets, combining)
 │   │   ├── steps.rs step grid on the global tempo, outgoing notes, held keys
 │   │   └── mod.rs  module descriptions (ModuleDef), generic parameters and DSP helpers
 │   ├── midi.rs     MIDI inputs (midir) and shared state read by the MIDI nodes
@@ -490,6 +527,7 @@ src/
 │   ├── frakture.rs the Frakture node's panel: HEXAGON, EFFECTS and MOTION pages
 │   ├── equalizer.rs the Equalizer's panel: graph and band markers, analyzer (FFT), band controls
 │   ├── magma.rs    the Magma panel: display and dots, filter controls, sources and slots (drag & drop)
+│   ├── pops.rs     the Pops 66 panel: MACHINE, MIXER and EDITOR detail levels (the node resizes)
 │   ├── widgets.rs  hand-drawn knobs, faders, meters, ports and cables
 │   ├── monitor.rs  bottom panel: oscilloscope and spectrum (FFT)
 │   ├── tempo.rs    the toolbar's tempo: BPM field (drag or type), beat light, tap tempo
@@ -526,7 +564,8 @@ sideways drift.
 To add a new module: a file in `audio/modules/` with its `ModuleDef` (knobs, ports, modes, toggle) and a
 `Processor`, an entry in `ModuleKind` and, in `ui/modules.rs`, the readout and the display.
 The panel (ports, selector, knobs) is generated from the definition; Frakture, too large for the generic
-panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`) and Magma (`ui/magma.rs`). Its hexagon runs on the audio thread, block by block: the panel
+panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`), Magma (`ui/magma.rs`) and Pops 66
+(`ui/pops.rs`, whose size follows its detail level through `modules::size_of`). Frakture's hexagon runs on the audio thread, block by block: the panel
 hands it the mouse through the module's display values, so paths keep time even when the window doesn't
 redraw.
 

@@ -12,6 +12,7 @@ pub mod monitor;
 pub mod nodes;
 pub mod palette;
 pub mod plugin_node;
+pub mod pops;
 pub mod tempo;
 pub mod theme;
 pub mod widgets;
