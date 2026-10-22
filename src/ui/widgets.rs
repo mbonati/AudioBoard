@@ -84,10 +84,10 @@ pub fn hmeter(p: &Painter, rect: Rect, m: &MeterState, z: f32) {
 // Knob
 // ---------------------------------------------------------------------------
 
-const KNOB_START: f32 = 0.75 * std::f32::consts::PI;
-const KNOB_SWEEP: f32 = 1.5 * std::f32::consts::PI;
+pub(super) const KNOB_START: f32 = 0.75 * std::f32::consts::PI;
+pub(super) const KNOB_SWEEP: f32 = 1.5 * std::f32::consts::PI;
 
-fn arc(c: Pos2, r: f32, a0: f32, a1: f32) -> Vec<Pos2> {
+pub(super) fn arc(c: Pos2, r: f32, a0: f32, a1: f32) -> Vec<Pos2> {
     // About one segment per 4 px of arc: smooth, with few vertices.
     let n = (((a1 - a0).abs() * r) / 4.0).ceil().max(2.0) as usize;
     (0..=n)

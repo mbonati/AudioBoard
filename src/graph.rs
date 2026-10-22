@@ -64,12 +64,17 @@ impl NodeType {
         ),
         (
             "Texture",
-            &[NodeType::Module(ModuleKind::Granular), NodeType::Module(ModuleKind::Resonator)],
+            &[
+                NodeType::Module(ModuleKind::Granular),
+                NodeType::Module(ModuleKind::Frakture),
+                NodeType::Module(ModuleKind::Resonator),
+            ],
         ),
         (
             "Effects",
             &[
                 NodeType::Module(ModuleKind::Filter),
+                NodeType::Module(ModuleKind::Equalizer),
                 NodeType::Module(ModuleKind::Delay),
                 NodeType::Module(ModuleKind::PingPong),
                 NodeType::Module(ModuleKind::Reverb),

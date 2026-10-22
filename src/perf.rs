@@ -430,3 +430,29 @@ fn perf_plugin_calls() {
         }
     }
 }
+
+/// The Equalizer with everything working: six dynamic bands, HP and LP.
+#[test]
+#[ignore]
+fn perf_equalizer_busy() {
+    use crate::audio::modules::equalizer::{self, BANDS, band, bp, data};
+    let (mut g, a, mut e) = setup();
+    let src = g.add_osc(pos2(0.0, 0.0), &a);
+    let m = g.add_module(ModuleKind::Equalizer, pos2(0.0, 0.0), &a);
+    let mix = g.add_mixer(pos2(0.0, 0.0), &a);
+    g.connect(port(src, 0), port(m, 0), &a);
+    g.connect(port(m, 0), port(mix, 0), &a);
+    if let NodeKind::Module(node) = &g.node(m).unwrap().kind {
+        let p = &node.params;
+        for b in 0..BANDS {
+            p.set(bp(b, band::GAIN), 3.0);
+            p.set(bp(b, band::RANGE), -6.0);
+            p.set(bp(b, band::THRESHOLD), -30.0);
+        }
+        p.data[data::BAND_MODE + 2].set(equalizer::MID as f32);
+        p.data[data::HP_ON].set(1.0);
+        p.data[data::LP_ON].set(1.0);
+        p.data[data::HP_SLOPE].set(3.0);
+    }
+    report("Equalizer, all bands dynamic", load(&mut e, 4.0));
+}

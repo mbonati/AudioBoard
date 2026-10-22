@@ -46,13 +46,13 @@ pub static DEF: ModuleDef = ModuleDef {
     viz: 0,
 };
 
-const LINES: usize = 8;
+pub(crate) const LINES: usize = 8;
 /// Line lengths at full size, in milliseconds (roughly co-prime).
-const LINE_MS: [f32; LINES] = [61.3, 73.7, 89.1, 101.9, 117.1, 131.7, 149.3, 167.9];
+pub(crate) const LINE_MS: [f32; LINES] = [61.3, 73.7, 89.1, 101.9, 117.1, 131.7, 149.3, 167.9];
 /// Input diffusers: (length ms, gain), applied in series to each channel.
-const DIFFUSERS: [(f32, f32); 4] = [(4.77, 0.75), (3.59, 0.75), (12.73, 0.625), (9.31, 0.625)];
+pub(crate) const DIFFUSERS: [(f32, f32); 4] = [(4.77, 0.75), (3.59, 0.75), (12.73, 0.625), (9.31, 0.625)];
 /// Line modulation rates in Hz.
-const MOD_HZ: [f32; LINES] = [0.11, 0.17, 0.23, 0.29, 0.37, 0.43, 0.53, 0.61];
+pub(crate) const MOD_HZ: [f32; LINES] = [0.11, 0.17, 0.23, 0.29, 0.37, 0.43, 0.53, 0.61];
 
 /// Length scale for the SIZE knob: small room to large hall.
 fn size_scale(size: f32) -> f32 {
@@ -60,7 +60,7 @@ fn size_scale(size: f32) -> f32 {
 }
 
 /// Schroeder all-pass on a delay line of `d` samples.
-fn allpass(line: &mut DelayLine, d: usize, g: f32, x: f32) -> f32 {
+pub(crate) fn allpass(line: &mut DelayLine, d: usize, g: f32, x: f32) -> f32 {
     let z = line.tap_at(d - 1);
     let w = x + g * z;
     line.push(w);
@@ -68,7 +68,7 @@ fn allpass(line: &mut DelayLine, d: usize, g: f32, x: f32) -> f32 {
 }
 
 /// In-place fast Walsh–Hadamard transform, normalised (orthogonal).
-fn hadamard(v: &mut [f32; LINES]) {
+pub(crate) fn hadamard(v: &mut [f32; LINES]) {
     let mut h = 1;
     while h < LINES {
         for i in (0..LINES).step_by(h * 2) {

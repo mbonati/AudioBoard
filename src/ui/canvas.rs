@@ -1296,8 +1296,10 @@ impl Editor {
                 }
                 Action::Request(r) => self.requests.push(r),
                 Action::Remove(id) => {
-                    graph.remove_node(id, audio);
-                    self.selected.remove(&id);
+                    if confirm_removal(graph, &[id]) {
+                        graph.remove_node(id, audio);
+                        self.selected.remove(&id);
+                    }
                 }
                 Action::Connect { from, to } => {
                     graph.connect(from, to, audio);
@@ -1331,10 +1333,13 @@ impl Editor {
                 Action::ZoomActual => self.zoom_actual(self.now),
                 Action::ToggleAutoFit => self.set_auto_fit(!self.auto_fit, graph, self.now),
                 Action::RemoveSelection => {
-                    for id in self.ordered_selection(graph) {
-                        graph.remove_node(id, audio);
+                    let ids = self.ordered_selection(graph);
+                    if confirm_removal(graph, &ids) {
+                        for id in ids {
+                            graph.remove_node(id, audio);
+                        }
+                        self.selected.clear();
                     }
-                    self.selected.clear();
                 }
                 Action::DuplicateSelection => {
                     let ids = self.ordered_selection(graph);
@@ -1609,6 +1614,30 @@ fn canvas_menu(
     if menu_item(ui, "Expand all", "Shift+C") {
         actions.push(Action::CollapseAll(false));
         ui.close();
+    }
+}
+
+/// Asks before deleting nodes, which can't be undone: "Delete “FILTER 1”?"
+/// in a native dialog (Enter deletes, Esc cancels).
+fn confirm_removal(graph: &Graph, ids: &[NodeId]) -> bool {
+    let names: Vec<&str> = ids.iter().filter_map(|&id| graph.node(id).map(|n| n.title.as_str())).collect();
+    let what = match names.as_slice() {
+        [] => return false,
+        [one] => format!("“{one}”"),
+        many if many.len() <= 4 => format!("{} nodes ({})", many.len(), many.join(", ")),
+        many => format!("{} nodes ({}, …)", many.len(), many[..4].join(", ")),
+    };
+    let lost = if names.len() == 1 { "Its settings and cables" } else { "Their settings and cables" };
+    let answer = rfd::MessageDialog::new()
+        .set_level(rfd::MessageLevel::Warning)
+        .set_title(if names.len() == 1 { "Delete node" } else { "Delete nodes" })
+        .set_description(format!("Delete {what}?\n{lost} will be lost: this can't be undone."))
+        .set_buttons(rfd::MessageButtons::OkCancelCustom("Delete".into(), "Cancel".into()))
+        .show();
+    match answer {
+        rfd::MessageDialogResult::Ok => true,
+        rfd::MessageDialogResult::Custom(label) => label == "Delete",
+        _ => false,
     }
 }
 

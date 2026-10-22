@@ -54,6 +54,53 @@ position and timing), SPRAY (random pitch), SPREAD (stereo), MIX. Direction FWD 
 **FREEZE** stops recording: the cloud keeps exploring the captured sound. The POS input moves the read
 position (e.g. with a Random or an LFO). The display shows the loop and the active grains.
 
+**Frakture**: a granular rhythm effect after Excite Audio's Motion: Fractal. Its panel has three pages.
+
+- **EFFECTS**: four effects in a chain. Drag their names in the ROUTING row to change the order.
+  - **Grains** records its input into a buffer locked to the tempo. BUFFER sets its length, from 1/4 to
+    4 bars. RETRIG starts it over when the transport starts; FREEZE stops recording. A LO–HI band filters
+    the grains. Two grain layers (1, 2, each with its own ON switch) play from the buffer:
+    - PLAYHEAD has five modes: MANual position, SCAN (moves through the buffer forwards or backwards),
+      and an offset behind the recording, as a note value (SYNC), in ms or in % (a granular delay).
+    - RANGE (spread around the playhead), DENSITY and SIZE (free, or note values with SYNC).
+    - CHAOS (randomizes width, direction and shape), DIRECTION (−100% reversed … +100% forwards).
+    - PITCH and SPREAD, snapped by the pitch mode: free, chromatic, octaves, fourths, fifths, 4ths & 5ths.
+    - WIDTH (how likely grains are panned out), SHAPE (from a percussive decay through a bell and a
+      trapezoid to a square gate), DRY and WET.
+  - **Gate** is a trance gate of up to 32 steps (click to switch them), with RATE, ATTACK, RELEASE and MIX.
+  - **Repeat** is a stutter. Once per TRIGGER (OFFSET into it) it takes a slice RATE long (a note value
+    with SYNC, else ms) and plays it AMOUNT more times. DUCK lowers the dry signal meanwhile; it has a
+    LO–HI band and a VOLUME.
+  - **Space** is a hall reverb with LENGTH and MIX.
+  - VIEW shows displays: the grains over the buffer (position across, pitch ±36 up and down) with both
+    layers' grain shapes, the gate's levels before and after, and the slice being repeated.
+- **HEXAGON**: six macro sliders around a centre, and IN, OUT, WET, the LIMIT safety limiter (never
+  above 0 dB) and THRU (off, nothing new comes in and the grains play out). BYPASS sits in the header.
+  - Mapping: right-click any effect knob to map it to slider 1…6, or to the input level (A,
+    audio-reactive with GAIN, ATTACK, RELEASE, THRESH). The list on the right gives each mapping a MIN and
+    a MAX (drag them), × to remove, + ADD and CLEAR. A mapped knob follows the hexagon and shows its
+    slider's number; click the number to see that slider's list.
+  - The mouse over the hexagon is a magnet. ATTRACT pulls the nodes along their sliders towards it,
+    REPEL pushes them away; SELECT lets you drag the nodes to set where each slider rests. It works
+    CONSTANTly, only while clicked (CLICK ON) or only while not clicked (CLICK OFF). The pixel blob in the
+    middle breathes with the output.
+- **MOTION**:
+  - Cursor: the magnet's RANGE and STRENGTH. A node the magnet lets go stays put for HOLD (∞ at the
+    top), then returns to its start over RELEASE.
+  - Path (DRAW): tools LINE, CIRCLE, SELECT (move points, drag a line's handle to bend it), ADD, REMOVE,
+    SCALE (corners resize, elsewhere moves) and MOUSE. MOUSE, or a right-click on a line, sets whether the
+    mouse counts as clicked along that line.
+  - Path (RECORD): ● REC, or R over the hexagon, records the mouse and its clicks (up to 30 s). START–END
+    and ✂ TRIM cut it.
+  - Timeline: ▶ plays the path, and the magnet follows it. The pass lasts TIME × MULTIPLY (note values
+    with TIME SYNC, else seconds), or FREE (the recording's own length). The cursor moves evenly
+    (TIMELINE) or at the recorded speed (RECORDED). Direction →, ← or ⇄ pendulum; LOOP; OFFSET into the
+    path. Retrigger: OFF, ON (starts over with the transport) or SYNC (locked to the transport).
+
+A new Frakture starts with a circular path and six mappings on grain layer 1 and the reverb: press ▶ PATH
+and it moves on its own. Its settings, paths and mappings are saved with the project. To keep one as a
+preset, group the node (Cmd+G) and save it to the library.
+
 **Resonator**: a bank of eight tuned resonant modes (String, Pipe, Bar, Bell) excited by its input.
 With noise or grains as input it gives physical, organic timbres. PITCH, DECAY, BRIGHT, SPREAD, P.MOD, MIX.
 
@@ -61,6 +108,38 @@ With noise or grains as input it gives physical, organic timbres. PITCH, DECAY, 
 
 **Filter**: stereo state-variable filter, LP / BP / HP / Notch. CUTOFF, RESO, DRIVE, MOD
 (depth of the CUT input in octaves, negative too). The display shows the frequency response.
+
+**Equalizer**: a dynamic EQ after Waves F6 Floating-Band Dynamic EQ, with zero latency.
+
+- **Bands.** Six floating bands sit between a high-pass and a low-pass filter. Each band is a low shelf,
+  bell or high shelf: FREQ 16 Hz–21 kHz, Q 0.4–60, GAIN ±18 dB. Each band and filter works on the
+  stereo signal (ST), the MID only or the SIDE only. HP and LP have their own frequency and a slope of
+  6, 12, 18 or 24 dB/octave.
+- **Dynamics.** When the level a band's side chain sees goes above THRESHOLD (−60…0 dB), the band's gain
+  moves by up to RANGE (±18 dB: negative compresses, positive expands), with ATTACK (0.5–500 ms) and
+  RELEASE (5 ms–5 s, longer the harder it works).
+  - The side chain is the node's own input (INT) or the **SC** input (EXT). SPLIT filters it around the
+    band; WIDE uses the full range. The ring around THRESHOLD shows its level.
+  - SOLO plays a band's side chain, or what HP/LP let through.
+  - GLOBAL RELEASE: MNL uses each band's own release; ARC shortens it on transients.
+  - The ▲▼ arrows under GAIN, RANGE, THRESHOLD, ATTACK and RELEASE move that control on every band at
+    once.
+- **Graph.** It shows each band's curve (live, with its dynamics, and dashed where RANGE can take it)
+  and the total curve.
+  - Drag a marker to set frequency and gain (HP/LP sideways only). Alt+drag sideways sets Q, Ctrl+drag
+    keeps to one axis. Cmd+click changes the band type; double-click turns it on or off.
+  - Right-click and hold a marker to solo it; moving the marker then solos other frequencies.
+  - The band selectors (HP, 1–6, LP) select a band too; double-click one to turn it on or off.
+- **MIX and OUT.** MIX (0–100) blends in the dry signal for parallel processing; OUT is ±18 dB, with an
+  output meter.
+- **Analyzer (RTA).** The toolbar above the graph sets:
+  - FILL or BARS, PEAK or RMS, PINK (equal energy per octave) or WHITE slope;
+  - banding from 1/24 octave to 1 octave, and averaging (fast to slowest);
+  - an MA (moving average) line and a MAX line;
+  - the source (L, R, L+R, sides) and the listening point (PRE, POST, SC or OFF);
+  - RTA on or off.
+
+  Hovering the graph shows the frequency, the note with its cents and the analyzer's level there.
 
 **Delay**: stereo tape echo up to 2 s. TIME (changes glide, like tape), FEEDBACK,
 TONE (darkens the repeats), WOW (wow & flutter), PING (ping-pong), MIX. **SYNC** locks the time to the
@@ -243,6 +322,7 @@ clipping it into crackles, and recovers over about 150 ms. While it works, the s
 | Move the view | two-finger scroll, drag with the right or middle button, or Alt+drag |
 | Zoom | pinch or Cmd+scroll; Cmd+= / Cmd+− / Cmd+0 (100%); or click the percentage in the status bar |
 | Move / delete / duplicate the selection | drag a selected node / Del / Cmd+D (inner cables are copied) |
+| Delete a node | the × in its header, Del, or right-click → Delete: AudioBoard asks first (Enter deletes, Esc cancels), since deleting can't be undone |
 | Make a module from the selection | Cmd+G, or right-click → Make module |
 | Rename a module | Enter or F2 with the module selected, or right-click → Rename… (Enter confirms, Esc cancels) |
 | Dissolve a module | Cmd+Shift+G, the × in the module's header, or right-click → Ungroup |
@@ -338,10 +418,14 @@ src/
 │   ├── engine.rs   audio-side graph: one pass per device buffer (built-ins in 64-frame stereo blocks,
 │   │               plugins in one call), per-block MIDI events, global clock in beats, precomputed
 │   │               topological order, lookahead limiter, denormals flushed to zero
-│   ├── fastmath.rs fast sine, exp2 and tanh for per-sample DSP (error < 1e-6)
+│   ├── fastmath.rs fast sine, exp2, log2 and tanh for per-sample DSP (error < 1e-6)
 │   ├── dsp.rs      Oscillator and Mixer
-│   ├── modules/    drone, random, granular, resonator, filter, delay, pingpong, reverb, midi_cc, midi_note,
-│   │               sequencer, arpeggiator, midi_in, midicer (after Vermona's meloDICER)
+│   ├── modules/    drone, random, granular, resonator, filter, equalizer (after Waves F6), delay, pingpong,
+│   │               reverb, midi_cc, midi_note, sequencer, arpeggiator, midi_in, midicer (after Vermona's
+│   │               meloDICER)
+│   │   ├── frakture.rs Frakture (after Excite Audio's Motion: Fractal): parameters, mappings, the chain
+│   │   ├── frakture/   grains (tempo-locked buffer, two layers), rhythm (gate, repeat), space (hall),
+│   │   │               motion (hexagon sliders, magnet, drawn/recorded paths, timeline)
 │   │   ├── steps.rs step grid on the global tempo, outgoing notes, held keys
 │   │   └── mod.rs  module descriptions (ModuleDef), generic parameters and DSP helpers
 │   ├── midi.rs     MIDI inputs (midir) and shared state read by the MIDI nodes
@@ -357,6 +441,8 @@ src/
 │   ├── plugin_node.rs panel of plugin nodes (editor, parameters, MIDI, knobs)
 │   ├── nodes.rs    layout and drawing of the oscillator and mixer, shared controls
 │   ├── modules.rs  common module panel and their displays
+│   ├── frakture.rs the Frakture node's panel: HEXAGON, EFFECTS and MOTION pages
+│   ├── equalizer.rs the Equalizer's panel: graph and band markers, analyzer (FFT), band controls
 │   ├── widgets.rs  hand-drawn knobs, faders, meters, ports and cables
 │   ├── monitor.rs  bottom panel: oscilloscope and spectrum (FFT)
 │   ├── tempo.rs    the toolbar's tempo: BPM field (drag or type), beat light, tap tempo
@@ -375,8 +461,9 @@ the audio thread has just finished and won't need the plugin for most of a buffe
 most ten times a second, and the plugin's state is read only when saving, so the audio thread is not kept
 waiting. Each buffer is processed as one pass: built-in nodes run through it in 64-frame blocks (so MIDI
 timing and modulation stay fine-grained), while a plugin gets the whole buffer in a single call with its
-MIDI events placed at their exact offsets, since every plugin call has a fixed cost. Removed nodes and old processing orders are handed back to the UI thread to be
-freed: freeing memory (a delay line is megabytes) inside the audio callback could stall it into a click.
+MIDI events placed at their exact offsets, since every plugin call has a fixed cost. Removed nodes and old
+processing orders are handed back to the UI thread to be freed: freeing memory (a delay line is megabytes)
+inside the audio callback could stall it into a click.
 
 **Performance.** Effects rest when they have gone quiet: with a silent input, once their own signal (echoes,
 tails) has stayed below −100 dB for as long as they can remember sound, they skip their work and output
@@ -391,7 +478,10 @@ sideways drift.
 
 To add a new module: a file in `audio/modules/` with its `ModuleDef` (knobs, ports, modes, toggle) and a
 `Processor`, an entry in `ModuleKind` and, in `ui/modules.rs`, the readout and the display.
-The panel (ports, selector, knobs) is generated from the definition.
+The panel (ports, selector, knobs) is generated from the definition; Frakture, too large for the generic
+panel, draws its own (`ui/frakture.rs`), and so does the Equalizer (`ui/equalizer.rs`). Its hexagon runs on the audio thread, block by block: the panel
+hands it the mouse through the module's display values, so paths keep time even when the window doesn't
+redraw.
 
 ## Tests
 

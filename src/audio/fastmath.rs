@@ -48,6 +48,24 @@ pub fn tanh(x: f32) -> f32 {
     1.0 - 2.0 / (exp2(x * 2.885_39) + 1.0)
 }
 
+/// log2(x) for x > 0 (tiny or non-positive x give about −100), absolute
+/// error below 1e-6: level detectors turn amplitudes into dB with it.
+#[inline]
+pub fn log2(x: f32) -> f32 {
+    let bits = x.max(1e-30).to_bits();
+    let mut e = ((bits >> 23) & 0xff) as i32 - 127;
+    // Mantissa in [1, 2), folded into [√½, √2) to keep the series short.
+    let mut m = f32::from_bits((bits & 0x007f_ffff) | 0x3f80_0000);
+    if m > std::f32::consts::SQRT_2 {
+        m *= 0.5;
+        e += 1;
+    }
+    let t = (m - 1.0) / (m + 1.0);
+    let t2 = t * t;
+    // 2·atanh(t) / ln 2.
+    e as f32 + t * (2.885_39 + t2 * (0.961_797 + t2 * (0.577_078 + t2 * 0.412_199)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -71,6 +89,9 @@ mod tests {
         let rel = worst(|x| (exp2(x) / x.exp2(), 1.0), -20.0, 20.0);
         assert!(rel < 4e-7, "exp2 {rel}");
         assert!(worst(|x| (tanh(x), x.tanh()), -12.0, 12.0) < 1e-6);
+        assert!(worst(|x| (log2(x), x.log2()), 1e-3, 1e3) < 1e-6);
+        assert_eq!(log2(1.0), 0.0);
+        assert!(log2(0.0) < -90.0);
         assert_eq!(tanh(40.0), 1.0);
         assert_eq!(exp2(0.0), 1.0);
         assert_eq!(sin_turns(0.0), 0.0);
