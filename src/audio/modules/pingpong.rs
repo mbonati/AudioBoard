@@ -9,7 +9,7 @@ use std::f32::consts::TAU;
 use std::sync::Arc;
 
 use super::delay::{MAX_SYNC_TIME, delay_seconds, seconds_per_beat};
-use super::{DelayLine, ModuleDef, ModuleParams, approach, mix_gains, soft_limit, time_coeff};
+use super::{DelayLine, ModuleDef, ModuleParams, approach, mix_gains, soft_limit, time_coeff, Quiet, silence};
 use crate::audio::engine::{Buf, Inputs, ProcessCtx, Processor};
 use crate::audio::fastmath;
 use crate::audio::params::{ParamSpec, SYNC_DIVISIONS, Unit};
@@ -63,6 +63,7 @@ pub fn loop_gain(feedback: f32) -> f32 {
 
 pub struct PingPong {
     params: Arc<ModuleParams>,
+    quiet: Quiet,
     sr: f32,
     lines: [DelayLine; 2],
     time: f32,
@@ -80,6 +81,7 @@ impl PingPong {
     pub fn new(params: Arc<ModuleParams>, sample_rate: f32) -> Self {
         let len = ((MAX_SYNC_TIME + 0.05) * sample_rate) as usize;
         Self {
+            quiet: Quiet::new(len),
             time: 0.0,
             mix: params.get(MIX),
             width: params.get(WIDTH),
@@ -109,6 +111,12 @@ impl Processor for PingPong {
         let width_t = p.get(WIDTH);
         let first = usize::from(p.mode() != LEFT_FIRST);
         let input = inputs.get(0);
+        let silent_in = Quiet::silent(input, n);
+        if silent_in && self.quiet.resting() {
+            // Gone quiet: nothing to compute until input returns.
+            silence(outputs, n);
+            return;
+        }
 
         let sr = self.sr;
         let lp_a = (TAU * 900.0 * fastmath::exp2(tone * 4.4) / sr).min(1.0);
@@ -119,6 +127,8 @@ impl Processor for PingPong {
         let max_d = (self.lines[0].len() - 4) as f32;
 
         let mut peak = 0.0f32;
+        // The effect's own signal, for resting.
+        let mut inner = 0.0f32;
         for i in 0..n {
             approach(&mut self.time, time_t, self.glide);
             approach(&mut self.mix, mix_t, ctx.smooth);
@@ -131,6 +141,7 @@ impl Processor for PingPong {
             };
             let mono = 0.5 * (in_l + in_r);
             let wet = [self.lines[0].tap(d - 1.0), self.lines[1].tap(d - 1.0)];
+            inner = inner.max(wet[0].abs()).max(wet[1].abs());
 
             // Each line feeds the other, darkened and without rumble.
             let mut ret = [0.0; 2];
@@ -163,6 +174,7 @@ impl Processor for PingPong {
             outputs[0][1][i] = yr;
             peak = peak.max(yl.abs()).max(yr.abs());
         }
+        self.quiet.update(silent_in, inner, n);
         p.meter.fetch_max(peak);
     }
 }

@@ -474,6 +474,16 @@ pub struct EngineShared {
     pub beat: AtomicF32,
     /// DSP load: time spent rendering / time available (0..1+).
     pub load: AtomicF32,
+    /// Highest load of one callback since the UI last looked.
+    pub peak_load: AtomicF32,
+    /// Callbacks that took longer than the audio they produced lasts: the
+    /// output ran dry, an audible dropout.
+    pub overloads: AtomicU32,
+    /// Frames in the last callback: the device's actual buffer size.
+    pub frames: AtomicU32,
+    /// Deepest gain reduction of the output limiter (dB, positive) since
+    /// the UI last looked.
+    pub limiting: AtomicF32,
     pub scope: Scope,
 }
 
@@ -485,6 +495,10 @@ impl EngineShared {
             tempo: AtomicF32::new(DEFAULT_TEMPO),
             beat: AtomicF32::new(0.0),
             load: AtomicF32::new(0.0),
+            peak_load: AtomicF32::new(0.0),
+            overloads: AtomicU32::new(0),
+            frames: AtomicU32::new(0),
+            limiting: AtomicF32::new(0.0),
             scope: Scope::new(),
         }
     }

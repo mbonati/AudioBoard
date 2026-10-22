@@ -135,8 +135,12 @@ impl Processor for Drone {
         // Eight incoherent voices: about the loudness of one oscillator.
         let norm = 1.5 / (VOICES as f32).sqrt();
         let inv_sr = 1.0 / self.sr;
-        // Sources sound only while the transport plays.
+        // Sources sound only while the transport plays; faded out, they rest.
         let run_t = if ctx.playing { 1.0 } else { 0.0 };
+        if !ctx.playing && self.run < 1e-6 {
+            super::silence(outputs, n);
+            return;
+        }
         let mut peak = 0.0f32;
         for i in 0..n {
             approach(&mut self.pitch, pitch_t, ctx.smooth);

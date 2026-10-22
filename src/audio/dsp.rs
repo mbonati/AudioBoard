@@ -145,8 +145,14 @@ impl Processor for Oscillator {
         let fm_in = inputs.cv(0);
         let am_in = inputs.cv(1);
         let sr = ctx.sample_rate;
-        // Sources sound only while the transport plays.
+        // Sources sound only while the transport plays; faded out, they rest.
         let run_t = if ctx.playing { 1.0 } else { 0.0 };
+        if !ctx.playing && self.run < 1e-6 {
+            for ch in outputs[0].iter_mut() {
+                ch[..n].fill(0.0);
+            }
+            return;
+        }
 
         let mut peak = 0.0f32;
         for i in 0..n {
