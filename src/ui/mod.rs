@@ -4,6 +4,7 @@ pub mod equalizer;
 pub mod frakture;
 pub mod groups;
 pub mod layout;
+pub mod magma;
 #[cfg(target_os = "macos")]
 pub mod macos;
 pub mod modules;

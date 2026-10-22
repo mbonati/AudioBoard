@@ -456,3 +456,31 @@ fn perf_equalizer_busy() {
     }
     report("Equalizer, all bands dynamic", load(&mut e, 4.0));
 }
+
+/// Magma with everything working: four filters (48 dB, styles), two
+/// XLFOs on their frequencies, then the same in High Quality.
+#[test]
+#[ignore]
+fn perf_magma_busy() {
+    use crate::audio::modules::magma::{self, FILTERS, data, filt, fp, modulation};
+    for hq in [false, true] {
+        let (mut g, a, mut e) = setup();
+        let src = g.add_osc(pos2(0.0, 0.0), &a);
+        let m = g.add_module(ModuleKind::Magma, pos2(0.0, 0.0), &a);
+        let mix = g.add_mixer(pos2(0.0, 0.0), &a);
+        g.connect(port(src, 0), port(m, 0), &a);
+        g.connect(port(m, 0), port(mix, 0), &a);
+        if let NodeKind::Module(node) = &g.node(m).unwrap().kind {
+            let p = &node.params;
+            for f in 0..FILTERS {
+                p.data[data::FILTER_ON + f].set(1.0);
+                p.data[data::SLOPE + f].set(3.0);
+                p.data[data::STYLE + f].set(f as f32);
+                magma::add_slot(p, modulation::SRC_XLFO + f % 2, fp(f, filt::FREQ));
+            }
+            p.data[data::ROUTING].set(3.0);
+            p.data[data::HQ].set(if hq { 1.0 } else { 0.0 });
+        }
+        report(if hq { "Magma, busy, High Quality" } else { "Magma, busy" }, load(&mut e, 4.0));
+    }
+}
