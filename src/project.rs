@@ -236,8 +236,8 @@ pub fn snapshot(graph: &Graph) -> Project {
 }
 
 /// The patch for telling whether it changed: cheap enough to run several
-/// times a second, since plugin states are re-read only when they may
-/// have changed (and at most every couple of seconds).
+/// times a second, since plugin states are not read (see
+/// `PluginNode::state_base64`; `Graph::plugins_edited` tells plugin edits).
 pub fn snapshot_cached(graph: &Graph) -> Project {
     snapshot_with(graph, false)
 }

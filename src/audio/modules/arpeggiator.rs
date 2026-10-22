@@ -51,6 +51,7 @@ pub static DEF: ModuleDef = ModuleDef {
     midi_out: true,
     data: &[],
     display_h: 42.0,
+    controls_h: 0.0,
     viz: viz::LEN,
 };
 
@@ -155,6 +156,12 @@ impl Processor for Arpeggiator {
     fn process(&mut self, ctx: &ProcessCtx, inputs: &Inputs, _outputs: &mut [Buf], n: usize) {
         self.out.clear();
         let p = self.params.clone();
+        if ctx.restart {
+            // Rewound: from the chord's first note again.
+            self.clock = StepClock::new();
+            self.voice.stop(&mut self.out, 0);
+            self.position = 0;
+        }
 
         // Switching between the cable and the keyboard drops held notes.
         if inputs.midi_connected != self.cable {
@@ -181,6 +188,12 @@ impl Processor for Arpeggiator {
             self.cursor = cursor;
         }
 
+        // Stopped: the chord is still followed, but nothing plays.
+        if !ctx.playing {
+            self.voice.stop(&mut self.out, 0);
+            publish_notes(&p, None, self.chord.notes());
+            return;
+        }
         let per_beat = steps_per_beat(p.get(RATE));
         let mut steps = [Step { frame: 0, beat: 0.0, index: 0 }; MAX_STEPS];
         let count = self.clock.steps(ctx, n, per_beat, p.get(SWING), &mut steps);

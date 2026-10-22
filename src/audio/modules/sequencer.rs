@@ -72,6 +72,7 @@ pub static DEF: ModuleDef = ModuleDef {
     midi_out: true,
     data: &DATA,
     display_h: 100.0,
+    controls_h: 0.0,
     viz: 2,
 };
 
@@ -127,8 +128,14 @@ impl Sequencer {
 impl Processor for Sequencer {
     fn process(&mut self, ctx: &ProcessCtx, _inputs: &Inputs, _outputs: &mut [Buf], n: usize) {
         self.out.clear();
+        if ctx.restart {
+            // Rewound: from step 1 again, ending the note held.
+            self.clock = StepClock::new();
+            self.voice.stop(&mut self.out, 0);
+        }
         let p = &self.params;
-        if !p.toggled() {
+        // Off, or the transport stopped: end the note held.
+        if !p.toggled() || !ctx.playing {
             self.voice.stop(&mut self.out, 0);
             p.viz[STEP].set(-1.0);
             p.viz[NOTE].set(-1.0);

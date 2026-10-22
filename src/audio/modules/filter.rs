@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use super::{ModuleDef, ModuleParams, approach, soft_limit};
+use super::{ModuleDef, ModuleParams, approach, soft_limit, Quiet, silence};
 use crate::audio::dsp::drive;
 use crate::audio::engine::{Buf, Inputs, ProcessCtx, Processor};
 use crate::audio::fastmath;
@@ -43,6 +43,7 @@ pub static DEF: ModuleDef = ModuleDef {
     midi_out: false,
     data: &[],
     display_h: 42.0,
+    controls_h: 0.0,
     viz: 0,
 };
 
@@ -57,6 +58,7 @@ pub struct Filter {
     cutoff: f32,
     ic1: [f32; 2],
     ic2: [f32; 2],
+    quiet: Quiet,
 }
 
 impl Filter {
@@ -67,6 +69,7 @@ impl Filter {
             sr: sample_rate,
             ic1: [0.0; 2],
             ic2: [0.0; 2],
+            quiet: Quiet::new(0),
         }
     }
 }
@@ -88,6 +91,12 @@ impl Processor for Filter {
             self.ic2 = [0.0; 2];
             return;
         };
+        let silent_in = Quiet::silent(Some(input), n);
+        if silent_in && self.quiet.resting() {
+            // Gone quiet: nothing to compute until input returns.
+            silence(outputs, n);
+            return;
+        }
 
         let max_fc = self.sr * 0.45;
         let mut peak = 0.0f32;
@@ -125,6 +134,7 @@ impl Processor for Filter {
                 peak = peak.max(y.abs());
             }
         }
+        self.quiet.update(silent_in, peak, n);
         p.meter.fetch_max(peak);
     }
 }

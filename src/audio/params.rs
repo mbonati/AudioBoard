@@ -61,6 +61,55 @@ pub enum Unit {
     Division,
     /// Pitch class, 0 = C.
     NoteName,
+    /// MIDI note number ("C4" = 60).
+    Note,
+    /// Index into [`NOTE_VALUES`].
+    NoteValue,
+    /// Index into [`SYNC_DIVISIONS`].
+    Sync,
+}
+
+/// Note values a tempo-synced time can take, shortest first: (label,
+/// beats). "D" is dotted, "T" triplet.
+pub const SYNC_DIVISIONS: [(&str, f64); 14] = [
+    ("1/32", 0.125),
+    ("1/16T", 1.0 / 6.0),
+    ("1/16", 0.25),
+    ("1/8T", 1.0 / 3.0),
+    ("1/16D", 0.375),
+    ("1/8", 0.5),
+    ("1/4T", 2.0 / 3.0),
+    ("1/8D", 0.75),
+    ("1/4", 1.0),
+    ("1/2T", 4.0 / 3.0),
+    ("1/4D", 1.5),
+    ("1/2", 2.0),
+    ("1/2D", 3.0),
+    ("1/1", 4.0),
+];
+
+/// The note value a DIV knob points at.
+pub fn sync_division(v: f32) -> (&'static str, f64) {
+    SYNC_DIVISIONS[(v.round().max(0.0) as usize).min(SYNC_DIVISIONS.len() - 1)]
+}
+
+/// Note values for rhythm generators, longest first: (label, beats,
+/// triplet, thirty-second).
+pub const NOTE_VALUES: [(&str, f64, bool, bool); 9] = [
+    ("1/1", 4.0, false, false),
+    ("1/2", 2.0, false, false),
+    ("1/4", 1.0, false, false),
+    ("1/4T", 2.0 / 3.0, true, false),
+    ("1/8", 0.5, false, false),
+    ("1/8T", 1.0 / 3.0, true, false),
+    ("1/16", 0.25, false, false),
+    ("1/16T", 1.0 / 6.0, true, false),
+    ("1/32", 0.125, false, true),
+];
+
+/// "C4" for MIDI note 60.
+pub fn note_label(note: i32) -> String {
+    format!("{}{}", NOTE_NAMES[note.rem_euclid(12) as usize], note.div_euclid(12) - 1)
 }
 
 /// Note lengths for sequencers: (label, steps per beat).
@@ -139,6 +188,9 @@ impl ParamSpec {
             (Unit::Channel, _) => format!("Ch {:.0}", v.round()),
             (Unit::Division, _) => DIVISIONS[(v.round() as usize).min(DIVISIONS.len() - 1)].0.to_owned(),
             (Unit::NoteName, _) => NOTE_NAMES[(v.round() as usize) % 12].to_owned(),
+            (Unit::Note, _) => note_label(v.round() as i32),
+            (Unit::Sync, _) => sync_division(v).0.to_owned(),
+            (Unit::NoteValue, _) => NOTE_VALUES[(v.round().max(0.0) as usize).min(NOTE_VALUES.len() - 1)].0.to_owned(),
         }
     }
 }
@@ -410,13 +462,28 @@ pub const DEFAULT_TEMPO: f32 = 90.0;
 pub const TEMPO_RANGE: (f32, f32) = (20.0, 300.0);
 
 pub struct EngineShared {
+    /// The transport is playing: sources sound and sequencers run. Stopped,
+    /// the engine keeps running, so effects and instruments ring out.
     pub running: AtomicBool,
+    /// Bumped by Stop: the transport goes back to beat 0, and sequencers
+    /// start over on the next Start.
+    pub rewinds: AtomicU32,
     /// Transport tempo in BPM, shared by sequencers and arpeggiators.
     pub tempo: AtomicF32,
     /// Transport position in beats (wrapped), for the UI's beat light.
     pub beat: AtomicF32,
     /// DSP load: time spent rendering / time available (0..1+).
     pub load: AtomicF32,
+    /// Highest load of one callback since the UI last looked.
+    pub peak_load: AtomicF32,
+    /// Callbacks that took longer than the audio they produced lasts: the
+    /// output ran dry, an audible dropout.
+    pub overloads: AtomicU32,
+    /// Frames in the last callback: the device's actual buffer size.
+    pub frames: AtomicU32,
+    /// Deepest gain reduction of the output limiter (dB, positive) since
+    /// the UI last looked.
+    pub limiting: AtomicF32,
     pub scope: Scope,
 }
 
@@ -424,9 +491,14 @@ impl EngineShared {
     pub fn new() -> Self {
         Self {
             running: AtomicBool::new(true),
+            rewinds: AtomicU32::new(0),
             tempo: AtomicF32::new(DEFAULT_TEMPO),
             beat: AtomicF32::new(0.0),
             load: AtomicF32::new(0.0),
+            peak_load: AtomicF32::new(0.0),
+            overloads: AtomicU32::new(0),
+            frames: AtomicU32::new(0),
+            limiting: AtomicF32::new(0.0),
             scope: Scope::new(),
         }
     }

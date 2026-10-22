@@ -12,10 +12,11 @@ use super::canvas::{Editor, Request, menu_item};
 use super::monitor::Monitor;
 use super::palette::{self, Palette, PluginEntry, Spawn};
 use super::plugin_node;
+use super::tempo::TempoControl;
 use super::theme::{self, alpha};
-use crate::audio::engine::{BLOCK, NodeId};
+use crate::audio::engine::NodeId;
 use crate::audio::modules::{ModuleKind, ModuleParams, delay, drone, filter, granular, random, reverb};
-use crate::audio::params::{DEFAULT_TEMPO, EngineShared, TEMPO_RANGE, Waveform};
+use crate::audio::params::{EngineShared, Waveform};
 use crate::audio::midi::MidiInputs;
 use crate::audio::{self, AudioHandle};
 use crate::graph::{Graph, NodeKind, PortRef};
@@ -49,7 +50,9 @@ const SHORTCUTS: &[(&str, &str)] = &[
     ("F / Shift+F", "Fit all / fit selection"),
     ("A", "Auto-fit: keep the patch in view"),
     ("Cmd+= / Cmd+− / Cmd+0", "Zoom in / out / 100%"),
-    ("Space", "Audio on / off"),
+    ("Space", "Start / stop (stop goes back to the start)"),
+    ("T", "Tap tempo (on each beat)"),
+    ("Click BPM", "Type the tempo (drag to change it)"),
 ];
 
 /// The open project: where it lives and what was last saved.
@@ -114,20 +117,33 @@ pub struct AudioBoardApp {
     doc: Document,
     library: Library,
     /// Category and maker of plugins loaded before, by bundle path.
-    plugin_catalog: BTreeMap<String, String>,
+    plugin_catalog: BTreeMap<String, PluginInfo>,
     toast: Option<Toast>,
     window_title: String,
     midi: MidiInputs,
     midi_scanned: f64,
     /// MIDI messages seen so far, and when the count last moved.
     midi_events: (u32, f64),
+    tempo: TempoControl,
+    settings: AppSettings,
+    /// The highest DSP load shown, and since when.
+    peak_load: (f32, f64),
+    /// Dropouts seen so far, and when the last one happened.
+    overloads: (u32, f64),
+    /// The output limiter's deepest reduction shown (dB), and since when.
+    limiting: (f32, f64),
+    #[cfg(target_os = "macos")]
+    window: Option<super::macos::NativeWindow>,
 }
 
 impl AudioBoardApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         theme::apply(&cc.egui_ctx);
         let shared = Arc::new(EngineShared::new());
-        let audio = audio::start(shared.clone());
+        // The patch waits for Start.
+        shared.running.store(false, Ordering::Relaxed);
+        let settings = load_settings();
+        let audio = audio::start(shared.clone(), settings.buffer_size);
         let mut graph = Graph::default();
         demo_patch(&mut graph, &audio);
         let library = Library::open(
@@ -156,6 +172,13 @@ impl AudioBoardApp {
             midi: MidiInputs::new(),
             midi_scanned: f64::NEG_INFINITY,
             midi_events: (0, f64::NEG_INFINITY),
+            tempo: TempoControl::default(),
+            settings,
+            peak_load: (0.0, f64::NEG_INFINITY),
+            overloads: (0, f64::NEG_INFINITY),
+            limiting: (0.0, f64::NEG_INFINITY),
+            #[cfg(target_os = "macos")]
+            window: super::macos::NativeWindow::new(cc),
         }
     }
 
@@ -163,7 +186,12 @@ impl AudioBoardApp {
         self.shared.running.load(Ordering::Relaxed)
     }
 
+    /// Start plays from the top; Stop silences everything and rewinds the
+    /// transport, so sequencers start over on the next Start.
     fn toggle_running(&self) {
+        if self.running() {
+            self.shared.rewinds.fetch_add(1, Ordering::Relaxed);
+        }
         self.shared.running.fetch_xor(true, Ordering::Relaxed);
     }
 
@@ -181,7 +209,7 @@ impl AudioBoardApp {
     /// document), rather than reuse a recent copy (the periodic check).
     fn refresh_dirty(&mut self, fresh: bool) {
         let now = if fresh { project::snapshot(&self.graph) } else { project::snapshot_cached(&self.graph) };
-        self.doc.dirty = now != self.doc.saved;
+        self.doc.dirty = now != self.doc.saved || self.graph.plugins_edited();
     }
 
     /// Where file dialogs start: next to the open project, else Documents.
@@ -449,7 +477,10 @@ impl AudioBoardApp {
             if let NodeKind::Plugin(p) = &n.kind {
                 let key = p.meta.path.to_string_lossy().into_owned();
                 if let std::collections::btree_map::Entry::Vacant(slot) = self.plugin_catalog.entry(key) {
-                    slot.insert(format!("{} · {}", plugin_node::category_label(&p.meta.category), p.meta.vendor));
+                    slot.insert(PluginInfo {
+                        category: plugin_node::category_label(&p.meta.category),
+                        vendor: p.meta.vendor.clone(),
+                    });
                     changed = true;
                 }
             }
@@ -494,12 +525,20 @@ impl AudioBoardApp {
 
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
-                if power_button(ui, self.running()).on_hover_text("Space").clicked() {
+                if transport_button(ui, self.running()).clicked() {
                     self.toggle_running();
                 }
                 ui.add_space(6.0);
                 let beat = self.running().then(|| self.shared.beat.get());
-                tempo_field(ui, &mut self.graph.tempo, beat);
+                let on_tempo = self.tempo.show(ui, &mut self.graph.tempo, beat, now);
+                // Dragging the BPM (or selecting typed text) must not drag
+                // the window: the toolbar is also the title bar.
+                #[cfg(target_os = "macos")]
+                if let Some(w) = &self.window {
+                    w.set_movable(!on_tempo);
+                }
+                #[cfg(not(target_os = "macos"))]
+                let _ = on_tempo;
                 ui.add_space(8.0);
                 if icon_button(ui, Icon::Monitor, self.show_monitor)
                     .on_hover_text(if self.show_monitor { "Hide analyzers" } else { "Show analyzers" })
@@ -623,23 +662,96 @@ impl AudioBoardApp {
                     self.graph.nodes.len(),
                     self.graph.cables.len()
                 )));
-                let info = &self.audio.info;
-                ui.label(item(format!(
-                    "{:.1} kHz · {} ch · {BLOCK} smp",
-                    info.sample_rate as f32 / 1000.0,
-                    info.channels
-                )));
-                let load = self.shared.load.get();
-                let load_col = if load > 0.7 {
-                    theme::METER_RED
-                } else if load > 0.4 {
-                    theme::METER_YELLOW
-                } else {
-                    theme::TEXT_DIM
-                };
-                ui.label(item(format!("DSP {:>4.1}%", load * 100.0)).color(load_col));
+                self.audio_status(ui, now, &item);
             });
         });
+    }
+}
+
+impl AudioBoardApp {
+    /// Status bar, right to left: buffer size and latency (click to
+    /// change), sample rate, DSP load with its recent peak, and dropouts.
+    fn audio_status(&mut self, ui: &mut Ui, now: f64, item: &dyn Fn(String) -> RichText) {
+        let info = &self.audio.info;
+        let sr = info.sample_rate as f32;
+        let ms = |frames: u32| frames as f32 / sr * 1000.0;
+        let frames = self.shared.frames.load(Ordering::Relaxed);
+        let buffer = ui
+            .add(egui::Label::new(item(format!("{frames} smp · {:.1} ms", ms(frames)))).sense(Sense::click()))
+            .on_hover_cursor(CursorIcon::PointingHand)
+            .on_hover_text("Audio buffer: larger gives heavy patches and plugins more headroom\n(fewer clicks), smaller gives less latency. Click to change.");
+        let range = info.buffer_range;
+        let current = info.buffer_size;
+        let picked = egui::Popup::menu(&buffer)
+            .show(|ui| {
+                ui.label(RichText::new("Buffer size").size(10.0).color(theme::TEXT_FAINT));
+                let mut picked = None;
+                let mut option = |ui: &mut Ui, size: Option<u32>, label: String| {
+                    let mark = if size == current { "●  " } else { "    " };
+                    if ui.button(RichText::new(format!("{mark}{label}")).size(11.5)).clicked() {
+                        picked = Some(size);
+                        ui.close();
+                    }
+                };
+                option(ui, None, "Device default".to_owned());
+                for size in BUFFER_SIZES {
+                    if range.is_none_or(|(lo, hi)| (lo..=hi).contains(&size)) {
+                        option(ui, Some(size), format!("{size} samples · {:.1} ms", ms(size)));
+                    }
+                }
+                picked
+            })
+            .and_then(|r| r.inner);
+        if let Some(size) = picked {
+            match self.audio.set_buffer_size(size) {
+                Ok(()) => self.notify(now, "Audio buffer changed", false),
+                Err(e) => self.notify(now, format!("Could not use that buffer size: {e}"), true),
+            }
+            self.settings.buffer_size = self.audio.info.buffer_size;
+            save_settings(&self.settings);
+        }
+        let info = &self.audio.info;
+        ui.label(item(format!("{:.1} kHz · {} ch", info.sample_rate as f32 / 1000.0, info.channels)));
+
+        // Load: the average, and the worst callback of the last two seconds.
+        let peak = self.shared.peak_load.take();
+        if peak >= self.peak_load.0 || now - self.peak_load.1 > 2.0 {
+            self.peak_load = (peak, now);
+        }
+        let load = self.shared.load.get();
+        let color = |l: f32| {
+            if l > 0.85 {
+                theme::METER_RED
+            } else if l > 0.5 {
+                theme::METER_YELLOW
+            } else {
+                theme::TEXT_DIM
+            }
+        };
+        ui.label(item(format!("peak {:>3.0}%", self.peak_load.0 * 100.0)).color(color(self.peak_load.0)))
+            .on_hover_text("The heaviest audio callback of the last seconds: near 100% the audio drops out");
+        ui.label(item(format!("DSP {:>4.1}%", load * 100.0)).color(color(load)));
+
+        // The output limiter, while it works.
+        let reduction = self.shared.limiting.take();
+        if reduction >= self.limiting.0 || now - self.limiting.1 > 2.0 {
+            self.limiting = (reduction, now);
+        }
+        if self.limiting.0 > 0.1 {
+            ui.label(item(format!("limit −{:.1} dB", self.limiting.0)).color(theme::METER_YELLOW)).on_hover_text(
+                "The output is louder than full scale, so the limiter turns it down\n(instead of clipping): lower the master or the plugins",
+            );
+        }
+
+        // Dropouts: shown for a while after each one.
+        let total = self.shared.overloads.load(Ordering::Relaxed);
+        if total != self.overloads.0 {
+            self.overloads = (total, now);
+        }
+        if total > 0 && now - self.overloads.1 < 10.0 {
+            ui.label(item(format!("{total} dropout{}", if total == 1 { "" } else { "s" })).color(theme::METER_RED))
+                .on_hover_text("The audio could not keep up: try a larger buffer size");
+        }
     }
 }
 
@@ -656,8 +768,13 @@ impl eframe::App for AudioBoardApp {
         for node in &mut self.graph.nodes {
             node.update_meters(dt);
         }
-        if ui.input(|i| i.key_pressed(Key::Space)) && ui.memory(|m| m.focused().is_none()) {
-            self.toggle_running();
+        if ui.memory(|m| m.focused().is_none()) {
+            if ui.input(|i| i.key_pressed(Key::Space)) {
+                self.toggle_running();
+            }
+            if ui.input(|i| i.key_pressed(Key::T) && !i.modifiers.any()) {
+                self.tempo.tap(&mut self.graph.tempo, now);
+            }
         }
 
         let bar_frame = |margin: Margin| Frame::NONE.fill(theme::PANEL).inner_margin(margin);
@@ -700,6 +817,7 @@ impl eframe::App for AudioBoardApp {
             self.handle_request(request, now);
         }
         self.graph.service_plugins(now);
+        self.audio.collect_garbage();
         self.remember_plugins();
         self.track_document(ui, now);
 
@@ -943,73 +1061,37 @@ fn icon_button(ui: &mut Ui, icon: Icon, active: bool) -> Response {
     resp.on_hover_cursor(CursorIcon::PointingHand)
 }
 
-fn power_button(ui: &mut Ui, on: bool) -> Response {
-    let (rect, resp) = ui.allocate_exact_size(vec2(80.0, 24.0), Sense::CLICK);
+/// Start / Stop: a play triangle while stopped; while playing, a stop
+/// square on green.
+fn transport_button(ui: &mut Ui, playing: bool) -> Response {
+    let (rect, resp) = ui.allocate_exact_size(vec2(74.0, 24.0), Sense::CLICK);
     let p = ui.painter();
-    let (fill, border, dot, text) = if on {
-        (alpha(theme::METER_GREEN, 0.10), alpha(theme::METER_GREEN, 0.45), theme::METER_GREEN, theme::TEXT)
+    let hot = resp.hovered();
+    let (fill, border) = if playing {
+        (alpha(theme::METER_GREEN, if hot { 0.18 } else { 0.10 }), alpha(theme::METER_GREEN, 0.45))
     } else {
-        (Color32::TRANSPARENT, theme::NODE_BORDER, theme::TEXT_FAINT, theme::TEXT_DIM)
+        (if hot { theme::CONTROL } else { Color32::TRANSPARENT }, theme::NODE_BORDER)
     };
-    let fill = if resp.hovered() && !on { theme::CONTROL } else { fill };
     p.rect(rect, 12.0, fill, Stroke::new(1.0, border), StrokeKind::Inside);
-    p.circle_filled(pos2(rect.left() + 13.0, rect.center().y), 3.0, dot);
+    let c = pos2(rect.left() + 15.0, rect.center().y);
+    if playing {
+        p.rect_filled(Rect::from_center_size(c, vec2(7.0, 7.0)), 1.5, theme::METER_GREEN);
+    } else {
+        let triangle = vec![c + vec2(-3.0, -4.5), c + vec2(4.5, 0.0), c + vec2(-3.0, 4.5)];
+        p.add(Shape::convex_polygon(triangle, theme::METER_GREEN, Stroke::NONE));
+    }
     p.text(
-        pos2(rect.left() + 23.0, rect.center().y),
+        pos2(rect.left() + 26.0, rect.center().y),
         Align2::LEFT_CENTER,
-        if on { "Audio on" } else { "Audio off" },
+        if playing { "Stop" } else { "Start" },
         FontId::proportional(11.5),
-        text,
+        theme::TEXT,
     );
-    resp.on_hover_cursor(CursorIcon::PointingHand)
-}
-
-/// The global tempo: drag to change it (Shift: fine), double-click for the
-/// default. The light flashes on every beat while audio runs.
-fn tempo_field(ui: &mut Ui, tempo: &mut f32, beat: Option<f32>) -> Response {
-    let (rect, resp) = ui.allocate_exact_size(vec2(84.0, 24.0), Sense::CLICK | Sense::DRAG);
-    let resp = resp
-        .on_hover_cursor(CursorIcon::ResizeVertical)
-        .on_hover_text("Tempo for sequencers, arpeggiators and synced plugins\nDrag to change · Shift: fine · double-click: reset");
-    if resp.dragged() {
-        let fine = ui.input(|i| i.modifiers.shift);
-        let d = resp.drag_delta();
-        let step = if fine { 0.05 } else { 0.4 };
-        let (slowest, fastest) = TEMPO_RANGE;
-        *tempo = (*tempo + (d.x - d.y) * step).clamp(slowest, fastest);
-    }
-    if resp.double_clicked() {
-        *tempo = DEFAULT_TEMPO;
-    }
-    if !resp.dragged() {
-        *tempo = (*tempo * 10.0).round() / 10.0;
-    }
-    let p = ui.painter();
-    let hot = resp.hovered() || resp.dragged();
-    p.rect(
-        rect,
-        12.0,
-        if hot { theme::CONTROL } else { Color32::TRANSPARENT },
-        Stroke::new(1.0, theme::NODE_BORDER),
-        StrokeKind::Inside,
-    );
-    // Bright on the beat, fading over it.
-    let flash = beat.map_or(0.0, |b| (1.0 - b.fract() * 4.0).max(0.0));
-    let dot = theme::mix(theme::TEXT_FAINT, theme::ACCENT, flash);
-    p.circle_filled(pos2(rect.left() + 13.0, rect.center().y), 3.0, dot);
-    let text = if tempo.fract() == 0.0 { format!("{tempo:.0}") } else { format!("{tempo:.1}") };
-    let galley = p.layout_no_wrap(text, FontId::monospace(11.5), theme::TEXT);
-    let x = rect.left() + 23.0;
-    let w = galley.size().x;
-    p.galley(pos2(x, rect.center().y - galley.size().y * 0.5), galley, theme::TEXT);
-    p.text(
-        pos2(x + w + 4.0, rect.center().y + 0.5),
-        Align2::LEFT_CENTER,
-        "BPM",
-        FontId::proportional(9.5),
-        theme::TEXT_FAINT,
-    );
-    resp
+    resp.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(if playing {
+        "Stop, and go back to the start (Space)"
+    } else {
+        "Play from the start (Space)"
+    })
 }
 
 fn shortcuts(ui: &mut Ui) {
@@ -1046,14 +1128,67 @@ fn catalog_path() -> Option<PathBuf> {
     project::data_dir().map(|d| d.join("plugins.json"))
 }
 
-fn load_catalog() -> BTreeMap<String, String> {
-    catalog_path()
+/// Preferences kept between launches.
+#[derive(serde::Serialize, serde::Deserialize, Default, Clone, Debug, PartialEq)]
+struct AppSettings {
+    /// Audio buffer size in frames (None: the device's own).
+    #[serde(default)]
+    buffer_size: Option<u32>,
+}
+
+fn settings_path() -> Option<PathBuf> {
+    project::data_dir().map(|d| d.join("settings.json"))
+}
+
+fn load_settings() -> AppSettings {
+    settings_path()
         .and_then(|p| std::fs::read_to_string(p).ok())
         .and_then(|text| serde_json::from_str(&text).ok())
         .unwrap_or_default()
 }
 
-fn save_catalog(catalog: &BTreeMap<String, String>) {
+fn save_settings(settings: &AppSettings) {
+    if let Some(path) = settings_path()
+        && let Ok(json) = serde_json::to_string_pretty(settings)
+    {
+        let _ = path.parent().map(std::fs::create_dir_all);
+        let _ = std::fs::write(path, json);
+    }
+}
+
+/// Buffer sizes offered, in frames.
+const BUFFER_SIZES: [u32; 6] = [64, 128, 256, 512, 1024, 2048];
+
+/// What a plugin's first load told us about it.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+struct PluginInfo {
+    /// "Fx · Delay".
+    category: String,
+    vendor: String,
+}
+
+fn load_catalog() -> BTreeMap<String, PluginInfo> {
+    catalog_path()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .map(|text| parse_catalog(&text))
+        .unwrap_or_default()
+}
+
+/// The catalog file; older ones held "Fx · Delay · Maker" strings.
+fn parse_catalog(text: &str) -> BTreeMap<String, PluginInfo> {
+    if let Ok(catalog) = serde_json::from_str(text) {
+        return catalog;
+    }
+    let old: BTreeMap<String, String> = serde_json::from_str(text).unwrap_or_default();
+    old.into_iter()
+        .map(|(path, hint)| {
+            let (category, vendor) = hint.rsplit_once(" · ").unwrap_or((hint.as_str(), ""));
+            (path, PluginInfo { category: category.to_owned(), vendor: vendor.to_owned() })
+        })
+        .collect()
+}
+
+fn save_catalog(catalog: &BTreeMap<String, PluginInfo>) {
     if let Some(path) = catalog_path()
         && let Ok(json) = serde_json::to_string_pretty(catalog)
     {
@@ -1062,17 +1197,40 @@ fn save_catalog(catalog: &BTreeMap<String, String>) {
     }
 }
 
-/// Installed plugins, with what is known about each.
-fn plugin_entries(catalog: &BTreeMap<String, String>) -> Vec<PluginEntry> {
+/// Installed plugins, with what is known about each: what their first
+/// load told, else the maker named in the bundle's files.
+fn plugin_entries(catalog: &BTreeMap<String, PluginInfo>) -> Vec<PluginEntry> {
+    use crate::audio::plugin::{bundle_name, bundle_vendor, clean_vendor};
     crate::audio::plugin::scan()
         .into_iter()
-        .map(|path| PluginEntry {
-            name: crate::audio::plugin::bundle_name(&path),
-            hint: catalog
-                .get(path.to_string_lossy().as_ref())
-                .cloned()
-                .unwrap_or_else(|| "VST3".to_owned()),
-            path,
+        .map(|path| {
+            let known = catalog.get(path.to_string_lossy().as_ref());
+            let vendor = known
+                .map(|k| clean_vendor(&k.vendor))
+                .filter(|v| !v.is_empty())
+                .or_else(|| bundle_vendor(&path))
+                .unwrap_or_default();
+            PluginEntry {
+                name: bundle_name(&path),
+                hint: known.map_or_else(|| "VST3".to_owned(), |k| k.category.clone()),
+                vendor,
+                path,
+            }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn plugin_catalogs_old_and_new() {
+        let old = r#"{ "/a.vst3": "Fx · Delay · Valhalla DSP, LLC", "/b.vst3": "VST3" }"#;
+        let catalog = parse_catalog(old);
+        assert_eq!(catalog["/a.vst3"], PluginInfo { category: "Fx · Delay".into(), vendor: "Valhalla DSP, LLC".into() });
+        assert_eq!(catalog["/b.vst3"].vendor, "");
+        let new = serde_json::to_string(&catalog).unwrap();
+        assert_eq!(parse_catalog(&new), catalog);
+    }
 }

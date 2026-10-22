@@ -5,7 +5,7 @@
 use std::f32::consts::TAU;
 use std::sync::Arc;
 
-use super::{DelayLine, ModuleDef, ModuleParams, approach, mix_gains, soft_ceiling, soft_limit, time_coeff};
+use super::{DelayLine, ModuleDef, ModuleParams, approach, mix_gains, soft_ceiling, soft_limit, time_coeff, Quiet, silence};
 use crate::audio::engine::{Buf, Inputs, ProcessCtx, Processor};
 use crate::audio::fastmath;
 use crate::audio::params::{ParamSpec, Unit};
@@ -42,6 +42,7 @@ pub static DEF: ModuleDef = ModuleDef {
     midi_out: false,
     data: &[],
     display_h: 42.0,
+    controls_h: 0.0,
     viz: 0,
 };
 
@@ -59,8 +60,8 @@ fn size_scale(size: f32) -> f32 {
 }
 
 /// Schroeder all-pass on a delay line of `d` samples.
-fn allpass(line: &mut DelayLine, d: f32, g: f32, x: f32) -> f32 {
-    let z = line.tap(d - 1.0);
+fn allpass(line: &mut DelayLine, d: usize, g: f32, x: f32) -> f32 {
+    let z = line.tap_at(d - 1);
     let w = x + g * z;
     line.push(w);
     z - g * w
@@ -116,9 +117,12 @@ impl Shifter {
 
 pub struct Reverb {
     params: Arc<ModuleParams>,
+    quiet: Quiet,
     sr: f32,
     lines: [DelayLine; LINES],
     diffusers: [[DelayLine; 4]; 2],
+    /// The diffusers' delays in whole samples (fixed: no interpolation).
+    diffuser_len: [[usize; 4]; 2],
     damp: [f32; LINES],
     /// Quadrature oscillators for line modulation: (cos, sin).
     lfo: [(f32, f32); LINES],
@@ -149,12 +153,17 @@ impl Reverb {
             (w.cos(), w.sin())
         });
         Self {
+            quiet: Quiet::new(lines.iter().map(DelayLine::len).max().unwrap_or(0) * 2),
             size: params.get(SIZE),
             mix: params.get(MIX),
             params,
             sr: sample_rate,
             lines,
             diffusers,
+            diffuser_len: std::array::from_fn(|ch| {
+                let stretch = if ch == 0 { 1.0 } else { 1.07 };
+                std::array::from_fn(|k| ((DIFFUSERS[k].0 * ms * stretch).round() as usize).max(1))
+            }),
             damp: [0.0; LINES],
             lfo,
             lfo_rot,
@@ -178,6 +187,12 @@ impl Processor for Reverb {
         let shimmer = if frozen { 0.0 } else { p.get(SHIMMER) };
         let mix_t = p.get(MIX);
         let input = inputs.get(0);
+        let silent_in = Quiet::silent(input, n);
+        if silent_in && self.quiet.resting() {
+            // Gone quiet: nothing to compute until input returns.
+            silence(outputs, n);
+            return;
+        }
 
         let sr = self.sr;
         let ms = sr / 1000.0;
@@ -207,6 +222,8 @@ impl Processor for Reverb {
         });
 
         let mut peak = 0.0f32;
+        // The effect's own signal, for resting.
+        let mut inner = 0.0f32;
         for i in 0..n {
             approach(&mut self.size, size_t, self.size_glide);
             approach(&mut self.mix, mix_t, ctx.smooth);
@@ -222,9 +239,8 @@ impl Processor for Reverb {
             let shim = if shimmer > 0.0 { fastmath::tanh(self.shimmer_fb * shimmer * 0.7) } else { 0.0 };
             let mut x = [dry_l * self.feed + shim, dry_r * self.feed + shim];
             for (ch, xc) in x.iter_mut().enumerate() {
-                let stretch = if ch == 0 { 1.0 } else { 1.07 };
-                for (k, &(len, g)) in DIFFUSERS.iter().enumerate() {
-                    *xc = allpass(&mut self.diffusers[ch][k], len * ms * stretch, g, *xc);
+                for (k, &(_, g)) in DIFFUSERS.iter().enumerate() {
+                    *xc = allpass(&mut self.diffusers[ch][k], self.diffuser_len[ch][k], g, *xc);
                 }
             }
 
@@ -249,6 +265,7 @@ impl Processor for Reverb {
             // Stereo outputs from alternating lines.
             let wet_l = (taps[0] - taps[2] + taps[4] - taps[6]) * 0.5;
             let wet_r = (taps[1] - taps[3] + taps[5] - taps[7]) * 0.5;
+            inner = inner.max(wet_l.abs()).max(wet_r.abs());
 
             // Shimmer: octave-up copy of the tail, high-passed, fed back
             // (skipped while SHIMMER is off; the shifter keeps listening).
@@ -268,6 +285,7 @@ impl Processor for Reverb {
             outputs[0][1][i] = yr;
             peak = peak.max(yl.abs()).max(yr.abs());
         }
+        self.quiet.update(silent_in, inner, n);
         p.meter.fetch_max(peak);
     }
 }

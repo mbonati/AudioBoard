@@ -1213,7 +1213,7 @@ fn run_generator(
     mut feed: impl FnMut(usize, &mut MidiBuf),
 ) -> Vec<(usize, [u8; 3])> {
     const SR: f32 = 48_000.0;
-    let mut ctx = ProcessCtx { sample_rate: SR, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / SR as f64 };
+    let mut ctx = ProcessCtx { sample_rate: SR, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / SR as f64, playing: true, restart: false };
     let mut inputs = Box::new(Inputs {
         bufs: [[[0.0; 64]; 2]; 8],
         connected: [false; 8],
@@ -1435,4 +1435,560 @@ fn vst3_instruments_take_a_midi_cable() {
     let (mut h, b, _f) = setup();
     assert_eq!(crate::project::restore(&mut h, &saved, &b), 0);
     assert!(h.cables.iter().any(|c| c.to.port == MIDI_PORT));
+}
+
+#[test]
+fn resting_on_a_node_or_module_shows_its_type() {
+    let (mut g, a, _e) = setup();
+    let reverb = g.add_module(ModuleKind::Reverb, pos2(0.0, 300.0), &a);
+    g.node_mut(reverb).unwrap().title = "MY SPACE".to_owned();
+    let pair = [
+        g.add_module(ModuleKind::Drone, pos2(0.0, 0.0), &a),
+        g.add_module(ModuleKind::Filter, pos2(300.0, 0.0), &a),
+    ];
+    let gid = g.create_group(&pair).unwrap();
+    g.rename_group(gid, "Pad voice");
+    g.set_group_collapsed(gid, true);
+
+    let ctx = egui::Context::default();
+    let mut editor = crate::ui::canvas::Editor::new();
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 900.0));
+    // Runs a frame at `time` and returns every text drawn.
+    let run = |editor: &mut crate::ui::canvas::Editor, g: &mut Graph, time: f64, events: Vec<egui::Event>| {
+        let input = egui::RawInput { screen_rect: Some(screen), time: Some(time), events, ..Default::default() };
+        let mut out = ctx.run_ui(input, |ui| editor.show(ui, g, &a));
+        out.textures_delta.clear();
+        fn texts(shape: &egui::Shape, into: &mut Vec<String>) {
+            match shape {
+                egui::Shape::Text(t) => into.push(t.galley.job.text.clone()),
+                egui::Shape::Vec(v) => v.iter().for_each(|s| texts(s, into)),
+                _ => {}
+            }
+        }
+        let mut found = Vec::new();
+        out.shapes.iter().for_each(|c| texts(&c.shape, &mut found));
+        found
+    };
+    run(&mut editor, &mut g, 0.0, vec![]);
+    let to_screen = |e: &crate::ui::canvas::Editor, p: egui::Pos2| (e.pan + p.to_vec2() * e.zoom).to_pos2();
+    let on_reverb = to_screen(&editor, g.node(reverb).unwrap().pos + egui::vec2(100.0, 90.0));
+    let on_card = to_screen(&editor, crate::ui::groups::frame_rect(&g, g.group(gid).unwrap()).unwrap().min)
+        + egui::vec2(100.0, 12.0) * editor.zoom;
+    let label = |texts: &[String], what: &str| texts.iter().any(|t| t.contains(what));
+
+    // Only once the pointer has rested a moment.
+    let texts = run(&mut editor, &mut g, 1.0, vec![egui::Event::PointerMoved(on_reverb)]);
+    assert!(!label(&texts, "hall · shimmer"), "no label straight away");
+    let texts = run(&mut editor, &mut g, 1.6, vec![]);
+    assert!(label(&texts, "Reverb") && label(&texts, "hall · shimmer · freeze"), "{texts:?}");
+
+    // A renamed module says what it holds.
+    run(&mut editor, &mut g, 2.0, vec![egui::Event::PointerMoved(on_card)]);
+    let texts = run(&mut editor, &mut g, 2.6, vec![]);
+    assert!(label(&texts, "Module") && label(&texts, "Drone · Filter"), "{texts:?}");
+
+    // Not while dragging.
+    let press = egui::Event::PointerButton {
+        pos: on_card,
+        button: egui::PointerButton::Primary,
+        pressed: true,
+        modifiers: egui::Modifiers::NONE,
+    };
+    let texts = run(&mut editor, &mut g, 2.7, vec![press]);
+    assert!(!label(&texts, "Drone · Filter"));
+}
+
+#[test]
+fn palette_categories_fold() {
+    use crate::ui::palette::Palette;
+    let ctx = egui::Context::default();
+    let mut palette = Palette::new();
+    let mut time = 0.0;
+    // Runs a frame; returns each text drawn and where.
+    let mut run = |palette: &mut Palette, events: Vec<egui::Event>| {
+        time += 0.1;
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(240.0, 900.0))),
+            time: Some(time),
+            events,
+            ..Default::default()
+        };
+        let mut requests = Vec::new();
+        let mut out = ctx.run_ui(input, |ui| {
+            palette.show(ui, &[], &[], &mut requests);
+        });
+        out.textures_delta.clear();
+        let mut texts = Vec::new();
+        for c in &out.shapes {
+            if let egui::Shape::Text(t) = &c.shape {
+                texts.push((t.galley.job.text.clone(), t.pos + t.galley.rect.center().to_vec2()));
+            }
+        }
+        texts
+    };
+    let shows = |texts: &[(String, egui::Pos2)], what: &str| texts.iter().any(|(t, _)| t == what);
+    let click = |p: egui::Pos2| {
+        let button = |pressed| egui::Event::PointerButton {
+            pos: p,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        vec![egui::Event::PointerMoved(p), button(true), button(false)]
+    };
+
+    let texts = run(&mut palette, vec![]);
+    assert!(shows(&texts, "Oscillator") && shows(&texts, "Drone"), "open at first");
+    let heading = texts.iter().find(|(t, _)| t == "SOURCES").unwrap().1;
+    run(&mut palette, click(heading));
+    let mut texts = Vec::new();
+    for _ in 0..10 {
+        texts = run(&mut palette, vec![]);
+    }
+    assert!(!shows(&texts, "Oscillator") && shows(&texts, "SOURCES"), "folded");
+    assert!(shows(&texts, "3"), "a folded category shows its count");
+    assert!(shows(&texts, "Reverb"), "the others stay open");
+
+    // Searching opens what matches; clearing it folds it again.
+    let field = egui::pos2(100.0, 14.0);
+    run(&mut palette, click(field));
+    let texts = run(&mut palette, vec![egui::Event::Text("drone".into())]);
+    assert!(shows(&texts, "Drone") && !shows(&texts, "Reverb"));
+    run(&mut palette, vec![egui::Event::Key {
+        key: egui::Key::Backspace,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers { command: true, mac_cmd: true, ..Default::default() },
+    }]);
+    let mut texts = Vec::new();
+    for _ in 0..3 {
+        texts = run(&mut palette, vec![]);
+    }
+    assert!(!shows(&texts, "Drone") && shows(&texts, "Reverb"), "{:?}", texts.iter().map(|t| &t.0).collect::<Vec<_>>());
+}
+
+// ---------------------------------------------------------------------------
+// MIDIcer
+// ---------------------------------------------------------------------------
+
+fn midicer() -> (Arc<ModuleParams>, crate::audio::modules::midicer::Midicer) {
+    let (_g, a, _e) = setup();
+    let p = Arc::new(ModuleParams::new(ModuleKind::Midicer));
+    let m = crate::audio::modules::midicer::Midicer::new(p.clone(), a.midi.clone());
+    (p, m)
+}
+
+#[test]
+fn midicer_plays_the_manuals_basic_pattern() {
+    use crate::audio::modules::midicer::data;
+    let (p, mut m) = midicer();
+    // 120 BPM, 1/16 notes: one every 6000 frames, C3 or C4 only.
+    let events = run_generator(&mut m, 2 * 96_000, |_, _| {});
+    let ons = note_ons(&events);
+    assert_eq!(ons.len(), 32, "two bars of sixteenths");
+    assert!(ons.iter().all(|o| o.0 % 6000 == 0 && (o.1 == 48 || o.1 == 60)), "{ons:?}");
+    // DICE: the second bar repeats the first.
+    let bar = |b: usize| ons[b * 16..(b + 1) * 16].iter().map(|o| o.1).collect::<Vec<_>>();
+    assert_eq!(bar(0), bar(1));
+    assert!(bar(0).contains(&48) && bar(0).contains(&60), "both octaves: {:?}", bar(0));
+    // GATE 80%: each note ends before the next.
+    let offs: Vec<usize> = events.iter().filter(|(_, m)| m[0] & 0xF0 == 0x80).map(|e| e.0).collect();
+    assert_eq!(offs[0], 4800);
+
+    // Different dice, a different pattern.
+    p.data[data::SEED_M].set(777.0);
+    let (_, mut m2) = (p.clone(), crate::audio::modules::midicer::Midicer::new(p.clone(), setup().1.midi.clone()));
+    let other: Vec<u8> = note_ons(&run_generator(&mut m2, 96_000, |_, _| {})).iter().map(|o| o.1).collect();
+    assert_ne!(other, bar(0));
+}
+
+#[test]
+fn midicer_live_mode_never_repeats() {
+    use crate::audio::modules::midicer::{Midicer, data};
+    let (p, _) = midicer();
+    for pc in 0..12 {
+        p.data[data::WEIGHTS + pc].set(1.0);
+    }
+    let midi = setup().1.midi.clone();
+    let first_bar = |p: &Arc<ModuleParams>| -> Vec<u8> {
+        let mut m = Midicer::new(p.clone(), midi.clone());
+        note_ons(&run_generator(&mut m, 96_000, |_, _| {})).iter().map(|o| o.1).collect()
+    };
+    let kept = first_bar(&p);
+
+    p.data[data::DICE_M].set(0.0);
+    let mut m = Midicer::new(p.clone(), midi.clone());
+    let ons = note_ons(&run_generator(&mut m, 2 * 96_000, |_, _| {}));
+    let bar = |b: usize| ons[b * 16..(b + 1) * 16].iter().map(|o| o.1).collect::<Vec<_>>();
+    assert_ne!(bar(0), bar(1), "LIVE: no repeating pattern");
+
+    // Back to DICE: the kept values return.
+    p.data[data::DICE_M].set(1.0);
+    assert_eq!(first_bar(&p), kept);
+}
+
+#[test]
+fn midicer_rests_legato_and_mute() {
+    use crate::audio::modules::midicer::{LEGATO, REST, data};
+    let (p, mut m) = midicer();
+    p.set(REST, 1.0);
+    assert!(note_ons(&run_generator(&mut m, 96_000, |_, _| {})).is_empty(), "all rests");
+
+    let (p, mut m) = midicer();
+    p.set(LEGATO, 1.0);
+    let events = run_generator(&mut m, 96_000, |_, _| {});
+    let ons = note_ons(&events);
+    // Every note runs into the next: ties merge repeated pitches, and a new
+    // pitch starts before the old one stops.
+    assert!(ons.len() < 16, "ties: {}", ons.len());
+    for w in events.windows(2) {
+        if w[1].1[0] & 0xF0 == 0x80 {
+            assert_eq!(w[0].0, w[1].0, "a note-off only comes with the next note-on");
+        }
+    }
+
+    let (p, mut m) = midicer();
+    p.data[data::MUTE].set(1.0);
+    assert!(note_ons(&run_generator(&mut m, 96_000, |_, _| {})).is_empty(), "muted");
+}
+
+#[test]
+fn midicer_pattern_length_and_variation() {
+    use crate::audio::modules::midicer::{FIRST, LAST, NOTE, VARIATION, data};
+    let (p, mut m) = midicer();
+    // One beat long (steps 1…4): the dice repeat every beat.
+    p.set(FIRST, 1.0);
+    p.set(LAST, 4.0);
+    for pc in 0..12 {
+        p.data[data::WEIGHTS + pc].set(1.0);
+    }
+    let ons = note_ons(&run_generator(&mut m, 96_000, |_, _| {}));
+    let beat = |b: usize| ons[b * 4..(b + 1) * 4].iter().map(|o| o.1).collect::<Vec<_>>();
+    assert_eq!(beat(0), beat(1));
+    assert_eq!(beat(1), beat(3));
+
+    // VARIATION to the right adds shorter notes (1/32 allowed).
+    let (p, mut m) = midicer();
+    p.set(NOTE, 4.0); // 1/8: 12000 frames
+    p.set(VARIATION, 1.0);
+    p.data[data::THIRTY_SECOND].set(1.0);
+    let ons = note_ons(&run_generator(&mut m, 96_000, |_, _| {}));
+    let gaps: Vec<usize> = ons.windows(2).map(|w| w[1].0 - w[0].0).collect();
+    assert!(gaps.iter().all(|&g| [12_000, 6000, 3000].contains(&g)), "{gaps:?}");
+    assert!(gaps.iter().any(|&g| g < 12_000), "some shorter notes");
+    assert!(ons.len() > 8);
+}
+
+#[test]
+fn midicer_follows_gates_and_quantizes() {
+    use crate::audio::modules::midicer::{QUANT1, SEQ_GATE};
+    // SEQ+G: a note for each note on the MIDI input, ended by its note-off.
+    let (p, mut m) = midicer();
+    p.set_mode(SEQ_GATE);
+    let gates = |at: usize, buf: &mut MidiBuf| match at {
+        3200 => buf.push(10, [0x90, 70, 90]),
+        6400 => buf.push(0, [0x80, 70, 0]),
+        9600 => buf.push(5, [0x90, 72, 90]),
+        _ => {}
+    };
+    let events = run_generator(&mut m, 12_800, gates);
+    let ons = note_ons(&events);
+    assert_eq!(ons.iter().map(|o| o.0).collect::<Vec<_>>(), [3210, 9605]);
+    assert!(ons.iter().all(|o| o.1 == 48 || o.1 == 60));
+    assert!(events.iter().any(|(f, m)| *f == 6400 && m[0] & 0xF0 == 0x80));
+
+    // QUANT1: CV2 → the enabled notes, once a beat. With only C enabled and
+    // CV2 at +1 (the top of LOW…HIGH), that is C4 every beat.
+    let (p, mut m) = midicer();
+    p.set_mode(QUANT1);
+    const SR: f32 = 48_000.0;
+    let mut ctx = ProcessCtx { sample_rate: SR, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / SR as f64, playing: true, restart: false };
+    let mut inputs = Box::new(Inputs {
+        bufs: [[[0.0; 64]; 2]; 8],
+        connected: [false; 8],
+        midi: MidiBuf::default(),
+        midi_connected: false,
+    });
+    inputs.connected[1] = true;
+    inputs.bufs[1] = [[1.0; 64]; 2];
+    let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
+    let mut ons = Vec::new();
+    for block in 0..1500 {
+        m.process(&ctx, &inputs, &mut outputs, 64);
+        for e in m.midi_out().unwrap().events() {
+            if e.data[0] & 0xF0 == 0x90 {
+                ons.push((block * 64 + e.frame as usize, e.data[1]));
+            }
+        }
+        ctx.beat += ctx.beats_per_sample * 64.0;
+    }
+    assert_eq!(ons, [(0, 60), (24_000, 60), (48_000, 60), (72_000, 60)]);
+}
+
+#[test]
+fn stop_rewinds_and_start_plays_from_the_top() {
+    use crate::audio::modules::{midi_note, sequencer};
+    use crate::graph::MIDI_PORT;
+    let shared = Arc::new(EngineShared::new());
+    shared.tempo.set(120.0);
+    let (a, mut e) = audio::offline(shared.clone(), 48_000);
+    let mut g = Graph::default();
+    let seq = g.add_module(ModuleKind::Sequencer, pos2(0.0, 0.0), &a);
+    let note = g.add_module(ModuleKind::MidiNote, pos2(300.0, 0.0), &a);
+    g.connect(port(seq, MIDI_PORT), port(note, MIDI_PORT), &a);
+    let sp = module_params(&g, seq);
+    let np = module_params(&g, note);
+    for step in 0..sequencer::LEN {
+        sequencer::set_on(&sp, step, true);
+    }
+
+    render_buf(&mut e, 62_400); // 2.6 beats
+    assert_eq!(sp.viz[sequencer::STEP].get(), 10.0);
+
+    // Stop: silence, and back to the start.
+    shared.rewinds.fetch_add(1, Ordering::Relaxed);
+    shared.running.store(false, Ordering::Relaxed);
+    let silence = render_buf(&mut e, 24_000);
+    assert!(silence.iter().all(|&s| s == 0.0));
+
+    // Start: from step 1 and its note (C3), on beat 0.
+    shared.running.store(true, Ordering::Relaxed);
+    render_buf(&mut e, 512);
+    assert_eq!(sp.viz[sequencer::STEP].get(), 0.0);
+    assert_eq!(np.viz[midi_note::NOTE].get(), 48.0);
+    assert!(shared.beat.get() < 0.05, "the transport starts at 0: {}", shared.beat.get());
+}
+
+// ---------------------------------------------------------------------------
+// Delays
+// ---------------------------------------------------------------------------
+
+/// Runs an effect on a single click at frame 0 (120 BPM) and returns the
+/// left and right outputs.
+fn click_response(proc: &mut dyn Processor, frames: usize) -> (Vec<f32>, Vec<f32>) {
+    const SR: f32 = 48_000.0;
+    let mut ctx = ProcessCtx { sample_rate: SR, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / SR as f64, playing: true, restart: false };
+    let mut inputs = Box::new(Inputs {
+        bufs: [[[0.0; 64]; 2]; 8],
+        connected: [false; 8],
+        midi: MidiBuf::default(),
+        midi_connected: false,
+    });
+    inputs.connected[0] = true;
+    let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
+    let (mut l, mut r) = (Vec::new(), Vec::new());
+    for block in 0..frames / 64 {
+        let click = if block == 0 { 1.0 } else { 0.0 };
+        inputs.bufs[0] = [[0.0; 64]; 2];
+        inputs.bufs[0][0][0] = click;
+        inputs.bufs[0][1][0] = click;
+        proc.process(&ctx, &inputs, &mut outputs, 64);
+        l.extend_from_slice(&outputs[0][0]);
+        r.extend_from_slice(&outputs[0][1]);
+        ctx.beat += ctx.beats_per_sample * 64.0;
+    }
+    (l, r)
+}
+
+/// Where the loudest sample is between `from` and `to`, and how loud.
+fn loudest(x: &[f32], from: usize, to: usize) -> (usize, f32) {
+    (from..to.min(x.len())).map(|i| (i, x[i].abs())).fold((from, 0.0), |a, b| if b.1 > a.1 { b } else { a })
+}
+
+#[test]
+fn delay_syncs_to_the_tempo() {
+    use crate::audio::modules::delay::{self, Delay};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Delay));
+    p.set(delay::MIX, 1.0);
+    p.set(delay::FEEDBACK, 0.0);
+    p.set(delay::PING, 0.0);
+    p.set(delay::WOW, 0.0);
+    p.set_toggle(true);
+    // 1/8D at 120 BPM: 0.75 beat = 375 ms = 18000 frames.
+    p.set(delay::DIV, 7.0);
+    let (l, _) = click_response(&mut Delay::new(p.clone(), 48_000.0), 48_000);
+    let (at, level) = loudest(&l, 1000, 48_000);
+    assert!(level > 0.1 && at.abs_diff(18_000) <= 2, "echo at {at} ({level})");
+    // Off sync: TIME rules.
+    p.set_toggle(false);
+    p.set(delay::TIME, 0.25);
+    let (l, _) = click_response(&mut Delay::new(p.clone(), 48_000.0), 48_000);
+    assert!(loudest(&l, 1000, 48_000).0.abs_diff(12_000) <= 2);
+}
+
+#[test]
+fn ping_pong_echoes_alternate_sides() {
+    use crate::audio::modules::pingpong::{self, PingPong};
+    let p = Arc::new(ModuleParams::new(ModuleKind::PingPong));
+    p.set(pingpong::MIX, 1.0);
+    p.set(pingpong::FEEDBACK, 0.8);
+    p.set(pingpong::TONE, 1.0);
+    // Synced 1/8 at 120 BPM: an echo every 250 ms (12000 frames).
+    p.set(pingpong::DIV, 5.0);
+    let d = 12_000;
+    let (l, r) = click_response(&mut PingPong::new(p.clone(), 48_000.0), 4 * d + 2000);
+    let near = |x: &[f32], k: usize| loudest(x, k * d - 300, k * d + 300).1;
+    // Left, right, left: each echo on one side only (WIDTH 100%).
+    assert!(near(&l, 1) > 0.2 && near(&r, 1) < 0.01, "1st: L {} R {}", near(&l, 1), near(&r, 1));
+    assert!(near(&r, 2) > 0.1 && near(&l, 2) < 0.01, "2nd: L {} R {}", near(&l, 2), near(&r, 2));
+    assert!(near(&l, 3) > 0.05 && near(&r, 3) < 0.01);
+    assert!(near(&l, 3) < near(&l, 1), "they fade");
+
+    // R → L starts on the right; WIDTH 0 puts every echo in the middle.
+    p.set_mode(pingpong::RIGHT_FIRST);
+    let (l, r) = click_response(&mut PingPong::new(p.clone(), 48_000.0), 2 * d + 2000);
+    assert!(near(&r, 1) > 0.2 && near(&l, 1) < 0.01);
+    p.set(pingpong::WIDTH, 0.0);
+    let (l, r) = click_response(&mut PingPong::new(p.clone(), 48_000.0), 2 * d + 2000);
+    assert!((near(&l, 1) - near(&r, 1)).abs() < 1e-3);
+}
+
+#[test]
+fn ping_pong_ducks_under_the_input() {
+    use crate::audio::modules::pingpong;
+    let mut levels = Vec::new();
+    for duck in [0.0, 1.0] {
+        let (mut g, a, mut e) = setup();
+        let (m, p) = patch(&mut g, &a, ModuleKind::PingPong);
+        let _ = m;
+        p.set(pingpong::MIX, 1.0);
+        p.set(pingpong::DUCK, duck);
+        render_buf(&mut e, 48_000);
+        levels.push(rms_of(&render_buf(&mut e, 24_000)));
+    }
+    assert!(levels[1] < levels[0] * 0.3, "ducked {} vs {}", levels[1], levels[0]);
+}
+
+#[test]
+fn stop_silences_sources_but_tails_ring_on() {
+    use crate::audio::modules::reverb;
+    let shared = Arc::new(EngineShared::new());
+    let (a, mut e) = audio::offline(shared.clone(), 48_000);
+    let mut g = Graph::default();
+    let src = source(&mut g, &a);
+    let rev = g.add_module(ModuleKind::Reverb, pos2(300.0, 0.0), &a);
+    let mix = g.add_mixer(pos2(600.0, 0.0), &a);
+    g.connect(port(src, 0), port(rev, 0), &a);
+    g.connect(port(rev, 0), port(mix, 0), &a);
+    let rp = module_params(&g, rev);
+    rp.set(reverb::MIX, 0.5);
+    rp.set(reverb::DECAY, 6.0);
+    render_buf(&mut e, 48_000);
+
+    // Stop: the oscillator fades out within a few tens of ms, while the
+    // reverb's tail goes on.
+    shared.rewinds.fetch_add(1, Ordering::Relaxed);
+    shared.running.store(false, Ordering::Relaxed);
+    let after = render_buf(&mut e, 48_000);
+    assert!(rms_of(&after[..96]) > 0.05, "no cut: it fades");
+    assert!(rms_of(&after[40_000..]) > 0.005, "the tail rings on: {}", rms_of(&after[40_000..]));
+    // The source itself is silent once faded.
+    let dry = g.add_mixer(pos2(600.0, 300.0), &a);
+    g.connect(port(src, 0), port(dry, 0), &a);
+    rp.set(reverb::MIX, 0.0);
+    render_buf(&mut e, 4_800);
+    assert!(rms_of(&render_buf(&mut e, 4_800)) < 1e-4);
+
+    // Start: it sounds again.
+    shared.running.store(true, Ordering::Relaxed);
+    render_buf(&mut e, 4_800);
+    assert!(rms_of(&render_buf(&mut e, 4_800)) > 0.05);
+}
+
+#[test]
+fn stop_ends_the_notes_of_sequencers() {
+    use crate::audio::modules::{midi_note, sequencer};
+    use crate::graph::MIDI_PORT;
+    let shared = Arc::new(EngineShared::new());
+    shared.tempo.set(120.0);
+    let (a, mut e) = audio::offline(shared.clone(), 48_000);
+    let mut g = Graph::default();
+    let seq = g.add_module(ModuleKind::Sequencer, pos2(0.0, 0.0), &a);
+    let note = g.add_module(ModuleKind::MidiNote, pos2(300.0, 0.0), &a);
+    g.connect(port(seq, MIDI_PORT), port(note, MIDI_PORT), &a);
+    let sp = module_params(&g, seq);
+    let np = module_params(&g, note);
+    sp.set(sequencer::GATE, 1.0);
+    np.set(midi_note::RELEASE, 0.05);
+    for step in 0..sequencer::LEN {
+        sequencer::set_on(&sp, step, true);
+    }
+    render_buf(&mut e, 24_000);
+    assert!(np.viz[midi_note::ENV].get() > 0.5, "a note is held");
+    shared.running.store(false, Ordering::Relaxed);
+    render_buf(&mut e, 24_000);
+    assert!(np.viz[midi_note::ENV].get() < 0.01, "Stop ended it: the envelope released");
+    assert_eq!(sp.viz[sequencer::STEP].get(), -1.0);
+}
+
+#[test]
+fn idle_effects_rest_and_wake_up() {
+    use crate::audio::modules::reverb;
+    let (mut g, a, mut e) = setup();
+    let (m, p) = patch(&mut g, &a, ModuleKind::Reverb);
+    p.set(reverb::DECAY, 0.3);
+    p.set(reverb::MIX, 1.0);
+    render_buf(&mut e, 24_000);
+    // Input gone: the tail dies away, then the reverb rests (exact silence).
+    unplug_input(&mut g, &a, m);
+    assert!(rms_of(&render_buf(&mut e, 4_800)) > 1e-3, "the tail first");
+    render_buf(&mut e, 96_000);
+    assert!(render_buf(&mut e, 4_800).iter().all(|&s| s == 0.0), "resting");
+    // Input back: it sounds at once.
+    let src = g.nodes.iter().find(|n| matches!(n.kind, NodeKind::Osc(_))).unwrap().id;
+    g.connect(port(src, 0), port(m, 0), &a);
+    assert!(rms_of(&render_buf(&mut e, 4_800)) > 1e-3, "awake");
+}
+
+#[test]
+fn the_output_is_limited_not_clipped() {
+    let shared = Arc::new(EngineShared::new());
+    let (a, mut e) = audio::offline(shared.clone(), 48_000);
+    let mut g = Graph::default();
+    let mix = g.add_mixer(pos2(600.0, 0.0), &a);
+    let m = mixer_params(&g, mix);
+    m.master.set(1.0);
+    for ch in 0..3 {
+        let x = source(&mut g, &a);
+        osc_params(&g, x).set(osc::LEVEL, 1.0);
+        osc_params(&g, x).set(osc::FREQ, 110.0 * (ch + 1) as f32);
+        m.fader[ch].set(1.0);
+        g.connect(port(x, 0), port(mix, ch), &a);
+    }
+    render_buf(&mut e, 24_000);
+    let out = render_buf(&mut e, 24_000);
+    let peak = out.iter().fold(0.0f32, |p, s| p.max(s.abs()));
+    assert!(peak <= 0.967, "kept under the ceiling: {peak}");
+    // No flat tops: hard clipping would hold full scale for many samples.
+    let left: Vec<f32> = out.iter().step_by(2).copied().collect();
+    let at_top = left.windows(2).filter(|w| w[0].abs() > 0.96 && w[0] == w[1]).count();
+    assert_eq!(at_top, 0);
+    assert!(shared.limiting.take() > 3.0, "the limiter worked");
+}
+
+#[test]
+fn removed_nodes_are_freed_off_the_audio_thread() {
+    use crate::audio::engine::{Command, Slot};
+    use std::sync::atomic::AtomicBool;
+    struct Probe(Arc<AtomicBool>);
+    impl Drop for Probe {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::Relaxed);
+        }
+    }
+    impl Processor for Probe {
+        fn process(&mut self, _: &ProcessCtx, _: &Inputs, _: &mut [crate::audio::engine::Buf], _: usize) {}
+    }
+    let (tx, rx) = std::sync::mpsc::channel();
+    let mut e = Engine::new(rx, Arc::new(EngineShared::new()), 48_000.0);
+    let trash = e.take_trash().unwrap();
+    let freed = Arc::new(AtomicBool::new(false));
+    tx.send(Command::AddNode(1, Slot::new(Box::new(Probe(freed.clone())), 1))).unwrap();
+    render_buf(&mut e, 512);
+    tx.send(Command::RemoveNode(1)).unwrap();
+    render_buf(&mut e, 512);
+    assert!(!freed.load(Ordering::Relaxed), "the engine did not free it");
+    drop(trash.try_recv().expect("handed back"));
+    assert!(freed.load(Ordering::Relaxed), "freed where it was received");
 }

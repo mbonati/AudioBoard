@@ -13,7 +13,7 @@ use egui::{Color32, Pos2, Vec2};
 
 use crate::audio::AudioHandle;
 use crate::audio::dsp::{Mixer, Oscillator};
-use crate::audio::engine::{Command, MAX_INPUTS, NodeId, Slot, TopoEntry, Topology};
+use crate::audio::engine::{Command, MAX_INPUTS, NodeId, Slot, TopoEntry, Topology, audio_idle, wait_audio_idle};
 use crate::audio::midi::{MidiState, note_hz};
 use crate::audio::modules::{ModuleKind, ModuleParams, midi_cc, midi_note, random};
 use crate::audio::params::{
@@ -71,6 +71,7 @@ impl NodeType {
             &[
                 NodeType::Module(ModuleKind::Filter),
                 NodeType::Module(ModuleKind::Delay),
+                NodeType::Module(ModuleKind::PingPong),
                 NodeType::Module(ModuleKind::Reverb),
             ],
         ),
@@ -78,6 +79,7 @@ impl NodeType {
             "MIDI",
             &[
                 NodeType::Module(ModuleKind::Sequencer),
+                NodeType::Module(ModuleKind::Midicer),
                 NodeType::Module(ModuleKind::Arpeggiator),
                 NodeType::Module(ModuleKind::MidiIn),
                 NodeType::Module(ModuleKind::MidiNote),
@@ -201,8 +203,6 @@ pub struct PluginNode {
 
 /// How often the UI reads plugin parameters (seconds).
 const PLUGIN_SYNC_EVERY: f64 = 0.1;
-/// How often the saved state is re-read while it may be changing.
-const PLUGIN_STATE_EVERY: Duration = Duration::from_secs(2);
 
 impl PluginNode {
     fn new(meta: PluginMeta, params: Vec<PluginParam>, shared: Arc<PluginShared>, control: Sender<Control>) -> Self {
@@ -250,6 +250,11 @@ impl PluginNode {
         if self.window.as_ref().is_some_and(|w| w.closed_by_user() || !w.is_open()) {
             self.window = None;
         }
+        // Every call below takes the plugin's lock, which the audio thread
+        // needs for each callback: only between callbacks.
+        if !audio_idle() {
+            return;
+        }
         if let Some(w) = &self.window {
             let _ = w.service_platform_events();
             // Its editor can change anything, presets included.
@@ -268,13 +273,15 @@ impl PluginNode {
         for k in 0..self.pinned.len() {
             let i = self.pinned[k];
             let id = self.params[i].id;
+            if !audio_idle() {
+                return;
+            }
             let Ok(plugin) = self.shared.plugin.try_lock() else { return };
             if self.held_until[i] < now
                 && let Ok(v) = plugin.get_parameter(id)
                 && v != self.values[i]
             {
                 self.values[i] = v;
-                self.state_stale.set(true);
             }
             if let Ok(text) = plugin.format_parameter(id, self.values[i]) {
                 self.texts[i] = text;
@@ -285,7 +292,7 @@ impl PluginNode {
 
     /// Reads the current value of any parameter (for the parameter list).
     pub fn refresh(&mut self, index: usize, now: f64) {
-        if self.held_until[index] >= now || now - self.read_at[index] < PLUGIN_SYNC_EVERY {
+        if self.held_until[index] >= now || now - self.read_at[index] < PLUGIN_SYNC_EVERY || !audio_idle() {
             return;
         }
         self.read_at[index] = now;
@@ -298,19 +305,22 @@ impl PluginNode {
     }
 
     /// The saved state as base64. `fresh` asks the plugin now (saving);
-    /// otherwise the last copy is reused unless the state may have changed
-    /// and a couple of seconds have passed (checking for edits).
+    /// otherwise the copy from the last save is reused and the plugin is not
+    /// asked at all: some plugins take hundreds of milliseconds to save
+    /// (a drum machine's kits), holding up the audio thread meanwhile.
     pub fn state_base64(&self, fresh: bool) -> Option<String> {
         let mut cache = self.state.borrow_mut();
-        let due = match &*cache {
-            None => true,
-            Some((_, at)) => fresh || (self.state_stale.get() && at.elapsed() >= PLUGIN_STATE_EVERY),
-        };
-        if due && let Some(bytes) = self.save_state() {
+        if fresh && let Some(bytes) = self.save_state() {
             *cache = Some((crate::project::base64_encode(&bytes), Instant::now()));
             self.state_stale.set(false);
         }
         cache.as_ref().map(|(s, _)| s.clone())
+    }
+
+    /// Changed since its state was last saved: a knob moved here or from
+    /// MIDI, its editor opened, or never saved.
+    pub fn edited(&self) -> bool {
+        self.state_stale.get()
     }
 
     /// Opens or closes the plugin's own window.
@@ -319,17 +329,21 @@ impl PluginNode {
             return Ok(());
         }
         let mut window = vst3_host::PluginWindow::new(self.shared.plugin.clone());
+        wait_audio_idle(Duration::from_millis(50));
         window.open().map_err(|e| e.to_string())?;
         self.window = Some(window);
         Ok(())
     }
 
-    /// The plugin's complete state (its own format).
+    /// The plugin's complete state (its own format). Waits for a gap
+    /// between audio callbacks, so as not to hold the audio thread up.
     pub fn save_state(&self) -> Option<Vec<u8>> {
+        wait_audio_idle(Duration::from_millis(50));
         self.shared.plugin.lock().ok()?.save_state().ok()
     }
 
     pub fn load_state(&mut self, data: &[u8]) -> Result<(), String> {
+        wait_audio_idle(Duration::from_millis(50));
         let mut plugin = self.shared.plugin.lock().map_err(|e| e.to_string())?;
         plugin.load_state(data).map_err(|e| e.to_string())?;
         self.state_stale.set(true);
@@ -774,6 +788,12 @@ impl Graph {
 
     /// Per frame, on the UI thread: keeps plugin nodes in step and destroys
     /// removed plugins once the audio thread has let go of them.
+    /// Some plugin may have changed since the project was saved (its state
+    /// is only read when saving).
+    pub fn plugins_edited(&self) -> bool {
+        self.nodes.iter().any(|n| matches!(&n.kind, NodeKind::Plugin(p) if p.edited()))
+    }
+
     pub fn service_plugins(&mut self, now: f64) {
         self.graveyard.retain(|shared| Arc::strong_count(shared) > 1);
         for n in &mut self.nodes {

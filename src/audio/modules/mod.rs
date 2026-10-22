@@ -10,6 +10,8 @@ pub mod filter;
 pub mod granular;
 pub mod midi_cc;
 pub mod midi_in;
+pub mod midicer;
+pub mod pingpong;
 pub mod midi_note;
 pub mod random;
 pub mod resonator;
@@ -22,7 +24,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use super::AudioHandle;
 use super::fastmath;
-use super::engine::Processor;
+use super::engine::{Buf, Processor};
 use super::params::{AtomicF32, ParamSpec};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -33,12 +35,14 @@ pub enum ModuleKind {
     Resonator,
     Filter,
     Delay,
+    PingPong,
     Reverb,
     MidiCc,
     MidiNote,
     Sequencer,
     Arpeggiator,
     MidiIn,
+    Midicer,
 }
 
 /// Static description of a module's panel and ports.
@@ -71,24 +75,28 @@ pub struct ModuleDef {
     pub data: &'static [f32],
     /// Height of the display, in node units.
     pub display_h: f32,
+    /// Height of extra controls under the display (buttons), if any.
+    pub controls_h: f32,
     /// Number of values the processor publishes for the node's display.
     pub viz: usize,
 }
 
 impl ModuleKind {
-    pub const ALL: [ModuleKind; 12] = [
+    pub const ALL: [ModuleKind; 14] = [
         ModuleKind::Drone,
         ModuleKind::Random,
         ModuleKind::Granular,
         ModuleKind::Resonator,
         ModuleKind::Filter,
         ModuleKind::Delay,
+        ModuleKind::PingPong,
         ModuleKind::Reverb,
         ModuleKind::MidiCc,
         ModuleKind::MidiNote,
         ModuleKind::Sequencer,
         ModuleKind::Arpeggiator,
         ModuleKind::MidiIn,
+        ModuleKind::Midicer,
     ];
 
     pub fn def(self) -> &'static ModuleDef {
@@ -99,12 +107,14 @@ impl ModuleKind {
             ModuleKind::Resonator => &resonator::DEF,
             ModuleKind::Filter => &filter::DEF,
             ModuleKind::Delay => &delay::DEF,
+            ModuleKind::PingPong => &pingpong::DEF,
             ModuleKind::Reverb => &reverb::DEF,
             ModuleKind::MidiCc => &midi_cc::DEF,
             ModuleKind::MidiNote => &midi_note::DEF,
             ModuleKind::Sequencer => &sequencer::DEF,
             ModuleKind::Arpeggiator => &arpeggiator::DEF,
             ModuleKind::MidiIn => &midi_in::DEF,
+            ModuleKind::Midicer => &midicer::DEF,
         }
     }
 
@@ -120,12 +130,14 @@ impl ModuleKind {
             ModuleKind::Resonator => Box::new(resonator::Resonator::new(params, sample_rate)),
             ModuleKind::Filter => Box::new(filter::Filter::new(params, sample_rate)),
             ModuleKind::Delay => Box::new(delay::Delay::new(params, sample_rate)),
+            ModuleKind::PingPong => Box::new(pingpong::PingPong::new(params, sample_rate)),
             ModuleKind::Reverb => Box::new(reverb::Reverb::new(params, sample_rate)),
             ModuleKind::MidiCc => Box::new(midi_cc::MidiCc::new(params, midi, sample_rate)),
             ModuleKind::MidiNote => Box::new(midi_note::MidiNote::new(params, midi, sample_rate)),
             ModuleKind::Sequencer => Box::new(sequencer::Sequencer::new(params)),
             ModuleKind::Arpeggiator => Box::new(arpeggiator::Arpeggiator::new(params, midi)),
             ModuleKind::MidiIn => Box::new(midi_in::MidiIn::new(params, midi)),
+            ModuleKind::Midicer => Box::new(midicer::Midicer::new(params, midi)),
         }
     }
 }
@@ -300,6 +312,13 @@ impl DelayLine {
         unsafe { *self.buf.get_unchecked_mut(self.pos) = x };
     }
 
+    /// The sample written `d` pushes ago (0 = the latest), for a whole
+    /// number of samples: no interpolation.
+    #[inline]
+    pub fn tap_at(&self, d: usize) -> f32 {
+        self.at(self.pos.wrapping_sub(d))
+    }
+
     /// The sample written `d` pushes ago (0 = the latest), linearly
     /// interpolated. A feedback delay of `D` samples reads `tap(D - 1)`
     /// before pushing.
@@ -312,6 +331,49 @@ impl DelayLine {
         let a = self.at(self.pos.wrapping_sub(i));
         let b = self.at(self.pos.wrapping_sub(i + 1));
         a + (b - a) * f
+    }
+}
+
+/// Tells when an effect has gone quiet: its input silent and its own
+/// signal (its echoes, its tail) below hearing (−100 dB) for as long as it
+/// can remember sound (a delay line's length). Resting, it skips its work
+/// and outputs silence until input returns, so idle effects cost nothing.
+/// Anything that keeps sounding on its own (a frozen reverb, an endless
+/// delay) never rests.
+pub struct Quiet {
+    /// Samples of silence so far, and how many make it rest.
+    quiet: usize,
+    memory: usize,
+}
+
+impl Quiet {
+    /// Rests after `memory` samples of silence (and at least ~40 ms).
+    pub fn new(memory: usize) -> Self {
+        Self { quiet: 0, memory: memory.max(32 * crate::audio::engine::BLOCK) }
+    }
+
+    /// No input, or a silent one.
+    pub fn silent(input: Option<&Buf>, n: usize) -> bool {
+        input.is_none_or(|b| b[0][..n].iter().chain(&b[1][..n]).all(|s| s.abs() < 1e-6))
+    }
+
+    /// After a block of `n` samples: was its input silent, and how loud was
+    /// the effect's own signal.
+    pub fn update(&mut self, input_silent: bool, peak: f32, n: usize) {
+        self.quiet = if input_silent && peak < 1e-5 { self.quiet.saturating_add(n) } else { 0 };
+    }
+
+    pub fn resting(&self) -> bool {
+        self.quiet >= self.memory
+    }
+}
+
+/// Silence on every output (for nodes that skip their work).
+pub fn silence(outputs: &mut [Buf], n: usize) {
+    for out in outputs.iter_mut() {
+        for ch in out.iter_mut() {
+            ch[..n].fill(0.0);
+        }
     }
 }
 

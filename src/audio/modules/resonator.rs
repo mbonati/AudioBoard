@@ -5,7 +5,7 @@
 use std::f32::consts::TAU;
 use std::sync::Arc;
 
-use super::{ModuleDef, ModuleParams, approach, mix_gains, pan_gains, soft_limit, time_coeff};
+use super::{ModuleDef, ModuleParams, approach, mix_gains, pan_gains, soft_limit, time_coeff, Quiet, silence};
 use crate::audio::engine::{Buf, Inputs, ProcessCtx, Processor};
 use crate::audio::params::{ParamSpec, Unit};
 
@@ -51,6 +51,7 @@ pub static DEF: ModuleDef = ModuleDef {
     midi_out: false,
     data: &[],
     display_h: 42.0,
+    controls_h: 0.0,
     viz: 0,
 };
 
@@ -93,6 +94,7 @@ impl Mode {
 
 pub struct Resonator {
     params: Arc<ModuleParams>,
+    quiet: Quiet,
     sr: f32,
     modes: [Mode; MODES],
     pitch: f32,
@@ -109,6 +111,7 @@ pub struct Resonator {
 impl Resonator {
     pub fn new(params: Arc<ModuleParams>, sample_rate: f32) -> Self {
         Self {
+            quiet: Quiet::new(0),
             pitch: params.get(PITCH),
             mix: params.get(MIX),
             params,
@@ -131,6 +134,12 @@ impl Processor for Resonator {
         let spread = p.get(SPREAD);
         let mix_t = p.get(MIX);
         let input = inputs.get(0);
+        let silent_in = Quiet::silent(input, n);
+        if silent_in && self.quiet.resting() {
+            // Gone quiet: nothing to compute until input returns.
+            silence(outputs, n);
+            return;
+        }
 
         // Tuning is updated once per block (pitch CV at the block start).
         approach(&mut self.pitch, p.get(PITCH), 0.3);
@@ -159,6 +168,8 @@ impl Processor for Resonator {
         let (gl, gr) = self.gains;
 
         let mut peak = 0.0f32;
+        // The effect's own signal, for resting.
+        let mut inner = 0.0f32;
         for i in 0..n {
             approach(&mut self.mix, mix_t, ctx.smooth);
             let (dry_l, dry_r) = match input {
@@ -178,6 +189,7 @@ impl Processor for Resonator {
             // Automatic gain: a pitched input landing on a mode can ring
             // very loudly, so hold the wet signal under ~0.7.
             let level = wl.abs().max(wr.abs());
+            inner = inner.max(level);
             self.env = if level > self.env { level } else { self.env + (level - self.env) * self.release };
             let agc = if self.env > 0.7 { 0.7 / self.env } else { 1.0 };
 
@@ -188,6 +200,7 @@ impl Processor for Resonator {
             outputs[0][1][i] = yr;
             peak = peak.max(yl.abs()).max(yr.abs());
         }
+        self.quiet.update(silent_in, inner, n);
         p.meter.fetch_max(peak);
     }
 }

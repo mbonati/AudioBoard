@@ -17,7 +17,7 @@ audio CPU, but a few minutes to compile):
 cargo run --profile dist
 ```
 
-On launch an ambient demo patch opens: a **Drone** (a chord of fifths on A1) goes into a **Filter** whose
+On launch an ambient demo patch opens, stopped: press **Start** in the toolbar (or Space) to hear it. The patch: a **Drone** (a chord of fifths on A1) goes into a **Filter** whose
 cutoff is slowly moved by a **Random**; the filter feeds a **Reverb** with a touch of shimmer and, an octave
 up, a **Granular** cloud that ends in a tape **Delay**. Everything flows into the **Mixer**.
 
@@ -63,7 +63,16 @@ With noise or grains as input it gives physical, organic timbres. PITCH, DECAY, 
 (depth of the CUT input in octaves, negative too). The display shows the frequency response.
 
 **Delay**: stereo tape echo up to 2 s. TIME (changes glide, like tape), FEEDBACK,
-TONE (darkens the repeats), WOW (wow & flutter), PING (ping-pong), MIX.
+TONE (darkens the repeats), WOW (wow & flutter), PING (ping-pong), MIX. **SYNC** locks the time to the
+global tempo: DIV picks the note value (1/32 to 1/1, with dotted "D" and triplet "T" values, up to 4 s) and
+follows tempo changes; the knob not in use (TIME or DIV) is dimmed. The readout shows the value and the
+time ("1/8D · 375 ms").
+
+**Ping Pong**: a stereo delay whose echoes bounce from side to side: the input (summed to mono) enters one
+side and every repeat crosses to the other. TIME or, with **SYNC** (on by default), DIV as for the Delay;
+FEEDBACK; WIDTH (100%: hard left and right; 0%: every echo in the middle); TONE (darkens the repeats); DUCK
+(lowers the echoes while the input plays, so they bloom in the gaps); MIX. **L → R / R → L** picks the side
+of the first echo. The display shows the echoes alternating left (up) and right (down).
 
 **Reverb**: an 8-line delay network with diffusion, modulation and damping. SIZE (from room to
 cathedral), DECAY (0.3 – 60 s), DAMP, MOD, SHIMMER (an octave up, fed back into the tail), MIX.
@@ -91,16 +100,25 @@ semitone knobs the distance from middle C, and the others the key's position. Th
 messages that arrive after mapping. **UNMAP** removes the mapping. Mappings are saved in the project and in
 library modules.
 
-### MIDI sequences: Step Sequencer, Arpeggiator, MIDI In
+### MIDI sequences: Step Sequencer, MIDIcer, Arpeggiator, MIDI In
 
 Besides audio cables there are **MIDI cables**: square ports (audio ports are round) and dashed cables.
 A MIDI cable only joins a MIDI output to a MIDI input. VST3 plugins that accept MIDI (instruments), the
-Arpeggiator and MIDI Note have a MIDI input.
+Arpeggiator, MIDIcer and MIDI Note have a MIDI input.
 
-The **tempo** is global: the **BPM** field in the toolbar (drag to change it, Shift for fine steps,
-double-click to go back to 90); the light flashes on every beat while audio is on. Sequencers and
-arpeggiators are locked to the same grid, so they always stay in time with each other; the tempo is also
-passed to plugins (synced LFOs and delays). It is saved in the project.
+**Start / Stop** (toolbar, or Space) drive the transport, not the audio: Stop ends the sound's generation
+but lets it die away. Sequencers, arpeggiators and MIDIcer stop and end the notes they were holding (VST
+instruments and MIDI Note release them as usual), oscillators and Drones fade out in a few milliseconds,
+while effects (Delay, Ping Pong, Reverb, Granular, Resonator, Filter) and plugins keep running, so their
+tails ring on. Stop also goes back to the start: on the next Start everything begins again from its first
+step. The MIDI keyboard keeps playing plugins while stopped. The app opens stopped.
+
+The **tempo** is global: the **BPM** field in the toolbar. Drag it to change it (Shift for fine steps),
+click it to type a value (Enter sets it, Esc cancels; "97,5" works too), Alt+click to go back to 90.
+**TAP** (or the T key) sets it from your taps: tap on each beat, and the last few intervals are averaged;
+a pause of two seconds starts a new count. The light flashes on every beat while playing. Sequencers
+and arpeggiators are locked to the same grid, so they always stay in time with each other; the tempo is
+also passed to plugins (synced LFOs and delays). It is saved in the project.
 
 **Step Sequencer**: up to 16 steps on a scale. In the grid each column is a step and the lit cell is its
 note: click a cell to move the step there (on the lit cell, to switch it off or back on), drag to draw a
@@ -108,6 +126,37 @@ melody; hovering shows the note. RATE (from 1/4 to 1/32, triplets), STEPS (lengt
 SWING (delays the even-numbered steps), CHANCE (probability that a step plays), VELOCITY, ROOT and OCTAVE
 (the tonic), scale MAJ / MIN / DOR / PENT / CHR. **PLAY** stops and restarts it. Steps are saved in the
 project and in library modules.
+
+**MIDIcer**: a stochastic sequencer after Vermona's meloDICER: random values turn into notes only through
+your settings, so it is played like an instrument.
+- *Rhythm*: **NOTE** (base note value, 1/1 to 1/32 with triplets), **VARIATION** (off at the centre; to the
+  left it randomly brings in longer values, to the right shorter ones), **LEGATO** (probability that a note
+  runs into the next one without a new attack: overlapping notes, or a tie on the same pitch; at 100% every
+  note is legato) and **REST** (probability that a note becomes a rest).
+- *Melody*: **LOW** and **HIGH** set the note range; the display has a probability fader for each semitone
+  (click or drag; at the bottom it is off). Each note in the range plays as often as its semitone's fader
+  says; a fader lights while its note plays.
+- **DICE R / DICE M** keep a set of random values for the rhythm / melody, so the pattern repeats; click
+  again for new values. **LIVE R / LIVE M** draw new values all the time (no repeats); DICE brings the kept
+  values back. With separate sections, the rhythm can repeat while the melody keeps changing, or vice versa.
+- **FIRST / LAST** set the pattern's length in sixteenths (up to four beats), shown on the step strip under
+  the faders. **RESTART** starts it again from FIRST on the next beat. **MUTE** silences it while the pattern
+  runs. **LOCK** keeps playing with the current settings while you prepare new ones; unlocking applies them.
+- MIDI: **GATE** (note length for non-legato notes), **VELOCITY**, **DYNAMICS** (random softening) and the
+  output **CHANNEL**.
+- **SETUP** holds meloDICER's edit parameters: whether VARIATION may pick triplets and 1/32 notes, whether
+  unmuting restarts the pattern, and the routing of the two CV inputs: **CV1** (pitch) as pitch bend
+  (unquantized, like ADD SEQ) or transposition (±24 semitones, like TRANS SEQ), and/or moving LOW and HIGH;
+  **CV2** (rhythm) added to NOTE, VARIATION, LEGATO and/or REST.
+- Modes: **SEQ** (the sequencer); **SEQ+G** (no rhythm of its own: every note arriving on its MIDI input
+  plays a new note from the melody section, with LEGATO and REST); **QUANT1** (CV2 quantized to the enabled
+  notes on every beat; a raised fader pulls from further away); **QUANT2** (CV2 quantized while a note is held
+  on the MIDI input).
+- In SEQ mode, notes on its MIDI input are commands, like meloDICER's gate inputs: **C** restart, **D** / **E**
+  dice the rhythm / melody anew, **F** / **G** switch the rhythm / melody between DICE and LIVE, **A** mutes
+  while held. Without a MIDI cable these come from the MIDI keyboard.
+- The tempo is the global one (with TAP in the toolbar). Settings, faders and the kept random values are
+  saved in the project and in library modules, like meloDICER's patterns.
 
 **Arpeggiator**: plays the held notes one at a time, in time, over 1–4 octaves (OCTAVES), in UP, DOWN,
 U+D (up and down), RAND or ORDER (as played) order. RATE, GATE, SWING, CHANCE, VELOCITY as in the
@@ -130,13 +179,17 @@ sounding, so no notes hang.
 ### VST3 plugins
 
 Installed VST3 plugins (`/Library/Audio/Plug-Ins/VST3` and `~/Library/Audio/Plug-Ins/VST3`) appear in the
-**Plugins** section of the palette and of the right-click menu, and are added like any other node.
-No plugin is loaded to list them; category and maker appear after the first load.
+**Plugins** section of the palette and of the right-click menu, grouped by maker (foldable groups in the
+palette, submenus in the menu), and are added like any other node. No plugin is loaded to list them: the
+maker is read from the bundle's files (VST3 module info, copyright notice or bundle identifier), and the
+category appears after the first load, which also confirms the maker. Makers that can't be found are under
+"Other"; the search matches makers too.
 **Rescan plugins** refreshes the list.
 
 A plugin node has a stereo input (effects) and a stereo output; if it accepts MIDI it also has a MIDI
 input (square port) for sequencers and arpeggiators. It shows:
-- **EDITOR**: opens the plugin's own window (sounds, presets, all its settings);
+- **EDITOR**: opens the plugin's own window (sounds, presets, all its settings). It floats in front of the
+  board while AudioBoard is the active app, and hides while you are in another app;
 - **PARAMS**: the list of all parameters, with search and sliders; the dot pins up to 8 parameters
   as knobs on the node (at first, the first 8);
 - **KEYBOARD**: plays the plugin from the external MIDI keyboard (on by default for instruments), along
@@ -146,6 +199,13 @@ The node's knobs can be mapped with a MIDI CC node (MAP), like the others. The p
 path and its complete state, so the sound chosen in its editor too; on another computer the plugin is
 looked up by name in the VST3 folders. The same goes for library modules.
 
+A plugin is called once per audio buffer (as in a DAW), so a heavy instrument costs the same whatever the
+patch around it. Only its main stereo outputs are used: extra outputs (a drum machine's separate drum
+channels) are switched off at load so the plugin doesn't render them. While the transport is stopped, a
+plugin with nothing coming in rests after a second of silence; any MIDI or sound wakes it at once. A
+plugin's sound (its complete state) is read when the project is saved: some plugins take a while to
+answer, so saving while playing may briefly interrupt them.
+
 Plugins run inside AudioBoard: a faulty plugin can make the application quit. VST3 is supported
 (not VST2, AU or CLAP).
 
@@ -153,6 +213,22 @@ Plugins run inside AudioBoard: a faulty plugin can make the application quit. VS
 
 **Mixer (4 channels)**: for each channel a volume fader, pan (balance on stereo signals), Mute/Solo
 and a meter; a stereo master bus with L/R meters and a clip indicator. The mixer feeds the audio device.
+
+### Audio buffer, load and limiter
+
+The status bar shows the audio buffer in samples and its latency ("512 smp · 10.7 ms"): click it to choose
+another size, as in a DAW. Larger buffers give heavy patches and plugins more headroom (fewer clicks) at
+the cost of latency; smaller ones respond faster. The choice is kept between launches; "Device default"
+uses the sound card's own size. Changing it keeps the patch playing.
+
+Next to it, **DSP** is the average load and **peak** the heaviest callback of the last seconds: near 100%
+the audio can't keep up. If that happens, a red **dropouts** counter appears for a while (it also counts
+the gaps the sound card reports): try a larger buffer.
+
+The output goes through a safety **limiter** just under full scale (−0.3 dBFS) with 1.3 ms of lookahead:
+when the sum gets too loud (several plugins, high faders) it turns the level down smoothly instead of
+clipping it into crackles, and recovers over about 150 ms. While it works, the status bar shows
+"limit −x dB": lower the master or the plugins. Below full scale it does nothing.
 
 ## Controls
 
@@ -177,10 +253,17 @@ and a meter; a stereo master bus with L/R meters and a clip indicator. The mixer
 | Auto-fit (keep the whole patch in view) | A or the toolbar button |
 | New / open project | Cmd+N / Cmd+O, or the project name in the toolbar |
 | Save / save as | Cmd+S / Shift+Cmd+S |
-| Audio on/off | Space |
+| Start / stop | the Start / Stop button in the toolbar, or Space |
+| Tempo | drag the BPM field, click it to type, TAP or T to tap it |
 | Show / hide the oscilloscope and spectrum | panel button in the toolbar |
 
 The full list of shortcuts appears when hovering the **?** button in the toolbar.
+
+Resting the pointer on a node or a module for a moment shows a small translucent label just above it with
+its type, since titles can be renamed: "Reverb · hall · shimmer · freeze", "Originals - Cinematic Pads ·
+VST3 instrument · Spitfire Audio", or for a module the nodes it holds ("Module · Drone · Filter · 2× Reverb").
+The label stays put rather than following the pointer, takes no clicks, and hides while dragging, in menus
+and while renaming.
 
 Right-click (or Ctrl+click on macOS) opens the menu for whatever is under the pointer: canvas, node
 (also when clicking a knob or a display), module or cable.
@@ -226,7 +309,8 @@ turns itself off as soon as you zoom or move the view by hand.
 ## Palette
 
 The panel on the left (shown and hidden with the button next to the project name) lists all nodes by
-category and the library modules, with a search field. Drag an entry onto the canvas to place it where you
+category and the library modules, with a search field. Click a category's heading to fold or unfold it
+(a folded one shows how many entries it holds); while searching, every category with matches opens. Drag an entry onto the canvas to place it where you
 want (an outline shows where it lands), or click it to add it in the middle of the view. On library
 entries, the × removes the module from the library.
 
@@ -251,12 +335,13 @@ library, and **Open library folder** opens the folder of `.abmodule` files
 src/
 ├── audio/
 │   ├── params.rs   parameters shared lock-free (atomics) between the UI and the audio thread
-│   ├── engine.rs   audio-side graph: 64-frame stereo blocks, per-block MIDI events, global clock
-│   │               in beats, precomputed topological order, denormals flushed to zero
+│   ├── engine.rs   audio-side graph: one pass per device buffer (built-ins in 64-frame stereo blocks,
+│   │               plugins in one call), per-block MIDI events, global clock in beats, precomputed
+│   │               topological order, lookahead limiter, denormals flushed to zero
 │   ├── fastmath.rs fast sine, exp2 and tanh for per-sample DSP (error < 1e-6)
 │   ├── dsp.rs      Oscillator and Mixer
-│   ├── modules/    drone, random, granular, resonator, filter, delay, reverb, midi_cc, midi_note,
-│   │               sequencer, arpeggiator, midi_in
+│   ├── modules/    drone, random, granular, resonator, filter, delay, pingpong, reverb, midi_cc, midi_note,
+│   │               sequencer, arpeggiator, midi_in, midicer (after Vermona's meloDICER)
 │   │   ├── steps.rs step grid on the global tempo, outgoing notes, held keys
 │   │   └── mod.rs  module descriptions (ModuleDef), generic parameters and DSP helpers
 │   ├── midi.rs     MIDI inputs (midir) and shared state read by the MIDI nodes
@@ -274,6 +359,8 @@ src/
 │   ├── modules.rs  common module panel and their displays
 │   ├── widgets.rs  hand-drawn knobs, faders, meters, ports and cables
 │   ├── monitor.rs  bottom panel: oscilloscope and spectrum (FFT)
+│   ├── tempo.rs    the toolbar's tempo: BPM field (drag or type), beat light, tap tempo
+│   ├── macos.rs    native windows: toolbar controls don't drag the window; plugin editors float
 │   ├── theme.rs    colors, system fonts and style
 │   └── app.rs      window, toolbar, panels, demo patch
 ├── tests.rs        tests of the graph, the modules and offline engine rendering
@@ -283,11 +370,19 @@ src/
 The UI never blocks the audio thread: knob values travel through atomics, while structural changes
 (nodes added/removed, a new processing order) reach the engine as commands on a channel.
 Buffers (delay, reverb, granular loop) are allocated on the UI thread when the node is created.
-VST3 plugins are shared through a lock: the UI takes it for one call at a time, at most ten times a
-second, and the plugin's state is read again only when it may have changed, so the audio thread is not
-kept waiting.
+VST3 plugins are shared through a lock: the UI calls into a plugin only between audio callbacks (when
+the audio thread has just finished and won't need the plugin for most of a buffer), one call at a time, at
+most ten times a second, and the plugin's state is read only when saving, so the audio thread is not kept
+waiting. Each buffer is processed as one pass: built-in nodes run through it in 64-frame blocks (so MIDI
+timing and modulation stay fine-grained), while a plugin gets the whole buffer in a single call with its
+MIDI events placed at their exact offsets, since every plugin call has a fixed cost. Removed nodes and old processing orders are handed back to the UI thread to be
+freed: freeing memory (a delay line is megabytes) inside the audio callback could stall it into a click.
 
-**Performance.** The UI redraws at full rate only during interaction and animations; meters, analyzers and
+**Performance.** Effects rest when they have gone quiet: with a silent input, once their own signal (echoes,
+tails) has stayed below −100 dB for as long as they can remember sound, they skip their work and output
+silence until input returns; a frozen reverb or an endless delay never rests. Stopped sources rest too, so a
+stopped patch costs almost nothing once its tails are gone. Denormal numbers are flushed to zero, and the
+per-sample maths uses fast approximations of sine, exp2 and tanh. The UI redraws at full rate only during interaction and animations; meters, analyzers and
 step lights update at 30 fps (not at all while the window is minimized). Zoom uses font sizes rounded to
 half a point, so animations don't re-create glyphs every frame; from far away, unreadable text is not drawn
 and the grid is a single mesh. Auto layout and zoom transitions follow a spring curve with no bounce: nodes

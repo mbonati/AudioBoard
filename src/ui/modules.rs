@@ -12,16 +12,17 @@ use crate::audio::engine::NodeId;
 use crate::audio::midi::note_hz;
 use crate::audio::modules::{
     ModuleDef, ModuleKind, ModuleParams, arpeggiator, delay, drone, filter, granular, midi_cc, midi_in, midi_note,
-    random, resonator, reverb, sequencer, steps,
+    midicer, pingpong, random, resonator, reverb, sequencer, steps,
 };
-use crate::audio::params::{DIVISIONS, format_hz, format_seconds};
+use crate::audio::params::{
+    DIVISIONS, NOTE_NAMES, NOTE_VALUES, format_hz, format_seconds, note_label, sync_division,
+};
 use crate::graph::{ModuleNode, ParamRef};
 
 const PAD: f32 = 12.0;
 const COL_W: f32 = 64.0;
 const PORT_Y: f32 = 42.0;
 const PORT_DY: f32 = 18.0;
-const DISPLAY_TOP: f32 = 72.0;
 const ROW_H: f32 = 58.0;
 
 fn columns(def: &ModuleDef) -> usize {
@@ -32,19 +33,30 @@ fn columns(def: &ModuleDef) -> usize {
     }
 }
 
+/// Node-local top of the display: below the port rows.
+fn display_top(def: &ModuleDef) -> f32 {
+    let rows = (def.inputs.len() + def.midi_in as usize).max(def.outputs.len() + def.midi_out as usize);
+    (PORT_Y + PORT_DY * rows.saturating_sub(1) as f32 + 12.0).max(72.0)
+}
+
 fn display_bottom(def: &ModuleDef) -> f32 {
-    DISPLAY_TOP + def.display_h
+    display_top(def) + def.display_h
+}
+
+/// Node-local bottom of the extra controls under the display, if any.
+fn controls_bottom(def: &ModuleDef) -> f32 {
+    display_bottom(def) + if def.controls_h > 0.0 { 6.0 + def.controls_h } else { 0.0 }
 }
 
 /// Node-local top and bottom of the mode selector row.
 fn selector_y(def: &ModuleDef) -> [f32; 2] {
-    let d = display_bottom(def);
+    let d = controls_bottom(def);
     [d + 6.0, d + 26.0]
 }
 
 /// Node-local y of the first knob row's labels.
 fn knobs_top(def: &ModuleDef) -> f32 {
-    display_bottom(def) + if def.modes.is_empty() && !def.map { 18.0 } else { 42.0 }
+    controls_bottom(def) + if def.modes.is_empty() && !def.map { 18.0 } else { 42.0 }
 }
 
 pub fn size(def: &ModuleDef) -> Vec2 {
@@ -117,7 +129,7 @@ pub fn draw(
     }
 
     // Readout.
-    let (main, sub) = readout(kind, p);
+    let (main, sub) = readout(kind, p, v.tempo);
     let sub = if map.picking {
         "Click a knob or fader…".to_owned()
     } else if let Some(target) = map.target {
@@ -148,7 +160,7 @@ pub fn draw(
     }
 
     // Display.
-    let rect = v.r(PAD, DISPLAY_TOP, w - PAD, display_bottom(def));
+    let rect = v.r(PAD, display_top(def), w - PAD, display_bottom(def));
     v.painter.rect_filled(rect, 4.0 * z, theme::INSET);
     let painter = v.painter.with_clip_rect(rect.intersect(v.painter.clip_rect()));
     let screen = Screen {
@@ -163,10 +175,15 @@ pub fn draw(
         ModuleKind::Granular => granular_display(&screen, p),
         ModuleKind::Resonator => resonator_display(&screen, p),
         ModuleKind::Filter => filter_display(&screen, p),
-        ModuleKind::Delay => delay_display(&screen, p),
+        ModuleKind::Delay => delay_display(&screen, p, echo_seconds(p, v.tempo)),
+        ModuleKind::PingPong => pingpong_display(&screen, p, echo_seconds(p, v.tempo)),
         ModuleKind::Reverb => reverb_display(&screen, p),
         ModuleKind::Sequencer => step_grid(v, id, &screen, p),
         ModuleKind::Arpeggiator | ModuleKind::MidiIn => keys_display(&screen, p),
+        ModuleKind::Midicer => midicer_display(v, id, &screen, p),
+    }
+    if kind == ModuleKind::Midicer {
+        midicer_controls(v, id, p, accent, display_bottom(def) + 6.0, w);
     }
 
     // Mode selector, and the MAP button for MIDI nodes.
@@ -211,7 +228,8 @@ pub fn draw(
     let cols = columns(def);
     let top = knobs_top(def);
     for (k, spec) in def.params.iter().enumerate() {
-        let dimmed = def.cv_depth.iter().any(|&(param, input)| param == k && !patched(input));
+        let dimmed =
+            def.cv_depth.iter().any(|&(param, input)| param == k && !patched(input)) || knob_unused(kind, p, k);
         let cell = KnobCell {
             cx: PAD + COL_W * ((k % cols) as f32 + 0.5),
             row_y: top + ROW_H * (k / cols) as f32,
@@ -236,6 +254,7 @@ fn mode_name(kind: ModuleKind, i: usize) -> &'static str {
         ModuleKind::Granular => ["Forward", "Reverse", "Both directions"].get(i).copied(),
         ModuleKind::MidiCc => ["Unipolar 0…1", "Bipolar ±1"].get(i).copied(),
         ModuleKind::Sequencer => sequencer::SCALES.get(i).map(|s| s.0),
+        ModuleKind::Midicer => midicer::MODE_NAMES.get(i).copied(),
         ModuleKind::Arpeggiator => arpeggiator::MODE_NAMES.get(i).copied(),
         _ => kind.def().modes.get(i).copied(),
     }
@@ -243,11 +262,42 @@ fn mode_name(kind: ModuleKind, i: usize) -> &'static str {
 }
 
 /// The main readout line, shown on collapsed nodes.
-pub fn summary(p: &ModuleParams) -> String {
-    readout(p.kind, p).0
+pub fn summary(p: &ModuleParams, tempo: f32) -> String {
+    readout(p.kind, p, tempo).0
 }
 
-fn readout(kind: ModuleKind, p: &ModuleParams) -> (String, String) {
+/// A delay's echo time in seconds (TIME, or DIV at `tempo` with SYNC).
+/// Delay and Ping Pong share their TIME, DIV and SYNC layout.
+fn echo_seconds(p: &ModuleParams, tempo: f32) -> f32 {
+    delay::delay_seconds(p.toggled(), p.get(delay::TIME), p.get(delay::DIV), 60.0 / tempo.max(1.0) as f64)
+}
+
+/// "1/8D · 375 ms" with SYNC, else "375 ms".
+fn echo_label(p: &ModuleParams, tempo: f32) -> String {
+    let t = format_seconds(echo_seconds(p, tempo));
+    if p.toggled() { format!("{} · {t}", sync_division(p.get(delay::DIV)).0) } else { t }
+}
+
+/// "Tail ≈ 4.2 s": how long the repeats take to fall by 60 dB.
+fn tail_label(seconds: f32, loop_gain: f32) -> String {
+    if loop_gain >= 0.995 {
+        "Endless".to_owned()
+    } else if loop_gain < 0.01 {
+        "Single echo".to_owned()
+    } else {
+        let repeats = 0.001f32.ln() / loop_gain.ln();
+        format!("Tail ≈ {}", format_seconds(seconds * repeats))
+    }
+}
+
+/// Knobs that do nothing in the current setting, drawn dimmed: a delay's
+/// TIME while it is synced, and DIV while it is not.
+fn knob_unused(kind: ModuleKind, p: &ModuleParams, k: usize) -> bool {
+    matches!(kind, ModuleKind::Delay | ModuleKind::PingPong)
+        && ((k == delay::TIME && p.toggled()) || (k == delay::DIV && !p.toggled()))
+}
+
+fn readout(kind: ModuleKind, p: &ModuleParams, tempo: f32) -> (String, String) {
     let mode = mode_name(kind, p.mode());
     match kind {
         ModuleKind::MidiCc => {
@@ -267,6 +317,28 @@ fn readout(kind: ModuleKind, p: &ModuleParams) -> (String, String) {
             let channel = midi_note::channel(p);
             let ch = if channel == 0 { "Omni".to_owned() } else { format!("Ch {channel}") };
             (main, format!("{ch} · play a key"))
+        }
+        ModuleKind::Midicer => {
+            use midicer::data;
+            let on = |i: usize| p.data[i].get() > 0.5;
+            let note = p.viz[midicer::CURRENT].get();
+            let main = if on(data::MUTE) {
+                "Muted".to_owned()
+            } else if note < 0.0 {
+                "—".to_owned()
+            } else {
+                note_name(note_hz(note))
+            };
+            let (lo, hi) = (p.get(midicer::LOW).round() as i32, p.get(midicer::HIGH).round() as i32);
+            let range = format!("{}–{}", note_label(lo.min(hi)), note_label(lo.max(hi)));
+            let what = match p.mode() {
+                midicer::SEQ => format!("{} · {range}", NOTE_VALUES[(p.get(midicer::NOTE).round().max(0.0) as usize).min(8)].0),
+                midicer::SEQ_GATE => format!("gate in · {range}"),
+                midicer::QUANT1 => format!("CV2 per beat · {range}"),
+                _ => format!("CV2 while held · {range}"),
+            };
+            let lock = if on(data::LOCK) { " · locked" } else { "" };
+            (main, format!("{what}{lock}"))
         }
         ModuleKind::Sequencer => {
             let step = p.viz[sequencer::STEP].get();
@@ -315,18 +387,12 @@ fn readout(kind: ModuleKind, p: &ModuleParams) -> (String, String) {
         }
         ModuleKind::Filter => (format_hz(p.get(filter::CUTOFF)), mode.to_owned()),
         ModuleKind::Delay => {
-            let t = p.get(delay::TIME);
             let fb = delay::loop_gain(p.get(delay::FEEDBACK));
-            let tail = if fb >= 0.995 {
-                "Endless".to_owned()
-            } else if fb < 0.01 {
-                "Single echo".to_owned()
-            } else {
-                // Time for the repeats to fall by 60 dB.
-                let repeats = 0.001f32.ln() / fb.ln();
-                format!("Tail ≈ {}", format_seconds(t * repeats))
-            };
-            (format_seconds(t), tail)
+            (echo_label(p, tempo), tail_label(echo_seconds(p, tempo), fb))
+        }
+        ModuleKind::PingPong => {
+            let fb = pingpong::loop_gain(p.get(pingpong::FEEDBACK));
+            (echo_label(p, tempo), tail_label(echo_seconds(p, tempo), fb))
         }
         ModuleKind::Reverb => {
             let main = format!("RT {}", format_seconds(p.get(reverb::DECAY)));
@@ -539,11 +605,10 @@ fn filter_display(s: &Screen, p: &ModuleParams) {
 }
 
 /// Echoes over 4 seconds: left channel up, right channel down.
-fn delay_display(s: &Screen, p: &ModuleParams) {
+fn delay_display(s: &Screen, p: &ModuleParams, t: f32) {
     s.center_line();
     let r = s.rect;
     let span = 4.0;
-    let t = p.get(delay::TIME);
     let fb = delay::loop_gain(p.get(delay::FEEDBACK)).min(1.0);
     let ping = p.get(delay::PING);
     let half = r.height() * 0.5;
@@ -562,6 +627,33 @@ fn delay_display(s: &Screen, p: &ModuleParams) {
             fb * ((1.0 - ping) * e[0] + ping * e[1]),
             fb * ((1.0 - ping) * e[1] + ping * e[0]),
         ];
+    }
+}
+
+/// Ping Pong's echoes over 4 seconds, alternating sides: left up, right
+/// down, the first on the side the mode picks; WIDTH pulls them together.
+fn pingpong_display(s: &Screen, p: &ModuleParams, t: f32) {
+    s.center_line();
+    let r = s.rect;
+    let span = 4.0;
+    let fb = pingpong::loop_gain(p.get(pingpong::FEEDBACK));
+    let width = p.get(pingpong::WIDTH);
+    let first_right = p.mode() == pingpong::RIGHT_FIRST;
+    let half = r.height() * 0.5;
+    let stroke = |a: f32| Stroke::new(2.0 * s.z, alpha(s.accent, 0.3 + 0.7 * a.min(1.0)));
+    let mut level = 1.0f32;
+    for k in 1..=64 {
+        let x = r.left() + r.width() * k as f32 * t / span;
+        if x > r.right() || level < 0.02 {
+            break;
+        }
+        // Odd echoes on the first side; the other side gets what WIDTH leaks.
+        let right = (k % 2 == 1) == first_right;
+        let (main, leak) = (level * (0.5 + 0.5 * width), level * (0.5 - 0.5 * width));
+        let (l, rr) = if right { (leak, main) } else { (main, leak) };
+        s.p.line_segment([pos2(x, r.center().y), pos2(x, r.center().y - l * half)], stroke(l));
+        s.p.line_segment([pos2(x, r.center().y), pos2(x, r.center().y + rr * half)], stroke(rr));
+        level *= fb;
     }
 }
 
@@ -714,4 +806,167 @@ fn keys_display(s: &Screen, p: &ModuleParams) {
         let key = Rect::from_center_size(pos2(x, r.top() + r.height() * 0.3), vec2(key_w * 0.6, r.height() * 0.6));
         s.p.rect_filled(key, 1.0 * z, fill(n, theme::INSET));
     }
+}
+
+/// MIDIcer's display: a probability fader for each semitone (click or drag
+/// to set it; down to the bottom switches it off), lit while its note
+/// plays; under it the pattern's sixteen steps, FIRST…LAST bright and the
+/// step playing lit.
+fn midicer_display(v: &NodeView, id: NodeId, s: &Screen, p: &ModuleParams) {
+    use midicer::data;
+    let r = s.rect;
+    let z = s.z;
+    let strip = Rect::from_x_y_ranges(r.x_range(), r.bottom() - 6.0 * z..=r.bottom());
+    let faders = Rect::from_x_y_ranges(r.x_range(), r.top()..=strip.top() - 5.0 * z);
+    let label_h = 11.0 * z;
+    let bars = Rect::from_x_y_ranges(faders.x_range(), faders.top()..=faders.bottom() - label_h);
+    let col_w = faders.width() / 12.0;
+
+    let resp = v
+        .ui
+        .interact(faders, Id::unique(("midicer_faders", id)), Sense::CLICK | Sense::DRAG)
+        .on_hover_cursor(CursorIcon::ResizeVertical);
+    if let Some(pos) = resp.interact_pointer_pos()
+        && (resp.clicked() || resp.dragged())
+    {
+        let i = (((pos.x - faders.left()) / col_w).max(0.0) as usize).min(11);
+        let value = ((bars.bottom() - pos.y) / bars.height()).clamp(0.0, 1.0);
+        p.data[data::WEIGHTS + i].set(if value < 0.04 { 0.0 } else { value });
+    }
+
+    let current = p.viz[midicer::CURRENT].get();
+    let lit = (current >= 0.0).then_some(current as usize % 12);
+    for (i, name) in NOTE_NAMES.iter().enumerate() {
+        let x0 = faders.left() + col_w * i as f32;
+        let column = Rect::from_x_y_ranges(x0 + 1.5 * z..=x0 + col_w - 1.5 * z, bars.y_range());
+        let black = matches!(i, 1 | 3 | 6 | 8 | 10);
+        s.p.rect_filled(column, 1.5 * z, if black { theme::GRID_MINOR } else { alpha(theme::CONTROL, 0.6) });
+        let w = p.data[data::WEIGHTS + i].get().clamp(0.0, 1.0);
+        if w > 0.0 {
+            let bar = Rect::from_x_y_ranges(column.x_range(), column.bottom() - column.height() * w..=column.bottom());
+            let color = if lit == Some(i) { theme::mix(s.accent, Color32::WHITE, 0.45) } else { alpha(s.accent, 0.35 + 0.5 * w) };
+            s.p.rect_filled(bar, 1.5 * z, color);
+        }
+        let label_col = if lit == Some(i) { theme::TEXT } else if w > 0.0 { theme::TEXT_DIM } else { theme::TEXT_FAINT };
+        let font = theme::font(8.0 * z);
+        if font.size >= super::nodes::MIN_TEXT {
+            s.p.text(pos2(column.center().x, faders.bottom()), Align2::CENTER_BOTTOM, *name, font, label_col);
+        }
+    }
+
+    // The pattern: sixteen sixteenths, FIRST…LAST in use.
+    let first = (p.get(midicer::FIRST).round() as usize).clamp(1, 16) - 1;
+    let last = (p.get(midicer::LAST).round() as usize).clamp(first + 1, 16) - 1;
+    let step = p.viz[midicer::STEP].get();
+    let cell = strip.width() / 16.0;
+    for i in 0..16 {
+        let x0 = strip.left() + cell * i as f32;
+        let c = Rect::from_x_y_ranges(x0 + 1.0 * z..=x0 + cell - 1.0 * z, strip.y_range());
+        let color = if step >= 0.0 && step as usize == i {
+            s.accent
+        } else if (first..=last).contains(&i) {
+            if i % 4 == 0 { theme::TEXT_FAINT } else { theme::CONTROL_HI }
+        } else {
+            theme::GRID_MINOR
+        };
+        s.p.rect_filled(c, 1.0 * z, color);
+    }
+}
+
+/// MIDIcer's buttons: DICE and LIVE for rhythm and melody, LOCK, MUTE,
+/// RESTART, and SETUP for the settings meloDICER keeps in its edit menu.
+fn midicer_controls(v: &NodeView, id: NodeId, p: &ModuleParams, accent: Color32, top: f32, w: f32) {
+    use midicer::data;
+    let z = v.z;
+    let on = |i: usize| p.data[i].get() > 0.5;
+    let flip = |i: usize| p.data[i].set(if on(i) { 0.0 } else { 1.0 });
+    let gap = 4.0;
+    let bw = (w - 2.0 * PAD - 3.0 * gap) / 4.0;
+    let slot = |row: usize, k: usize| {
+        let x = PAD + k as f32 * (bw + gap);
+        let y = top + row as f32 * 24.0;
+        v.r(x, y, x + bw, y + 20.0)
+    };
+    let button = |row: usize, k: usize, label: &str, lit: bool, tip: &str| {
+        widgets::toggle(v.ui, v.painter, Id::unique(("midicer", id, label)), slot(row, k), label, lit, accent, z)
+            .on_hover_text(tip)
+    };
+    let now = v.ui.input(|i| i.time);
+    for (k, (dice, seed, name)) in [(data::DICE_R, data::SEED_R, "R"), (data::DICE_M, data::SEED_M, "M")].into_iter().enumerate() {
+        let what = if name == "R" { "rhythm" } else { "melody" };
+        let d = button(0, 2 * k, &format!("DICE {name}"), on(dice), &format!(
+            "The {what} repeats: click for new random values\n(in LIVE, click to come back to the kept ones)"
+        ));
+        if d.clicked() {
+            if on(dice) {
+                p.data[seed].set(midicer::new_seed((now * 1e6) as u32 ^ seed as u32));
+            } else {
+                p.data[dice].set(1.0);
+            }
+        }
+        let l = button(0, 2 * k + 1, &format!("LIVE {name}"), !on(dice), &format!(
+            "New random {what} values all the time: no repeating pattern"
+        ));
+        if l.clicked() {
+            p.data[dice].set(0.0);
+        }
+    }
+    if button(1, 0, "LOCK", on(data::LOCK), "Keep playing with the current settings while you change them;\nclick again to apply").clicked() {
+        flip(data::LOCK);
+    }
+    if button(1, 1, "MUTE", on(data::MUTE), "Silence the notes; the pattern keeps running").clicked() {
+        flip(data::MUTE);
+    }
+    if button(1, 2, "RESTART", false, "Start the pattern again from FIRST on the next beat").clicked() {
+        p.data[data::RESTART].set(p.data[data::RESTART].get() + 1.0);
+    }
+    let setup = button(1, 3, "SETUP", false, "Note variation, mute, CV routing, MIDI commands");
+    egui::Popup::menu(&setup)
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+        .show(|ui| midicer_setup(ui, p));
+}
+
+/// The settings meloDICER keeps in its edit menu.
+fn midicer_setup(ui: &mut egui::Ui, p: &ModuleParams) {
+    use midicer::data;
+    ui.set_width(270.0);
+    let heading = |ui: &mut egui::Ui, text: &str| {
+        ui.add_space(4.0);
+        ui.label(egui::RichText::new(text).size(9.5).color(theme::TEXT_FAINT));
+    };
+    let check = |ui: &mut egui::Ui, i: usize, label: &str| {
+        let mut on = p.data[i].get() > 0.5;
+        if ui.checkbox(&mut on, label).changed() {
+            p.data[i].set(if on { 1.0 } else { 0.0 });
+        }
+    };
+    heading(ui, "VARIATION MAY PICK");
+    check(ui, data::TRIPLETS, "Triplets");
+    check(ui, data::THIRTY_SECOND, "1/32 notes");
+    heading(ui, "MUTE");
+    check(ui, data::UNMUTE_RESTART, "Unmuting restarts the pattern on the next beat");
+    heading(ui, "CV1 · PITCH");
+    let mut pitch = p.data[data::CV1_PITCH].get().round() as i32;
+    let before = pitch;
+    ui.horizontal(|ui| {
+        ui.radio_value(&mut pitch, 0, "Off");
+        ui.radio_value(&mut pitch, 1, "Bend").on_hover_text("Pitch bend, unquantized (like ADD SEQ)");
+        ui.radio_value(&mut pitch, 2, "Transpose").on_hover_text("Moves the notes ±24 semitones (like TRANS SEQ)");
+    });
+    if pitch != before {
+        p.data[data::CV1_PITCH].set(pitch as f32);
+    }
+    check(ui, data::CV1_LOW, "Moves LOW (±24 semitones)");
+    check(ui, data::CV1_HIGH, "Moves HIGH (±24 semitones)");
+    heading(ui, "CV2 · RHYTHM (ADDED TO THE KNOBS)");
+    check(ui, data::CV2_NOTE, "NOTE value");
+    check(ui, data::CV2_VAR, "VARIATION");
+    check(ui, data::CV2_LEGATO, "LEGATO");
+    check(ui, data::CV2_REST, "REST");
+    heading(ui, "MIDI IN · COMMANDS IN SEQ MODE");
+    ui.label(
+        egui::RichText::new("C restart · D dice rhythm · E dice melody\nF / G rhythm / melody DICE ⇄ LIVE · A mute while held")
+            .size(10.5)
+            .color(theme::TEXT_DIM),
+    );
 }

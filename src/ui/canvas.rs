@@ -155,6 +155,18 @@ enum MenuTarget {
     Group(GroupId),
 }
 
+/// What the pointer rests on, for the type label.
+#[derive(Clone, Copy, PartialEq)]
+enum TipTarget {
+    Node(NodeId),
+    Group(GroupId),
+}
+
+/// The type label waits this long before fading in, so passing over the
+/// canvas doesn't flash labels everywhere.
+const TIP_DELAY: f64 = 0.35;
+const TIP_FADE: f64 = 0.15;
+
 /// A collapsed module as laid out this frame (screen space).
 struct Card {
     gid: GroupId,
@@ -190,6 +202,8 @@ pub struct Editor {
     /// Requests for the app, drained after each frame.
     pub requests: Vec<Request>,
     renaming: Option<Rename>,
+    /// The node or module under the pointer, and since when.
+    tip: Option<(TipTarget, f64)>,
     /// MIDI node waiting for a click on the control it should drive.
     mapping: Option<NodeId>,
     /// Keep the whole patch in view as it changes.
@@ -219,6 +233,7 @@ impl Editor {
             plugins: Vec::new(),
             requests: Vec::new(),
             renaming: None,
+            tip: None,
             mapping: None,
             auto_fit: false,
             glide: None,
@@ -688,6 +703,7 @@ impl Editor {
             .filter_map(|n| Some((n.id, graph.target_label(graph.target_of(n.id)?)?)))
             .collect();
         let mut map_button = None;
+        let tempo = graph.tempo;
         for (idx, node) in graph.nodes.iter_mut().enumerate() {
             let Some(rect_s) = node_rects[idx] else {
                 continue;
@@ -716,6 +732,7 @@ impl Editor {
                 z,
                 node: id,
                 hits: &hits,
+                tempo,
             };
             let header = nodes::frame(&view, node, selected);
             if header.close {
@@ -749,10 +766,17 @@ impl Editor {
                     NodeKind::Plugin(p) => {
                         let input = connected.first().copied().unwrap_or(false);
                         let events = plugin_node::draw(&view, id, accent, p, (input, midi_in), out, now);
-                        if events.toggle_editor
-                            && let Err(e) = p.toggle_editor()
-                        {
-                            self.notices.push(format!("Could not open the editor: {e}"));
+                        if events.toggle_editor {
+                            #[cfg(target_os = "macos")]
+                            let before = super::macos::windows();
+                            match p.toggle_editor() {
+                                // The editor stays in front of the board.
+                                #[cfg(target_os = "macos")]
+                                Ok(()) => super::macos::float_new_windows(&before),
+                                #[cfg(not(target_os = "macos"))]
+                                Ok(()) => {}
+                                Err(e) => self.notices.push(format!("Could not open the editor: {e}")),
+                            }
                         }
                     }
                     NodeKind::Module(m) => {
@@ -911,6 +935,29 @@ impl Editor {
             );
         }
 
+        // --- Type label --------------------------------------------------
+        // The topmost node or module under the pointer (a module's frame
+        // only by its header), as for the context menu.
+        let hovered = pointer.filter(|_| ui.rect_contains_pointer(rect)).and_then(|p| {
+            if let Some(c) = cards.iter().rev().find(|c| c.rect.contains(p)) {
+                return Some((TipTarget::Group(c.gid), c.rect));
+            }
+            let node = graph
+                .nodes
+                .iter()
+                .zip(&node_rects)
+                .rev()
+                .find_map(|(n, r)| r.filter(|r| r.contains(p)).map(|r| (TipTarget::Node(n.id), r)));
+            node.or_else(|| {
+                frames
+                    .iter()
+                    .rev()
+                    .find(|(_, f)| p.y < f.top() + nodes::HEADER_H * z && f.contains(p))
+                    .map(|&(gid, f)| (TipTarget::Group(gid), f))
+            })
+        });
+        self.type_tip(ui, graph, rect, hovered, now);
+
         // --- Context menu -------------------------------------------------
         let menu = self.menu;
         let has_selection = !self.selected.is_empty();
@@ -954,6 +1001,69 @@ impl Editor {
         }
 
         self.apply(actions, graph, audio);
+    }
+
+    /// While the pointer rests on a node or a module: a small translucent
+    /// label just above it with its type (titles can be renamed, and a
+    /// module's name says nothing of what is inside). It stays put rather
+    /// than following the pointer, takes no clicks, and keeps out of the
+    /// way of drags, menus and renaming.
+    fn type_tip(&mut self, ui: &Ui, graph: &Graph, canvas: Rect, hovered: Option<(TipTarget, Rect)>, now: f64) {
+        let busy = self.drag.is_some()
+            || self.marquee.is_some()
+            || self.mapping.is_some()
+            || self.renaming.is_some()
+            || egui::DragAndDrop::has_any_payload(ui.ctx())
+            || egui::Popup::is_any_open(ui.ctx())
+            || ui.input(|i| i.pointer.any_down());
+        let Some((target, item)) = hovered.filter(|_| !busy) else {
+            self.tip = None;
+            return;
+        };
+        let since = match self.tip {
+            Some((t, since)) if t == target => since,
+            _ => now,
+        };
+        self.tip = Some((target, since));
+        let shown = now - since - TIP_DELAY;
+        if shown < 0.0 {
+            ui.ctx().request_repaint_after(std::time::Duration::from_secs_f64(-shown));
+            return;
+        }
+        let opacity = (shown / TIP_FADE).min(1.0) as f32;
+        if opacity < 1.0 {
+            ui.ctx().request_repaint();
+        }
+        let Some((kind, detail)) = type_label(graph, target) else { return };
+
+        let mut job = egui::text::LayoutJob::default();
+        let format = |size: f32, color: Color32| egui::TextFormat::simple(FontId::proportional(size), alpha(color, opacity));
+        job.append(&kind, 0.0, format(11.0, theme::TEXT));
+        if !detail.is_empty() {
+            job.append(&detail, 8.0, format(10.5, theme::TEXT_DIM));
+        }
+        let galley = ui.painter().layout_job(job);
+        let pad = vec2(8.0, 4.0);
+        let size = galley.size() + pad * 2.0;
+        // Just above the item, left-aligned; below it if there's no room.
+        let mut min = pos2(item.left(), item.top() - 6.0 - size.y);
+        if min.y < canvas.top() + 4.0 {
+            min.y = item.bottom() + 6.0;
+        }
+        min.x = min.x.clamp(canvas.left() + 4.0, (canvas.right() - size.x - 4.0).max(canvas.left() + 4.0));
+        let pill = Rect::from_min_size(min, size);
+        let painter = ui
+            .ctx()
+            .layer_painter(egui::LayerId::new(egui::Order::Foreground, Id::unique("type_tip")))
+            .with_clip_rect(canvas);
+        painter.rect(
+            pill,
+            5.0,
+            alpha(theme::NODE_HEADER, 0.72 * opacity),
+            Stroke::new(1.0, alpha(theme::NODE_BORDER, 0.8 * opacity)),
+            StrokeKind::Inside,
+        );
+        painter.galley(pill.min + pad, galley, theme::TEXT);
     }
 
     /// MIDI mappings: a dashed line from each MIDI node to the control it
@@ -1414,11 +1524,16 @@ pub fn add_menu(ui: &mut Ui, library: &[Preset], plugins: &[PluginEntry]) -> Opt
 
     if !plugins.is_empty() {
         menu_heading(ui, "Plugins");
-        for (i, plugin) in plugins.iter().enumerate() {
-            if menu_item(ui, &plugin.name, &plugin.hint) {
-                picked = Some(AddChoice::Plugin(i));
-                ui.close();
-            }
+        // One submenu per maker.
+        for (vendor, members) in super::palette::by_vendor(plugins) {
+            ui.menu_button(format!("{vendor}  ({})", members.len()), |ui| {
+                for i in members {
+                    if menu_item(ui, &plugins[i].name, &plugins[i].hint) {
+                        picked = Some(AddChoice::Plugin(i));
+                        ui.close();
+                    }
+                }
+            });
         }
     }
 
@@ -1561,4 +1676,47 @@ fn selection_bounds(graph: &Graph, selected: &HashSet<NodeId>) -> Option<Rect> {
         }
     }
     bounds
+}
+
+/// The type of a node or module for its label: ("Reverb", "hall · shimmer ·
+/// freeze"), ("Originals - Cinematic Pads", "VST3 instrument · Spitfire
+/// Audio") or ("Module", "Drone · Filter · 2× Reverb").
+fn type_label(graph: &Graph, target: TipTarget) -> Option<(String, String)> {
+    let node_type = |n: &crate::graph::Node| match &n.kind {
+        NodeKind::Plugin(p) => p.meta.name.clone(),
+        k => k.node_type().name().to_owned(),
+    };
+    match target {
+        TipTarget::Node(id) => {
+            let n = graph.node(id)?;
+            Some(match &n.kind {
+                NodeKind::Plugin(p) => {
+                    let what = if p.meta.instrument { "VST3 instrument" } else { "VST3 effect" };
+                    let detail = if p.meta.vendor.is_empty() { what.to_owned() } else { format!("{what} · {}", p.meta.vendor) };
+                    (p.meta.name.clone(), detail)
+                }
+                k => (k.node_type().name().to_owned(), k.node_type().hint().to_owned()),
+            })
+        }
+        TipTarget::Group(gid) => {
+            // Member types in order of appearance, repeats counted.
+            let mut kinds: Vec<(String, usize)> = Vec::new();
+            for n in graph.group(gid)?.members.iter().filter_map(|id| graph.node(*id)) {
+                let name = node_type(n);
+                match kinds.iter_mut().find(|(k, _)| *k == name) {
+                    Some((_, count)) => *count += 1,
+                    None => kinds.push((name, 1)),
+                }
+            }
+            let mut parts: Vec<String> = kinds
+                .iter()
+                .take(5)
+                .map(|(k, c)| if *c > 1 { format!("{c}× {k}") } else { k.clone() })
+                .collect();
+            if kinds.len() > 5 {
+                parts.push("…".to_owned());
+            }
+            Some(("Module".to_owned(), parts.join(" · ")))
+        }
+    }
 }
