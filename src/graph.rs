@@ -64,7 +64,11 @@ impl NodeType {
         ),
         (
             "Texture",
-            &[NodeType::Module(ModuleKind::Granular), NodeType::Module(ModuleKind::Resonator)],
+            &[
+                NodeType::Module(ModuleKind::Granular),
+                NodeType::Module(ModuleKind::Fractal),
+                NodeType::Module(ModuleKind::Resonator),
+            ],
         ),
         (
             "Effects",

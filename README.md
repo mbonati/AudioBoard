@@ -54,6 +54,53 @@ position and timing), SPRAY (random pitch), SPREAD (stereo), MIX. Direction FWD 
 **FREEZE** stops recording: the cloud keeps exploring the captured sound. The POS input moves the read
 position (e.g. with a Random or an LFO). The display shows the loop and the active grains.
 
+**Fractal**: a granular rhythm effect after Excite Audio's Motion: Fractal. Its panel has three pages.
+
+- **EFFECTS**: four effects in a chain. Drag their names in the ROUTING row to change the order.
+  - **Grains** records its input into a buffer locked to the tempo. BUFFER sets its length, from 1/4 to
+    4 bars. RETRIG starts it over when the transport starts; FREEZE stops recording. A LO–HI band filters
+    the grains. Two grain layers (1, 2, each with its own ON switch) play from the buffer:
+    - PLAYHEAD has five modes: MANual position, SCAN (moves through the buffer forwards or backwards),
+      and an offset behind the recording, as a note value (SYNC), in ms or in % (a granular delay).
+    - RANGE (spread around the playhead), DENSITY and SIZE (free, or note values with SYNC).
+    - CHAOS (randomizes width, direction and shape), DIRECTION (−100% reversed … +100% forwards).
+    - PITCH and SPREAD, snapped by the pitch mode: free, chromatic, octaves, fourths, fifths, 4ths & 5ths.
+    - WIDTH (how likely grains are panned out), SHAPE (from a percussive decay through a bell and a
+      trapezoid to a square gate), DRY and WET.
+  - **Gate** is a trance gate of up to 32 steps (click to switch them), with RATE, ATTACK, RELEASE and MIX.
+  - **Repeat** is a stutter. Once per TRIGGER (OFFSET into it) it takes a slice RATE long (a note value
+    with SYNC, else ms) and plays it AMOUNT more times. DUCK lowers the dry signal meanwhile; it has a
+    LO–HI band and a VOLUME.
+  - **Space** is a hall reverb with LENGTH and MIX.
+  - VIEW shows displays: the grains over the buffer (position across, pitch ±36 up and down) with both
+    layers' grain shapes, the gate's levels before and after, and the slice being repeated.
+- **HEXAGON**: six macro sliders around a centre, and IN, OUT, WET, the LIMIT safety limiter (never
+  above 0 dB) and THRU (off, nothing new comes in and the grains play out). BYPASS sits in the header.
+  - Mapping: right-click any effect knob to map it to slider 1…6, or to the input level (A,
+    audio-reactive with GAIN, ATTACK, RELEASE, THRESH). The list on the right gives each mapping a MIN and
+    a MAX (drag them), × to remove, + ADD and CLEAR. A mapped knob follows the hexagon and shows its
+    slider's number; click the number to see that slider's list.
+  - The mouse over the hexagon is a magnet. ATTRACT pulls the nodes along their sliders towards it,
+    REPEL pushes them away; SELECT lets you drag the nodes to set where each slider rests. It works
+    CONSTANTly, only while clicked (CLICK ON) or only while not clicked (CLICK OFF). The pixel blob in the
+    middle breathes with the output.
+- **MOTION**:
+  - Cursor: the magnet's RANGE and STRENGTH. A node the magnet lets go stays put for HOLD (∞ at the
+    top), then returns to its start over RELEASE.
+  - Path (DRAW): tools LINE, CIRCLE, SELECT (move points, drag a line's handle to bend it), ADD, REMOVE,
+    SCALE (corners resize, elsewhere moves) and MOUSE. MOUSE, or a right-click on a line, sets whether the
+    mouse counts as clicked along that line.
+  - Path (RECORD): ● REC, or R over the hexagon, records the mouse and its clicks (up to 30 s). START–END
+    and ✂ TRIM cut it.
+  - Timeline: ▶ plays the path, and the magnet follows it. The pass lasts TIME × MULTIPLY (note values
+    with TIME SYNC, else seconds), or FREE (the recording's own length). The cursor moves evenly
+    (TIMELINE) or at the recorded speed (RECORDED). Direction →, ← or ⇄ pendulum; LOOP; OFFSET into the
+    path. Retrigger: OFF, ON (starts over with the transport) or SYNC (locked to the transport).
+
+A new Fractal starts with a circular path and six mappings on grain layer 1 and the reverb: press ▶ PATH
+and it moves on its own. Its settings, paths and mappings are saved with the project. To keep one as a
+preset, group the node (Cmd+G) and save it to the library.
+
 **Resonator**: a bank of eight tuned resonant modes (String, Pipe, Bar, Bell) excited by its input.
 With noise or grains as input it gives physical, organic timbres. PITCH, DECAY, BRIGHT, SPREAD, P.MOD, MIX.
 
@@ -342,6 +389,9 @@ src/
 │   ├── dsp.rs      Oscillator and Mixer
 │   ├── modules/    drone, random, granular, resonator, filter, delay, pingpong, reverb, midi_cc, midi_note,
 │   │               sequencer, arpeggiator, midi_in, midicer (after Vermona's meloDICER)
+│   │   ├── fractal.rs  Fractal (after Excite Audio's Motion: Fractal): parameters, mappings, the chain
+│   │   ├── fractal/    grains (tempo-locked buffer, two layers), rhythm (gate, repeat), space (hall),
+│   │   │               motion (hexagon sliders, magnet, drawn/recorded paths, timeline)
 │   │   ├── steps.rs step grid on the global tempo, outgoing notes, held keys
 │   │   └── mod.rs  module descriptions (ModuleDef), generic parameters and DSP helpers
 │   ├── midi.rs     MIDI inputs (midir) and shared state read by the MIDI nodes
@@ -357,6 +407,7 @@ src/
 │   ├── plugin_node.rs panel of plugin nodes (editor, parameters, MIDI, knobs)
 │   ├── nodes.rs    layout and drawing of the oscillator and mixer, shared controls
 │   ├── modules.rs  common module panel and their displays
+│   ├── fractal.rs  the Fractal node's panel: HEXAGON, EFFECTS and MOTION pages
 │   ├── widgets.rs  hand-drawn knobs, faders, meters, ports and cables
 │   ├── monitor.rs  bottom panel: oscilloscope and spectrum (FFT)
 │   ├── tempo.rs    the toolbar's tempo: BPM field (drag or type), beat light, tap tempo
@@ -375,8 +426,9 @@ the audio thread has just finished and won't need the plugin for most of a buffe
 most ten times a second, and the plugin's state is read only when saving, so the audio thread is not kept
 waiting. Each buffer is processed as one pass: built-in nodes run through it in 64-frame blocks (so MIDI
 timing and modulation stay fine-grained), while a plugin gets the whole buffer in a single call with its
-MIDI events placed at their exact offsets, since every plugin call has a fixed cost. Removed nodes and old processing orders are handed back to the UI thread to be
-freed: freeing memory (a delay line is megabytes) inside the audio callback could stall it into a click.
+MIDI events placed at their exact offsets, since every plugin call has a fixed cost. Removed nodes and old
+processing orders are handed back to the UI thread to be freed: freeing memory (a delay line is megabytes)
+inside the audio callback could stall it into a click.
 
 **Performance.** Effects rest when they have gone quiet: with a silent input, once their own signal (echoes,
 tails) has stayed below −100 dB for as long as they can remember sound, they skip their work and output
@@ -391,7 +443,10 @@ sideways drift.
 
 To add a new module: a file in `audio/modules/` with its `ModuleDef` (knobs, ports, modes, toggle) and a
 `Processor`, an entry in `ModuleKind` and, in `ui/modules.rs`, the readout and the display.
-The panel (ports, selector, knobs) is generated from the definition.
+The panel (ports, selector, knobs) is generated from the definition; Fractal, too large for the generic
+panel, draws its own (`ui/fractal.rs`). Its hexagon runs on the audio thread, block by block: the panel
+hands it the mouse through the module's display values, so paths keep time even when the window doesn't
+redraw.
 
 ## Tests
 
