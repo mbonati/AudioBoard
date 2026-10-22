@@ -209,7 +209,7 @@ impl AudioBoardApp {
     /// document), rather than reuse a recent copy (the periodic check).
     fn refresh_dirty(&mut self, fresh: bool) {
         let now = if fresh { project::snapshot(&self.graph) } else { project::snapshot_cached(&self.graph) };
-        self.doc.dirty = now != self.doc.saved;
+        self.doc.dirty = now != self.doc.saved || self.graph.plugins_edited();
     }
 
     /// Where file dialogs start: next to the open project, else Documents.

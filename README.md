@@ -199,6 +199,13 @@ The node's knobs can be mapped with a MIDI CC node (MAP), like the others. The p
 path and its complete state, so the sound chosen in its editor too; on another computer the plugin is
 looked up by name in the VST3 folders. The same goes for library modules.
 
+A plugin is called once per audio buffer (as in a DAW), so a heavy instrument costs the same whatever the
+patch around it. Only its main stereo outputs are used: extra outputs (a drum machine's separate drum
+channels) are switched off at load so the plugin doesn't render them. While the transport is stopped, a
+plugin with nothing coming in rests after a second of silence; any MIDI or sound wakes it at once. A
+plugin's sound (its complete state) is read when the project is saved: some plugins take a while to
+answer, so saving while playing may briefly interrupt them.
+
 Plugins run inside AudioBoard: a faulty plugin can make the application quit. VST3 is supported
 (not VST2, AU or CLAP).
 
@@ -215,8 +222,8 @@ the cost of latency; smaller ones respond faster. The choice is kept between lau
 uses the sound card's own size. Changing it keeps the patch playing.
 
 Next to it, **DSP** is the average load and **peak** the heaviest callback of the last seconds: near 100%
-the audio can't keep up. If that happens, a red **dropouts** counter appears for a while: try a larger
-buffer.
+the audio can't keep up. If that happens, a red **dropouts** counter appears for a while (it also counts
+the gaps the sound card reports): try a larger buffer.
 
 The output goes through a safety **limiter** just under full scale (−0.3 dBFS) with 1.3 ms of lookahead:
 when the sum gets too loud (several plugins, high faders) it turns the level down smoothly instead of
@@ -328,8 +335,9 @@ library, and **Open library folder** opens the folder of `.abmodule` files
 src/
 ├── audio/
 │   ├── params.rs   parameters shared lock-free (atomics) between the UI and the audio thread
-│   ├── engine.rs   audio-side graph: 64-frame stereo blocks, per-block MIDI events, global clock
-│   │               in beats, precomputed topological order, denormals flushed to zero
+│   ├── engine.rs   audio-side graph: one pass per device buffer (built-ins in 64-frame stereo blocks,
+│   │               plugins in one call), per-block MIDI events, global clock in beats, precomputed
+│   │               topological order, lookahead limiter, denormals flushed to zero
 │   ├── fastmath.rs fast sine, exp2 and tanh for per-sample DSP (error < 1e-6)
 │   ├── dsp.rs      Oscillator and Mixer
 │   ├── modules/    drone, random, granular, resonator, filter, delay, pingpong, reverb, midi_cc, midi_note,
@@ -364,8 +372,10 @@ The UI never blocks the audio thread: knob values travel through atomics, while 
 Buffers (delay, reverb, granular loop) are allocated on the UI thread when the node is created.
 VST3 plugins are shared through a lock: the UI calls into a plugin only between audio callbacks (when
 the audio thread has just finished and won't need the plugin for most of a buffer), one call at a time, at
-most ten times a second, and the plugin's state is read again only when it may have changed, so the audio
-thread is not kept waiting. Removed nodes and old processing orders are handed back to the UI thread to be
+most ten times a second, and the plugin's state is read only when saving, so the audio thread is not kept
+waiting. Each buffer is processed as one pass: built-in nodes run through it in 64-frame blocks (so MIDI
+timing and modulation stay fine-grained), while a plugin gets the whole buffer in a single call with its
+MIDI events placed at their exact offsets, since every plugin call has a fixed cost. Removed nodes and old processing orders are handed back to the UI thread to be
 freed: freeing memory (a delay line is megabytes) inside the audio callback could stall it into a click.
 
 **Performance.** Effects rest when they have gone quiet: with a silent input, once their own signal (echoes,

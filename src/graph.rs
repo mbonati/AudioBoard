@@ -203,8 +203,6 @@ pub struct PluginNode {
 
 /// How often the UI reads plugin parameters (seconds).
 const PLUGIN_SYNC_EVERY: f64 = 0.1;
-/// How often the saved state is re-read while it may be changing.
-const PLUGIN_STATE_EVERY: Duration = Duration::from_secs(2);
 
 impl PluginNode {
     fn new(meta: PluginMeta, params: Vec<PluginParam>, shared: Arc<PluginShared>, control: Sender<Control>) -> Self {
@@ -284,7 +282,6 @@ impl PluginNode {
                 && v != self.values[i]
             {
                 self.values[i] = v;
-                self.state_stale.set(true);
             }
             if let Ok(text) = plugin.format_parameter(id, self.values[i]) {
                 self.texts[i] = text;
@@ -308,19 +305,22 @@ impl PluginNode {
     }
 
     /// The saved state as base64. `fresh` asks the plugin now (saving);
-    /// otherwise the last copy is reused unless the state may have changed
-    /// and a couple of seconds have passed (checking for edits).
+    /// otherwise the copy from the last save is reused and the plugin is not
+    /// asked at all: some plugins take hundreds of milliseconds to save
+    /// (a drum machine's kits), holding up the audio thread meanwhile.
     pub fn state_base64(&self, fresh: bool) -> Option<String> {
         let mut cache = self.state.borrow_mut();
-        let due = match &*cache {
-            None => true,
-            Some((_, at)) => fresh || (self.state_stale.get() && at.elapsed() >= PLUGIN_STATE_EVERY),
-        };
-        if due && let Some(bytes) = self.save_state() {
+        if fresh && let Some(bytes) = self.save_state() {
             *cache = Some((crate::project::base64_encode(&bytes), Instant::now()));
             self.state_stale.set(false);
         }
         cache.as_ref().map(|(s, _)| s.clone())
+    }
+
+    /// Changed since its state was last saved: a knob moved here or from
+    /// MIDI, its editor opened, or never saved.
+    pub fn edited(&self) -> bool {
+        self.state_stale.get()
     }
 
     /// Opens or closes the plugin's own window.
@@ -788,6 +788,12 @@ impl Graph {
 
     /// Per frame, on the UI thread: keeps plugin nodes in step and destroys
     /// removed plugins once the audio thread has let go of them.
+    /// Some plugin may have changed since the project was saved (its state
+    /// is only read when saving).
+    pub fn plugins_edited(&self) -> bool {
+        self.nodes.iter().any(|n| matches!(&n.kind, NodeKind::Plugin(p) if p.edited()))
+    }
+
     pub fn service_plugins(&mut self, now: f64) {
         self.graveyard.retain(|shared| Arc::strong_count(shared) > 1);
         for n in &mut self.nodes {

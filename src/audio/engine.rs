@@ -2,8 +2,13 @@
 //!
 //! The UI owns the "truth" (nodes, cables, positions) and sends the engine
 //! commands: new processors, removals and a pre-sorted topology. The engine
-//! never sorts or allocates per block; it walks `Topology::order`, copies each
-//! node's inputs from upstream output buffers and runs the processor.
+//! never sorts or allocates while rendering. Each device buffer is one
+//! *pass* (up to [`PASS`] frames): the engine walks `Topology::order` and
+//! runs each node over the whole pass before the next — the graph has no
+//! cycles, so this is exactly the same as going block by block, but a node's
+//! state stays in cache, and plugins get the pass in one call (some cost a
+//! lot per call, whatever its length). Built-in nodes still run in blocks of
+//! [`BLOCK`] frames inside the pass.
 
 use std::collections::HashMap;
 use std::hash::{BuildHasherDefault, Hasher};
@@ -18,10 +23,15 @@ use super::params::{EngineShared, TEMPO_RANGE};
 
 pub type NodeId = u32;
 
-/// Frames processed per internal block. Device buffers are split into these.
+/// Frames per block: built-in nodes run block by block.
 pub const BLOCK: usize = 64;
+/// Blocks in the longest pass (device buffers longer than a pass are split).
+pub const PASS_BLOCKS: usize = 32;
+/// Longest pass, in frames: also the largest block plugins are given.
+pub const PASS: usize = BLOCK * PASS_BLOCKS;
 pub const MAX_INPUTS: usize = 8;
 
+#[derive(Clone, Copy)]
 pub struct ProcessCtx {
     pub sample_rate: f32,
     /// One-pole coefficient for ~10 ms parameter smoothing.
@@ -109,8 +119,28 @@ impl Inputs {
     }
 }
 
+/// What a node that takes a whole pass at once receives (see
+/// [`Processor::process_pass`]).
+pub struct PassInputs<'a> {
+    /// Input 0, block by block (None: unplugged).
+    pub audio: Option<&'a [Buf]>,
+    /// MIDI on the MIDI input, block by block (frames within each block).
+    pub midi: &'a [MidiBuf],
+    pub midi_connected: bool,
+}
+
 pub trait Processor: Send {
     fn process(&mut self, ctx: &ProcessCtx, inputs: &Inputs, outputs: &mut [Buf], n: usize);
+
+    /// Takes a whole pass in one go ([`Self::process_pass`]) rather than
+    /// block by block.
+    fn wants_pass(&self) -> bool {
+        false
+    }
+
+    /// The whole pass (`n` frames, from `ctx.beat`) at once; `outputs` is
+    /// block by block, `[block][port]`. For nodes that say [`Self::wants_pass`].
+    fn process_pass(&mut self, _ctx: &ProcessCtx, _inputs: &PassInputs, _outputs: &mut [Box<[Buf]>], _n: usize) {}
 
     /// Sinks feed the audio device: their first output is summed into the mix.
     fn is_sink(&self) -> bool {
@@ -123,17 +153,24 @@ pub trait Processor: Send {
     }
 }
 
-/// A processor plus its output buffers, allocated on the UI thread.
+/// A processor plus its output buffers for a whole pass, allocated on the
+/// UI thread.
 pub struct Slot {
     proc: Box<dyn Processor>,
-    outputs: Vec<Buf>,
+    /// Audio out, `[block][port]`.
+    outputs: Box<[Box<[Buf]>]>,
+    /// MIDI out of each block (nodes with a MIDI output only).
+    midi: Box<[MidiBuf]>,
 }
 
 impl Slot {
     pub fn new(proc: Box<dyn Processor>, outputs: usize) -> Box<Self> {
+        let blocks = (0..PASS_BLOCKS).map(|_| vec![[[0.0; BLOCK]; 2]; outputs.max(1)].into_boxed_slice());
+        let midi = if proc.midi_out().is_some() { PASS_BLOCKS } else { 0 };
         Box::new(Self {
             proc,
-            outputs: vec![[[0.0; BLOCK]; 2]; outputs.max(1)],
+            outputs: blocks.collect(),
+            midi: vec![MidiBuf::default(); midi].into_boxed_slice(),
         })
     }
 }
@@ -202,8 +239,13 @@ pub struct Engine {
     ctx: ProcessCtx,
     nodes: IdMap<Box<Slot>>,
     topo: Box<Topology>,
+    /// One block's inputs, for built-in nodes.
     inputs: Box<Inputs>,
-    mix: [[f32; BLOCK]; 2],
+    /// A whole pass's input 0 and MIDI, for nodes that take passes.
+    pass_audio: Box<[Buf]>,
+    pass_midi: Box<[MidiBuf]>,
+    /// The sinks' sum over the pass.
+    mix: Box<[Buf]>,
     limiter: Limiter,
 }
 
@@ -309,7 +351,9 @@ impl Engine {
                 midi: MidiBuf::default(),
                 midi_connected: false,
             }),
-            mix: [[0.0; BLOCK]; 2],
+            pass_audio: vec![[[0.0; BLOCK]; 2]; PASS_BLOCKS].into_boxed_slice(),
+            pass_midi: vec![MidiBuf::default(); PASS_BLOCKS].into_boxed_slice(),
+            mix: vec![[[0.0; BLOCK]; 2]; PASS_BLOCKS].into_boxed_slice(),
             limiter: Limiter::new(sample_rate),
         }
     }
@@ -347,58 +391,107 @@ impl Engine {
         }
     }
 
-    fn process_block(&mut self, n: usize) {
+    /// Renders one pass of `frames` (up to [`PASS`]) into `mix`.
+    fn process_pass(&mut self, frames: usize) {
         let Engine {
             ctx,
             nodes,
             topo,
             inputs,
+            pass_audio,
+            pass_midi,
             mix,
             ..
         } = self;
-
-        for ch in mix.iter_mut() {
-            ch[..n].fill(0.0);
+        let blocks = frames.div_ceil(BLOCK);
+        let len = |k: usize| (frames - k * BLOCK).min(BLOCK);
+        for buf in mix[..blocks].iter_mut() {
+            *buf = [[0.0; BLOCK]; 2];
         }
         let (slowest, fastest) = TEMPO_RANGE;
         ctx.beats_per_sample = self.shared.tempo.get().clamp(slowest, fastest) as f64 / (60.0 * ctx.sample_rate as f64);
         ctx.playing = self.shared.running.load(Ordering::Relaxed);
+        let pass = *ctx;
+        // The context of block `k`: its beat, and the rewind only at the start.
+        let block_ctx = |k: usize| ProcessCtx {
+            beat: if pass.playing { pass.beat + pass.beats_per_sample * (k * BLOCK) as f64 } else { pass.beat },
+            restart: pass.restart && k == 0,
+            ..pass
+        };
 
         for entry in &topo.order {
-            // Copy connected inputs; unconnected ones are only flagged, since
-            // processors read inputs through `connected`.
-            for (k, src) in entry.inputs.iter().enumerate() {
-                let upstream = src.and_then(|(sid, port)| nodes.get(&sid).and_then(|s| s.outputs.get(port)));
-                inputs.connected[k] = upstream.is_some();
-                if let Some(buf) = upstream {
-                    for (d, s) in inputs.bufs[k].iter_mut().zip(buf) {
-                        d[..n].copy_from_slice(&s[..n]);
+            let Some(slot) = nodes.get(&entry.id) else {
+                continue;
+            };
+            if slot.proc.wants_pass() {
+                // Input 0 and the MIDI input for the whole pass, then one call.
+                let audio = entry.inputs[0].and_then(|(sid, port)| nodes.get(&sid).map(|s| (s, port)));
+                if let Some((src, port)) = audio {
+                    for (k, buf) in pass_audio[..blocks].iter_mut().enumerate() {
+                        *buf = src.outputs[k][port];
+                    }
+                }
+                let midi = entry.midi_input.and_then(|sid| nodes.get(&sid)).filter(|s| !s.midi.is_empty());
+                for (k, buf) in pass_midi[..blocks].iter_mut().enumerate() {
+                    match midi {
+                        Some(src) => buf.copy_from(&src.midi[k]),
+                        None => buf.clear(),
+                    }
+                }
+                let connected = audio.is_some();
+                let Some(slot) = nodes.get_mut(&entry.id) else { continue };
+                let pass_inputs = PassInputs {
+                    audio: connected.then(|| &pass_audio[..blocks]),
+                    midi: &pass_midi[..blocks],
+                    midi_connected: entry.midi_input.is_some(),
+                };
+                slot.proc.process_pass(&pass, &pass_inputs, &mut slot.outputs[..blocks], frames);
+            } else {
+                for k in 0..blocks {
+                    let n = len(k);
+                    // Copy connected inputs; unconnected ones are only
+                    // flagged, since processors read inputs through `connected`.
+                    for (i, src) in entry.inputs.iter().enumerate() {
+                        let upstream = src.and_then(|(sid, port)| nodes.get(&sid).and_then(|s| s.outputs[k].get(port)));
+                        inputs.connected[i] = upstream.is_some();
+                        if let Some(buf) = upstream {
+                            for (d, s) in inputs.bufs[i].iter_mut().zip(buf) {
+                                d[..n].copy_from_slice(&s[..n]);
+                            }
+                        }
+                    }
+                    match entry.midi_input.and_then(|sid| nodes.get(&sid)).filter(|s| !s.midi.is_empty()) {
+                        Some(src) => inputs.midi.copy_from(&src.midi[k]),
+                        None => inputs.midi.clear(),
+                    }
+                    inputs.midi_connected = entry.midi_input.is_some();
+
+                    let Some(slot) = nodes.get_mut(&entry.id) else { break };
+                    slot.proc.process(&block_ctx(k), inputs, &mut slot.outputs[k], n);
+                    if !slot.midi.is_empty() {
+                        match slot.proc.midi_out() {
+                            Some(events) => slot.midi[k].copy_from(events),
+                            None => slot.midi[k].clear(),
+                        }
                     }
                 }
             }
 
-            let midi_source = entry.midi_input.and_then(|sid| nodes.get(&sid)).and_then(|s| s.proc.midi_out());
-            match midi_source {
-                Some(events) => inputs.midi.copy_from(events),
-                None => inputs.midi.clear(),
-            }
-            inputs.midi_connected = entry.midi_input.is_some();
-
-            let Some(slot) = nodes.get_mut(&entry.id) else {
-                continue;
-            };
-            slot.proc.process(ctx, inputs, &mut slot.outputs, n);
-
-            if slot.proc.is_sink() {
-                for (ch, out) in mix.iter_mut().zip(&slot.outputs[0]) {
-                    for (m, s) in ch[..n].iter_mut().zip(&out[..n]) {
-                        *m += *s;
+            if let Some(slot) = nodes.get(&entry.id)
+                && slot.proc.is_sink()
+            {
+                for (k, m) in mix[..blocks].iter_mut().enumerate() {
+                    let n = len(k);
+                    for (ch, out) in m.iter_mut().zip(&slot.outputs[k][0]) {
+                        for (a, b) in ch[..n].iter_mut().zip(&out[..n]) {
+                            *a += *b;
+                        }
                     }
                 }
             }
         }
         if ctx.playing {
-            ctx.beat += ctx.beats_per_sample * n as f64;
+            ctx.beat += ctx.beats_per_sample * frames as f64;
         }
         ctx.restart = false;
     }
@@ -418,17 +511,18 @@ impl Engine {
 
         let channels = channels.max(1);
         let frames = data.len() / channels;
-        let mut mono = [0.0f32; BLOCK];
+        let mut mono = [0.0f32; PASS];
         let mut done = 0;
 
         // Always processed, even when stopped: tails ring out.
         while done < frames {
-            let n = (frames - done).min(BLOCK);
-            self.process_block(n);
+            let n = (frames - done).min(PASS);
+            self.process_pass(n);
 
             let mut lowest = 1.0f32;
             for i in 0..n {
-                let (l, r, gain) = self.limiter.frame(self.mix[0][i], self.mix[1][i]);
+                let block = &self.mix[i / BLOCK];
+                let (l, r, gain) = self.limiter.frame(block[0][i % BLOCK], block[1][i % BLOCK]);
                 lowest = lowest.min(gain);
                 let (l, r) = (l.clamp(-1.0, 1.0), r.clamp(-1.0, 1.0));
                 mono[i] = 0.5 * (l + r);

@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use vst3_host::{AudioBuffers, MidiChannel, MidiEvent, Plugin, TransportPosition, Vst3Host};
 
-use super::engine::{BLOCK, Buf, Inputs, ProcessCtx, Processor};
+use super::engine::{BLOCK, Buf, Inputs, PASS, PassInputs, ProcessCtx, Processor};
 use super::midi::MidiState;
 use super::modules::steps::note_event;
 use super::params::AtomicF32;
@@ -70,7 +70,8 @@ pub struct Loaded {
 pub fn new_host(sample_rate: f32) -> Result<Vst3Host, String> {
     Vst3Host::builder()
         .sample_rate(sample_rate as f64)
-        .block_size(BLOCK)
+        // Plugins get a whole device buffer per call (see `engine::PASS`).
+        .block_size(PASS)
         .with_process_isolation(false)
         .build()
         .map_err(|e| e.to_string())
@@ -87,6 +88,16 @@ pub fn load(host: &mut Vst3Host, path: &Path) -> Result<Loaded, String> {
         .filter(|p| !p.is_read_only && !p.is_bypass)
         .map(|p| PluginParam { id: p.id, name: p.name, default: p.default })
         .collect();
+    // Only the main buses are used: switch off the others (a drum machine's
+    // sixteen stereo outs, sidechains) so the plugin doesn't render them.
+    if let Ok(layout) = plugin.audio_bus_layout() {
+        use vst3_host::{BusDirection, MediaType};
+        for (direction, count) in [(BusDirection::Output, layout.outputs.len()), (BusDirection::Input, layout.inputs.len())] {
+            for bus in 1..count {
+                let _ = plugin.set_bus_active(MediaType::Audio, direction, bus as i32, false);
+            }
+        }
+    }
     plugin.start_processing().map_err(|e| e.to_string())?;
     let instrument = info.category.contains("Instrument") || (info.has_midi_input && info.audio_inputs == 0);
     let meta = PluginMeta {
@@ -273,7 +284,14 @@ pub struct PluginProcessor {
     /// Whether the plugin was last told the transport is playing.
     transport: Option<bool>,
     buffers: AudioBuffers,
+    /// Frames of silent output in a row, and how many let it rest (see
+    /// `process_pass`).
+    silent: usize,
+    rest_after: usize,
 }
+
+/// A stopped plugin rests after this long silent with nothing coming in.
+const PLUGIN_REST: f32 = 1.0;
 
 impl PluginProcessor {
     pub fn new(shared: Arc<PluginShared>, control: Receiver<Control>, midi: Arc<MidiState>, meta: &PluginMeta, sample_rate: f32) -> Self {
@@ -283,7 +301,9 @@ impl PluginProcessor {
             tempo: 0.0,
             samples: 0,
             transport: None,
-            buffers: AudioBuffers::new(meta.inputs, meta.outputs, BLOCK, sample_rate as f64),
+            buffers: AudioBuffers::new(meta.inputs, meta.outputs, PASS, sample_rate as f64),
+            silent: 0,
+            rest_after: (PLUGIN_REST * sample_rate) as usize,
             shared,
             control,
             midi,
@@ -292,9 +312,44 @@ impl PluginProcessor {
 }
 
 impl Processor for PluginProcessor {
-    fn process(&mut self, ctx: &ProcessCtx, inputs: &Inputs, outputs: &mut [Buf], n: usize) {
-        let [out_l, out_r] = &mut outputs[0];
-        // The UI holds the plugin only briefly; never wait long for it.
+    /// Unused: the engine gives plugins whole passes ([`Self::process_pass`]).
+    fn process(&mut self, _ctx: &ProcessCtx, _inputs: &Inputs, outputs: &mut [Buf], n: usize) {
+        for ch in outputs[0].iter_mut() {
+            ch[..n].fill(0.0);
+        }
+    }
+
+    fn wants_pass(&self) -> bool {
+        true
+    }
+
+    /// One call to the plugin for the whole pass: plugins can cost a lot per
+    /// call, however short. While the transport is stopped, a plugin that
+    /// has been silent for a second with nothing coming in (no audio, no
+    /// MIDI) rests, and wakes at the first input or on Start.
+    fn process_pass(&mut self, ctx: &ProcessCtx, inputs: &PassInputs, outputs: &mut [Box<[Buf]>], n: usize) {
+        let blocks = n.div_ceil(BLOCK);
+        let len = |k: usize| (n - k * BLOCK).min(BLOCK);
+        let silence = |outputs: &mut [Box<[Buf]>]| {
+            for out in outputs[..blocks].iter_mut() {
+                out[0] = [[0.0; BLOCK]; 2];
+            }
+        };
+
+        let keyboard = self.shared.midi_in.load(Relaxed);
+        let incoming = (keyboard && self.midi.stream_head() != self.midi_cursor)
+            || inputs.midi.iter().any(|m| !m.events().is_empty())
+            || (!inputs.midi_connected && self.cable_notes.iter().any(|&c| c != 0))
+            || inputs.audio.is_some_and(|a| a.iter().flatten().flatten().any(|s| s.abs() > 1e-6));
+        if !ctx.playing && !incoming && self.silent >= self.rest_after {
+            silence(outputs);
+            if !keyboard {
+                self.midi_cursor = self.midi.stream_head();
+            }
+            return;
+        }
+
+        // The UI holds the plugin only between callbacks; never wait long.
         let started = Instant::now();
         let guard = loop {
             match self.shared.plugin.try_lock() {
@@ -305,8 +360,7 @@ impl Processor for PluginProcessor {
             }
         };
         let Some(mut plugin) = guard else {
-            out_l[..n].fill(0.0);
-            out_r[..n].fill(0.0);
+            silence(outputs);
             self.shared.missed.fetch_add(1, Relaxed);
             return;
         };
@@ -334,7 +388,7 @@ impl Processor for PluginProcessor {
                 }
             }
         }
-        if self.shared.midi_in.load(Relaxed) {
+        if keyboard {
             self.midi.read_stream(&mut self.midi_cursor, |msg| {
                 if let Some(event) = midi_event(msg) {
                     let _ = plugin.send_midi_event(event);
@@ -343,16 +397,18 @@ impl Processor for PluginProcessor {
         } else {
             self.midi_cursor = self.midi.stream_head();
         }
-        for e in inputs.midi.events() {
-            let [status, note, _] = e.data;
-            let bit = 1u16 << (status & 0x0F);
-            match note_event(e.data) {
-                Some(true) => self.cable_notes[note as usize & 0x7F] |= bit,
-                Some(false) => self.cable_notes[note as usize & 0x7F] &= !bit,
-                None => {}
-            }
-            if let Some(event) = midi_event(e.data) {
-                let _ = plugin.send_midi_event_at(event, e.frame as i32);
+        for (k, buf) in inputs.midi.iter().enumerate() {
+            for e in buf.events() {
+                let [status, note, _] = e.data;
+                let bit = 1u16 << (status & 0x0F);
+                match note_event(e.data) {
+                    Some(true) => self.cable_notes[note as usize & 0x7F] |= bit,
+                    Some(false) => self.cable_notes[note as usize & 0x7F] &= !bit,
+                    None => {}
+                }
+                if let Some(event) = midi_event(e.data) {
+                    let _ = plugin.send_midi_event_at(event, (k * BLOCK + e.frame as usize) as i32);
+                }
             }
         }
         // Cable unplugged (or its source removed): end what it started.
@@ -374,24 +430,29 @@ impl Processor for PluginProcessor {
             ch.fill(0.0);
         }
         b.block_size = n;
-        if let Some(input) = inputs.get(0) {
-            for (k, ch) in b.inputs.iter_mut().enumerate() {
-                ch.copy_from_slice(&input[k.min(1)][..n]);
+        if let Some(audio) = inputs.audio {
+            for (c, ch) in b.inputs.iter_mut().enumerate() {
+                for (k, block) in audio[..blocks].iter().enumerate() {
+                    ch[k * BLOCK..k * BLOCK + len(k)].copy_from_slice(&block[c.min(1)][..len(k)]);
+                }
             }
         }
         if plugin.process_audio(b).is_err() {
-            out_l[..n].fill(0.0);
-            out_r[..n].fill(0.0);
+            silence(outputs);
             return;
         }
         drop(plugin);
 
         let left = &b.outputs[0];
         let right = b.outputs.get(1).unwrap_or(left);
-        out_l[..n].copy_from_slice(&left[..n]);
-        out_r[..n].copy_from_slice(&right[..n]);
+        for (k, out) in outputs[..blocks].iter_mut().enumerate() {
+            let range = k * BLOCK..k * BLOCK + len(k);
+            out[0][0][..len(k)].copy_from_slice(&left[range.clone()]);
+            out[0][1][..len(k)].copy_from_slice(&right[range]);
+        }
         let peak = left[..n].iter().chain(&right[..n]).fold(0.0f32, |m, s| m.max(s.abs()));
         self.shared.meter.fetch_max(peak);
+        self.silent = if peak < 1e-5 { self.silent.saturating_add(n) } else { 0 };
     }
 }
 

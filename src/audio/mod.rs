@@ -31,6 +31,8 @@ struct Output {
     device: cpal::Device,
     config: StreamConfig,
     format: SampleFormat,
+    /// Where dropouts the device reports are counted.
+    shared: Arc<EngineShared>,
 }
 
 /// Keeps the output stream alive and is the UI's channel to the engine.
@@ -126,7 +128,7 @@ pub fn start(shared: Arc<EngineShared>, buffer_size: Option<u32>) -> AudioHandle
             buffer_size: None,
         },
     };
-    let (output, info) = match find_output() {
+    let (output, info) = match find_output(shared.clone()) {
         Ok(found) => found,
         Err(e) => return failed(tx, e),
     };
@@ -142,7 +144,7 @@ pub fn start(shared: Arc<EngineShared>, buffer_size: Option<u32>) -> AudioHandle
     handle
 }
 
-fn find_output() -> Result<(Output, AudioInfo), String> {
+fn find_output(shared: Arc<EngineShared>) -> Result<(Output, AudioInfo), String> {
     let host = cpal::default_host();
     let device = host.default_output_device().ok_or("no default output device")?;
     let device_name = device
@@ -164,25 +166,30 @@ fn find_output() -> Result<(Output, AudioInfo), String> {
         buffer_range,
         buffer_size: None,
     };
-    Ok((Output { device, config, format }, info))
+    Ok((Output { device, config, format, shared }, info))
 }
 
 fn open(out: &Output, frames: Option<u32>, engine: Arc<Mutex<Engine>>) -> Result<cpal::Stream, String> {
     let mut config = out.config;
     config.buffer_size = frames.map_or(BufferSize::Default, BufferSize::Fixed);
     let stream = match out.format {
-        SampleFormat::F32 => build::<f32>(&out.device, config, engine),
-        SampleFormat::F64 => build::<f64>(&out.device, config, engine),
-        SampleFormat::I16 => build::<i16>(&out.device, config, engine),
-        SampleFormat::I32 => build::<i32>(&out.device, config, engine),
-        SampleFormat::U16 => build::<u16>(&out.device, config, engine),
+        SampleFormat::F32 => build::<f32>(&out.device, config, engine, out.shared.clone()),
+        SampleFormat::F64 => build::<f64>(&out.device, config, engine, out.shared.clone()),
+        SampleFormat::I16 => build::<i16>(&out.device, config, engine, out.shared.clone()),
+        SampleFormat::I32 => build::<i32>(&out.device, config, engine, out.shared.clone()),
+        SampleFormat::U16 => build::<u16>(&out.device, config, engine, out.shared.clone()),
         other => Err(format!("unsupported sample format {other}")),
     }?;
     stream.play().map_err(|e| e.to_string())?;
     Ok(stream)
 }
 
-fn build<T>(device: &cpal::Device, config: StreamConfig, engine: Arc<Mutex<Engine>>) -> Result<cpal::Stream, String>
+fn build<T>(
+    device: &cpal::Device,
+    config: StreamConfig,
+    engine: Arc<Mutex<Engine>>,
+    shared: Arc<EngineShared>,
+) -> Result<cpal::Stream, String>
 where
     T: SizedSample + FromSample<f32>,
 {
@@ -196,7 +203,14 @@ where
                 Ok(mut engine) => engine.render(data, channels),
                 Err(_) => data.fill(T::EQUILIBRIUM),
             },
-            |err| eprintln!("audio stream error: {err}"),
+            // Underruns are counted (the status bar shows them), not printed.
+            move |err: cpal::Error| {
+                if err.kind() == cpal::ErrorKind::Xrun {
+                    shared.overloads.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                } else {
+                    eprintln!("audio stream error: {err}");
+                }
+            },
             None,
         )
         .map_err(|e| e.to_string())
