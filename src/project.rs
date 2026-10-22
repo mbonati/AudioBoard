@@ -344,6 +344,8 @@ fn instantiate(
                 id
             }
             KindData::Module { module, params, mode, toggle, data: extra, .. } => {
+                // Frakture was first called Fractal.
+                let module = if module == "Fractal" { "Frakture" } else { module.as_str() };
                 let Some(kind) = ModuleKind::ALL.iter().copied().find(|k| k.def().name == module) else {
                     continue;
                 };
