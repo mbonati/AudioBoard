@@ -322,6 +322,7 @@ clipping it into crackles, and recovers over about 150 ms. While it works, the s
 | Move the view | two-finger scroll, drag with the right or middle button, or Alt+drag |
 | Zoom | pinch or Cmd+scroll; Cmd+= / Cmd+− / Cmd+0 (100%); or click the percentage in the status bar |
 | Move / delete / duplicate the selection | drag a selected node / Del / Cmd+D (inner cables are copied) |
+| Delete a node | the × in its header, Del, or right-click → Delete: AudioBoard asks first (Enter deletes, Esc cancels), since deleting can't be undone |
 | Make a module from the selection | Cmd+G, or right-click → Make module |
 | Rename a module | Enter or F2 with the module selected, or right-click → Rename… (Enter confirms, Esc cancels) |
 | Dissolve a module | Cmd+Shift+G, the × in the module's header, or right-click → Ungroup |
