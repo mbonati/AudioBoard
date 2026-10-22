@@ -2,9 +2,11 @@
 //! rhythm buttons on a vintage faceplate, tempo, volume, balance, the extra
 //! percussion levels, the step lights), MIXER (+ a strip per instrument:
 //! pad, level, pan, mute) and EDITOR (+ the pattern grid and the selected
-//! instrument's sound).
+//! instrument's sound, with a picture of its waveform).
 
-use egui::{Align2, Color32, CursorIcon, Id, Rect, Response, Sense, Stroke, Vec2, pos2, vec2};
+use std::sync::Arc;
+
+use egui::{Align2, Color32, CursorIcon, Id, Rect, Response, Sense, Shape, Stroke, Vec2, pos2, vec2};
 
 use super::nodes::{NodeView, segmented};
 use super::theme::{self, alpha};
@@ -14,12 +16,13 @@ use crate::audio::modules::ModuleParams;
 use crate::audio::modules::pops::rhythms::{MAX_LEN, RHYTHMS, ROW};
 use crate::audio::modules::pops::voices::{self, COUNT};
 use crate::audio::modules::pops::{self as pp, INSTRUMENTS, PATTERNS, data, ip, knob, viz};
+use crate::audio::params::format_seconds;
 use crate::graph::{ModuleNode, ParamRef};
 
 const W: f32 = 744.0;
 const PAD: f32 = 12.0;
 /// The panel's height per detail level.
-const HEIGHTS: [f32; 3] = [206.0, 338.0, 664.0];
+const HEIGHTS: [f32; 3] = [206.0, 338.0, 726.0];
 pub const SIZE: Vec2 = vec2(W, HEIGHTS[0]);
 const MIXER_Y: f32 = 206.0;
 const EDITOR_Y: f32 = 340.0;
@@ -38,6 +41,44 @@ const DETAILS: [(&str, &str); 3] = [
     ("MIXER", "Plus a strip per instrument"),
     ("EDITOR", "Plus the pattern editor and each instrument's sound"),
 ];
+
+/// The waveform preview's rate, and its outline's columns.
+const PREVIEW_SR: f32 = 48_000.0;
+const COLUMNS: usize = 250;
+
+/// The selected instrument struck once, for the panel: its outline (lowest
+/// and highest sample per column, peak at 1), a close-up of its first
+/// cycles, and its length.
+struct Preview {
+    columns: Vec<(f32, f32)>,
+    close: Vec<f32>,
+    seconds: f32,
+}
+
+impl Preview {
+    fn new(p: &ModuleParams, inst: usize) -> Self {
+        let seconds = pp::hit_seconds(p, inst);
+        let n = ((seconds * PREVIEW_SR) as usize).max(COLUMNS);
+        let mut buf = vec![0.0; n];
+        pp::render(p, inst, PREVIEW_SR, &mut buf);
+        let peak = |s: &[f32]| s.iter().fold(1e-6f32, |m, y| m.max(y.abs()));
+        let top = peak(&buf);
+        let columns = (0..COLUMNS)
+            .map(|c| buf[c * n / COLUMNS..(c + 1) * n / COLUMNS].iter().fold((1.0f32, -1.0f32), |(lo, hi), &y| (lo.min(y / top), hi.max(y / top))))
+            .collect();
+        // Three cycles of TUNE from the top of the attack (the noise
+        // instruments: 4 ms), at their own scale.
+        let start = if INSTRUMENTS[inst].enveloped { (p.get(ip(inst, knob::ATTACK)) * PREVIEW_SR) as usize } else { 0 };
+        let span = if voices::tonal(inst) { 3.0 / p.get(ip(inst, knob::TUNE)) } else { 0.004 };
+        let len = ((span * PREVIEW_SR) as usize).clamp(2, n);
+        let start = start.min(n - len);
+        let part = &buf[start..start + len];
+        let scale = peak(part);
+        let points = len.min(240);
+        let close = (0..points).map(|k| part[k * len / points] / scale).collect();
+        Self { columns, close, seconds }
+    }
+}
 
 pub fn detail(p: &ModuleParams) -> usize {
     (p.data[data::DETAIL].get().round().max(0.0) as usize).min(2)
@@ -102,6 +143,12 @@ impl Panel<'_, '_> {
 
     fn flip(&self, i: usize) {
         self.p.data[i].set(if self.on(i) { 0.0 } else { 1.0 });
+    }
+
+    /// Strikes instrument `inst` once.
+    fn play(&self, inst: usize) {
+        let at = viz::AUDITION + inst;
+        self.p.viz[at].set(self.p.viz[at].get() + 1.0);
     }
 
     fn chip(&self, salt: &str, rect: Rect, label: &str, lit: bool, color: Color32, tip: &str) -> Response {
@@ -333,8 +380,7 @@ impl Panel<'_, '_> {
             let base = if self.on(data::MUTE + inst) { alpha(theme::CONTROL, 0.4) } else { theme::CONTROL };
             v.painter.rect_filled(pad, 3.0 * z, theme::mix(base, self.accent, glow));
             if resp.clicked() {
-                let at = viz::AUDITION + inst;
-                p.viz[at].set(p.viz[at].get() + 1.0);
+                self.play(inst);
                 p.data[data::SELECTED].set(inst as f32);
             }
             self.knob(ip(inst, knob::LEVEL), cx, MIXER_Y + 46.0, "", 9.0, false);
@@ -484,32 +530,76 @@ impl Panel<'_, '_> {
     fn sound(&self, y: f32, inst: usize) {
         let (v, p, z) = (self.v, self.p, self.z());
         let info = &INSTRUMENTS[inst];
-        v.text(PAD, y + 8.0, Align2::LEFT_CENTER, "SOUND", theme::strong(8.5 * z), theme::TEXT_DIM);
-        v.text(PAD, y + 22.0, Align2::LEFT_CENTER, info.name, theme::font(9.0 * z), self.accent);
-        let mut knobs: Vec<(usize, &str)> = vec![(knob::TUNE, "TUNE")];
+        v.text(PAD, y + 9.0, Align2::LEFT_CENTER, "SOUND", theme::strong(8.5 * z), theme::TEXT_DIM);
+        v.text(PAD + 50.0, y + 9.0, Align2::LEFT_CENTER, info.name, theme::font(9.0 * z), self.accent);
+        self.waveform(v.r(PAD, y + 24.0, 262.0, y + 112.0), v.r(268.0, y + 24.0, 344.0, y + 112.0), inst);
+        // Top row: the instrument's own knobs; bottom row: its waveform and
+        // its place in the mix.
+        let mut own: Vec<(usize, &str)> = vec![(knob::TUNE, "TUNE")];
         if info.enveloped {
-            knobs.push((knob::ATTACK, "ATTACK"));
-            knobs.push((knob::DECAY, "DECAY"));
+            own.push((knob::ATTACK, "ATTACK"));
+            own.push((knob::DECAY, "DECAY"));
         }
         for (k, label) in info.extras.iter().enumerate() {
             if !label.is_empty() {
-                knobs.push((knob::X1 + k, label));
+                own.push((knob::X1 + k, label));
             }
         }
-        knobs.push((knob::LEVEL, "LEVEL"));
-        knobs.push((knob::PAN, "PAN"));
-        for (col, (k, label)) in knobs.into_iter().enumerate() {
-            self.knob(ip(inst, k), 120.0 + 64.0 * col as f32, y, label, 10.0, false);
+        let shape = [(knob::WAVE, "WAVE"), (knob::BEND, "BEND"), (knob::DRIVE, "DRIVE"), (knob::LEVEL, "LEVEL"), (knob::PAN, "PAN")];
+        for (row_y, knobs) in [(y + 24.0, &own[..]), (y + 70.0, &shape[..])] {
+            for (col, &(k, label)) in knobs.iter().enumerate() {
+                self.knob(ip(inst, k), 384.0 + 58.0 * col as f32, row_y, label, 10.0, false);
+            }
         }
-        if self.chip("play-sound", v.r(W - PAD - 150.0, y + 6.0, W - PAD - 80.0, y + 24.0), "▶ PLAY", false, self.accent, "Hear it").clicked() {
-            let at = viz::AUDITION + inst;
-            p.viz[at].set(p.viz[at].get() + 1.0);
+        if self.chip("play-sound", v.r(W - PAD - 150.0, y, W - PAD - 80.0, y + 18.0), "▶ PLAY", false, self.accent, "Hear it").clicked() {
+            self.play(inst);
         }
-        if self.chip("reset", v.r(W - PAD - 74.0, y + 6.0, W - PAD, y + 24.0), "RESET", false, self.accent, "Back to its original sound").clicked() {
+        if self.chip("reset", v.r(W - PAD - 74.0, y, W - PAD, y + 18.0), "RESET", false, self.accent, "Back to its original sound").clicked() {
             for k in 0..knob::COUNT {
                 let i = ip(inst, k);
                 p.set(i, pp::spec(i).default);
             }
         }
+    }
+
+    /// The selected instrument's hit and a close-up of its first cycles;
+    /// click either to hear it. Rendered again whenever a knob moves.
+    fn waveform(&self, hit: Rect, close: Rect, inst: usize) {
+        let (v, p, z) = (self.v, self.p, self.z());
+        let key: [u32; knob::COUNT + 1] = std::array::from_fn(|k| if k < knob::COUNT { p.get(ip(inst, k)).to_bits() } else { inst as u32 });
+        let id = self.uid("preview");
+        let preview = match v.ui.data(|d| d.get_temp::<([u32; knob::COUNT + 1], Arc<Preview>)>(id)) {
+            Some((k, preview)) if k == key => preview,
+            _ => {
+                let preview = Arc::new(Preview::new(p, inst));
+                v.ui.data_mut(|d| d.insert_temp(id, (key, preview.clone())));
+                preview
+            }
+        };
+        for (area, salt) in [(hit, "hit"), (close, "close")] {
+            let resp = v.ui.interact(area, self.uid(("wave", salt)), Sense::CLICK).on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Click to hear it");
+            if resp.clicked() {
+                self.play(inst);
+            }
+            v.painter.rect_filled(area, 3.0 * z, theme::INSET);
+        }
+        // The outline: a bar per column, from its lowest sample to its highest.
+        let (mid, h) = (hit.center().y, hit.height() * 0.44);
+        v.painter.hline(hit.x_range(), mid, Stroke::new(1.0 * z, theme::GRID_MAJOR));
+        let w = hit.width() / COLUMNS as f32;
+        for (c, &(lo, hi)) in preview.columns.iter().enumerate() {
+            let x = hit.left() + w * (c as f32 + 0.5);
+            let (a, b) = (mid - hi * h, mid - lo * h);
+            v.painter.line_segment([pos2(x, a), pos2(x, b.max(a + 1.0))], Stroke::new(w.max(1.0), self.accent));
+        }
+        v.painter.text(hit.right_bottom() - vec2(4.0, 3.0) * z, Align2::RIGHT_BOTTOM, format_seconds(preview.seconds), v.mono(7.0), theme::TEXT_FAINT);
+        // The close-up, as a line under its label.
+        let (mid, h) = (close.center().y + 6.0 * z, close.height() * 0.36);
+        v.painter.hline(close.x_range(), mid, Stroke::new(1.0 * z, theme::GRID_MAJOR));
+        let n = preview.close.len().max(2) as f32 - 1.0;
+        let points = preview.close.iter().enumerate().map(|(k, y)| pos2(close.left() + close.width() * k as f32 / n, mid - y * h)).collect();
+        v.painter.add(Shape::line(points, Stroke::new(1.5 * z, self.accent)));
+        let label = if voices::tonal(inst) { "3 cycles" } else { "4 ms" };
+        v.painter.text(close.left_top() + vec2(4.0, 3.0) * z, Align2::LEFT_TOP, label, v.mono(7.0), theme::TEXT_FAINT);
     }
 }

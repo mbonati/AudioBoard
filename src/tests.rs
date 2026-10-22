@@ -2608,3 +2608,53 @@ fn pops_every_instrument_sounds() {
         assert!(peak_of(&left) <= 1.0);
     }
 }
+
+#[test]
+fn pops_waveforms_can_be_reshaped() {
+    use crate::audio::modules::pops::voices::{BASE, COUNT, HIHAT, shape};
+    use crate::audio::modules::pops::{self, ip, knob};
+    // WAVE: a sine, a triangle at the middle, a square at the end.
+    assert!((shape(0.25, 0.0) - 1.0).abs() < 1e-3);
+    assert!((shape(0.125, 0.5) - 0.5).abs() < 1e-6);
+    assert!((shape(0.125, 1.0) - 1.0).abs() < 1e-6 && (shape(0.625, 1.0) + 1.0).abs() < 1e-6);
+    let render = |p: &ModuleParams, inst: usize, n: usize| {
+        let mut out = vec![0.0; n];
+        pops::render(p, inst, 48_000.0, &mut out);
+        out
+    };
+    let upward = |s: &[f32]| s.windows(2).filter(|w| w[0] < 0.0 && w[1] >= 0.0).count();
+    let p = pops_params();
+    let sine = render(&p, BASE, 19_200);
+    // A square: more energy under the same peak.
+    p.set(ip(BASE, knob::WAVE), 1.0);
+    let square = render(&p, BASE, 19_200);
+    assert!(rms_of(&square) > rms_of(&sine) * 1.2 && peak_of(&square) <= 1.2, "{} {} {} {}", rms_of(&square), rms_of(&sine), peak_of(&square), peak_of(&sine));
+    p.set(ip(BASE, knob::WAVE), 0.0);
+    // BEND up: the hit starts two octaves higher and glides back to TUNE.
+    p.set(ip(BASE, knob::BEND), 1.0);
+    let bent = render(&p, BASE, 19_200);
+    assert!(upward(&bent[..960]) > upward(&sine[..960]) + 1, "{} vs {}", upward(&bent[..960]), upward(&sine[..960]));
+    assert!(upward(&bent[9600..14_400]).abs_diff(upward(&sine[9600..14_400])) <= 1);
+    p.set(ip(BASE, knob::BEND), 0.0);
+    // DRIVE: flattened, louder, never over the top.
+    p.set(ip(BASE, knob::DRIVE), 1.0);
+    let driven = render(&p, BASE, 19_200);
+    assert!(rms_of(&driven) > rms_of(&sine) * 1.3 && peak_of(&driven) <= 1.01);
+    // The hihat's noise turns metallic.
+    let noise = render(&p, HIHAT, 2400);
+    p.set(ip(HIHAT, knob::WAVE), 1.0);
+    let metal = render(&p, HIHAT, 2400);
+    assert!(rms_of(&metal) > 0.01 && metal.iter().zip(&noise).any(|(a, b)| (a - b).abs() > 0.01));
+    // Every instrument, at the extremes, still sounds and stays in bounds.
+    for inst in 0..COUNT {
+        for (bend, drive) in [(1.0, 0.0), (-1.0, 1.0)] {
+            let p = pops_params();
+            p.set(ip(inst, knob::WAVE), 1.0);
+            p.set(ip(inst, knob::BEND), bend);
+            p.set(ip(inst, knob::DRIVE), drive);
+            let hit = render(&p, inst, (pops::hit_seconds(&p, inst) * 48_000.0) as usize);
+            assert!(hit.iter().all(|y| y.is_finite()), "{inst}");
+            assert!(rms_of(&hit) > 0.001 && peak_of(&hit) < 4.0, "{inst}: {} {}", rms_of(&hit), peak_of(&hit));
+        }
+    }
+}

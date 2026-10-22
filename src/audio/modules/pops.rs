@@ -1,7 +1,8 @@
 //! Pops 66: a rhythm box in the spirit of the KORG Mini Pops-7 (1966).
 //! Fifteen instruments are synthesized as the original made them (no
 //! samples), each with TUNE, ATTACK, DECAY and its own extras (resonance,
-//! tick, high-pass, second partial, rate, density), LEVEL and PAN.
+//! tick, high-pass, second partial, rate, density), its waveform (WAVE,
+//! BEND, DRIVE), LEVEL and PAN.
 //!
 //! Twenty preset rhythms sit in two rows; several of one row can play at
 //! once, merged as the original's diode matrix did. Eight user patterns
@@ -63,10 +64,18 @@ pub mod knob {
     pub const DECAY: usize = 2;
     /// The extras: see [`super::Instrument::extras`].
     pub const X1: usize = 3;
-    pub const LEVEL: usize = 6;
-    pub const PAN: usize = 7;
-    pub const COUNT: usize = 8;
+    /// The waveform: sine → triangle → square (noise → metal), the pitch
+    /// sweep at the start, saturation.
+    pub const WAVE: usize = 6;
+    pub const BEND: usize = 7;
+    pub const DRIVE: usize = 8;
+    pub const LEVEL: usize = 9;
+    pub const PAN: usize = 10;
+    pub const COUNT: usize = 11;
 }
+
+/// BEND's range, either way.
+pub const BEND_OCTAVES: f32 = 2.0;
 
 pub const fn ip(i: usize, k: usize) -> usize {
     i * knob::COUNT + k
@@ -93,9 +102,13 @@ const fn secs(name: &'static str, lo: f32, hi: f32, default: f32) -> ParamSpec {
     ParamSpec::log(name, lo, hi, default, Unit::Seconds)
 }
 
-/// TUNE (lo, hi, default), ATTACK, DECAY (lo, hi, default), three extras.
+/// TUNE (lo, hi, default), ATTACK, DECAY (lo, hi, default), three extras,
+/// and the WAVE it starts from (a sine, or noise, unless given).
 macro_rules! instrument {
     ($s:literal, $tune:expr, $attack:expr, $decay:expr, $x1:expr, $x2:expr, $x3:expr) => {
+        instrument!($s, $tune, $attack, $decay, $x1, $x2, $x3, 0.0)
+    };
+    ($s:literal, $tune:expr, $attack:expr, $decay:expr, $x1:expr, $x2:expr, $x3:expr, $wave:expr) => {
         [
             hz(concat!($s, " TUNE"), $tune.0, $tune.1, $tune.2),
             secs(concat!($s, " ATTACK"), 0.0002, 0.05, $attack),
@@ -103,6 +116,9 @@ macro_rules! instrument {
             $x1,
             $x2,
             $x3,
+            ParamSpec::lin(concat!($s, " WAVE"), 0.0, 1.0, $wave, Unit::Percent),
+            ParamSpec::lin(concat!($s, " BEND"), -1.0, 1.0, 0.0, Unit::Percent).bipolar(),
+            ParamSpec::lin(concat!($s, " DRIVE"), 0.0, 1.0, 0.0, Unit::Percent),
             ParamSpec::lin(concat!($s, " LEVEL"), 0.0, 1.0, 0.8, Unit::Percent),
             ParamSpec::lin(concat!($s, " PAN"), -1.0, 1.0, 0.0, Unit::Percent).bipolar(),
         ]
@@ -148,7 +164,8 @@ const PARAMS: [ParamSpec; PARAM_COUNT] = {
             (0.03, 1.0, 0.25),
             amount("CB LEVEL2", 0.8),
             hz("CB TUNE2", 400.0, 1600.0, 845.0),
-            secs("CB DECAY2", 0.01, 0.6, 0.1)
+            secs("CB DECAY2", 0.01, 0.6, 0.1),
+            1.0
         ),
         instrument!("CLV", (1000.0, 5000.0, 2500.0), 0.0003, (0.005, 0.2, 0.04), unused("CLV X1"), unused("CLV X2"), unused("CLV X3")),
         instrument!("HH", (3000.0, 14_000.0, 8000.0), 0.0003, (0.01, 0.4, 0.05), amount("HH RESO", 0.3), unused("HH X2"), unused("HH X3")),
@@ -399,7 +416,20 @@ pub fn format(i: usize, v: f32) -> String {
         return match i % knob::COUNT {
             knob::TUNE => format_hz(v),
             knob::ATTACK | knob::DECAY => format_seconds(v),
-            knob::LEVEL => format!("{:.0}%", v * 100.0),
+            knob::WAVE if voices::tonal(i / knob::COUNT) => match v {
+                v if v < 0.01 => "sine".to_owned(),
+                v if (v - 0.5).abs() < 0.01 => "triangle".to_owned(),
+                v if v > 0.99 => "square".to_owned(),
+                v if v < 0.5 => format!("→tri {:.0}%", v * 200.0),
+                v => format!("→sqr {:.0}%", (v - 0.5) * 200.0),
+            },
+            knob::WAVE if v < 0.01 => "noise".to_owned(),
+            knob::WAVE if v > 0.99 => "metal".to_owned(),
+            knob::WAVE => format!("metal {:.0}%", v * 100.0),
+            knob::BEND if v.abs() < 0.005 => "none".to_owned(),
+            knob::BEND => format!("{:+.1} st", v * BEND_OCTAVES * 12.0),
+            knob::DRIVE if v < 0.005 => "off".to_owned(),
+            knob::LEVEL | knob::DRIVE => format!("{:.0}%", v * 100.0),
             knob::PAN if v.abs() < 0.01 => "C".to_owned(),
             knob::PAN if v < 0.0 => format!("L{:.0}", -v * 100.0),
             knob::PAN => format!("R{:.0}", v * 100.0),
@@ -447,6 +477,8 @@ struct Hit {
 }
 
 const MAX_HITS: usize = 128;
+/// How long a pad (and the panel's preview) lets the guiro scrape.
+const PAD_GATE: f32 = 0.25;
 /// MIDI notes sent out last this long.
 const NOTE_SECONDS: f32 = 0.03;
 
@@ -491,11 +523,43 @@ impl Pops {
             hits: [0; COUNT],
         }
     }
+}
 
-    fn sound(&self, i: usize) -> Sound {
-        let p = &self.params;
-        let v = |k: usize| p.get(ip(i, k));
-        Sound { tune: v(knob::TUNE), attack: v(knob::ATTACK), decay: v(knob::DECAY), x: [v(3), v(4), v(5)] }
+/// Instrument `i`'s sound, as its knobs set it.
+fn sound(p: &ModuleParams, i: usize) -> Sound {
+    let v = |k: usize| p.get(ip(i, k));
+    Sound {
+        tune: v(knob::TUNE),
+        attack: v(knob::ATTACK),
+        decay: v(knob::DECAY),
+        x: [v(knob::X1), v(knob::X1 + 1), v(knob::X1 + 2)],
+        wave: v(knob::WAVE),
+        bend: v(knob::BEND) * BEND_OCTAVES,
+        drive: v(knob::DRIVE),
+    }
+}
+
+/// For the panel: how long instrument `i`'s hit lasts, in seconds.
+pub fn hit_seconds(p: &ModuleParams, i: usize) -> f32 {
+    if !INSTRUMENTS[i].enveloped {
+        return PAD_GATE + 0.05;
+    }
+    let v = |k: usize| p.get(ip(i, k));
+    let decay = match i {
+        voices::CONGA | voices::COWBELL => v(knob::DECAY).max(v(knob::X1 + 2)),
+        _ => v(knob::DECAY),
+    };
+    (v(knob::ATTACK) + decay).clamp(0.02, 2.0)
+}
+
+/// For the panel: instrument `i` struck once, as its pad plays it (before
+/// LEVEL and PAN), at `sr` into `out`.
+pub fn render(p: &ModuleParams, i: usize, sr: f32, out: &mut [f32]) {
+    let mut voice = Voice::new(i);
+    let mut rng = Rng::new(0x0066_1966);
+    voice.trigger(&sound(p, i), 1.0, PAD_GATE, sr);
+    for y in out {
+        *y = voice.tick(&mut rng);
     }
 }
 
@@ -533,7 +597,7 @@ impl Processor for Pops {
             let v = p.viz[viz::AUDITION + inst].get();
             if v != *seen && count < MAX_HITS {
                 *seen = v;
-                hits[count] = Hit { frame: 0, inst, velocity: 1.0, gate: 0.25, send: false };
+                hits[count] = Hit { frame: 0, inst, velocity: 1.0, gate: PAD_GATE, send: false };
                 count += 1;
             }
         }
@@ -612,7 +676,7 @@ impl Processor for Pops {
         for &inst in &releases[..released] {
             self.voices[inst].release();
         }
-        let sounds: [Sound; COUNT] = std::array::from_fn(|i| self.sound(i));
+        let sounds: [Sound; COUNT] = std::array::from_fn(|i| sound(&p, i));
         let gains: [(f32, f32); COUNT] = std::array::from_fn(|i| {
             let level = p.get(ip(i, knob::LEVEL));
             let (l, r) = pan_gains(p.get(ip(i, knob::PAN)));

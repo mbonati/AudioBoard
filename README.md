@@ -77,6 +77,18 @@ The panel has three detail levels, chosen with its switch:
   selected instrument's TUNE, ATTACK, DECAY and its own extras: resonance, tick and high-pass for the
   snares; second partial for the conga and cowbell; rate and density for the guiro and quijada.
 
+**Waveforms.** Three more knobs in the sound panel reshape each instrument's waveform:
+
+- **WAVE** morphs the oscillators from sine through triangle to square. The cowbell starts as a square. On
+  the noise instruments (hihat, cymbals, tambourine, guiro, quijada), WAVE turns the noise into a metallic
+  cluster of six square waves.
+- **BEND** sweeps the pitch at the start of the hit: up to two octaves above TUNE (or below), gliding back
+  within a fifth of the decay. The filters follow the sweep.
+- **DRIVE** saturates the sound, flattening its peaks and lifting its tail.
+
+Beside the knobs, a picture shows the whole hit and a close-up of its first three cycles (4 ms for the noise
+instruments). It is drawn again as you turn a knob; click it to hear the sound.
+
 Like any node, it also collapses entirely to its title bar (C).
 
 The preset rhythms are new patterns written in each style, not decoded from the original's diode matrix.
@@ -527,7 +539,7 @@ src/
 │   ├── frakture.rs the Frakture node's panel: HEXAGON, EFFECTS and MOTION pages
 │   ├── equalizer.rs the Equalizer's panel: graph and band markers, analyzer (FFT), band controls
 │   ├── magma.rs    the Magma panel: display and dots, filter controls, sources and slots (drag & drop)
-│   ├── pops.rs     the Pops 66 panel: MACHINE, MIXER and EDITOR detail levels (the node resizes)
+│   ├── pops.rs     the Pops 66 panel: MACHINE, MIXER and EDITOR detail levels (the node resizes), waveform preview
 │   ├── widgets.rs  hand-drawn knobs, faders, meters, ports and cables
 │   ├── monitor.rs  bottom panel: oscilloscope and spectrum (FFT)
 │   ├── tempo.rs    the toolbar's tempo: BPM field (drag or type), beat light, tap tempo
