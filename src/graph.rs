@@ -74,6 +74,7 @@ impl NodeType {
             "Effects",
             &[
                 NodeType::Module(ModuleKind::Filter),
+                NodeType::Module(ModuleKind::Magma),
                 NodeType::Module(ModuleKind::Equalizer),
                 NodeType::Module(ModuleKind::Delay),
                 NodeType::Module(ModuleKind::PingPong),

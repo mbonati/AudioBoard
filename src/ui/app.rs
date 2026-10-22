@@ -48,6 +48,7 @@ const SHORTCUTS: &[(&str, &str)] = &[
     ("Shift+C", "Collapse / expand all"),
     ("L", "Auto layout (selection or all) · Cmd+Z undoes"),
     ("F / Shift+F", "Fit all / fit selection"),
+    ("Z", "Zoom to the node under the mouse (or the selection) · Z / Esc back"),
     ("A", "Auto-fit: keep the patch in view"),
     ("Cmd+= / Cmd+− / Cmd+0", "Zoom in / out / 100%"),
     ("Space", "Start / stop (stop goes back to the start)"),

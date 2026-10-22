@@ -11,7 +11,7 @@ use super::widgets;
 use crate::audio::engine::NodeId;
 use crate::audio::midi::note_hz;
 use crate::audio::modules::{
-    ModuleDef, ModuleKind, ModuleParams, arpeggiator, delay, drone, equalizer, filter, frakture, granular, midi_cc, midi_in, midi_note,
+    ModuleDef, ModuleKind, ModuleParams, arpeggiator, delay, drone, equalizer, filter, frakture, magma, granular, midi_cc, midi_in, midi_note,
     midicer, pingpong, random, resonator, reverb, sequencer, steps,
 };
 use crate::audio::params::{
@@ -66,6 +66,9 @@ pub fn size(def: &ModuleDef) -> Vec2 {
     if std::ptr::eq(def, &equalizer::DEF) {
         return super::equalizer::SIZE;
     }
+    if std::ptr::eq(def, &magma::DEF) {
+        return super::magma::SIZE;
+    }
     let cols = columns(def);
     let rows = def.params.len().div_ceil(cols);
     vec2(
@@ -117,6 +120,11 @@ pub fn draw(
     let patched = |i: usize| inputs.get(i).copied().unwrap_or(false);
     if kind == ModuleKind::Frakture {
         super::frakture::draw(v, id, accent, m, (patched(0), outputs.first().copied().unwrap_or(false)));
+        return MapButton::default();
+    }
+    if kind == ModuleKind::Magma {
+        let out = outputs.first().copied().unwrap_or(false);
+        super::magma::draw(v, id, accent, m, [patched(0), patched(1), out], midi.0);
         return MapButton::default();
     }
     if kind == ModuleKind::Equalizer {
@@ -188,7 +196,7 @@ pub fn draw(
         ModuleKind::Drone => drone_display(&screen, p),
         ModuleKind::Random | ModuleKind::MidiCc | ModuleKind::MidiNote => trace_display(&screen, m),
         ModuleKind::Granular => granular_display(&screen, p),
-        ModuleKind::Frakture | ModuleKind::Equalizer => {}
+        ModuleKind::Frakture | ModuleKind::Equalizer | ModuleKind::Magma => {}
         ModuleKind::Resonator => resonator_display(&screen, p),
         ModuleKind::Filter => filter_display(&screen, p),
         ModuleKind::Delay => delay_display(&screen, p, echo_seconds(p, v.tempo)),
@@ -394,6 +402,7 @@ fn readout(kind: ModuleKind, p: &ModuleParams, tempo: f32) -> (String, String) {
         }
         ModuleKind::Frakture => super::frakture::readout(p),
         ModuleKind::Equalizer => super::equalizer::readout(p),
+        ModuleKind::Magma => super::magma::readout(p),
         ModuleKind::Granular => {
             let n = p.viz[granular::viz::COUNT].get() as usize;
             let state = if p.toggled() { "Frozen" } else { "Recording" };

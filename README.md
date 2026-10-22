@@ -109,6 +109,49 @@ With noise or grains as input it gives physical, organic timbres. PITCH, DECAY, 
 **Filter**: stereo state-variable filter, LP / BP / HP / Notch. CUTOFF, RESO, DRIVE, MOD
 (depth of the CUT input in octaves, negative too). The display shows the frequency response.
 
+**Magma**: four hot, analog-flavoured filters after FabFilter Volcano 3. It has three inputs: IN, SC (side
+chain) and MIDI.
+
+- **Filters.** Each filter has:
+  - a shape: low pass, high pass, band pass, bell, low shelf, high shelf, notch or all pass;
+  - a slope: 6, 12, 24 or 48 dB/octave (band pass and notch start at 12);
+  - one of eleven non-linear **styles**: Classic, Smooth, Raw, Hard, Hollow, Extreme, Gentle, Tube, Metal,
+    Easy Going and Clean. Each drives the input through its own curve and saturates the resonance with its
+    own shape, and most of them self-oscillate at the top of PEAK.
+- **Knobs per filter.** DRIVE; FREQ with F.PAN (the left channel's cutoff goes down and the right's up,
+  by up to ±2 octaves); PEAK (resonance, or ±24 dB of gain for bells and shelves); DELAY (up to 50 ms on
+  the filter's output, for combs, flanging and Haas effects); LEVEL and PAN.
+- **Routing.** Six routings: serial, parallel, two serial pairs in parallel, two parallel pairs in
+  series, and the two mixes. ST runs every filter on both channels; L/R and M/S put filters 1–2 on the left
+  (or mid) and 3–4 on the right (or side).
+- **The display.**
+  - It shows each filter's curve and the total curve in yellow. In L/R or M/S, or with a frequency pan,
+    it shows one curve per channel; while modulation moves things, a thin curve shows the live result.
+  - Optional: the output's spectrum and a piano along the scale.
+  - Drag a dot for frequency and peak. Shift: fine; Alt: one axis; Cmd: frequency pan sideways and slope
+    up/down.
+  - Alt-click a dot: on/off. Cmd+Alt-click: next shape. Alt+Shift-click: next slope.
+  - Double-click the background for a new filter: high pass at the far left, low pass at the far right,
+    notch along the bottom, bell elsewhere.
+- **The bar.** HQ (2× oversampling against aliasing), AUTO MUTE (stops self-oscillation once the input
+  is silent), ANALYZER, PIANO, BYPASS (crossfaded), IN and OUT with their pans (±36 dB), and MIX.
+- **Modulation.** Almost any knob can be modulated, the bar's and the sources' own included.
+  - There are two each of:
+    - **XLFO**: up to 16 steps with value, random, curve and glide; free (0.02–500 Hz) or synced (16
+      bars to 1/64) with an offset multiplier; BALANCE, GLIDE and PHASE; restart on MIDI notes (or legato
+      only); SNAP turns steps into semitones over two octaves.
+    - **EG**: DAHDSR with curves for attack, decay and release, triggered by the input, the SC input or
+      MIDI notes. It has a threshold with a level meter, a NEUTRAL range (0 while sustaining) and
+      AUDITION to hear the side chain.
+    - **EF**: attack and release; ENVELOPE, or TRANSIENT to catch drum hits.
+    - **MIDI**: velocity, note, pitch bend, mod wheel, aftertouch or any controller, with six response
+      curves. It reads the MIDI input, or the keyboards when nothing is patched there.
+    - **XY**: a pad, or a slider, bipolar or unipolar.
+  - Drag a source's ◯ handle from its tab onto any knob, or right-click a knob → Modulate with.
+  - Up to 16 slots set source, target, level (±100% of the target's range), invert and remove. Slot
+    levels are knobs too, so a slot can modulate another slot.
+  - A modulated knob shows a ring to its live value and a dot in its sources' colours.
+
 **Equalizer**: a dynamic EQ after Waves F6 Floating-Band Dynamic EQ, with zero latency.
 
 - **Bands.** Six floating bands sit between a high-pass and a low-pass filter. Each band is a low shelf,
@@ -329,6 +372,7 @@ clipping it into crackles, and recovers over about 150 ms. While it works, the s
 | Collapse / expand a node or a module | arrow in the header, double-click the title, the C key, or right-click → Collapse |
 | Collapse / expand everything | Shift+C, the toolbar button, or right-click the canvas |
 | Frame everything / the selection | F / Shift+F |
+| Zoom in on one node | Z with the mouse over it (or on the selection), or right-click → Zoom to node: it fills the view, in front of the others; Z again or Esc goes back to the view you had |
 | Auto layout | L, the toolbar button or right-click the canvas; Cmd+Z undoes it |
 | Auto-fit (keep the whole patch in view) | A or the toolbar button |
 | New / open project | Cmd+N / Cmd+O, or the project name in the toolbar |
@@ -423,6 +467,8 @@ src/
 │   ├── modules/    drone, random, granular, resonator, filter, equalizer (after Waves F6), delay, pingpong,
 │   │               reverb, midi_cc, midi_note, sequencer, arpeggiator, midi_in, midicer (after Vermona's
 │   │               meloDICER)
+│   │   ├── magma.rs    Magma (after FabFilter Volcano 3): parameters, routing, oversampling, slots
+│   │   ├── magma/      filter (non-linear SVF styles, responses), modulation (XLFO, EG, EF, MIDI, XY)
 │   │   ├── frakture.rs Frakture (after Excite Audio's Motion: Fractal): parameters, mappings, the chain
 │   │   ├── frakture/   grains (tempo-locked buffer, two layers), rhythm (gate, repeat), space (hall),
 │   │   │               motion (hexagon sliders, magnet, drawn/recorded paths, timeline)
@@ -443,6 +489,7 @@ src/
 │   ├── modules.rs  common module panel and their displays
 │   ├── frakture.rs the Frakture node's panel: HEXAGON, EFFECTS and MOTION pages
 │   ├── equalizer.rs the Equalizer's panel: graph and band markers, analyzer (FFT), band controls
+│   ├── magma.rs    the Magma panel: display and dots, filter controls, sources and slots (drag & drop)
 │   ├── widgets.rs  hand-drawn knobs, faders, meters, ports and cables
 │   ├── monitor.rs  bottom panel: oscilloscope and spectrum (FFT)
 │   ├── tempo.rs    the toolbar's tempo: BPM field (drag or type), beat light, tap tempo
@@ -479,7 +526,7 @@ sideways drift.
 To add a new module: a file in `audio/modules/` with its `ModuleDef` (knobs, ports, modes, toggle) and a
 `Processor`, an entry in `ModuleKind` and, in `ui/modules.rs`, the readout and the display.
 The panel (ports, selector, knobs) is generated from the definition; Frakture, too large for the generic
-panel, draws its own (`ui/frakture.rs`), and so does the Equalizer (`ui/equalizer.rs`). Its hexagon runs on the audio thread, block by block: the panel
+panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`) and Magma (`ui/magma.rs`). Its hexagon runs on the audio thread, block by block: the panel
 hands it the mouse through the module's display values, so paths keep time even when the window doesn't
 redraw.
 

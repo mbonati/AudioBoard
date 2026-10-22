@@ -2299,3 +2299,199 @@ fn equalizer_filters_mid_side_mix_and_solo() {
     let (far, _) = drive_stereo(&mut Equalizer::new(p, 48_000.0), 24_000, sine(100.0, 0.3), None);
     assert!(level_db(&near, 0.3).abs() < 0.5 && level_db(&far, 0.3) < -15.0, "solo: {} / {}", level_db(&near, 0.3), level_db(&far, 0.3));
 }
+
+fn magma_params() -> Arc<ModuleParams> {
+    Arc::new(ModuleParams::new(ModuleKind::Magma))
+}
+
+fn magma(p: &Arc<ModuleParams>) -> crate::audio::modules::magma::Magma {
+    crate::audio::modules::magma::Magma::new(p.clone(), Arc::new(crate::audio::midi::MidiState::new()), 48_000.0)
+}
+
+/// Filter 1 alone, clean, of `shape` at `freq`.
+fn magma_clean(shape: usize, slope: usize, freq: f32, peak: f32) -> Arc<ModuleParams> {
+    use crate::audio::modules::magma::{data, filt, fp};
+    let p = magma_params();
+    p.data[data::SHAPE].set(shape as f32);
+    p.data[data::SLOPE].set(slope as f32);
+    p.data[data::STYLE].set(10.0);
+    p.set(fp(0, filt::FREQ), freq);
+    p.set(fp(0, filt::PEAK), peak);
+    p
+}
+
+#[test]
+fn magma_filters_match_their_curves() {
+    use crate::audio::modules::magma::{self, BELL, HIGH_PASS, LOW_PASS, NOTCH};
+    for (shape, slope, freq, peak, probe) in [
+        (LOW_PASS, 2, 1000.0, 0.0, 250.0),
+        (LOW_PASS, 2, 1000.0, 0.0, 4000.0),
+        (HIGH_PASS, 1, 1000.0, 0.0, 500.0),
+        (BELL, 1, 1000.0, 0.5, 1000.0),
+        (NOTCH, 1, 1000.0, 0.0, 1300.0),
+        (LOW_PASS, 3, 2000.0, 0.6, 1000.0),
+    ] {
+        let p = magma_clean(shape, slope, freq, peak);
+        let (l, _) = drive_stereo(&mut magma(&p), 24_000, sine(probe, 0.1), None);
+        let measured = level_db(&l, 0.1);
+        let vals = magma::base_values(&p);
+        let expected = magma::db(magma::total_response(&p, &vals, 0, probe, 48_000.0));
+        assert!((measured - expected).abs() < 0.6, "shape {shape} slope {slope} at {probe} Hz: {measured:.2} vs {expected:.2}");
+    }
+}
+
+#[test]
+fn magma_self_oscillates_and_auto_mutes() {
+    use crate::audio::modules::magma::{LOW_PASS, data, filt, fp};
+    let p = magma_clean(LOW_PASS, 1, 800.0, 1.0);
+    p.data[data::STYLE].set(0.0); // Classic
+    p.data[data::AUTO_MUTE].set(0.0);
+    let mut fx = magma(&p);
+    let burst = |n: usize| if n < 480 { sine(800.0, 0.5)(n) } else { (0.0, 0.0) };
+    let (l, _) = drive_stereo(&mut fx, 48_000, burst, None);
+    let tail = &l[24_000..];
+    assert!(rms_of(tail) > 0.05, "keeps singing on its own: {}", rms_of(tail));
+    let crossings = tail.windows(2).filter(|w| w[0] < 0.0 && w[1] >= 0.0).count() as f32 * 2.0;
+    assert!((crossings - 800.0).abs() < 120.0, "near the cutoff: {crossings} Hz");
+    // Auto-mute stops it once the input has gone silent.
+    p.data[data::AUTO_MUTE].set(1.0);
+    let (l, _) = drive_stereo(&mut magma(&p), 48_000, burst, None);
+    assert!(peak_of(&l[24_000..]) < 1e-3, "muted: {}", peak_of(&l[24_000..]));
+    // Clean never oscillates.
+    p.data[data::STYLE].set(10.0);
+    p.data[data::AUTO_MUTE].set(0.0);
+    let (l, _) = drive_stereo(&mut magma(&p), 48_000, burst, None);
+    assert!(peak_of(&l[24_000..]) < 1e-3);
+    let _ = fp(0, filt::PEAK);
+}
+
+#[test]
+fn magma_routing_and_mid_side() {
+    use crate::audio::modules::magma::{self, HIGH_PASS, LOW_PASS, MID_SIDE, data, filt, fp};
+    // LP 300 Hz and HP 3 kHz in parallel pass both ends, not the middle.
+    let p = magma_clean(LOW_PASS, 2, 300.0, 0.0);
+    p.data[data::FILTER_ON + 1].set(1.0);
+    p.data[data::SHAPE + 1].set(HIGH_PASS as f32);
+    p.data[data::SLOPE + 1].set(2.0);
+    p.data[data::STYLE + 1].set(10.0);
+    p.set(fp(1, filt::FREQ), 3000.0);
+    p.set(fp(1, filt::PEAK), 0.0);
+    p.data[data::ROUTING].set(1.0);
+    let level = |hz: f32| level_db(&drive_stereo(&mut magma(&p), 24_000, sine(hz, 0.1), None).0, 0.1);
+    assert!(level(80.0).abs() < 1.0 && level(10_000.0).abs() < 1.0, "ends pass");
+    assert!(level(950.0) < -12.0, "middle cut: {}", level(950.0));
+    // In series they cut everything.
+    p.data[data::ROUTING].set(0.0);
+    assert!(level(80.0) < -30.0 && level(10_000.0) < -30.0);
+
+    // M/S: filter 1 (a low pass) on the mid only leaves the sides alone.
+    let p = magma_clean(LOW_PASS, 2, 200.0, 0.0);
+    p.data[data::ROUTING_MODE].set(MID_SIDE as f32);
+    let sides = |n: usize| {
+        let v = sine(4000.0, 0.1)(n).0;
+        (v, -v)
+    };
+    let (l, _) = drive_stereo(&mut magma(&p), 24_000, sides, None);
+    assert!(level_db(&l, 0.1).abs() < 0.3, "sides untouched");
+    let (l, _) = drive_stereo(&mut magma(&p), 24_000, sine(4000.0, 0.1), None);
+    assert!(level_db(&l, 0.1) < -40.0, "mid filtered");
+    let _ = magma::FILTERS;
+}
+
+#[test]
+fn magma_high_quality_keeps_the_sound() {
+    use crate::audio::modules::magma::{LOW_PASS, data};
+    let p = magma_clean(LOW_PASS, 1, 2000.0, 0.3);
+    let plain = level_db(&drive_stereo(&mut magma(&p), 24_000, sine(1000.0, 0.1), None).0, 0.1);
+    p.data[data::HQ].set(1.0);
+    let hq = level_db(&drive_stereo(&mut magma(&p), 24_000, sine(1000.0, 0.1), None).0, 0.1);
+    assert!((plain - hq).abs() < 0.3, "{plain} vs {hq}");
+    let high = level_db(&drive_stereo(&mut magma(&magma_clean(LOW_PASS, 0, 20_000.0, 0.0)), 24_000, sine(15_000.0, 0.1), None).0, 0.1);
+    p.set(crate::audio::modules::magma::fp(0, 1), 20_000.0);
+    assert!(high > -4.0, "the oversampler passes the top: {high}");
+}
+
+#[test]
+fn magma_modulation_moves_the_filter() {
+    use crate::audio::modules::magma::{self, data, filt, fp, modulation, viz, xlfo, xp};
+    let p = magma_params();
+    magma::add_slot(&p, modulation::SRC_XLFO, fp(0, filt::FREQ)).expect("a slot");
+    p.set(xp(0, xlfo::RATE), 5.0);
+    let mut fx = magma(&p);
+    let mut seen = Vec::new();
+    for _ in 0..20 {
+        drive_stereo(&mut fx, 960, sine(440.0, 0.1), None);
+        seen.push(p.viz[viz::EFFECTIVE + fp(0, filt::FREQ)].get());
+    }
+    let (lo, hi) = seen.iter().fold((1.0f32, 0.0f32), |(a, b), &v| (a.min(v), b.max(v)));
+    assert!(lo >= 0.0 && hi - lo > 0.2, "swept: {lo}…{hi}");
+    // A slot on another slot's level: the XLFO's depth follows XY 1.
+    magma::add_slot(&p, modulation::SRC_XY, magma::SLOT0).expect("a second slot");
+    p.set(magma::XY0, -1.0);
+    p.set(magma::SLOT0 + 1, 1.0);
+    drive_stereo(&mut fx, 960, sine(440.0, 0.1), None);
+    assert!(p.viz[viz::EFFECTIVE + magma::SLOT0].get() < 0.5, "slot level pulled down");
+    let _ = data::SLOT_SOURCE;
+}
+
+#[test]
+fn magma_envelope_follows_midi_notes() {
+    use crate::audio::modules::magma::{self, data, modulation, viz};
+    let p = magma_params();
+    p.data[data::EG].set(2.0); // MIDI trigger
+    p.data[data::SOURCE_SHOWN].set(2.0); // shown in the panel: worked out
+    let mut fx = magma(&p);
+    let ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing: true, restart: false };
+    let mut inputs = Box::new(Inputs { bufs: [[[0.1; 64]; 2]; 8], connected: [false; 8], midi: MidiBuf::default(), midi_connected: true });
+    inputs.connected[0] = true;
+    let mut out = vec![[[0.0f32; 64]; 2]; 1];
+    let mut run = |inputs: &mut Inputs, blocks: usize, first: Option<[u8; 3]>| {
+        for b in 0..blocks {
+            inputs.midi.clear();
+            if b == 0 && let Some(msg) = first {
+                inputs.midi.push(0, msg);
+            }
+            fx.process(&ctx, inputs, &mut out, 64);
+        }
+    };
+    run(&mut inputs, 10, None);
+    let eg = viz::SOURCES_AT + modulation::SRC_EG - 1;
+    assert_eq!(p.viz[eg].get(), 0.0);
+    run(&mut inputs, 400, Some([0x90, 60, 100]));
+    assert!((p.viz[eg].get() - 0.5).abs() < 0.05, "sustain: {}", p.viz[eg].get());
+    run(&mut inputs, 750, Some([0x80, 60, 0]));
+    assert!(p.viz[eg].get() < 0.01, "released: {}", p.viz[eg].get());
+    let _ = magma::FILTERS;
+}
+
+#[test]
+fn magma_envelope_holds_on_a_steady_tone() {
+    use crate::audio::modules::magma::{data, modulation, viz};
+    let p = magma_params();
+    p.data[data::SOURCE_SHOWN].set(2.0);
+    let mut fx = magma(&p);
+    // A low saw crosses zero every period: the gate must stay open.
+    let low = |n: usize| {
+        let v = 0.5 * ((n as f32 * 55.0 / 48_000.0).fract() * 2.0 - 1.0);
+        (v, v)
+    };
+    drive_stereo(&mut fx, 96_000, low, None);
+    let eg = p.viz[viz::SOURCES_AT + modulation::SRC_EG - 1].get();
+    assert!((eg - 0.5).abs() < 0.02, "sustaining: {eg}");
+}
+
+#[test]
+fn magma_live_values_are_only_for_modulated_knobs() {
+    use crate::audio::modules::magma::{self, filt, fp, modulation, viz};
+    let p = magma_params();
+    let mut fx = magma(&p);
+    let freq = viz::EFFECTIVE + fp(0, filt::FREQ);
+    assert_eq!(p.viz[freq].get(), -1.0, "nothing modulated from the start");
+    // Silent long enough to rest: still nothing claims to be modulated.
+    drive_stereo(&mut fx, 48_000, |_| (0.0, 0.0), None);
+    assert_eq!(p.viz[freq].get(), -1.0);
+    // A slot while resting: its target's live value is published.
+    magma::add_slot(&p, modulation::SRC_XY, fp(0, filt::FREQ));
+    drive_stereo(&mut fx, 640, |_| (0.0, 0.0), None);
+    assert!(p.viz[freq].get() >= 0.0, "live while resting");
+}

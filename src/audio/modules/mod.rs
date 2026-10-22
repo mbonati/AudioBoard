@@ -10,6 +10,7 @@ pub mod equalizer;
 pub mod filter;
 pub mod frakture;
 pub mod granular;
+pub mod magma;
 pub mod midi_cc;
 pub mod midi_in;
 pub mod midicer;
@@ -37,6 +38,7 @@ pub enum ModuleKind {
     Frakture,
     Resonator,
     Filter,
+    Magma,
     Equalizer,
     Delay,
     PingPong,
@@ -86,13 +88,14 @@ pub struct ModuleDef {
 }
 
 impl ModuleKind {
-    pub const ALL: [ModuleKind; 16] = [
+    pub const ALL: [ModuleKind; 17] = [
         ModuleKind::Drone,
         ModuleKind::Random,
         ModuleKind::Granular,
         ModuleKind::Frakture,
         ModuleKind::Resonator,
         ModuleKind::Filter,
+        ModuleKind::Magma,
         ModuleKind::Equalizer,
         ModuleKind::Delay,
         ModuleKind::PingPong,
@@ -114,6 +117,7 @@ impl ModuleKind {
             ModuleKind::Resonator => &resonator::DEF,
             ModuleKind::Filter => &filter::DEF,
             ModuleKind::Equalizer => &equalizer::DEF,
+            ModuleKind::Magma => &magma::DEF,
             ModuleKind::Delay => &delay::DEF,
             ModuleKind::PingPong => &pingpong::DEF,
             ModuleKind::Reverb => &reverb::DEF,
@@ -139,6 +143,7 @@ impl ModuleKind {
             ModuleKind::Resonator => Box::new(resonator::Resonator::new(params, sample_rate)),
             ModuleKind::Filter => Box::new(filter::Filter::new(params, sample_rate)),
             ModuleKind::Equalizer => Box::new(equalizer::Equalizer::new(params, sample_rate)),
+            ModuleKind::Magma => Box::new(magma::Magma::new(params, midi.clone(), sample_rate)),
             ModuleKind::Delay => Box::new(delay::Delay::new(params, sample_rate)),
             ModuleKind::PingPong => Box::new(pingpong::PingPong::new(params, sample_rate)),
             ModuleKind::Reverb => Box::new(reverb::Reverb::new(params, sample_rate)),
