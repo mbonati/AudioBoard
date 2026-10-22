@@ -9,7 +9,7 @@ use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use egui::{Color32, Pos2, Vec2};
+use egui::{Color32, Pos2, Vec2, vec2};
 
 use crate::audio::AudioHandle;
 use crate::audio::dsp::{Mixer, Oscillator};
@@ -60,7 +60,12 @@ impl NodeType {
     pub const MENU: [(&'static str, &'static [NodeType]); 5] = [
         (
             "Sources",
-            &[NodeType::Osc, NodeType::Module(ModuleKind::Drone), NodeType::Module(ModuleKind::Random)],
+            &[
+                NodeType::Osc,
+                NodeType::Module(ModuleKind::Drone),
+                NodeType::Module(ModuleKind::Random),
+                NodeType::Module(ModuleKind::Pops),
+            ],
         ),
         (
             "Texture",
@@ -402,6 +407,9 @@ impl Node {
     pub fn size(&self) -> Vec2 {
         if self.collapsed {
             nodes::collapsed_size(self.input_ports().len().max(self.output_ports().len()))
+        } else if let NodeKind::Module(m) = &self.kind {
+            // Some panels grow and shrink with their settings.
+            crate::ui::modules::size_of(&m.params)
         } else {
             nodes::type_size(self.kind.node_type())
         }
@@ -482,7 +490,9 @@ impl Node {
             + if self.collapsed {
                 nodes::collapsed_port(row, true)
             } else {
-                nodes::output_offset(self.kind.node_type(), row)
+                // On the right edge, wherever it is now.
+                let offset = nodes::output_offset(self.kind.node_type(), row);
+                vec2(self.size().x, offset.y)
             }
     }
 

@@ -11,7 +11,7 @@ use super::widgets;
 use crate::audio::engine::NodeId;
 use crate::audio::midi::note_hz;
 use crate::audio::modules::{
-    ModuleDef, ModuleKind, ModuleParams, arpeggiator, delay, drone, equalizer, filter, frakture, magma, granular, midi_cc, midi_in, midi_note,
+    ModuleDef, ModuleKind, ModuleParams, arpeggiator, delay, drone, equalizer, filter, frakture, magma, pops, granular, midi_cc, midi_in, midi_note,
     midicer, pingpong, random, resonator, reverb, sequencer, steps,
 };
 use crate::audio::params::{
@@ -59,7 +59,19 @@ fn knobs_top(def: &ModuleDef) -> f32 {
     controls_bottom(def) + if def.modes.is_empty() && !def.map { 18.0 } else { 42.0 }
 }
 
+/// A module node's size now: most only depend on their kind, some panels
+/// grow and shrink with their settings.
+pub fn size_of(p: &ModuleParams) -> Vec2 {
+    match p.kind {
+        ModuleKind::Pops => super::pops::size(p),
+        kind => size(kind.def()),
+    }
+}
+
 pub fn size(def: &ModuleDef) -> Vec2 {
+    if std::ptr::eq(def, &pops::DEF) {
+        return super::pops::SIZE;
+    }
     if std::ptr::eq(def, &frakture::DEF) {
         return super::frakture::SIZE;
     }
@@ -120,6 +132,11 @@ pub fn draw(
     let patched = |i: usize| inputs.get(i).copied().unwrap_or(false);
     if kind == ModuleKind::Frakture {
         super::frakture::draw(v, id, accent, m, (patched(0), outputs.first().copied().unwrap_or(false)));
+        return MapButton::default();
+    }
+    if kind == ModuleKind::Pops {
+        let out = outputs.first().copied().unwrap_or(false);
+        super::pops::draw(v, id, accent, m, out, midi);
         return MapButton::default();
     }
     if kind == ModuleKind::Magma {
@@ -196,7 +213,7 @@ pub fn draw(
         ModuleKind::Drone => drone_display(&screen, p),
         ModuleKind::Random | ModuleKind::MidiCc | ModuleKind::MidiNote => trace_display(&screen, m),
         ModuleKind::Granular => granular_display(&screen, p),
-        ModuleKind::Frakture | ModuleKind::Equalizer | ModuleKind::Magma => {}
+        ModuleKind::Frakture | ModuleKind::Equalizer | ModuleKind::Magma | ModuleKind::Pops => {}
         ModuleKind::Resonator => resonator_display(&screen, p),
         ModuleKind::Filter => filter_display(&screen, p),
         ModuleKind::Delay => delay_display(&screen, p, echo_seconds(p, v.tempo)),
@@ -403,6 +420,7 @@ fn readout(kind: ModuleKind, p: &ModuleParams, tempo: f32) -> (String, String) {
         ModuleKind::Frakture => super::frakture::readout(p),
         ModuleKind::Equalizer => super::equalizer::readout(p),
         ModuleKind::Magma => super::magma::readout(p),
+        ModuleKind::Pops => super::pops::readout(p),
         ModuleKind::Granular => {
             let n = p.viz[granular::viz::COUNT].get() as usize;
             let state = if p.toggled() { "Frozen" } else { "Recording" };

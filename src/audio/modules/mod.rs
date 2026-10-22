@@ -15,6 +15,7 @@ pub mod midi_cc;
 pub mod midi_in;
 pub mod midicer;
 pub mod pingpong;
+pub mod pops;
 pub mod midi_note;
 pub mod random;
 pub mod resonator;
@@ -34,6 +35,7 @@ use super::params::{AtomicF32, ParamSpec};
 pub enum ModuleKind {
     Drone,
     Random,
+    Pops,
     Granular,
     Frakture,
     Resonator,
@@ -88,9 +90,10 @@ pub struct ModuleDef {
 }
 
 impl ModuleKind {
-    pub const ALL: [ModuleKind; 17] = [
+    pub const ALL: [ModuleKind; 18] = [
         ModuleKind::Drone,
         ModuleKind::Random,
+        ModuleKind::Pops,
         ModuleKind::Granular,
         ModuleKind::Frakture,
         ModuleKind::Resonator,
@@ -112,6 +115,7 @@ impl ModuleKind {
         match self {
             ModuleKind::Drone => &drone::DEF,
             ModuleKind::Random => &random::DEF,
+            ModuleKind::Pops => &pops::DEF,
             ModuleKind::Granular => &granular::DEF,
             ModuleKind::Frakture => &frakture::DEF,
             ModuleKind::Resonator => &resonator::DEF,
@@ -138,6 +142,7 @@ impl ModuleKind {
         match self {
             ModuleKind::Drone => Box::new(drone::Drone::new(params, sample_rate)),
             ModuleKind::Random => Box::new(random::Random::new(params, sample_rate)),
+            ModuleKind::Pops => Box::new(pops::Pops::new(params, sample_rate)),
             ModuleKind::Granular => Box::new(granular::Granular::new(params, sample_rate)),
             ModuleKind::Frakture => Box::new(frakture::Frakture::new(params, sample_rate)),
             ModuleKind::Resonator => Box::new(resonator::Resonator::new(params, sample_rate)),
