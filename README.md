@@ -109,6 +109,38 @@ With noise or grains as input it gives physical, organic timbres. PITCH, DECAY, 
 **Filter**: stereo state-variable filter, LP / BP / HP / Notch. CUTOFF, RESO, DRIVE, MOD
 (depth of the CUT input in octaves, negative too). The display shows the frequency response.
 
+**Equalizer**: a dynamic EQ after Waves F6 Floating-Band Dynamic EQ, with zero latency.
+
+- **Bands.** Six floating bands sit between a high-pass and a low-pass filter. Each band is a low shelf,
+  bell or high shelf: FREQ 16 Hz–21 kHz, Q 0.4–60, GAIN ±18 dB. Each band and filter works on the
+  stereo signal (ST), the MID only or the SIDE only. HP and LP have their own frequency and a slope of
+  6, 12, 18 or 24 dB/octave.
+- **Dynamics.** When the level a band's side chain sees goes above THRESHOLD (−60…0 dB), the band's gain
+  moves by up to RANGE (±18 dB: negative compresses, positive expands), with ATTACK (0.5–500 ms) and
+  RELEASE (5 ms–5 s, longer the harder it works).
+  - The side chain is the node's own input (INT) or the **SC** input (EXT). SPLIT filters it around the
+    band; WIDE uses the full range. The ring around THRESHOLD shows its level.
+  - SOLO plays a band's side chain, or what HP/LP let through.
+  - GLOBAL RELEASE: MNL uses each band's own release; ARC shortens it on transients.
+  - The ▲▼ arrows under GAIN, RANGE, THRESHOLD, ATTACK and RELEASE move that control on every band at
+    once.
+- **Graph.** It shows each band's curve (live, with its dynamics, and dashed where RANGE can take it)
+  and the total curve.
+  - Drag a marker to set frequency and gain (HP/LP sideways only). Alt+drag sideways sets Q, Ctrl+drag
+    keeps to one axis. Cmd+click changes the band type; double-click turns it on or off.
+  - Right-click and hold a marker to solo it; moving the marker then solos other frequencies.
+  - The band selectors (HP, 1–6, LP) select a band too; double-click one to turn it on or off.
+- **MIX and OUT.** MIX (0–100) blends in the dry signal for parallel processing; OUT is ±18 dB, with an
+  output meter.
+- **Analyzer (RTA).** The toolbar above the graph sets:
+  - FILL or BARS, PEAK or RMS, PINK (equal energy per octave) or WHITE slope;
+  - banding from 1/24 octave to 1 octave, and averaging (fast to slowest);
+  - an MA (moving average) line and a MAX line;
+  - the source (L, R, L+R, sides) and the listening point (PRE, POST, SC or OFF);
+  - RTA on or off.
+
+  Hovering the graph shows the frequency, the note with its cents and the analyzer's level there.
+
 **Delay**: stereo tape echo up to 2 s. TIME (changes glide, like tape), FEEDBACK,
 TONE (darkens the repeats), WOW (wow & flutter), PING (ping-pong), MIX. **SYNC** locks the time to the
 global tempo: DIV picks the note value (1/32 to 1/1, with dotted "D" and triplet "T" values, up to 4 s) and
@@ -385,10 +417,11 @@ src/
 │   ├── engine.rs   audio-side graph: one pass per device buffer (built-ins in 64-frame stereo blocks,
 │   │               plugins in one call), per-block MIDI events, global clock in beats, precomputed
 │   │               topological order, lookahead limiter, denormals flushed to zero
-│   ├── fastmath.rs fast sine, exp2 and tanh for per-sample DSP (error < 1e-6)
+│   ├── fastmath.rs fast sine, exp2, log2 and tanh for per-sample DSP (error < 1e-6)
 │   ├── dsp.rs      Oscillator and Mixer
-│   ├── modules/    drone, random, granular, resonator, filter, delay, pingpong, reverb, midi_cc, midi_note,
-│   │               sequencer, arpeggiator, midi_in, midicer (after Vermona's meloDICER)
+│   ├── modules/    drone, random, granular, resonator, filter, equalizer (after Waves F6), delay, pingpong,
+│   │               reverb, midi_cc, midi_note, sequencer, arpeggiator, midi_in, midicer (after Vermona's
+│   │               meloDICER)
 │   │   ├── frakture.rs Frakture (after Excite Audio's Motion: Fractal): parameters, mappings, the chain
 │   │   ├── frakture/   grains (tempo-locked buffer, two layers), rhythm (gate, repeat), space (hall),
 │   │   │               motion (hexagon sliders, magnet, drawn/recorded paths, timeline)
@@ -408,6 +441,7 @@ src/
 │   ├── nodes.rs    layout and drawing of the oscillator and mixer, shared controls
 │   ├── modules.rs  common module panel and their displays
 │   ├── frakture.rs the Frakture node's panel: HEXAGON, EFFECTS and MOTION pages
+│   ├── equalizer.rs the Equalizer's panel: graph and band markers, analyzer (FFT), band controls
 │   ├── widgets.rs  hand-drawn knobs, faders, meters, ports and cables
 │   ├── monitor.rs  bottom panel: oscilloscope and spectrum (FFT)
 │   ├── tempo.rs    the toolbar's tempo: BPM field (drag or type), beat light, tap tempo
@@ -444,7 +478,7 @@ sideways drift.
 To add a new module: a file in `audio/modules/` with its `ModuleDef` (knobs, ports, modes, toggle) and a
 `Processor`, an entry in `ModuleKind` and, in `ui/modules.rs`, the readout and the display.
 The panel (ports, selector, knobs) is generated from the definition; Frakture, too large for the generic
-panel, draws its own (`ui/frakture.rs`). Its hexagon runs on the audio thread, block by block: the panel
+panel, draws its own (`ui/frakture.rs`), and so does the Equalizer (`ui/equalizer.rs`). Its hexagon runs on the audio thread, block by block: the panel
 hands it the mouse through the module's display values, so paths keep time even when the window doesn't
 redraw.
 

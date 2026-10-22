@@ -157,7 +157,7 @@ fn screen(p: &Painter, rect: Rect, title: &str, detail: &str) -> Rect {
 }
 
 /// In-place iterative radix-2 FFT.
-fn fft(re: &mut [f32], im: &mut [f32]) {
+pub(super) fn fft(re: &mut [f32], im: &mut [f32]) {
     let n = re.len();
     let mut j = 0;
     for i in 1..n {

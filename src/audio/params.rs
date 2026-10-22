@@ -67,6 +67,10 @@ pub enum Unit {
     NoteValue,
     /// Index into [`SYNC_DIVISIONS`].
     Sync,
+    /// A level or gain already in decibels.
+    Db,
+    /// A filter's Q.
+    Q,
 }
 
 /// Note values a tempo-synced time can take, shortest first: (label,
@@ -118,6 +122,7 @@ pub const DIVISIONS: [(&str, f64); 6] = [("1/4", 1.0), ("1/8", 2.0), ("1/8T", 3.
 pub const NOTE_NAMES: [&str; 12] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
 /// Static description of a knob-controlled parameter.
+#[derive(Clone, Copy)]
 pub struct ParamSpec {
     pub name: &'static str,
     pub min: f32,
@@ -153,7 +158,7 @@ impl ParamSpec {
         Self { bipolar: true, ..self }
     }
 
-    pub fn to_norm(&self, v: f32) -> f32 {
+    pub fn to_norm(self, v: f32) -> f32 {
         let n = match self.taper {
             Taper::Linear => (v - self.min) / (self.max - self.min),
             Taper::Log => (v / self.min).ln() / (self.max / self.min).ln(),
@@ -190,6 +195,9 @@ impl ParamSpec {
             (Unit::NoteName, _) => NOTE_NAMES[(v.round() as usize) % 12].to_owned(),
             (Unit::Note, _) => note_label(v.round() as i32),
             (Unit::Sync, _) => sync_division(v).0.to_owned(),
+            (Unit::Db, true) => format!("{v:+.1} dB"),
+            (Unit::Db, false) => format!("{v:.1} dB"),
+            (Unit::Q, _) => format!("{v:.2}"),
             (Unit::NoteValue, _) => NOTE_VALUES[(v.round().max(0.0) as usize).min(NOTE_VALUES.len() - 1)].0.to_owned(),
         }
     }

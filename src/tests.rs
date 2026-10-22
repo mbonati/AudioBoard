@@ -2154,3 +2154,148 @@ fn projects_with_the_old_fractal_name_still_load() {
     assert_eq!(crate::project::restore(&mut h, &saved, &b), 0);
     assert_eq!(module_params(&h, h.nodes[0].id).kind, ModuleKind::Frakture);
 }
+
+/// Runs a processor at 48 kHz on `main(frame)` (L, R), with `side` on the
+/// second input if given.
+fn drive_stereo(
+    proc: &mut dyn Processor,
+    frames: usize,
+    main: impl Fn(usize) -> (f32, f32),
+    side: Option<&dyn Fn(usize) -> (f32, f32)>,
+) -> (Vec<f32>, Vec<f32>) {
+    let ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing: true, restart: false };
+    let mut inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; 8], connected: [false; 8], midi: MidiBuf::default(), midi_connected: false });
+    inputs.connected[0] = true;
+    inputs.connected[1] = side.is_some();
+    let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
+    let (mut l, mut r) = (Vec::new(), Vec::new());
+    for block in 0..frames / 64 {
+        for i in 0..64 {
+            let n = block * 64 + i;
+            (inputs.bufs[0][0][i], inputs.bufs[0][1][i]) = main(n);
+            if let Some(sc) = side {
+                (inputs.bufs[1][0][i], inputs.bufs[1][1][i]) = sc(n);
+            }
+        }
+        proc.process(&ctx, &inputs, &mut outputs, 64);
+        l.extend_from_slice(&outputs[0][0]);
+        r.extend_from_slice(&outputs[0][1]);
+    }
+    (l, r)
+}
+
+fn sine(hz: f32, amp: f32) -> impl Fn(usize) -> (f32, f32) {
+    move |n| {
+        let v = amp * (std::f32::consts::TAU * hz * n as f32 / 48_000.0).sin();
+        (v, v)
+    }
+}
+
+/// Level of the second half, in dB relative to `amp`'s sine.
+fn level_db(x: &[f32], amp: f32) -> f32 {
+    let tail = &x[x.len() / 2..];
+    20.0 * (rms_of(tail) / (amp / 2f32.sqrt())).log10()
+}
+
+fn eq_params() -> Arc<ModuleParams> {
+    Arc::new(ModuleParams::new(ModuleKind::Equalizer))
+}
+
+#[test]
+fn equalizer_bands_shape_the_spectrum() {
+    use crate::audio::modules::equalizer::{Equalizer, band, bp};
+    let p = eq_params();
+    p.set(bp(3, band::FREQ), 1000.0);
+    p.set(bp(3, band::GAIN), 6.0);
+    let (l, _) = drive_stereo(&mut Equalizer::new(p.clone(), 48_000.0), 24_000, sine(1000.0, 0.25), None);
+    assert!((level_db(&l, 0.25) - 6.0).abs() < 0.3, "boost at 1 kHz: {}", level_db(&l, 0.25));
+    let (l, _) = drive_stereo(&mut Equalizer::new(p.clone(), 48_000.0), 24_000, sine(100.0, 0.25), None);
+    assert!(level_db(&l, 0.25).abs() < 0.3, "100 Hz untouched: {}", level_db(&l, 0.25));
+    // Flat by default: the input passes as it is.
+    let flat = eq_params();
+    let (l, _) = drive_stereo(&mut Equalizer::new(flat, 48_000.0), 4_800, sine(440.0, 0.3), None);
+    assert!((0..4_800).all(|n| (l[n] - sine(440.0, 0.3)(n).0).abs() < 1e-5));
+}
+
+#[test]
+fn equalizer_dynamics_act_above_the_threshold() {
+    use crate::audio::modules::equalizer::{Equalizer, band, bp};
+    let p = eq_params();
+    p.set(bp(3, band::FREQ), 1000.0);
+    p.set(bp(3, band::RANGE), -12.0);
+    p.set(bp(3, band::THRESHOLD), -30.0);
+    p.set(bp(3, band::ATTACK), 0.001);
+    // Loud: the band cuts by its full range.
+    let (l, _) = drive_stereo(&mut Equalizer::new(p.clone(), 48_000.0), 24_000, sine(1000.0, 0.5), None);
+    assert!((level_db(&l, 0.5) + 12.0).abs() < 1.0, "compressed: {}", level_db(&l, 0.5));
+    // Quiet: below the threshold nothing happens.
+    let (l, _) = drive_stereo(&mut Equalizer::new(p.clone(), 48_000.0), 24_000, sine(1000.0, 0.005), None);
+    assert!(level_db(&l, 0.005).abs() < 0.3, "untouched: {}", level_db(&l, 0.005));
+    // Positive range expands.
+    p.set(bp(3, band::RANGE), 6.0);
+    let (l, _) = drive_stereo(&mut Equalizer::new(p.clone(), 48_000.0), 24_000, sine(1000.0, 0.25), None);
+    assert!((level_db(&l, 0.25) - 6.0).abs() < 1.0, "expanded: {}", level_db(&l, 0.25));
+}
+
+#[test]
+fn equalizer_external_side_chain_ducks() {
+    use crate::audio::modules::equalizer::{Equalizer, band, bp, data};
+    let p = eq_params();
+    p.set(bp(3, band::FREQ), 1000.0);
+    p.set(bp(3, band::RANGE), -9.0);
+    p.set(bp(3, band::THRESHOLD), -20.0);
+    p.data[data::SC_EXT + 3].set(1.0);
+    p.data[data::SC_WIDE + 3].set(1.0);
+    let quiet = sine(1000.0, 0.01);
+    // A loud key on SC (another frequency: WIDE hears it) ducks the band.
+    let key = |n: usize| sine(100.0, 0.5)(n);
+    let (l, _) = drive_stereo(&mut Equalizer::new(p.clone(), 48_000.0), 24_000, &quiet, Some(&key));
+    assert!((level_db(&l, 0.01) + 9.0).abs() < 1.0, "ducked: {}", level_db(&l, 0.01));
+    // In SPLIT the band only hears its own frequencies: 100 Hz, 20 dB down
+    // there, stays under the threshold.
+    p.data[data::SC_WIDE + 3].set(0.0);
+    let (l, _) = drive_stereo(&mut Equalizer::new(p.clone(), 48_000.0), 24_000, &quiet, Some(&key));
+    assert!(level_db(&l, 0.01) > -4.0, "split: {}", level_db(&l, 0.01));
+    // Without a key, nothing.
+    let silent = |_: usize| (0.0, 0.0);
+    let (l, _) = drive_stereo(&mut Equalizer::new(p, 48_000.0), 24_000, &quiet, Some(&silent));
+    assert!(level_db(&l, 0.01).abs() < 0.3);
+}
+
+#[test]
+fn equalizer_filters_mid_side_mix_and_solo() {
+    use crate::audio::modules::equalizer::{self, Equalizer, band, bp, data};
+    // HP 24 dB/octave at 1 kHz: two octaves below, −48 dB.
+    let p = eq_params();
+    p.data[data::HP_ON].set(1.0);
+    p.data[data::HP_SLOPE].set(3.0);
+    p.set(equalizer::HP_FREQ, 1000.0);
+    let (l, _) = drive_stereo(&mut Equalizer::new(p.clone(), 48_000.0), 24_000, sine(250.0, 0.5), None);
+    assert!((level_db(&l, 0.5) + 48.0).abs() < 1.5, "HP: {}", level_db(&l, 0.5));
+    // MIX 0: the dry signal.
+    p.set(equalizer::MIX, 0.0);
+    let (l, _) = drive_stereo(&mut Equalizer::new(p.clone(), 48_000.0), 24_000, sine(250.0, 0.5), None);
+    assert!(level_db(&l, 0.5).abs() < 0.1, "dry: {}", level_db(&l, 0.5));
+
+    // A side-only band leaves a mono signal alone and works on the sides.
+    let p = eq_params();
+    p.set(bp(2, band::FREQ), 1000.0);
+    p.set(bp(2, band::GAIN), 12.0);
+    p.data[data::BAND_MODE + 2].set(equalizer::SIDE as f32);
+    let (l, r) = drive_stereo(&mut Equalizer::new(p.clone(), 48_000.0), 24_000, sine(1000.0, 0.2), None);
+    assert!(level_db(&l, 0.2).abs() < 0.1 && level_db(&r, 0.2).abs() < 0.1, "mono untouched");
+    let wide = |n: usize| {
+        let v = sine(1000.0, 0.2)(n).0;
+        (v, -v)
+    };
+    let (l, _) = drive_stereo(&mut Equalizer::new(p.clone(), 48_000.0), 24_000, wide, None);
+    assert!((level_db(&l, 0.2) - 12.0).abs() < 0.5, "sides boosted: {}", level_db(&l, 0.2));
+
+    // Solo plays the band's side chain: around its frequency only.
+    let p = eq_params();
+    p.set(bp(3, band::FREQ), 1000.0);
+    p.data[data::SOLO].set(3.0);
+    let (near, _) = drive_stereo(&mut Equalizer::new(p.clone(), 48_000.0), 24_000, sine(1000.0, 0.3), None);
+    let (far, _) = drive_stereo(&mut Equalizer::new(p, 48_000.0), 24_000, sine(100.0, 0.3), None);
+    assert!(level_db(&near, 0.3).abs() < 0.5 && level_db(&far, 0.3) < -15.0, "solo: {} / {}", level_db(&near, 0.3), level_db(&far, 0.3));
+}
