@@ -484,3 +484,37 @@ fn perf_magma_busy() {
         report(if hq { "Magma, busy, High Quality" } else { "Magma, busy" }, load(&mut e, 4.0));
     }
 }
+
+/// Pops 66 at its busiest: all fifteen instruments on every step at 240
+/// BPM, every waveform reshaped (WAVE, BEND, DRIVE all the way up).
+#[test]
+#[ignore]
+fn perf_pops_busy() {
+    use crate::audio::modules::pops::rhythms::{MAX_LEN, Rhythm};
+    use crate::audio::modules::pops::voices::COUNT;
+    use crate::audio::modules::pops::{self, TEMPO, data, ip, knob};
+    for shaped in [false, true] {
+        let (mut g, a, mut e) = setup();
+        let m = g.add_module(ModuleKind::Pops, pos2(0.0, 0.0), &a);
+        let mix = g.add_mixer(pos2(0.0, 0.0), &a);
+        g.connect(port(m, 0), port(mix, 0), &a);
+        if let NodeKind::Module(node) = &g.node(m).unwrap().kind {
+            let p = &node.params;
+            let all = Rhythm { name: "ALL", per_beat: 4, len: 16, rows: [(1u32 << MAX_LEN.min(16)) - 1; COUNT] };
+            pops::set_user(p, 0, &all);
+            p.data[data::SOURCE].set(1.0);
+            p.data[data::PATTERN].set(0.0);
+            p.data[data::SYNC].set(0.0);
+            p.data[data::RUNNING].set(1.0);
+            p.set(TEMPO, 240.0);
+            if shaped {
+                for i in 0..COUNT {
+                    p.set(ip(i, knob::WAVE), 0.8);
+                    p.set(ip(i, knob::BEND), 0.5);
+                    p.set(ip(i, knob::DRIVE), 0.5);
+                }
+            }
+        }
+        report(if shaped { "Pops 66, busy, reshaped" } else { "Pops 66, busy" }, load(&mut e, 4.0));
+    }
+}
