@@ -64,6 +64,7 @@ fn knobs_top(def: &ModuleDef) -> f32 {
 pub fn size_of(p: &ModuleParams) -> Vec2 {
     match p.kind {
         ModuleKind::Pops => super::pops::size(p),
+        ModuleKind::Tape => super::tape::size(p),
         kind => size(kind.def()),
     }
 }

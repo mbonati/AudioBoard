@@ -56,10 +56,12 @@ pub mod data {
     pub const AUTO: usize = 4;
     /// The transport runs (off: the tape slows to a stop).
     pub const RUNNING: usize = 5;
-    pub const LEN: usize = 6;
+    /// The panel: 0 compact, 1 full.
+    pub const DETAIL: usize = 6;
+    pub const LEN: usize = 7;
 }
 
-const DATA: [f32; data::LEN] = [0.0, 1.0, 1.0, 0.0, 1.0, 1.0];
+const DATA: [f32; data::LEN] = [0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0];
 
 /// What the processor shows the panel.
 pub mod viz {

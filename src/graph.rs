@@ -432,10 +432,41 @@ pub struct Node {
     pub accent: Color32,
     /// Shown as a compact strip: title, ports and the main value only.
     pub collapsed: bool,
+    /// Effects: passing their input straight through (see [`Node::is_effect`]).
+    pub bypass: Arc<AtomicBool>,
     pub kind: NodeKind,
 }
 
+/// Hands a node's processor to the engine; returns its bypass switch.
+fn spawn(id: NodeId, slot: Box<Slot>, audio: &AudioHandle) -> Arc<AtomicBool> {
+    let bypass = slot.bypass();
+    audio.send(Command::AddNode(id, slot));
+    bypass
+}
+
 impl Node {
+    /// Processes a signal on its IN (filters, delays, reverb, tape, the
+    /// granular nodes, plugin effects): it can be bypassed.
+    pub fn is_effect(&self) -> bool {
+        match &self.kind {
+            NodeKind::Module(m) => {
+                let def = m.params.kind.def();
+                def.inputs.first() == Some(&"IN") && !def.outputs.is_empty()
+            }
+            NodeKind::Plugin(p) => p.meta.inputs > 0,
+            _ => false,
+        }
+    }
+
+    pub fn bypassed(&self) -> bool {
+        self.bypass.load(Ordering::Relaxed)
+    }
+
+    /// Bypasses an effect (other nodes ignore it).
+    pub fn set_bypass(&self, on: bool) {
+        self.bypass.store(on && self.is_effect(), Ordering::Relaxed);
+    }
+
     pub fn size(&self) -> Vec2 {
         if self.collapsed {
             nodes::collapsed_size(self.input_ports().len().max(self.output_ports().len()))
@@ -762,13 +793,14 @@ impl Graph {
         let id = self.alloc_id();
         let accent = self.next_accent();
         let title = self.next_title("OSC");
-        audio.send(Command::AddNode(id, Slot::new(Box::new(Oscillator::new(params.clone())), 1)));
+        let bypass = spawn(id, Slot::new(Box::new(Oscillator::new(params.clone())), 1), audio);
         self.nodes.push(Node {
             id,
             pos,
             title,
             accent,
             collapsed: false,
+            bypass,
             kind: NodeKind::Osc(OscNode {
                 params,
                 meter: MeterState::default(),
@@ -790,13 +822,14 @@ impl Graph {
     pub fn add_mixer_with(&mut self, pos: Pos2, params: Arc<MixerParams>, console: Option<Console>, audio: &AudioHandle) -> NodeId {
         let id = self.alloc_id();
         let title = self.next_title(if console.is_some() { "CONSOLE" } else { "MIXER" });
-        audio.send(Command::AddNode(id, Slot::new(Box::new(Mixer::new(params.clone())), 2)));
+        let bypass = spawn(id, Slot::new(Box::new(Mixer::new(params.clone())), 2), audio);
         self.nodes.push(Node {
             id,
             pos,
             title,
             accent: theme::MIXER_ACCENT,
             collapsed: false,
+            bypass,
             kind: NodeKind::Mixer(MixerNode {
                 channels: (0..params.channels()).map(|_| MeterState::default()).collect(),
                 params,
@@ -819,13 +852,14 @@ impl Graph {
         let accent = self.next_accent();
         let title = self.next_title(kind.def().prefix);
         let proc = kind.processor(params.clone(), audio);
-        audio.send(Command::AddNode(id, Slot::new(proc, kind.def().outputs.len())));
+        let bypass = spawn(id, Slot::new(proc, kind.def().outputs.len()), audio);
         self.nodes.push(Node {
             id,
             pos,
             title,
             accent,
             collapsed: false,
+            bypass,
             kind: NodeKind::Module(ModuleNode::new(params)),
         });
         self.sync(audio);
@@ -857,13 +891,14 @@ impl Graph {
         let (tx, rx) = mpsc::channel();
         let sample_rate = audio.info.sample_rate as f32;
         let proc = PluginProcessor::new(shared.clone(), rx, audio.midi.clone(), &meta, sample_rate);
-        audio.send(Command::AddNode(id, Slot::new(Box::new(proc), 1)));
+        let bypass = spawn(id, Slot::new(Box::new(proc), 1), audio);
         self.nodes.push(Node {
             id,
             pos,
             title,
             accent,
             collapsed: false,
+            bypass,
             kind: NodeKind::Plugin(Box::new(PluginNode::new(meta, params, shared, tx))),
         });
         self.sync(audio);
@@ -892,6 +927,7 @@ impl Graph {
         let node = self.node(id)?;
         let pos = node.pos + Vec2::new(32.0, 32.0);
         let collapsed = node.collapsed;
+        let bypassed = node.bypassed();
         let copy = match &node.kind {
             NodeKind::Osc(o) => {
                 let p = OscParams::new();
@@ -927,6 +963,9 @@ impl Graph {
             }
         };
         self.set_collapsed(copy, collapsed);
+        if let Some(n) = self.node(copy) {
+            n.set_bypass(bypassed);
+        }
         Some(copy)
     }
 

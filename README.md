@@ -255,15 +255,17 @@ The knobs: **INPUT** (record level, −12 to +18 dB), **BIAS** (under: brighter 
 sooner; over: cleaner and darker), **WOW** and **FLUTTER** (shown as the pitch deviation they cause),
 **HISS**, **AGE** (worn tape: dropouts and a duller top), **OUTPUT** and **MIX**.
 
-The deck runs with the sound:
+The deck is only sketched, and runs with the sound:
 
-- The reels turn at their real ratio as the tape winds from one to the other.
-- The tension arms sway with wow and flutter.
-- The record and play heads glow with the signal, and a counter shows the tape time.
+- Two reels turn at their real ratio as the tape winds from one to the other.
+- The tape line sags and sways with wow and flutter, and fades in a dropout.
+- The head under it glows with the signal, and turns orange when the tape squeezes the peaks.
+- Two needles on bare arcs are the VU meters for input and output (0 VU = −12 dBFS RMS).
 - The **■** and **▶** keys stop the tape: it slows to a halt with its pitch falling, and spins back up when
   restarted.
-- Two VU meters with needles show the input and the output (0 VU = −12 dBFS RMS), and a SAT lamp lights
-  when the tape squeezes the peaks.
+
+**COMPACT / FULL** in the header picks the view. COMPACT has the deck and INPUT, BIAS, WOW, FLUTTER and MIX;
+FULL adds the switches, every knob and the tape time.
 
 The dry signal is lined up with the tape's latency, so MIX doesn't comb.
 
@@ -476,6 +478,7 @@ clipping it into crackles, and recovers over about 150 ms. While it works, the s
 | Collapse / expand a node or a module | arrow in the header, double-click the title, the C key, or right-click → Collapse |
 | Collapse / expand everything | Shift+C, the toolbar button, or right-click the canvas |
 | Frame everything / the selection | F / Shift+F |
+| Bypass an effect | the power button in its header, B with the mouse over it (or on the selected effects), or right-click → Bypass on / off: its input goes straight to its output, crossfaded, and the effect keeps running underneath so switching back is seamless. A bypassed effect is dimmed and says BYPASS; it's saved with the project. Every node that processes a signal on its IN can be bypassed (filters, Magma, Equalizer, Tape, delays, Reverb, the texture nodes, plugin effects) |
 | Zoom in on one node | Z with the mouse over it (or on the selection), or right-click → Zoom to node: it fills the view, in front of the others; Z again or Esc goes back to the view you had |
 | Auto layout | L, the toolbar button or right-click the canvas; Cmd+Z undoes it |
 | Auto-fit (keep the whole patch in view) | A or the toolbar button |
@@ -599,7 +602,7 @@ src/
 │   ├── frakture.rs the Frakture node's panel: HEXAGON, EFFECTS and MOTION pages
 │   ├── equalizer.rs the Equalizer's panel: graph and band markers, analyzer (FFT), band controls
 │   ├── magma.rs    the Magma panel: display and dots, filter controls, sources and slots (drag & drop)
-│   ├── tape.rs     the Tape panel: the animated deck (reels, arms, heads, keys), VU meters, switches
+│   ├── tape.rs     the Tape panel: the sketched deck (reels, tape, head, needles, keys), COMPACT / FULL
 │   ├── pops.rs     the Pops 66 panel: MACHINE, MIXER and EDITOR detail levels (the node resizes), waveform preview
 │   ├── widgets.rs  hand-drawn knobs, faders, meters, ports and cables
 │   ├── monitor.rs  bottom panel: oscilloscope and spectrum (FFT)

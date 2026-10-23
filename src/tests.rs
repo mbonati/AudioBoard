@@ -745,6 +745,7 @@ fn projects_round_trip_through_a_file() {
     g.set_console(console, crate::graph::Console { channels: 24, horizontal: false }, &a);
     mixer_params(&g, console).master_mute.store(true, Ordering::Relaxed);
     mixer_params(&g, console).aux[20].set(0.7);
+    g.node(reverb_id).unwrap().set_bypass(true);
     osc_params(&g, x).set_waveform(Waveform::Square);
     g.set_collapsed(filter, true);
     let gid = g.create_group(&[random, drone_id]).unwrap();
@@ -2885,4 +2886,36 @@ fn every_tape_setting_stays_finite_and_bounded() {
             }
         }
     }
+}
+
+#[test]
+fn effects_bypass_without_clicks() {
+    use crate::audio::modules::filter;
+    let (mut g, a, mut e) = setup();
+    let x = g.add_osc(pos2(0.0, 0.0), &a);
+    osc_params(&g, x).set(osc::FREQ, 4000.0);
+    let f = g.add_module(ModuleKind::Filter, pos2(0.0, 0.0), &a);
+    module_params(&g, f).set(filter::CUTOFF, 80.0);
+    let m = g.add_mixer(pos2(0.0, 0.0), &a);
+    g.connect(port(x, 0), port(f, 0), &a);
+    g.connect(port(f, 0), port(m, 0), &a);
+    render_buf(&mut e, 9600);
+    let filtered = rms_of(&render_buf(&mut e, 9600));
+    // Bypassed: the oscillator straight through, faded in.
+    g.node(f).unwrap().set_bypass(true);
+    let fade = render_buf(&mut e, 9600);
+    let dry = rms_of(&render_buf(&mut e, 9600));
+    assert!(dry > filtered * 10.0, "bypassed {dry}, filtered {filtered}");
+    // No jumps bigger than the sine itself makes (4 kHz at this level).
+    let steepest = fade.chunks(2).collect::<Vec<_>>().windows(2).map(|w| (w[1][0] - w[0][0]).abs()).fold(0.0, f32::max);
+    let sine_step = dry * std::f32::consts::SQRT_2 * std::f32::consts::TAU * 4000.0 / 48_000.0;
+    assert!(steepest <= sine_step * 1.1, "click: {steepest} > {sine_step}");
+    // And back.
+    g.node(f).unwrap().set_bypass(false);
+    render_buf(&mut e, 9600);
+    assert!((rms_of(&render_buf(&mut e, 9600)) - filtered).abs() < filtered * 0.2 + 1e-4);
+    // Only effects bypass.
+    g.node(x).unwrap().set_bypass(true);
+    assert!(!g.node(x).unwrap().bypassed());
+    assert!(g.node(f).unwrap().is_effect() && !g.node(m).unwrap().is_effect());
 }

@@ -77,6 +77,8 @@ struct NodeData {
     pos: [f32; 2],
     #[serde(default)]
     collapsed: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    bypass: bool,
     color: [u8; 3],
     #[serde(flatten)]
     kind: KindData,
@@ -230,6 +232,7 @@ fn node_data(graph: &Graph, n: &Node, numbers: &HashMap<NodeId, u32>, origin: Ve
         title: n.title.clone(),
         pos: [n.pos.x - origin.x, n.pos.y - origin.y],
         collapsed: n.collapsed,
+        bypass: n.bypassed(),
         color: [n.accent.r(), n.accent.g(), n.accent.b()],
         kind,
     }
@@ -402,6 +405,7 @@ fn instantiate(
         if let Some(n) = graph.node_mut(id) {
             n.title = data.title.clone();
             n.collapsed = data.collapsed;
+            n.set_bypass(data.bypass);
             n.accent = Color32::from_rgb(data.color[0], data.color[1], data.color[2]);
         }
         ids.insert(data.id, id);
