@@ -93,29 +93,61 @@ Like any node, it also collapses entirely to its title bar (C).
 
 The preset rhythms are new patterns written in each style, not decoded from the original's diode matrix.
 
-**Nullpunkt**: an instrument for clicks, pulses and glitches, in the manner of Alva Noto. It has two
-layers; a tone to lay under it can come from an Oscillator or a Drone.
+**Nullpunkt**: an instrument for clicks, pulses and glitches, in the manner of Alva Noto. A tone to lay under it
+can come from an Oscillator or a Drone.
 
-**Four micro-voices** sit on Euclidean grids. Each grid spreads HITS as evenly as it can over LEN steps, and
-each voice has its own length, so the patterns phase against each other and the rhythm keeps shifting:
+**Four micro-voices**, each with its own lane of steps:
 
 - **CLICK**: impulses through a short resonance. COLOR sets its pitch; DECAY sets how long it rings.
 - **SINE**: high sine blips.
 - **SUB**: sub-bass sine pulses.
 - **DATA**: 1-bit digital noise, held at the GRAIN rate.
 
-Each voice also has DECAY and LEVEL. The grid runs on the board's clock: 1/8, 1/16 or 1/32 notes, while the
-board plays. In each lane, drag sideways to rotate the pattern. **MUTATE** flips steps now and then and
-adds ratchets (quick repeats inside a step). **WIDTH** scatters each hit across the stereo field.
+Each voice has **HITS** and **LEN**, **PROB** (the chance a step that hits actually plays), TONE, DECAY,
+LEVEL and **M** (mute).
+
+- HITS and LEN lay down a Euclidean pattern: HITS spread as evenly as possible over LEN steps.
+- Each voice has its own length, so the patterns phase against each other.
+- Click a step to toggle it, drag to paint, Shift-drag sideways to rotate the lane.
+- Turning HITS or LEN lays the Euclidean pattern down again, over your edits.
+
+**The grid** runs on the board's clock, while the board plays. Its division can be 1/4, 1/8, 1/8T, 1/16,
+1/16T, 1/32, 1/32T or 1/64.
+
+**STUTTER** repeats grains of the sound, always in time:
+
+- **CHANCE**: how likely a step is to start a stutter.
+- **LENGTH**: the most steps it runs on.
+- **GRAIN**: how fine its grains may get. Each grain is a subdivision of the step (1/2, 1/3, 1/4, 1/6, 1/8,
+  1/12, 1/16, 1/24 or 1/32), so the repeats stay on the board's tempo, triplets included.
+- **SCATTER**: gives some grains another shape (an octave up or down, backwards, or taken from a grain before
+  the stutter) and lets longer stutters start afresh on a new step.
+
+**PLAY** shapes how the patterns are performed:
+
+- **MUTATE**: flips steps now and then and adds ratchets (quick repeats inside a step).
+- **JITTER**: varies each hit's level, tone and decay.
+- **WIDTH**: scatters hits across the stereo field.
+- **LEVEL**: the output level.
 
 **GLITCH** works on everything:
 
 - **SKIP**: a step sticks on a slice of what just played, like a CD skipping.
+- **REVERSE**: a step plays the one before it backwards.
+- **WARP**: a step loops a slice an octave up or down.
 - **CUT**: a step drops to digital silence.
+- **STATIC**: bursts of digital errors.
 - **CRUSH**: fewer bits, from 16 down to 2.
 - **RATE**: holds samples, from every sample down to 1 in 48.
 
-The panel shows the output as a barcode of recent peaks, and the four lanes with their playheads.
+The header has the division and two buttons:
+
+- **RANDOMIZE** rolls new patterns and sounds for the voices that aren't muted (Shift-click: patterns only).
+- **PRESETS** saves the current scene under a name and loads saved ones. Presets are kept in the app's data
+  folder, so every project sees them. Five built-in scenes are there to start from: Default, Raster, Pulse,
+  Static and Broken.
+
+The glitches light up in the header as they happen. The output shows as a barcode of recent peaks.
 
 ### Texture
 
@@ -605,7 +637,7 @@ src/
 │   │   │               motion (hexagon sliders, magnet, drawn/recorded paths, timeline)
 │   │   ├── pops.rs     Pops 66 (after the KORG Mini Pops-7): instruments, user patterns, clock, MIDI in/out
 │   │   ├── pops/       voices (the fifteen synthesized instruments), rhythms (the twenty presets, combining)
-│   │   ├── nullpunkt.rs Nullpunkt: Euclidean micro-voices and the glitch stage
+│   │   ├── nullpunkt.rs Nullpunkt: step patterns, synced stutter, glitch stage, built-in scenes
 │   │   ├── tape.rs     Tape: record EQ, magnetic curve, transport (wow, flutter, stop/start), playback head
 │   │   ├── oversample.rs 2× oversampling (half-band FIR) shared by Magma and Tape
 │   │   ├── steps.rs step grid on the global tempo, outgoing notes, held keys
@@ -615,6 +647,7 @@ src/
 │   └── mod.rs      opening the output stream (cpal)
 ├── graph.rs        UI-side patch model (nodes, cables, modules, Kahn ordering)
 ├── project.rs      saving/loading projects and the module library (JSON)
+├── presets.rs      named presets of a module, one file per kind in the app's data folder
 ├── ui/
 │   ├── canvas.rs   canvas with pan/zoom, selection, cable drag & drop, context menus
 │   ├── groups.rs   modules: frame (expanded) and card with the boundary ports (collapsed)
@@ -628,7 +661,7 @@ src/
 │   ├── equalizer.rs the Equalizer's panel: graph and band markers, analyzer (FFT), band controls
 │   ├── magma.rs    the Magma panel: display and dots, filter controls, sources and slots (drag & drop)
 │   ├── tape.rs     the Tape panel: the sketched deck (reels, tape, head, needles, keys), COMPACT / FULL
-│   ├── nullpunkt.rs the Nullpunkt panel: output barcode, pattern lanes, knob groups
+│   ├── nullpunkt.rs the Nullpunkt panel: editable lanes, randomize, presets, knob groups
 │   ├── pops.rs     the Pops 66 panel: MACHINE, MIXER and EDITOR detail levels (the node resizes), waveform preview
 │   ├── widgets.rs  hand-drawn knobs, faders, meters, ports and cables
 │   ├── monitor.rs  bottom panel: oscilloscope and spectrum (FFT)

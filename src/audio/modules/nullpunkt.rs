@@ -3,10 +3,14 @@
 //! so the patterns phase against each other on the board's clock: CLICK
 //! (filtered impulses), SINE (high sine blips), SUB (sub-bass sine pulses)
 //! and DATA (1-bit digital noise). HITS and LEN lay a Euclidean pattern
-//! down, which can then be edited step by step; MUTATE flips steps and adds
-//! ratchets. A GLITCH stage then skips (a CD stuck on a slice), reverses,
-//! warps (an octave up or down), cuts, sprinkles static, crushes and
-//! decimates the lot. Tones to lay under it come from other nodes.
+//! down, which can then be edited step by step; PROB lets a step play only
+//! sometimes, JITTER varies each hit, MUTATE flips steps and adds ratchets.
+//! A STUTTER repeats grains of the sound, each a subdivision of the step
+//! (so always in time with the board), scattered an octave up or down,
+//! backwards or from earlier grains. A GLITCH stage then skips (a CD stuck
+//! on a slice), reverses, warps (an octave up or down), cuts, sprinkles
+//! static, crushes and decimates the lot. Tones to lay under it come from
+//! other nodes.
 
 use std::sync::Arc;
 
@@ -30,10 +34,12 @@ pub mod voice {
 pub mod knob {
     pub const HITS: usize = 0;
     pub const LEN: usize = 1;
-    pub const TONE: usize = 2;
-    pub const DECAY: usize = 3;
-    pub const LEVEL: usize = 4;
-    pub const COUNT: usize = 5;
+    /// The chance a step that hits plays.
+    pub const PROB: usize = 2;
+    pub const TONE: usize = 3;
+    pub const DECAY: usize = 4;
+    pub const LEVEL: usize = 5;
+    pub const COUNT: usize = 6;
 }
 
 pub const fn vp(v: usize, k: usize) -> usize {
@@ -50,9 +56,17 @@ pub const CUT: usize = CRUSH + 3;
 pub const REVERSE: usize = CRUSH + 4;
 pub const WARP: usize = CRUSH + 5;
 pub const STATIC: usize = CRUSH + 6;
-pub const MUTATE: usize = CRUSH + 7;
-pub const WIDTH: usize = CRUSH + 8;
-pub const LEVEL: usize = CRUSH + 9;
+/// The stutter: chance a step starts one, its longest run in steps, how
+/// fine its grains go, how scattered they are.
+pub const STUTTER: usize = CRUSH + 7;
+pub const STUTTER_LEN: usize = CRUSH + 8;
+pub const GRAIN: usize = CRUSH + 9;
+pub const SCATTER: usize = CRUSH + 10;
+/// How much each hit varies (level, tone, decay).
+pub const JITTER: usize = CRUSH + 11;
+pub const MUTATE: usize = CRUSH + 12;
+pub const WIDTH: usize = CRUSH + 13;
+pub const LEVEL: usize = CRUSH + 14;
 pub const PARAM_COUNT: usize = LEVEL + 1;
 
 /// Each voice's TONE and DECAY ranges (lo, hi, default).
@@ -61,12 +75,13 @@ const DECAYS: [(f32, f32, f32); voice::COUNT] = [(0.0005, 0.05, 0.004), (0.002, 
 /// Each voice's starting pattern: hits, length, rotation.
 const STARTS: [(usize, usize, usize); voice::COUNT] = [(7, 16, 0), (3, 13, 2), (4, 16, 0), (5, 12, 3)];
 
-/// HITS, LEN, TONE, DECAY, LEVEL of voice `$v`.
+/// HITS, LEN, PROB, TONE, DECAY, LEVEL of voice `$v`.
 macro_rules! voice {
     ($s:literal, $tone:literal, $v:expr, $level:expr) => {
         [
             ParamSpec::lin(concat!($s, " HITS"), 0.0, MAX_LEN as f32, STARTS[$v].0 as f32, Unit::Integer),
             ParamSpec::lin(concat!($s, " LEN"), 1.0, MAX_LEN as f32, STARTS[$v].1 as f32, Unit::Integer),
+            ParamSpec::lin(concat!($s, " PROB"), 0.0, 1.0, 1.0, Unit::Percent),
             ParamSpec::log(concat!($s, " ", $tone), TONES[$v].0, TONES[$v].1, TONES[$v].2, Unit::Hz),
             ParamSpec::log(concat!($s, " DECAY"), DECAYS[$v].0, DECAYS[$v].1, DECAYS[$v].2, Unit::Seconds),
             ParamSpec::lin(concat!($s, " LEVEL"), 0.0, 1.0, $level, Unit::Percent),
@@ -94,6 +109,11 @@ const PARAMS: [ParamSpec; PARAM_COUNT] = {
     out[REVERSE] = ParamSpec::lin("REVERSE", 0.0, 1.0, 0.0, Unit::Percent);
     out[WARP] = ParamSpec::lin("WARP", 0.0, 1.0, 0.0, Unit::Percent);
     out[STATIC] = ParamSpec::lin("STATIC", 0.0, 1.0, 0.0, Unit::Percent);
+    out[STUTTER] = ParamSpec::lin("STUTTER", 0.0, 1.0, 0.1, Unit::Percent);
+    out[STUTTER_LEN] = ParamSpec::lin("STUTTER LENGTH", 1.0, 8.0, 2.0, Unit::Integer);
+    out[GRAIN] = ParamSpec::lin("GRAIN", 0.0, 1.0, 0.45, Unit::Percent);
+    out[SCATTER] = ParamSpec::lin("SCATTER", 0.0, 1.0, 0.3, Unit::Percent);
+    out[JITTER] = ParamSpec::lin("JITTER", 0.0, 1.0, 0.15, Unit::Percent);
     out[MUTATE] = ParamSpec::lin("MUTATE", 0.0, 1.0, 0.15, Unit::Percent);
     out[WIDTH] = ParamSpec::lin("WIDTH", 0.0, 1.0, 0.6, Unit::Percent);
     out[LEVEL] = ParamSpec::lin("LEVEL", 0.0, 1.0, 0.8, Unit::Percent);
@@ -104,7 +124,7 @@ const PARAMS: [ParamSpec; PARAM_COUNT] = {
 pub mod data {
     /// Each voice's pattern rotation, in steps.
     pub const ROT: usize = 0;
-    /// The grid: 0 eighths, 1 sixteenths, 2 thirty-seconds.
+    /// The grid: one of [`super::DIVS`].
     pub const DIV: usize = 4;
     /// Each voice muted.
     pub const MUTE: usize = 5;
@@ -124,10 +144,16 @@ const DATA: [f32; data::LEN] = {
         d[data::STEPS + 2 * v + 1] = (bits >> 16) as f32;
         v += 1;
     }
-    d[data::DIV] = 1.0;
+    d[data::DIV] = SIXTEENTHS as f32;
     d
 };
-pub const DIVS: [(&str, f64); 3] = [("1/8", 2.0), ("1/16", 4.0), ("1/32", 8.0)];
+/// The grid's divisions: name and steps per beat.
+pub const DIVS: [(&str, f64); 8] =
+    [("1/4", 1.0), ("1/8", 2.0), ("1/8T", 3.0), ("1/16", 4.0), ("1/16T", 6.0), ("1/32", 8.0), ("1/32T", 12.0), ("1/64", 16.0)];
+const SIXTEENTHS: usize = 3;
+/// A stutter's grains: subdivisions of a step, coarse to fine (triplets
+/// among them). GRAIN sets how far down the list a stutter may go.
+pub const SUBDIVISIONS: [usize; 9] = [2, 3, 4, 6, 8, 12, 16, 24, 32];
 
 /// What the processor shows the panel.
 pub mod viz {
@@ -155,6 +181,7 @@ pub mod glitch {
     pub const REVERSE: usize = 2;
     pub const WARP: usize = 3;
     pub const CUT: usize = 4;
+    pub const STUTTER: usize = 5;
 }
 
 pub static DEF: ModuleDef = ModuleDef {
@@ -317,8 +344,14 @@ pub fn format(p: &ModuleParams, i: usize) -> String {
         _ if i == CRUSH && v > 0.0 => format!("{:.0} bit", crush_bits(v)),
         _ if i == RATE && v > 0.0 => format!("÷{:.0}", hold_samples(v)),
         _ if (i == CRUSH || i == RATE) => "off".to_owned(),
+        _ if i == GRAIN => format!("≤1/{}", SUBDIVISIONS[grain_depth(v)]),
         _ => format!("{:.0}%", v * 100.0),
     }
+}
+
+/// The finest subdivision GRAIN allows (an index into [`SUBDIVISIONS`]).
+fn grain_depth(v: f32) -> usize {
+    ((v * (SUBDIVISIONS.len() - 1) as f32).round() as usize).min(SUBDIVISIONS.len() - 1)
 }
 
 fn crush_bits(v: f32) -> f32 {
@@ -351,6 +384,8 @@ struct Voice {
     /// The impulse still to come into the resonator (a doublet).
     kick: [f32; 2],
     pan: (f32, f32),
+    /// This hit's level (JITTER varies it).
+    gain: f32,
     /// Ratchets: repeats left, samples between them, samples to the next.
     repeats: u8,
     every: usize,
@@ -452,11 +487,29 @@ enum Glitch {
     Reverse { t: usize },
     /// A slice looping an octave up (speed 2) or down (½).
     Warp { slice: usize, speed: f32, t: usize },
+    /// Grains of the sound since the stutter began, `grain` long (a
+    /// subdivision of the step), over `steps` steps; `e` samples in, on
+    /// grain `k`, which plays as `shape`.
+    Stutter { grain: f32, steps: usize, e: usize, k: usize, shape: Grain },
 }
+
+/// How a stutter's grain plays its source (the stutter's first grain, or
+/// one `back` grains before it).
+#[derive(Clone, Copy)]
+enum Grain {
+    Plain,
+    Up,
+    Down,
+    Reverse,
+    Earlier(usize),
+}
+
+/// Grains fade in and out over this many samples.
+const GRAIN_FADE: f32 = 32.0;
 
 const MAX_EVENTS: usize = MAX_STEPS * (voice::COUNT + 1);
 /// The glitch buffer: long enough for two slow steps.
-const RECENT_SECONDS: f32 = 3.0;
+const RECENT_SECONDS: f32 = 6.0;
 /// Cuts open and close this fast (samples).
 const CUT_RAMP: f32 = 32.0;
 
@@ -527,11 +580,32 @@ impl Nullpunkt {
     /// At a step: which glitch (if any) takes it, and whether static
     /// crackles somewhere in it.
     fn roll_glitch(&mut self, p: &ModuleParams, step_len: usize) {
+        let rng = &mut self.rng;
+        // A stutter runs on over its steps (now and then, with SCATTER,
+        // starting afresh on this one).
+        if let Glitch::Stutter { steps, .. } = self.glitch
+            && steps > 1
+        {
+            self.glitch_left = step_len + step_len / 4;
+            if roll(rng, p.get(SCATTER) * 0.5) {
+                self.glitch = stutter(p, rng, step_len, steps - 1);
+            } else if let Glitch::Stutter { steps, .. } = &mut self.glitch {
+                *steps -= 1;
+            }
+            return;
+        }
         self.glitch = Glitch::None;
         self.cut_left = 0;
         self.glitch_left = step_len;
-        let rng = &mut self.rng;
-        if roll(rng, p.get(SKIP) * 0.5) {
+        if roll(rng, p.get(STUTTER)) {
+            // At most as many steps as the buffer holds (with grains to
+            // reach back to).
+            let room = ((self.recent[0].len() / step_len.max(1)).saturating_sub(3)).max(1);
+            let most = (p.get(STUTTER_LEN).round().max(1.0) as usize).min(room);
+            let steps = 1 + (rng.unit() * most as f32) as usize % most;
+            self.glitch = stutter(p, rng, step_len, steps);
+            self.glitch_left = step_len + step_len / 4;
+        } else if roll(rng, p.get(SKIP) * 0.5) {
             let slice = (step_len >> (1 + (rng.unit() * 4.0) as usize)).max(64);
             self.glitch = Glitch::Skip { slice, t: 0 };
         } else if roll(rng, p.get(REVERSE) * 0.5) {
@@ -548,6 +622,15 @@ impl Nullpunkt {
             self.static_left = ((0.002 + 0.02 * rng.unit()) * self.sr) as usize;
         }
     }
+}
+
+/// A stutter over `steps` steps, its grains a subdivision of the step as
+/// fine as GRAIN allows.
+fn stutter(p: &ModuleParams, rng: &mut Rng, step_len: usize, steps: usize) -> Glitch {
+    let depth = grain_depth(p.get(GRAIN));
+    let sub = SUBDIVISIONS[(rng.unit() * (depth + 1) as f32) as usize % (depth + 1)];
+    let grain = (step_len as f32 / sub as f32).max(GRAIN_FADE * 2.0);
+    Glitch::Stutter { grain, steps, e: 0, k: 0, shape: Grain::Plain }
 }
 
 impl Processor for Nullpunkt {
@@ -579,7 +662,7 @@ impl Processor for Nullpunkt {
                 if bits != 0 && roll(&mut self.rng, mutate * 0.12) {
                     hit = !hit;
                 }
-                if hit && p.get(vp(v, knob::LEVEL)) > 0.0 {
+                if hit && p.get(vp(v, knob::LEVEL)) > 0.0 && roll(&mut self.rng, p.get(vp(v, knob::PROB))) {
                     let ratchet = if roll(&mut self.rng, mutate * 0.25) { 1 + (self.rng.unit() * 3.0) as u8 } else { 0 };
                     events[count] = Event { frame: step.frame, voice: v, ratchet };
                     count += 1;
@@ -597,6 +680,8 @@ impl Processor for Nullpunkt {
         let decays: [f32; voice::COUNT] = std::array::from_fn(|v| p.get(vp(v, knob::DECAY)));
         let levels: [f32; voice::COUNT] = std::array::from_fn(|v| p.get(vp(v, knob::LEVEL)));
         let width = p.get(WIDTH);
+        let jitter = p.get(JITTER);
+        let scatter = p.get(SCATTER);
         let crush = p.get(CRUSH);
         let quant = fastmath::exp2(crush_bits(crush) - 1.0);
         let hold_n = hold_samples(p.get(RATE));
@@ -613,8 +698,13 @@ impl Processor for Nullpunkt {
                     continue;
                 }
                 let pan = self.place(width);
+                // JITTER: each hit a little off in level, tone and decay.
+                let tone = tones[e.voice] * fastmath::exp2((self.rng.unit() - 0.5) * jitter);
+                let decay = decays[e.voice] * fastmath::exp2((self.rng.unit() - 0.5) * jitter * 1.5);
+                let gain = 1.0 - jitter * 0.6 * self.rng.unit();
                 let v = &mut self.voices[e.voice];
-                v.trigger(e.voice, tones[e.voice], decays[e.voice], pan, sr);
+                v.trigger(e.voice, tone, decay, pan, sr);
+                v.gain = gain;
                 v.repeats = e.ratchet;
                 v.every = (step_len / (e.ratchet as usize + 1)).max(1);
                 v.next = v.every;
@@ -637,7 +727,7 @@ impl Processor for Nullpunkt {
                 if !vo.active(v) {
                     continue;
                 }
-                let y = vo.tick(v, &mut self.rng) * levels[v];
+                let y = vo.tick(v, &mut self.rng) * levels[v] * vo.gain;
                 l += y * vo.pan.0;
                 r += y * vo.pan.1;
             }
@@ -646,8 +736,43 @@ impl Processor for Nullpunkt {
             self.recent[0].push(l);
             self.recent[1].push(r);
             let (mut yl, mut yr) = (l, r);
+            let mut fade = 1.0;
             let back = match &mut self.glitch {
                 Glitch::None => None,
+                Glitch::Stutter { grain, e, k, shape, .. } => {
+                    let g = *grain;
+                    let kk = (*e as f32 / g) as usize;
+                    if kk != *k {
+                        // A new grain: plain, or with SCATTER pitched,
+                        // reversed or taken from before the stutter.
+                        *k = kk;
+                        *shape = if roll(&mut self.rng, scatter) {
+                            match (self.rng.unit() * 4.0) as usize {
+                                0 => Grain::Up,
+                                1 => Grain::Down,
+                                2 => Grain::Reverse,
+                                _ => Grain::Earlier(1 + (self.rng.unit() * 3.0) as usize),
+                            }
+                        } else {
+                            Grain::Plain
+                        };
+                    }
+                    let u = *e as f32 - kk as f32 * g;
+                    let (from, back) = match *shape {
+                        Grain::Plain => (u, 0.0),
+                        Grain::Up => ((2.0 * u) % g, 0.0),
+                        Grain::Down => (0.5 * u, 0.0),
+                        Grain::Reverse => (g - 1.0 - u, 0.0),
+                        Grain::Earlier(j) => (u, j as f32 * g),
+                    };
+                    // The first grain plays live (it is being recorded);
+                    // the others fade in and out.
+                    if kk > 0 {
+                        fade = (u / GRAIN_FADE).min((g - u) / GRAIN_FADE).clamp(0.0, 1.0);
+                    }
+                    *e += 1;
+                    Some(*e as f32 - 1.0 - from + back)
+                }
                 Glitch::Skip { slice, t } => {
                     let d = *slice + *t - *t % *slice;
                     *t += 1;
@@ -667,8 +792,8 @@ impl Processor for Nullpunkt {
                 }
             };
             if let Some(d) = back {
-                yl = self.recent[0].tap(d);
-                yr = self.recent[1].tap(d);
+                yl = self.recent[0].tap(d) * fade;
+                yr = self.recent[1].tap(d) * fade;
                 self.glitch_left = self.glitch_left.saturating_sub(1);
                 if self.glitch_left == 0 {
                     self.glitch = Glitch::None;
@@ -725,6 +850,7 @@ impl Processor for Nullpunkt {
             Glitch::Skip { .. } => glitch::SKIP,
             Glitch::Reverse { .. } => glitch::REVERSE,
             Glitch::Warp { .. } => glitch::WARP,
+            Glitch::Stutter { .. } => glitch::STUTTER,
         };
         p.viz[viz::GLITCH].set(shown as f32);
         p.viz[viz::STATIC].set(if self.static_wait == 0 && self.static_left > 0 { 1.0 } else { 0.0 });
@@ -740,4 +866,67 @@ impl Processor for Nullpunkt {
         }
         p.meter.fetch_max(peak);
     }
+}
+
+/// A built-in scene: its name, and what it changes from the defaults.
+pub type Scene = (&'static str, fn(&ModuleParams));
+
+pub const FACTORY: [Scene; 5] = [
+    ("Default", |_| {}),
+    ("Raster", |p| {
+        p.data[data::DIV].set(5.0);
+        lay(p, voice::CLICK, 11, 32, 0, 6000.0, 0.002);
+        p.data[data::MUTE + voice::SINE].set(1.0);
+        lay(p, voice::SUB, 2, 16, 0, 44.0, 0.5);
+        lay(p, voice::DATA, 7, 24, 5, 9000.0, 0.008);
+        p.set(SKIP, 0.15);
+        p.set(MUTATE, 0.1);
+    }),
+    ("Pulse", |p| {
+        lay(p, voice::CLICK, 4, 16, 2, 2000.0, 0.008);
+        lay(p, voice::SINE, 5, 16, 1, 12_000.0, 0.05);
+        lay(p, voice::SUB, 4, 16, 0, 42.0, 0.6);
+        p.data[data::MUTE + voice::DATA].set(1.0);
+        p.set(SKIP, 0.0);
+        p.set(CUT, 0.08);
+        p.set(MUTATE, 0.0);
+    }),
+    ("Static", |p| {
+        lay(p, voice::CLICK, 5, 12, 0, 4500.0, 0.003);
+        lay(p, voice::SUB, 3, 16, 0, 38.0, 0.4);
+        lay(p, voice::DATA, 9, 16, 1, 12_000.0, 0.06);
+        p.set(vp(voice::DATA, knob::LEVEL), 0.45);
+        p.set(STATIC, 0.4);
+        p.set(CRUSH, 0.35);
+        p.set(RATE, 0.2);
+        p.set(SKIP, 0.2);
+    }),
+    ("Broken", |p| {
+        p.set(SKIP, 0.5);
+        p.set(REVERSE, 0.35);
+        p.set(WARP, 0.35);
+        p.set(CUT, 0.15);
+        p.set(MUTATE, 0.45);
+    }),
+];
+
+/// Sets voice `v`'s pattern (laid down at once) and sound.
+fn lay(p: &ModuleParams, v: usize, hits: usize, len: usize, rot: usize, tone: f32, decay: f32) {
+    p.set(vp(v, knob::HITS), hits as f32);
+    p.set(vp(v, knob::LEN), len as f32);
+    p.data[data::ROT + v].set(rot as f32);
+    p.set(vp(v, knob::TONE), tone);
+    p.set(vp(v, knob::DECAY), decay);
+    regenerate(p, v);
+}
+
+/// Back to the defaults, then built-in scene `k`.
+pub fn load_factory(p: &ModuleParams, k: usize) {
+    for (i, spec) in PARAMS.iter().enumerate() {
+        p.set(i, spec.default);
+    }
+    for (d, &v) in p.data.iter().zip(&DATA) {
+        d.set(v);
+    }
+    (FACTORY[k.min(FACTORY.len() - 1)].1)(p);
 }
