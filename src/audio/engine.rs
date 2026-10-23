@@ -548,6 +548,7 @@ impl Engine {
         let frames = data.len() / channels;
         let mut mono = [0.0f32; PASS];
         let mut done = 0;
+        let recording = self.shared.tap.recording();
 
         // Always processed, even when stopped: tails ring out.
         while done < frames {
@@ -560,6 +561,9 @@ impl Engine {
                 let (l, r, gain) = self.limiter.frame(block[0][i % BLOCK], block[1][i % BLOCK]);
                 lowest = lowest.min(gain);
                 let (l, r) = (l.clamp(-1.0, 1.0), r.clamp(-1.0, 1.0));
+                if recording {
+                    self.shared.tap.push(l, r);
+                }
                 mono[i] = 0.5 * (l + r);
                 let frame = &mut data[(done + i) * channels..(done + i + 1) * channels];
                 if channels == 1 {
