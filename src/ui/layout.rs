@@ -154,7 +154,7 @@ pub fn arrange(sizes: &[Vec2], current: &[Pos2], links: &[Link]) -> Vec<Pos2> {
         for (l, waypoints) in &long {
             let a = pos2(xs[column[l.from]] + sizes[l.from].x, y[l.from] + l.from_dy);
             let b = pos2(xs[column[l.to]], y[l.to] + l.to_dy);
-            let curve = cable_shape(a, b, 1.0);
+            let curve = cable_shape(a, b, false, 1.0);
             let samples: Vec<Pos2> = (0..=48).map(|i| curve.sample(i as f32 / 48.0)).collect();
             for &w in waypoints {
                 let (x0, x1) = (xs[column[w]], xs[column[w]] + widths[column[w]]);

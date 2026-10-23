@@ -518,3 +518,31 @@ fn perf_pops_busy() {
         report(if shaped { "Pops 66, busy, reshaped" } else { "Pops 66, busy" }, load(&mut e, 4.0));
     }
 }
+
+/// The Console with all 24 channels playing: oscillators alone, then
+/// through the Console, then with every channel sending on AUX.
+#[test]
+#[ignore]
+fn perf_console_24() {
+    use crate::graph::Console;
+    for stage in 0..3 {
+        let (mut g, a, mut e) = setup();
+        let c = g.add_console(pos2(0.0, 0.0), &a);
+        g.set_console(c, Console { channels: 24, horizontal: true }, &a);
+        for ch in 0..24 {
+            let o = g.add_osc(pos2(0.0, 0.0), &a);
+            if stage > 0 {
+                g.connect(port(o, 0), port(c, ch), &a);
+            }
+        }
+        if let NodeKind::Mixer(m) = &g.node(c).unwrap().kind
+            && stage == 2
+        {
+            for ch in 0..24 {
+                m.params.aux[ch].set(0.5);
+            }
+        }
+        let name = ["24 oscillators, unpatched", "24 oscillators into Console", "  … every channel on AUX"][stage];
+        report(name, load(&mut e, 4.0));
+    }
+}

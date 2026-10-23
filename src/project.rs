@@ -13,8 +13,10 @@ use serde::{Deserialize, Serialize};
 use crate::audio::AudioHandle;
 use crate::audio::engine::NodeId;
 use crate::audio::modules::{ModuleKind, ModuleParams};
-use crate::audio::params::{DEFAULT_TEMPO, MIXER_CHANNELS, MixerParams, OSC_PARAMS, OscParams, TEMPO_RANGE, Waveform};
-use crate::graph::{Graph, GroupId, Node, NodeKind, PortRef, Target};
+use crate::audio::params::{
+    CONSOLE_CHANNELS, DEFAULT_TEMPO, FADER_UNITY, MIXER_CHANNELS, MixerParams, OSC_PARAMS, OscParams, TEMPO_RANGE, Waveform,
+};
+use crate::graph::{Console, Graph, GroupId, Node, NodeKind, PortRef, Target};
 use crate::ui::groups;
 use crate::ui::nodes::HEADER_H;
 
@@ -35,6 +37,14 @@ pub struct Project {
     /// Beats per minute.
     #[serde(default = "default_tempo")]
     tempo: f32,
+}
+
+fn fader_unity() -> f32 {
+    FADER_UNITY
+}
+
+fn is_false(b: &bool) -> bool {
+    !b
 }
 
 fn default_tempo() -> f32 {
@@ -82,6 +92,14 @@ enum KindData {
     Mixer {
         channels: Vec<ChannelData>,
         master: f32,
+        #[serde(default, skip_serializing_if = "is_false")]
+        master_mute: bool,
+        /// The AUX output's level.
+        #[serde(default = "fader_unity")]
+        aux: f32,
+        /// A Console's shape (absent: the 4-channel Mixer).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        console: Option<ConsoleData>,
     },
     Module {
         module: String,
@@ -121,6 +139,15 @@ struct ChannelData {
     pan: f32,
     mute: bool,
     solo: bool,
+    /// The AUX send.
+    #[serde(default)]
+    aux: f32,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Debug)]
+struct ConsoleData {
+    channels: usize,
+    horizontal: bool,
 }
 
 /// `[node, port]` → `[node, port]`.
@@ -154,15 +181,19 @@ fn node_data(graph: &Graph, n: &Node, numbers: &HashMap<NodeId, u32>, origin: Ve
                 .collect(),
         },
         NodeKind::Mixer(m) => KindData::Mixer {
-            channels: (0..MIXER_CHANNELS)
+            channels: (0..m.params.channels())
                 .map(|ch| ChannelData {
                     fader: m.params.fader[ch].get(),
                     pan: m.params.pan[ch].get(),
                     mute: m.params.mute[ch].load(Ordering::Relaxed),
                     solo: m.params.solo[ch].load(Ordering::Relaxed),
+                    aux: m.params.aux[ch].get(),
                 })
                 .collect(),
             master: m.params.master.get(),
+            master_mute: m.params.master_mute.load(Ordering::Relaxed),
+            aux: m.params.aux_master.get(),
+            console: m.console.map(|c| ConsoleData { channels: c.channels, horizontal: c.horizontal }),
         },
         NodeKind::Plugin(p) => KindData::Plugin {
             path: p.meta.path.to_string_lossy().into_owned(),
@@ -315,16 +346,20 @@ fn instantiate(
                 }
                 graph.add_osc_with(pos, Arc::new(p), audio)
             }
-            KindData::Mixer { channels, master } => {
-                let p = MixerParams::new();
-                for (ch, c) in channels.iter().take(MIXER_CHANNELS).enumerate() {
+            KindData::Mixer { channels, master, master_mute, aux, console } => {
+                let console = console.map(|c| Console { channels: if c.channels > 12 { 24 } else { 12 }, horizontal: c.horizontal });
+                let p = MixerParams::new(if console.is_some() { CONSOLE_CHANNELS } else { MIXER_CHANNELS });
+                for (ch, c) in channels.iter().take(p.channels()).enumerate() {
                     p.fader[ch].set(c.fader.clamp(0.0, 1.0));
                     p.pan[ch].set(c.pan.clamp(-1.0, 1.0));
                     p.mute[ch].store(c.mute, Ordering::Relaxed);
                     p.solo[ch].store(c.solo, Ordering::Relaxed);
+                    p.aux[ch].set(c.aux.clamp(0.0, 1.0));
                 }
                 p.master.set(master.clamp(0.0, 1.0));
-                graph.add_mixer_with(pos, Arc::new(p), audio)
+                p.master_mute.store(*master_mute, Ordering::Relaxed);
+                p.aux_master.set(aux.clamp(0.0, 1.0));
+                graph.add_mixer_with(pos, Arc::new(p), console, audio)
             }
             KindData::Plugin { path, state, pinned, midi } => {
                 let Ok(id) = graph.add_plugin(&locate_plugin(path), pos, audio) else {

@@ -4,9 +4,9 @@ use std::f32::consts::{FRAC_PI_4, TAU};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use super::engine::{BLOCK, Buf, Inputs, ProcessCtx, Processor};
+use super::engine::{BLOCK, Buf, Inputs, MAX_INPUTS, ProcessCtx, Processor};
 use super::fastmath;
-use super::params::{MIXER_CHANNELS, MixerParams, OscParams, Waveform, fader_gain, osc};
+use super::params::{MixerParams, OscParams, Waveform, fader_gain, osc};
 
 /// Band-limited step correction (PolyBLEP) for the discontinuities of
 /// saw and pulse waves; removes most of the audible aliasing.
@@ -185,22 +185,34 @@ impl Processor for Oscillator {
     }
 }
 
+/// Any number of channels into two stereo outputs: the main mix (after
+/// MASTER) and the AUX mix (each channel's send, after AUX).
 pub struct Mixer {
     params: Arc<MixerParams>,
-    gain: [f32; MIXER_CHANNELS],
-    pan_l: [f32; MIXER_CHANNELS],
-    pan_r: [f32; MIXER_CHANNELS],
+    /// Per channel, smoothed: gain, pan (left, right) and AUX send.
+    gain: Box<[f32]>,
+    pan_l: Box<[f32]>,
+    pan_r: Box<[f32]>,
+    send: Box<[f32]>,
+    /// Unpatched last block: the smoothing jumps to its targets when a cable
+    /// arrives, so a new channel doesn't fade in.
+    idle: Box<[bool]>,
     master: f32,
+    aux_master: f32,
 }
 
 impl Mixer {
     pub fn new(params: Arc<MixerParams>) -> Self {
+        let n = params.channels().min(MAX_INPUTS);
         Self {
             params,
-            gain: [0.0; MIXER_CHANNELS],
-            pan_l: [FRAC_PI_4.cos(); MIXER_CHANNELS],
-            pan_r: [FRAC_PI_4.sin(); MIXER_CHANNELS],
+            gain: vec![0.0; n].into(),
+            pan_l: vec![FRAC_PI_4.cos(); n].into(),
+            pan_r: vec![FRAC_PI_4.sin(); n].into(),
+            send: vec![0.0; n].into(),
+            idle: vec![true; n].into(),
             master: 0.0,
+            aux_master: 0.0,
         }
     }
 }
@@ -209,70 +221,88 @@ impl Processor for Mixer {
     #[allow(clippy::needless_range_loop)] // indexes several per-channel arrays in lockstep
     fn process(&mut self, ctx: &ProcessCtx, inputs: &Inputs, outputs: &mut [Buf], n: usize) {
         let p = &self.params;
+        let channels = self.gain.len();
         let any_solo = p.solo.iter().any(|s| s.load(Ordering::Relaxed));
-
-        let mut gain_t = [0.0; MIXER_CHANNELS];
-        let mut pan_lt = [0.0; MIXER_CHANNELS];
-        let mut pan_rt = [0.0; MIXER_CHANNELS];
-        for ch in 0..MIXER_CHANNELS {
-            let muted = p.mute[ch].load(Ordering::Relaxed);
-            let soloed = p.solo[ch].load(Ordering::Relaxed);
-            let audible = !muted && (!any_solo || soloed);
-            gain_t[ch] = if audible { fader_gain(p.fader[ch].get()) } else { 0.0 };
-            // Constant-power pan law (-3 dB at centre).
-            let theta = (p.pan[ch].get().clamp(-1.0, 1.0) + 1.0) * FRAC_PI_4;
-            pan_lt[ch] = theta.cos();
-            pan_rt[ch] = theta.sin();
-        }
-        let master_t = fader_gain(p.master.get());
-
-        let mut ch_peak = [0.0f32; MIXER_CHANNELS];
-        let mut out_peak = [0.0f32; 2];
         let k = ctx.smooth;
 
         // One channel at a time across the block; unpatched channels are
-        // skipped and their smoothing jumps to its target.
+        // skipped.
         let mut sum = [[0.0f32; BLOCK]; 2];
-        for ch in 0..MIXER_CHANNELS {
+        let mut aux = [[0.0f32; BLOCK]; 2];
+        for ch in 0..channels {
             let Some([xl, xr]) = inputs.get(ch) else {
-                self.gain[ch] = gain_t[ch];
-                self.pan_l[ch] = pan_lt[ch];
-                self.pan_r[ch] = pan_rt[ch];
+                self.idle[ch] = true;
                 continue;
             };
-            let (mut gain, mut pan_l, mut pan_r) = (self.gain[ch], self.pan_l[ch], self.pan_r[ch]);
-            let mut peak = 0.0f32;
-            for i in 0..n {
-                gain += (gain_t[ch] - gain) * k;
-                pan_l += (pan_lt[ch] - pan_l) * k;
-                pan_r += (pan_rt[ch] - pan_r) * k;
-                // Stereo inputs: the pan acts as a balance control.
-                let (l, r) = (xl[i] * gain, xr[i] * gain);
-                peak = peak.max(l.abs()).max(r.abs());
-                sum[0][i] += l * pan_l;
-                sum[1][i] += r * pan_r;
+            let muted = p.mute[ch].load(Ordering::Relaxed);
+            let soloed = p.solo[ch].load(Ordering::Relaxed);
+            let audible = !muted && (!any_solo || soloed);
+            let gain_t = if audible { fader_gain(p.fader[ch].get()) } else { 0.0 };
+            // Constant-power pan law (-3 dB at centre).
+            let theta = (p.pan[ch].get().clamp(-1.0, 1.0) + 1.0) * FRAC_PI_4;
+            let (pan_lt, pan_rt) = (theta.cos(), theta.sin());
+            let send_t = fader_gain(p.aux[ch].get());
+            if self.idle[ch] {
+                self.idle[ch] = false;
+                (self.gain[ch], self.pan_l[ch], self.pan_r[ch], self.send[ch]) = (gain_t, pan_lt, pan_rt, send_t);
             }
-            (self.gain[ch], self.pan_l[ch], self.pan_r[ch]) = (gain, pan_l, pan_r);
-            ch_peak[ch] = peak;
-        }
-        for i in 0..n {
-            self.master += (master_t - self.master) * k;
-            let (l, r) = (sum[0][i] * self.master, sum[1][i] * self.master);
-            outputs[0][0][i] = l;
-            outputs[0][1][i] = r;
-            out_peak[0] = out_peak[0].max(l.abs());
-            out_peak[1] = out_peak[1].max(r.abs());
+            let (mut gain, mut pan_l, mut pan_r, mut send) = (self.gain[ch], self.pan_l[ch], self.pan_r[ch], self.send[ch]);
+            let mut peak = 0.0f32;
+            if send_t == 0.0 && send < 1e-5 {
+                // No send: the main mix only.
+                send = 0.0;
+                for i in 0..n {
+                    gain += (gain_t - gain) * k;
+                    pan_l += (pan_lt - pan_l) * k;
+                    pan_r += (pan_rt - pan_r) * k;
+                    // Stereo inputs: the pan acts as a balance control.
+                    let (l, r) = (xl[i] * gain, xr[i] * gain);
+                    peak = peak.max(l.abs()).max(r.abs());
+                    sum[0][i] += l * pan_l;
+                    sum[1][i] += r * pan_r;
+                }
+            } else {
+                for i in 0..n {
+                    gain += (gain_t - gain) * k;
+                    pan_l += (pan_lt - pan_l) * k;
+                    pan_r += (pan_rt - pan_r) * k;
+                    send += (send_t - send) * k;
+                    let (l, r) = (xl[i] * gain * pan_l, xr[i] * gain * pan_r);
+                    peak = peak.max((xl[i] * gain).abs()).max((xr[i] * gain).abs());
+                    sum[0][i] += l;
+                    sum[1][i] += r;
+                    aux[0][i] += l * send;
+                    aux[1][i] += r * send;
+                }
+            }
+            (self.gain[ch], self.pan_l[ch], self.pan_r[ch], self.send[ch]) = (gain, pan_l, pan_r, send);
+            p.ch_meter[ch].fetch_max(peak);
         }
 
-        for (meter, peak) in p.ch_meter.iter().zip(ch_peak) {
-            meter.fetch_max(peak);
+        let master_t = if p.master_mute.load(Ordering::Relaxed) { 0.0 } else { fader_gain(p.master.get()) };
+        let aux_t = fader_gain(p.aux_master.get());
+        let mut out_peak = [0.0f32; 2];
+        let mut aux_peak = [0.0f32; 2];
+        let (main, rest) = outputs.split_first_mut().expect("a mixer has outputs");
+        for i in 0..n {
+            self.master += (master_t - self.master) * k;
+            self.aux_master += (aux_t - self.aux_master) * k;
+            for c in 0..2 {
+                let y = sum[c][i] * self.master;
+                main[c][i] = y;
+                out_peak[c] = out_peak[c].max(y.abs());
+                let a = aux[c][i] * self.aux_master;
+                aux_peak[c] = aux_peak[c].max(a.abs());
+                if let Some(out) = rest.first_mut() {
+                    out[c][i] = a;
+                }
+            }
         }
         for (meter, peak) in p.master_meter.iter().zip(out_peak) {
             meter.fetch_max(peak);
         }
-    }
-
-    fn is_sink(&self) -> bool {
-        true
+        for (meter, peak) in p.aux_meter.iter().zip(aux_peak) {
+            meter.fetch_max(peak);
+        }
     }
 }

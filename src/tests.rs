@@ -109,6 +109,85 @@ fn oscillator_through_mixer_reaches_the_output() {
     assert!(peak < 1e-3, "muted peak = {peak}");
 }
 
+/// A mixer's main-output peak over a settled stretch.
+fn master_peak(e: &mut Engine, p: &MixerParams) -> f32 {
+    render(e, 4800);
+    p.master_meter.iter().for_each(|m| _ = m.take());
+    render(e, 4800);
+    p.master_meter.iter().map(|m| m.take()).fold(0.0, f32::max)
+}
+
+#[test]
+fn mixers_send_on_aux_mute_their_master_and_patch_their_out() {
+    use crate::audio::params::FADER_UNITY;
+    let (mut g, a, mut e) = setup();
+    let x = g.add_osc(pos2(0.0, 0.0), &a);
+    let dry = g.add_mixer(pos2(0.0, 0.0), &a);
+    let wet = g.add_mixer(pos2(0.0, 0.0), &a);
+    g.connect(port(x, 0), port(dry, 0), &a);
+    assert!(g.connect(port(dry, 1), port(wet, 0), &a), "AUX into another mixer");
+    let (dp, wp) = (mixer_params(&g, dry), mixer_params(&g, wet));
+    // No send: the second mixer hears nothing.
+    assert!(master_peak(&mut e, &dp) > 0.05);
+    assert!(master_peak(&mut e, &wp) < 1e-6);
+    // A send: the channel reaches the AUX output, at its own level.
+    dp.aux[0].set(FADER_UNITY);
+    let wet_level = master_peak(&mut e, &wp);
+    assert!(wet_level > 0.05);
+    dp.aux_master.set(0.0);
+    assert!(master_peak(&mut e, &wp) < 1e-4, "AUX level down");
+    dp.aux_master.set(FADER_UNITY);
+    // MUTE silences the main output only: the AUX layer plays on.
+    dp.master_mute.store(true, Ordering::Relaxed);
+    assert!(master_peak(&mut e, &dp) < 1e-4);
+    assert!((master_peak(&mut e, &wp) - wet_level).abs() < 0.01);
+    assert!(render(&mut e, 4800).0 > 0.05, "heard through the second mixer");
+    dp.master_mute.store(false, Ordering::Relaxed);
+    dp.aux[0].set(0.0);
+    // OUT patched into another mixer: no longer to the device itself, so the
+    // device hears it once, through the second mixer.
+    let alone = render(&mut e, 9600).0;
+    assert!(g.connect(port(dry, 0), port(wet, 1), &a));
+    render(&mut e, 4800);
+    let through = render(&mut e, 4800).0;
+    assert!(through > 0.05 && through < alone * 0.75, "{through} vs {alone}: wet's master (-6 dB) once, not twice");
+}
+
+#[test]
+fn the_console_takes_24_channels_either_way_round() {
+    use crate::graph::Console;
+    let (mut g, a, mut e) = setup();
+    let c = g.add_console(pos2(100.0, 100.0), &a);
+    let n = g.node(c).unwrap();
+    assert_eq!((n.inputs().len(), n.outputs()), (12, &["OUT", "AUX"][..]));
+    // Horizontal: the inputs line the top edge.
+    assert!(n.inputs_on_top());
+    assert_eq!(n.input_pos(0).y, n.pos.y);
+    assert!(n.input_pos(1).x > n.input_pos(0).x);
+    // Vertical, 24 channels: down the left edge.
+    g.set_console(c, Console { channels: 24, horizontal: false }, &a);
+    let n = g.node(c).unwrap();
+    assert_eq!(n.inputs().len(), 24);
+    assert!(!n.inputs_on_top());
+    assert_eq!(n.input_pos(23).x, n.pos.x);
+    assert!(n.input_pos(23).y > n.input_pos(0).y && n.input_pos(23).y < n.pos.y + n.size().y);
+    // Channel 20 plays.
+    let x = g.add_osc(pos2(0.0, 0.0), &a);
+    assert!(g.connect(port(x, 0), port(c, 19), &a));
+    assert!(render(&mut e, 4800).0 > 0.05);
+    // Back to 12 unplugs it.
+    let twelve = Console { channels: 12, horizontal: true };
+    assert_eq!(g.console_losses(c, twelve), 1);
+    g.set_console(c, twelve, &a);
+    assert!(g.cables.is_empty());
+    render(&mut e, 4800);
+    assert!(render(&mut e, 4800).0 < 1e-6);
+    // The plain Mixer can't be reshaped.
+    let m = g.add_mixer(pos2(0.0, 0.0), &a);
+    g.set_console(m, twelve, &a);
+    assert!(g.node(m).unwrap().console().is_none());
+}
+
 #[test]
 fn every_waveform_with_modulation_stays_finite_and_bounded() {
     let (mut g, a, mut e) = setup();
@@ -660,6 +739,12 @@ fn projects_round_trip_through_a_file() {
     module_params(&g, reverb_id).set_toggle(true);
     mixer_params(&g, mixer).pan[0].set(-0.4);
     mixer_params(&g, mixer).mute[2].store(true, Ordering::Relaxed);
+    mixer_params(&g, mixer).aux[1].set(0.5);
+    mixer_params(&g, mixer).aux_master.set(0.4);
+    let console = g.add_console(pos2(0.0, 600.0), &a);
+    g.set_console(console, crate::graph::Console { channels: 24, horizontal: false }, &a);
+    mixer_params(&g, console).master_mute.store(true, Ordering::Relaxed);
+    mixer_params(&g, console).aux[20].set(0.7);
     osc_params(&g, x).set_waveform(Waveform::Square);
     g.set_collapsed(filter, true);
     let gid = g.create_group(&[random, drone_id]).unwrap();
@@ -1072,7 +1157,7 @@ fn after_auto_layout_no_cable_runs_behind_a_node() {
 
     for c in &g.cables {
         let (from, to) = (g.node(c.from.node).unwrap(), g.node(c.to.node).unwrap());
-        let shape = widgets::cable_shape(from.output_pos(c.from.port), to.input_pos(c.to.port), 1.0);
+        let shape = widgets::cable_shape(from.output_pos(c.from.port), to.input_pos(c.to.port), false, 1.0);
         for n in g.nodes.iter().filter(|n| n.id != from.id && n.id != to.id) {
             let body = egui::Rect::from_min_size(n.pos, n.size()).shrink(4.0);
             for i in 0..=64 {
@@ -1202,7 +1287,7 @@ fn vst3_plugins_work_as_nodes() {
 // MIDI sequencing
 // ---------------------------------------------------------------------------
 
-use crate::audio::engine::{Inputs, MidiBuf, ProcessCtx, Processor};
+use crate::audio::engine::{Inputs, MAX_INPUTS, MidiBuf, ProcessCtx, Processor};
 
 /// Runs a MIDI generator for `frames` at 120 BPM and returns every event
 /// it sent as (absolute frame, message). `feed` may add input events for
@@ -1215,8 +1300,8 @@ fn run_generator(
     const SR: f32 = 48_000.0;
     let mut ctx = ProcessCtx { sample_rate: SR, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / SR as f64, playing: true, restart: false };
     let mut inputs = Box::new(Inputs {
-        bufs: [[[0.0; 64]; 2]; 8],
-        connected: [false; 8],
+        bufs: [[[0.0; 64]; 2]; MAX_INPUTS],
+        connected: [false; MAX_INPUTS],
         midi: MidiBuf::default(),
         midi_connected: false,
     });
@@ -1705,8 +1790,8 @@ fn midicer_follows_gates_and_quantizes() {
     const SR: f32 = 48_000.0;
     let mut ctx = ProcessCtx { sample_rate: SR, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / SR as f64, playing: true, restart: false };
     let mut inputs = Box::new(Inputs {
-        bufs: [[[0.0; 64]; 2]; 8],
-        connected: [false; 8],
+        bufs: [[[0.0; 64]; 2]; MAX_INPUTS],
+        connected: [false; MAX_INPUTS],
         midi: MidiBuf::default(),
         midi_connected: false,
     });
@@ -1770,8 +1855,8 @@ fn click_response(proc: &mut dyn Processor, frames: usize) -> (Vec<f32>, Vec<f32
     const SR: f32 = 48_000.0;
     let mut ctx = ProcessCtx { sample_rate: SR, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / SR as f64, playing: true, restart: false };
     let mut inputs = Box::new(Inputs {
-        bufs: [[[0.0; 64]; 2]; 8],
-        connected: [false; 8],
+        bufs: [[[0.0; 64]; 2]; MAX_INPUTS],
+        connected: [false; MAX_INPUTS],
         midi: MidiBuf::default(),
         midi_connected: false,
     });
@@ -2005,7 +2090,7 @@ fn drive(proc: &mut dyn Processor, frames: usize, from: usize, input: impl Fn(us
         playing: true,
         restart: false,
     };
-    let mut inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; 8], connected: [false; 8], midi: MidiBuf::default(), midi_connected: false });
+    let mut inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: false });
     inputs.connected[0] = true;
     let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
     let (mut l, mut r) = (Vec::new(), Vec::new());
@@ -2164,7 +2249,7 @@ fn drive_stereo(
     side: Option<&dyn Fn(usize) -> (f32, f32)>,
 ) -> (Vec<f32>, Vec<f32>) {
     let ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing: true, restart: false };
-    let mut inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; 8], connected: [false; 8], midi: MidiBuf::default(), midi_connected: false });
+    let mut inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: false });
     inputs.connected[0] = true;
     inputs.connected[1] = side.is_some();
     let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
@@ -2442,7 +2527,7 @@ fn magma_envelope_follows_midi_notes() {
     p.data[data::SOURCE_SHOWN].set(2.0); // shown in the panel: worked out
     let mut fx = magma(&p);
     let ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing: true, restart: false };
-    let mut inputs = Box::new(Inputs { bufs: [[[0.1; 64]; 2]; 8], connected: [false; 8], midi: MidiBuf::default(), midi_connected: true });
+    let mut inputs = Box::new(Inputs { bufs: [[[0.1; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: true });
     inputs.connected[0] = true;
     let mut out = vec![[[0.0f32; 64]; 2]; 1];
     let mut run = |inputs: &mut Inputs, blocks: usize, first: Option<[u8; 3]>| {
@@ -2508,7 +2593,7 @@ fn run_pops(
     use crate::audio::modules::pops::Pops;
     let mut proc = Pops::new(p.clone(), 48_000.0);
     let mut ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing, restart: false };
-    let mut inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; 8], connected: [false; 8], midi: MidiBuf::default(), midi_connected: true });
+    let mut inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: true });
     let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
     let (mut left, mut sent) = (Vec::new(), Vec::new());
     for b in 0..blocks {

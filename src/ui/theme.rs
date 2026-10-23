@@ -43,6 +43,8 @@ pub const METER_RED: Color32 = Color32::from_rgb(226, 84, 84);
 
 pub const MUTE: Color32 = Color32::from_rgb(226, 92, 92);
 pub const SOLO: Color32 = Color32::from_rgb(222, 188, 86);
+/// Mixers' AUX sends and output.
+pub const AUX: Color32 = Color32::from_rgb(96, 196, 200);
 
 /// Same hue with reduced opacity (premultiplied).
 pub fn alpha(c: Color32, a: f32) -> Color32 {

@@ -1,5 +1,6 @@
 pub mod app;
 pub mod canvas;
+pub mod console;
 pub mod equalizer;
 pub mod frakture;
 pub mod groups;
