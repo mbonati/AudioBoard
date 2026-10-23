@@ -93,6 +93,30 @@ Like any node, it also collapses entirely to its title bar (C).
 
 The preset rhythms are new patterns written in each style, not decoded from the original's diode matrix.
 
+**Nullpunkt**: an instrument for clicks, pulses and glitches, in the manner of Alva Noto. It has two
+layers; a tone to lay under it can come from an Oscillator or a Drone.
+
+**Four micro-voices** sit on Euclidean grids. Each grid spreads HITS as evenly as it can over LEN steps, and
+each voice has its own length, so the patterns phase against each other and the rhythm keeps shifting:
+
+- **CLICK**: impulses through a short resonance. COLOR sets its pitch; DECAY sets how long it rings.
+- **SINE**: high sine blips.
+- **SUB**: sub-bass sine pulses.
+- **DATA**: 1-bit digital noise, held at the GRAIN rate.
+
+Each voice also has DECAY and LEVEL. The grid runs on the board's clock: 1/8, 1/16 or 1/32 notes, while the
+board plays. In each lane, drag sideways to rotate the pattern. **MUTATE** flips steps now and then and
+adds ratchets (quick repeats inside a step). **WIDTH** scatters each hit across the stereo field.
+
+**GLITCH** works on everything:
+
+- **SKIP**: a step sticks on a slice of what just played, like a CD skipping.
+- **CUT**: a step drops to digital silence.
+- **CRUSH**: fewer bits, from 16 down to 2.
+- **RATE**: holds samples, from every sample down to 1 in 48.
+
+The panel shows the output as a barcode of recent peaks, and the four lanes with their playheads.
+
 ### Texture
 
 **Granular**: records its input into an 8-second loop and plays it back as a cloud of grains.
@@ -581,6 +605,7 @@ src/
 │   │   │               motion (hexagon sliders, magnet, drawn/recorded paths, timeline)
 │   │   ├── pops.rs     Pops 66 (after the KORG Mini Pops-7): instruments, user patterns, clock, MIDI in/out
 │   │   ├── pops/       voices (the fifteen synthesized instruments), rhythms (the twenty presets, combining)
+│   │   ├── nullpunkt.rs Nullpunkt: Euclidean micro-voices and the glitch stage
 │   │   ├── tape.rs     Tape: record EQ, magnetic curve, transport (wow, flutter, stop/start), playback head
 │   │   ├── oversample.rs 2× oversampling (half-band FIR) shared by Magma and Tape
 │   │   ├── steps.rs step grid on the global tempo, outgoing notes, held keys
@@ -603,6 +628,7 @@ src/
 │   ├── equalizer.rs the Equalizer's panel: graph and band markers, analyzer (FFT), band controls
 │   ├── magma.rs    the Magma panel: display and dots, filter controls, sources and slots (drag & drop)
 │   ├── tape.rs     the Tape panel: the sketched deck (reels, tape, head, needles, keys), COMPACT / FULL
+│   ├── nullpunkt.rs the Nullpunkt panel: output barcode, pattern lanes, knob groups
 │   ├── pops.rs     the Pops 66 panel: MACHINE, MIXER and EDITOR detail levels (the node resizes), waveform preview
 │   ├── widgets.rs  hand-drawn knobs, faders, meters, ports and cables
 │   ├── monitor.rs  bottom panel: oscilloscope and spectrum (FFT)
@@ -640,7 +666,7 @@ sideways drift.
 To add a new module: a file in `audio/modules/` with its `ModuleDef` (knobs, ports, modes, toggle) and a
 `Processor`, an entry in `ModuleKind` and, in `ui/modules.rs`, the readout and the display.
 The panel (ports, selector, knobs) is generated from the definition; Frakture, too large for the generic
-panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`), Magma (`ui/magma.rs`), Tape (`ui/tape.rs`) and Pops 66
+panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`), Magma (`ui/magma.rs`), Tape (`ui/tape.rs`), Nullpunkt (`ui/nullpunkt.rs`) and Pops 66
 (`ui/pops.rs`, whose size follows its detail level through `modules::size_of`). Frakture's hexagon runs on the audio thread, block by block: the panel
 hands it the mouse through the module's display values, so paths keep time even when the window doesn't
 redraw.

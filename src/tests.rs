@@ -1632,7 +1632,7 @@ fn palette_categories_fold() {
         texts = run(&mut palette, vec![]);
     }
     assert!(!shows(&texts, "Oscillator") && shows(&texts, "SOURCES"), "folded");
-    assert!(shows(&texts, "4"), "a folded category shows its count");
+    assert!(shows(&texts, "5"), "a folded category shows its count");
     assert!(shows(&texts, "Reverb"), "the others stay open");
 
     // Searching opens what matches; clearing it folds it again.
@@ -2918,4 +2918,97 @@ fn effects_bypass_without_clicks() {
     g.node(x).unwrap().set_bypass(true);
     assert!(!g.node(x).unwrap().bypassed());
     assert!(g.node(f).unwrap().is_effect() && !g.node(m).unwrap().is_effect());
+}
+
+/// Runs Nullpunkt for `blocks` at 120 BPM (playing or not); returns the
+/// left channel.
+fn run_nullpunkt(p: &Arc<ModuleParams>, blocks: usize, playing: bool) -> Vec<f32> {
+    use crate::audio::modules::nullpunkt::Nullpunkt;
+    let mut proc = Nullpunkt::new(p.clone(), 48_000.0);
+    let mut ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing, restart: false };
+    let inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: false });
+    let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
+    let mut left = Vec::new();
+    for _ in 0..blocks {
+        proc.process(&ctx, &inputs, &mut outputs, 64);
+        left.extend_from_slice(&outputs[0][0]);
+        if playing {
+            ctx.beat += ctx.beats_per_sample * 64.0;
+        }
+    }
+    left
+}
+
+/// Nullpunkt with nothing on: no voices, no field, no glitches.
+fn quiet_nullpunkt() -> Arc<ModuleParams> {
+    use crate::audio::modules::nullpunkt::{CUT, MUTATE, SKIP, data, knob, voice, vp};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Nullpunkt));
+    for v in 0..voice::COUNT {
+        p.set(vp(v, knob::LEVEL), 0.0);
+        p.data[data::ROT + v].set(0.0);
+    }
+    for i in [SKIP, CUT, MUTATE] {
+        p.set(i, 0.0);
+    }
+    p
+}
+
+#[test]
+fn nullpunkt_patterns_are_euclidean() {
+    use crate::audio::modules::nullpunkt::euclid;
+    let hits = |k: usize, n: usize| (0..n).filter(|&s| euclid(k, n, s)).collect::<Vec<_>>();
+    assert_eq!(hits(3, 8), [0, 3, 6]);
+    assert_eq!(hits(4, 16), [0, 4, 8, 12]);
+    for n in 1..=32 {
+        for k in 0..=n {
+            assert_eq!(hits(k, n).len(), k, "{k} of {n}");
+        }
+    }
+    assert_eq!(hits(40, 8).len(), 8, "no more hits than steps");
+}
+
+#[test]
+fn nullpunkt_voices_play_on_the_board_clock() {
+    use crate::audio::modules::nullpunkt::{knob, viz, voice, vp};
+    for v in 0..voice::COUNT {
+        let p = quiet_nullpunkt();
+        p.set(vp(v, knob::LEVEL), 0.8);
+        p.set(vp(v, knob::HITS), 4.0);
+        p.set(vp(v, knob::LEN), 16.0);
+        // 120 BPM, sixteenths: a step every 6000 frames, a hit every fourth.
+        let left = run_nullpunkt(&p, 1500, true);
+        assert_eq!(p.viz[viz::HITS + v].get(), 4.0, "{}: steps 0, 4, 8, 12", voice::NAMES[v]);
+        assert!(left.iter().all(|s| s.is_finite() && s.abs() <= 1.0));
+        assert!(peak_of(&left[..3000]) > 0.01, "{} sounds on step 0", voice::NAMES[v]);
+        assert!(peak_of(&left[12_100..23_900]) < peak_of(&left[..3000]) * 0.5, "{} quieter between hits", voice::NAMES[v]);
+        // Stopped: nothing.
+        let p2 = quiet_nullpunkt();
+        p2.set(vp(v, knob::LEVEL), 0.8);
+        assert_eq!(peak_of(&run_nullpunkt(&p2, 400, false)), 0.0);
+    }
+}
+
+#[test]
+fn nullpunkt_cuts_steps_and_survives_every_glitch() {
+    use crate::audio::modules::nullpunkt::{CRUSH, CUT, MUTATE, RATE, SKIP, knob, voice, vp};
+    // DATA on every step, ringing through it; CUT at full: about half the
+    // steps fall silent.
+    let p = quiet_nullpunkt();
+    let data = |k| vp(voice::DATA, k);
+    p.set(data(knob::LEVEL), 0.8);
+    p.set(data(knob::HITS), 16.0);
+    p.set(data(knob::LEN), 16.0);
+    p.set(data(knob::DECAY), 0.4);
+    p.set(CUT, 1.0);
+    let left = run_nullpunkt(&p, 3000, true);
+    let silent = left.chunks(6000).skip(1).filter(|step| rms_of(&step[200..5800]) < 1e-3).count();
+    assert!((6..26).contains(&silent), "{silent} of 31 steps cut");
+    // Everything at once stays finite and bounded.
+    let p = Arc::new(ModuleParams::new(ModuleKind::Nullpunkt));
+    for (i, v) in [(SKIP, 1.0), (CUT, 1.0), (CRUSH, 1.0), (RATE, 1.0), (MUTATE, 1.0)] {
+        p.set(i, v);
+    }
+    let left = run_nullpunkt(&p, 3000, true);
+    assert!(left.iter().all(|s| s.is_finite() && s.abs() <= 1.0));
+    assert!(rms_of(&left) > 0.005);
 }
