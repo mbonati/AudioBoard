@@ -530,6 +530,8 @@ pub struct EngineShared {
     /// the UI last looked.
     pub limiting: AtomicF32,
     pub scope: Scope,
+    /// Where the output goes while the board is being recorded.
+    pub tap: super::record::Tap,
 }
 
 impl EngineShared {
@@ -545,6 +547,7 @@ impl EngineShared {
             frames: AtomicU32::new(0),
             limiting: AtomicF32::new(0.0),
             scope: Scope::new(),
+            tap: super::record::Tap::new(),
         }
     }
 }

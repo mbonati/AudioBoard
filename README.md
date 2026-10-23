@@ -541,6 +541,7 @@ clipping it into crackles, and recovers over about 150 ms. While it works, the s
 | New / open project | Cmd+N / Cmd+O, or the project name in the toolbar |
 | Save / save as | Cmd+S / Shift+Cmd+S |
 | Start / stop | the Start / Stop button in the toolbar, or Space |
+| Record / stop recording | REC in the toolbar, or R; stopping opens the export (see Recording and export) |
 | Tempo | drag the BPM field, click it to type, TAP or T to tap it |
 | Show / hide the oscilloscope and spectrum | panel button in the toolbar |
 
@@ -601,6 +602,27 @@ category and the library modules, with a search field. Click a category's headin
 want (an outline shows where it lands), or click it to add it in the middle of the view. On library
 entries, the × removes the module from the library.
 
+## Recording and export
+
+**REC** in the toolbar (or **R**) records what the board plays: the device's output, after the limiter, so
+exactly what you hear. While it records, the button turns red and counts the time. The take goes straight to
+a temporary file on disk, so it can be as long as you like, and the audio is never held up.
+
+**R** again stops recording and opens **Export recording**, which shows the take's length, sample rate and
+peak. To export it:
+
+1. Pick a format:
+   - **WAV**: 24-bit, 16-bit (with TPDF dither) or 32-bit float.
+   - **AIFF**: 24-bit or 16-bit.
+   - **FLAC**, **Apple Lossless** (.m4a) or **AAC 256 kbps** (.m4a), encoded by macOS's own `afconvert`.
+   - **MP3 320 kbps**, available when `ffmpeg` or `lame` is installed (e.g. `brew install lame`).
+2. Choose the options: normalize the peak to −1 dBFS, and trim the silence at both ends (on by default; 10 ms
+   are kept around the sound).
+3. Click **Export…** to pick where to save it. The export runs in the background.
+
+The take stays available for more exports, in other formats, from **EXPORT** in the toolbar, until the next
+recording, **Discard take**, or quitting.
+
 ## Projects and library
 
 **Projects.** The project name in the toolbar opens the File menu (New project, Open…, Save, Save as…).
@@ -644,6 +666,8 @@ src/
 │   │   └── mod.rs  module descriptions (ModuleDef), generic parameters and DSP helpers
 │   ├── midi.rs     MIDI inputs (midir) and shared state read by the MIDI nodes
 │   ├── plugin.rs   VST3 plugins (vst3-host): loading, scanning, processing on the audio thread
+│   ├── record.rs   recording the output: a lock-free tap on the audio thread, a writer thread, takes
+│   ├── export.rs   takes to WAV/AIFF (written here), FLAC/ALAC/AAC (afconvert), MP3 (ffmpeg or lame)
 │   └── mod.rs      opening the output stream (cpal)
 ├── graph.rs        UI-side patch model (nodes, cables, modules, Kahn ordering)
 ├── project.rs      saving/loading projects and the module library (JSON)

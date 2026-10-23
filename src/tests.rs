@@ -3154,3 +3154,102 @@ fn nullpunkt_stutters_in_time() {
         assert!(worst < 1e-3, "step {step}: off by {worst}");
     }
 }
+
+/// Records `seconds` of an oscillator through a mixer with the offline
+/// engine: silence, `sound` seconds of tone, silence.
+fn record_take(silence: f32, sound: f32) -> std::sync::Arc<crate::audio::record::Take> {
+    use crate::audio::params::EngineShared;
+    use crate::audio::record::Recorder;
+    let shared = Arc::new(EngineShared::new());
+    let (handle, mut engine) = crate::audio::offline(shared.clone(), 48_000);
+    let mut g = Graph::default();
+    let x = g.add_osc(pos2(0.0, 0.0), &handle);
+    let m = g.add_mixer(pos2(0.0, 0.0), &handle);
+    let mut recorder = Recorder::new(shared.clone());
+    recorder.start(48_000).unwrap();
+    render(&mut engine, (silence * 48_000.0) as usize);
+    g.connect(port(x, 0), port(m, 0), &handle);
+    render(&mut engine, (sound * 48_000.0) as usize);
+    g.disconnect(g.cables[0], &handle);
+    render(&mut engine, (silence * 48_000.0) as usize);
+    recorder.stop().unwrap()
+}
+
+#[test]
+fn the_board_records_to_a_take() {
+    let take = record_take(0.0, 1.0);
+    assert_eq!(take.frames, 48_000);
+    assert_eq!(take.dropped, 0);
+    assert!(take.peak > 0.05 && take.peak <= 1.0, "peak {}", take.peak);
+    assert_eq!(std::fs::metadata(&take.path).unwrap().len(), 48_000 * 8);
+    let path = take.path.clone();
+    drop(take);
+    assert!(!path.exists(), "a dropped take cleans up after itself");
+}
+
+#[test]
+fn takes_export_to_wav_and_aiff() {
+    use crate::audio::export::{Format, Options, export};
+    let take = record_take(0.25, 0.5);
+    let dir = TempDir::new("export");
+    let raw = std::fs::read(&take.path).unwrap();
+    let sample = |frame: usize| f32::from_le_bytes(raw[frame * 8..frame * 8 + 4].try_into().unwrap());
+    let all = Options { format: Format::Wav24, normalize: false, trim: false };
+
+    // WAV, 24-bit: a plain header, then every frame.
+    let wav = dir.0.join("t.wav");
+    export(&take, all, &wav).unwrap();
+    let bytes = std::fs::read(&wav).unwrap();
+    assert_eq!(&bytes[..4], b"RIFF");
+    assert_eq!(&bytes[8..16], b"WAVEfmt ");
+    assert_eq!(u16::from_le_bytes([bytes[22], bytes[23]]), 2, "stereo");
+    assert_eq!(u32::from_le_bytes(bytes[24..28].try_into().unwrap()), 48_000);
+    assert_eq!(u16::from_le_bytes([bytes[34], bytes[35]]), 24);
+    assert_eq!(bytes.len() as u64, 44 + take.frames * 6);
+    let at = 44 + 18_000 * 6;
+    let v = i32::from_le_bytes([0, bytes[at], bytes[at + 1], bytes[at + 2]]) >> 8;
+    assert!((v as f32 / 8_388_607.0 - sample(18_000)).abs() < 1e-6, "the same samples");
+
+    // 32-bit float.
+    let float = dir.0.join("f.wav");
+    export(&take, Options { format: Format::WavFloat, ..all }, &float).unwrap();
+    let bytes = std::fs::read(&float).unwrap();
+    assert_eq!(u16::from_le_bytes([bytes[20], bytes[21]]), 3, "IEEE float");
+    assert_eq!(f32::from_le_bytes(bytes[44 + 18_000 * 8..44 + 18_000 * 8 + 4].try_into().unwrap()), sample(18_000));
+
+    // AIFF, 16-bit: big-endian, the rate as an 80-bit float.
+    let aiff = dir.0.join("t.aiff");
+    export(&take, Options { format: Format::Aiff16, ..all }, &aiff).unwrap();
+    let bytes = std::fs::read(&aiff).unwrap();
+    assert_eq!(&bytes[..4], b"FORM");
+    assert_eq!(&bytes[8..16], b"AIFFCOMM");
+    assert_eq!(u32::from_be_bytes(bytes[22..26].try_into().unwrap()) as u64, take.frames);
+    assert_eq!(&bytes[28..38], &[0x40, 0x0E, 0xBB, 0x80, 0, 0, 0, 0, 0, 0], "48000 Hz");
+    assert_eq!(bytes.len() as u64, 54 + take.frames * 4);
+
+    // Trimmed: the silence goes (10 ms kept each side); normalized: the
+    // peak at −1 dBFS.
+    let trimmed = dir.0.join("trim.wav");
+    export(&take, Options { format: Format::WavFloat, normalize: true, trim: true }, &trimmed).unwrap();
+    let bytes = std::fs::read(&trimmed).unwrap();
+    let frames = (bytes.len() - 44) / 8;
+    assert!((24_000..=25_500).contains(&frames), "{frames} frames of sound");
+    let peak = bytes[44..].as_chunks::<4>().0.iter().map(|b| f32::from_le_bytes(*b).abs()).fold(0.0, f32::max);
+    assert!((peak - 0.891).abs() < 0.002, "peak {peak}");
+}
+
+#[test]
+fn takes_export_through_the_system_encoders() {
+    use crate::audio::export::{Format, Options, export};
+    if Format::Flac.missing().is_some() {
+        return; // not on macOS
+    }
+    let take = record_take(0.0, 0.5);
+    let dir = TempDir::new("encode");
+    for (format, magic, at) in [(Format::Flac, &b"fLaC"[..], 0), (Format::Alac, &b"ftyp"[..], 4), (Format::Aac, &b"ftyp"[..], 4)] {
+        let path = dir.0.join(format!("t.{}", format.extension()));
+        export(&take, Options { format, normalize: false, trim: false }, &path).unwrap();
+        let bytes = std::fs::read(&path).unwrap();
+        assert_eq!(&bytes[at..at + 4], magic, "{}", format.label());
+    }
+}
