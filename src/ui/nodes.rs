@@ -12,7 +12,7 @@ use super::theme::{self, alpha};
 use super::widgets::{self, hfader, hmeter, knob, toggle};
 use crate::audio::engine::NodeId;
 use crate::audio::params::{
-    MIXER_CHANNELS, OSC_PARAMS, ParamSpec, Waveform, fader_gain, format_db, format_hz, gain_to_db, osc,
+    MIXER_CHANNELS, MixerParams, OSC_PARAMS, ParamSpec, Waveform, fader_gain, format_db, format_hz, gain_to_db, osc,
 };
 use std::cell::RefCell;
 
@@ -22,17 +22,21 @@ pub const HEADER_H: f32 = 26.0;
 /// Smallest text drawn on the canvas, in points.
 pub const MIN_TEXT: f32 = 4.0;
 pub const OSC_SIZE: Vec2 = vec2(216.0, 268.0);
-pub const MIX_SIZE: Vec2 = vec2(340.0, 244.0);
+pub const MIX_SIZE: Vec2 = vec2(380.0, 282.0);
 
 const RADIUS: f32 = 6.0;
 const OSC_PORT_Y: [f32; 2] = [42.0, 60.0];
-const MIX_ROW_Y: f32 = 34.0;
+const MIX_ROW_Y: f32 = 38.0;
 const MIX_ROW_H: f32 = 38.0;
+/// The master and AUX rows (where OUT and AUX leave).
+const MIX_MASTER_Y: f32 = 214.0;
+const MIX_AUX_Y: f32 = 252.0;
 
 pub fn type_size(ty: NodeType) -> Vec2 {
     match ty {
         NodeType::Osc => OSC_SIZE,
         NodeType::Mixer => MIX_SIZE,
+        NodeType::Console => super::console::size(Default::default()),
         NodeType::Module(k) => modules::size(k.def()),
         NodeType::Plugin => plugin_node::SIZE,
     }
@@ -42,6 +46,7 @@ pub fn input_offset(ty: NodeType, i: usize) -> Vec2 {
     match ty {
         NodeType::Osc => vec2(0.0, OSC_PORT_Y[i.min(1)]),
         NodeType::Mixer => vec2(0.0, MIX_ROW_Y + MIX_ROW_H * (i as f32 + 0.5)),
+        NodeType::Console => super::console::input_offset(Default::default(), i),
         NodeType::Module(_) => modules::input_offset(i),
         NodeType::Plugin => plugin_node::input_offset(i),
     }
@@ -50,7 +55,8 @@ pub fn input_offset(ty: NodeType, i: usize) -> Vec2 {
 pub fn output_offset(ty: NodeType, i: usize) -> Vec2 {
     match ty {
         NodeType::Osc => vec2(OSC_SIZE.x, OSC_PORT_Y[0]),
-        NodeType::Mixer => vec2(MIX_SIZE.x, MIX_SIZE.y * 0.5),
+        NodeType::Mixer => vec2(MIX_SIZE.x, if i == 0 { MIX_MASTER_Y } else { MIX_AUX_Y }),
+        NodeType::Console => super::console::output_offset(Default::default(), i),
         NodeType::Module(k) => modules::output_offset(k.def(), i),
         NodeType::Plugin => plugin_node::output_offset(i),
     }
@@ -444,7 +450,7 @@ pub(super) fn knob_cell(v: &NodeView, id: Id, spec: &ParamSpec, value: f32, cell
 // Mixer
 // ---------------------------------------------------------------------------
 
-fn pan_label(pan: f32) -> String {
+pub(super) fn pan_label(pan: f32) -> String {
     if pan.abs() < 0.01 {
         "C".to_owned()
     } else if pan < 0.0 {
@@ -454,11 +460,88 @@ fn pan_label(pan: f32) -> String {
     }
 }
 
-/// Fader column, shared by the channel strips and the master bus.
-const FADER_X: [f32; 2] = [110.0, 262.0];
+/// A channel's PAN (or, `aux`, AUX send) knob centred at `c` (node units),
+/// radius `r`: MIDI can map it.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn channel_knob(v: &NodeView, id: NodeId, params: &MixerParams, ch: usize, aux: bool, c: Pos2, r: f32, color: Color32) {
+    let (mut norm, default) = if aux { (params.aux[ch].get(), 0.0) } else { ((params.pan[ch].get() + 1.0) * 0.5, 0.5) };
+    let salt = if aux { "aux" } else { "pan" };
+    let resp = knob(v.ui, v.painter, Id::unique((salt, id, ch)), v.p(c.x, c.y), r * v.z, &mut norm, default, !aux, color, v.z);
+    v.hit(resp.rect, if aux { ParamRef::Aux(ch) } else { ParamRef::Pan(ch) });
+    if resp.dragged() || resp.double_clicked() {
+        if aux {
+            params.aux[ch].set(norm);
+        } else {
+            params.pan[ch].set(norm * 2.0 - 1.0);
+        }
+    }
+}
 
-/// `sources[ch]` is the colour and name of what's plugged into channel `ch`.
-pub fn mixer(v: &NodeView, id: NodeId, accent: Color32, m: &mut MixerNode, sources: &[Option<(Color32, String)>]) {
+/// An AUX send's value: "off", or its gain.
+pub(super) fn send_label(pos: f32) -> String {
+    if pos <= 0.001 { "off".to_owned() } else { format_db(gain_to_db(fader_gain(pos))) }
+}
+
+/// MASTER's or AUX's fader (`aux`) in `rect` (screen): MIDI can map it.
+pub(super) fn bus_fader(v: &NodeView, id: NodeId, params: &MixerParams, aux: bool, rect: Rect, vertical: bool) {
+    let muted = !aux && params.master_mute.load(std::sync::atomic::Ordering::Relaxed);
+    let (value, color) = if aux { (&params.aux_master, theme::AUX) } else { (&params.master, theme::TEXT_DIM) };
+    let mut pos = value.get();
+    let fid = Id::unique((if aux { "aux-master" } else { "master" }, id));
+    let fr = if vertical {
+        widgets::vfader(v.ui, v.painter, fid, rect, &mut pos, color, !muted, v.z)
+    } else {
+        hfader(v.ui, v.painter, fid, rect, &mut pos, color, !muted, v.z)
+    };
+    v.hit(fr.rect, if aux { ParamRef::AuxMaster } else { ParamRef::Master });
+    if fr.dragged() || fr.double_clicked() {
+        value.set(pos);
+    }
+}
+
+/// The master's MUTE button.
+pub(super) fn master_mute(v: &NodeView, id: NodeId, params: &MixerParams, rect: Rect, label: &str) {
+    use std::sync::atomic::Ordering::Relaxed;
+    let muted = params.master_mute.load(Relaxed);
+    let resp = toggle(v.ui, v.painter, Id::unique(("master-mute", id)), rect, label, muted, theme::MUTE, v.z)
+        .on_hover_text("Mute the main output (AUX keeps sending)");
+    if resp.clicked() {
+        params.master_mute.store(!muted, Relaxed);
+    }
+}
+
+/// Where the main mix goes, at (`x`, `y`): the audio device (a speaker
+/// that lights with the level), or the OUT cable when one is patched.
+pub(super) fn main_out(v: &NodeView, x: f32, y: f32, m: &MixerNode, accent: Color32, patched: bool) {
+    let z = v.z;
+    let level = m.master[0].level.max(m.master[1].level).clamp(0.0, 1.0).sqrt();
+    let col = theme::mix(theme::TEXT_FAINT, accent, level);
+    if patched {
+        v.text(x, y, Align2::LEFT_CENTER, "Out by cable", v.font(8.5), col);
+        return;
+    }
+    let sp = v.p(x + 4.0, y);
+    v.painter.add(Shape::convex_polygon(
+        vec![
+            sp + vec2(-4.0, -2.0) * z,
+            sp + vec2(-1.5, -2.0) * z,
+            sp + vec2(2.0, -5.0) * z,
+            sp + vec2(2.0, 5.0) * z,
+            sp + vec2(-1.5, 2.0) * z,
+            sp + vec2(-4.0, 2.0) * z,
+        ],
+        col,
+        Stroke::NONE,
+    ));
+    v.text(x + 12.0, y, Align2::LEFT_CENTER, "Main out", v.font(8.5), col);
+}
+
+/// Fader column, shared by the channel strips and the master bus.
+const FADER_X: [f32; 2] = [140.0, 292.0];
+
+/// `sources[ch]` is the colour and name of what's plugged into channel `ch`;
+/// `outs`: OUT and AUX are patched.
+pub fn mixer(v: &NodeView, id: NodeId, accent: Color32, m: &mut MixerNode, sources: &[Option<(Color32, String)>], outs: (bool, bool)) {
     use std::sync::atomic::Ordering::Relaxed;
     let z = v.z;
     let p = v.painter;
@@ -467,6 +550,8 @@ pub fn mixer(v: &NodeView, id: NodeId, accent: Color32, m: &mut MixerNode, sourc
     let params = &m.params;
     let any_solo = params.solo.iter().any(|s| s.load(Relaxed));
 
+    v.text(88.0, 31.0, Align2::CENTER_CENTER, "PAN", v.font(7.0), theme::TEXT_FAINT);
+    v.text(118.0, 31.0, Align2::CENTER_CENTER, "AUX", v.font(7.0), theme::AUX);
     for ch in 0..MIXER_CHANNELS {
         let cy = MIX_ROW_Y + MIX_ROW_H * (ch as f32 + 0.5);
         let source = sources.get(ch).and_then(|s| s.as_ref());
@@ -489,26 +574,11 @@ pub fn mixer(v: &NodeView, id: NodeId, accent: Color32, m: &mut MixerNode, sourc
         }
         let audible = !muted && (!any_solo || soloed);
 
-        // Pan.
-        let pan = params.pan[ch].get();
-        let mut norm = (pan + 1.0) * 0.5;
-        let r = knob(
-            v.ui,
-            p,
-            Id::unique(("pan", id, ch)),
-            v.p(88.0, cy - 3.0),
-            9.0 * z,
-            &mut norm,
-            0.5,
-            true,
-            src_col.unwrap_or(theme::TEXT_FAINT),
-            z,
-        );
-        v.hit(r.rect, ParamRef::Pan(ch));
-        if r.dragged() || r.double_clicked() {
-            params.pan[ch].set(norm * 2.0 - 1.0);
-        }
+        // Pan and AUX send.
+        channel_knob(v, id, params, ch, false, Pos2::new(88.0, cy - 3.0), 9.0, src_col.unwrap_or(theme::TEXT_FAINT));
         v.text(88.0, cy + 13.0, Align2::CENTER_CENTER, pan_label(params.pan[ch].get()), v.mono(7.5), theme::TEXT_FAINT);
+        channel_knob(v, id, params, ch, true, Pos2::new(118.0, cy - 3.0), 9.0, theme::AUX);
+        v.text(118.0, cy + 13.0, Align2::CENTER_CENTER, send_label(params.aux[ch].get()), v.mono(7.5), theme::TEXT_FAINT);
 
         // Fader + meter.
         let mut pos = params.fader[ch].get();
@@ -544,47 +614,37 @@ pub fn mixer(v: &NodeView, id: NodeId, accent: Color32, m: &mut MixerNode, sourc
         v.text(w - 12.0, cy + 9.0, Align2::RIGHT_CENTER, name, v.font(8.5), name_col);
     }
 
-    // Master section.
+    // Master and AUX.
     let sep_y = MIX_ROW_Y + MIX_ROW_H * MIXER_CHANNELS as f32 + 4.0;
     p.line_segment([v.p(12.0, sep_y), v.p(w - 12.0, sep_y)], Stroke::new(1.0 * z, theme::NODE_BORDER));
-
-    let cy = sep_y + 18.0;
-    v.text(12.0, cy, Align2::LEFT_CENTER, "MASTER", theme::strong(9.5 * z), theme::TEXT_DIM);
-
-    let mut pos = params.master.get();
-    let fr = hfader(
-        v.ui,
-        p,
-        Id::unique(("master", id)),
-        v.r(fx0, cy - 6.0, fx1, cy + 6.0),
-        &mut pos,
-        theme::TEXT_DIM,
-        true,
-        z,
-    );
-    v.hit(fr.rect, ParamRef::Master);
-    if fr.dragged() || fr.double_clicked() {
-        params.master.set(pos);
+    let muted = params.master_mute.load(Relaxed);
+    for (aux, cy) in [(false, MIX_MASTER_Y), (true, MIX_AUX_Y)] {
+        let (label, col) = if aux { ("AUX", theme::AUX) } else { ("MASTER", theme::TEXT_DIM) };
+        v.text(12.0, cy - 5.0, Align2::LEFT_CENTER, label, theme::strong(9.5 * z), col);
+        bus_fader(v, id, params, aux, v.r(fx0, cy - 6.0, fx1, cy + 6.0), false);
+        let (value, meters) = if aux { (params.aux_master.get(), &m.aux) } else { (params.master.get(), &m.master) };
+        let off = !aux && muted;
+        v.text(
+            w - 12.0,
+            cy - 3.0,
+            Align2::RIGHT_CENTER,
+            if off { "muted".to_owned() } else { format_db(gain_to_db(fader_gain(value))) },
+            v.mono(10.0),
+            if off { theme::MUTE } else { theme::TEXT },
+        );
+        for (i, meter) in meters.iter().enumerate() {
+            let y = cy + 9.0 + i as f32 * 6.0;
+            v.text(fx0 - 8.0, y + 1.5, Align2::CENTER_CENTER, ["L", "R"][i], v.font(7.0), theme::TEXT_FAINT);
+            hmeter(p, v.r(fx0, y, fx1, y + 3.0), meter, z);
+        }
     }
-    v.text(
-        w - 12.0,
-        cy,
-        Align2::RIGHT_CENTER,
-        format_db(gain_to_db(fader_gain(params.master.get()))),
-        v.mono(10.0),
-        theme::TEXT,
-    );
-
-    let my = cy + 14.0;
-    for (i, label) in ["L", "R"].iter().enumerate() {
-        let y = my + i as f32 * 6.0;
-        v.text(fx0 - 8.0, y + 1.5, Align2::CENTER_CENTER, label, v.font(7.0), theme::TEXT_FAINT);
-        hmeter(p, v.r(fx0, y, fx1, y + 3.0), &m.master[i], z);
-    }
+    master_mute(v, id, params, v.r(96.0, MIX_MASTER_Y - 9.0, 128.0, MIX_MASTER_Y + 7.0), "MUTE");
+    main_out(v, 12.0, MIX_MASTER_Y + 10.0, m, accent, outs.0);
+    v.text(12.0, MIX_AUX_Y + 10.0, Align2::LEFT_CENTER, if outs.1 { "Sends by cable" } else { "Not patched" }, v.font(8.5), theme::TEXT_FAINT);
 
     let peak = m.master[0].peak.max(m.master[1].peak);
     let clip = peak >= 0.999;
-    let clip_rect = v.r(w - 40.0, my - 2.0, w - 12.0, my + 11.0);
+    let clip_rect = v.r(w - 40.0, MIX_MASTER_Y + 7.0, w - 12.0, MIX_MASTER_Y + 19.0);
     p.rect_filled(clip_rect, 2.0 * z, if clip { theme::METER_RED } else { theme::CONTROL });
     p.text(
         clip_rect.center(),
@@ -593,22 +653,4 @@ pub fn mixer(v: &NodeView, id: NodeId, accent: Color32, m: &mut MixerNode, sourc
         v.font(7.5),
         if clip { theme::INSET } else { theme::TEXT_FAINT },
     );
-
-    // Main-out indicator: this node feeds the audio device.
-    let level = m.master[0].level.max(m.master[1].level).clamp(0.0, 1.0).sqrt();
-    let col = theme::mix(theme::TEXT_FAINT, accent, level);
-    let sp = v.p(16.0, my + 4.5);
-    p.add(Shape::convex_polygon(
-        vec![
-            sp + vec2(-4.0, -2.0) * z,
-            sp + vec2(-1.5, -2.0) * z,
-            sp + vec2(2.0, -5.0) * z,
-            sp + vec2(2.0, 5.0) * z,
-            sp + vec2(-1.5, 2.0) * z,
-            sp + vec2(-4.0, 2.0) * z,
-        ],
-        col,
-        Stroke::NONE,
-    ));
-    v.text(24.0, my + 4.5, Align2::LEFT_CENTER, "Main out", v.font(8.5), col);
 }

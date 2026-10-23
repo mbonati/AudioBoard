@@ -389,6 +389,8 @@ impl OscParams {
 // ---------------------------------------------------------------------------
 
 pub const MIXER_CHANNELS: usize = 4;
+/// The Console's channels (it shows 12 or all 24).
+pub const CONSOLE_CHANNELS: usize = 24;
 
 /// Fader position (0..1) that corresponds to unity gain.
 pub const FADER_UNITY: f32 = 0.793_700_5; // cbrt(0.5)
@@ -399,27 +401,62 @@ pub fn fader_gain(pos: f32) -> f32 {
     2.0 * p * p * p
 }
 
+/// A mixer's settings, for any number of channels. Each channel also sends
+/// (after its fader and pan) to the AUX output; sends and AUX use the fader
+/// law.
 pub struct MixerParams {
-    pub fader: [AtomicF32; MIXER_CHANNELS],
-    pub pan: [AtomicF32; MIXER_CHANNELS],
-    pub mute: [AtomicBool; MIXER_CHANNELS],
-    pub solo: [AtomicBool; MIXER_CHANNELS],
+    pub fader: Box<[AtomicF32]>,
+    pub pan: Box<[AtomicF32]>,
+    pub mute: Box<[AtomicBool]>,
+    pub solo: Box<[AtomicBool]>,
+    pub aux: Box<[AtomicF32]>,
     pub master: AtomicF32,
-    pub ch_meter: [AtomicF32; MIXER_CHANNELS],
+    /// Silences the main output (the AUX output goes on).
+    pub master_mute: AtomicBool,
+    pub aux_master: AtomicF32,
+    pub ch_meter: Box<[AtomicF32]>,
     pub master_meter: [AtomicF32; 2],
+    pub aux_meter: [AtomicF32; 2],
 }
 
 impl MixerParams {
-    pub fn new() -> Self {
+    pub fn new(channels: usize) -> Self {
+        let each = |v: f32| (0..channels).map(|_| AtomicF32::new(v)).collect();
+        let flags = || (0..channels).map(|_| AtomicBool::new(false)).collect();
         Self {
-            fader: std::array::from_fn(|_| AtomicF32::new(FADER_UNITY)),
-            pan: std::array::from_fn(|_| AtomicF32::new(0.0)),
-            mute: std::array::from_fn(|_| AtomicBool::new(false)),
-            solo: std::array::from_fn(|_| AtomicBool::new(false)),
+            fader: each(FADER_UNITY),
+            pan: each(0.0),
+            mute: flags(),
+            solo: flags(),
+            aux: each(0.0),
             master: AtomicF32::new(0.63), // about -6 dB: friendly to ears
-            ch_meter: std::array::from_fn(|_| AtomicF32::new(0.0)),
+            master_mute: AtomicBool::new(false),
+            aux_master: AtomicF32::new(FADER_UNITY),
+            ch_meter: each(0.0),
             master_meter: std::array::from_fn(|_| AtomicF32::new(0.0)),
+            aux_meter: std::array::from_fn(|_| AtomicF32::new(0.0)),
         }
+    }
+
+    pub fn channels(&self) -> usize {
+        self.fader.len()
+    }
+
+    /// A new set with the same settings (duplicating a mixer).
+    pub fn copy(&self) -> Self {
+        let p = Self::new(self.channels());
+        let r = Ordering::Relaxed;
+        for ch in 0..self.channels() {
+            p.fader[ch].set(self.fader[ch].get());
+            p.pan[ch].set(self.pan[ch].get());
+            p.aux[ch].set(self.aux[ch].get());
+            p.mute[ch].store(self.mute[ch].load(r), r);
+            p.solo[ch].store(self.solo[ch].load(r), r);
+        }
+        p.master.set(self.master.get());
+        p.master_mute.store(self.master_mute.load(r), r);
+        p.aux_master.set(self.aux_master.get());
+        p
     }
 }
 

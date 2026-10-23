@@ -17,7 +17,7 @@ use crate::audio::engine::{Command, MAX_INPUTS, NodeId, Slot, TopoEntry, Topolog
 use crate::audio::midi::{MidiState, note_hz};
 use crate::audio::modules::{ModuleKind, ModuleParams, midi_cc, midi_note, random};
 use crate::audio::params::{
-    AtomicF32, DEFAULT_TEMPO, MIXER_CHANNELS, MixerParams, OSC_PARAMS, OscParams, ParamSpec, Unit, osc,
+    AtomicF32, CONSOLE_CHANNELS, DEFAULT_TEMPO, MIXER_CHANNELS, MixerParams, OSC_PARAMS, OscParams, ParamSpec, Unit, osc,
 };
 use crate::audio::plugin::{self, Control, Loaded, PluginMeta, PluginParam, PluginProcessor, PluginShared};
 use crate::ui::nodes;
@@ -50,6 +50,8 @@ pub struct Cable {
 pub enum NodeType {
     Osc,
     Mixer,
+    /// The 12/24-channel mixer.
+    Console,
     Module(ModuleKind),
     /// A VST3 plugin (added from a path, not from the menu).
     Plugin,
@@ -97,13 +99,14 @@ impl NodeType {
                 NodeType::Module(ModuleKind::MidiCc),
             ],
         ),
-        ("Output", &[NodeType::Mixer]),
+        ("Output", &[NodeType::Mixer, NodeType::Console]),
     ];
 
     pub fn name(self) -> &'static str {
         match self {
             NodeType::Osc => "Oscillator",
             NodeType::Mixer => "Mixer",
+            NodeType::Console => "Console",
             NodeType::Module(k) => k.def().name,
             NodeType::Plugin => "VST3 plugin",
         }
@@ -112,7 +115,8 @@ impl NodeType {
     pub fn hint(self) -> &'static str {
         match self {
             NodeType::Osc => "sine · saw · pulse",
-            NodeType::Mixer => "4 channels",
+            NodeType::Mixer => "4 channels · aux",
+            NodeType::Console => "12 or 24 channels · aux",
             NodeType::Module(k) => k.def().hint,
             NodeType::Plugin => "",
         }
@@ -130,9 +134,32 @@ pub struct OscNode {
 
 pub struct MixerNode {
     pub params: Arc<MixerParams>,
-    pub channels: [MeterState; MIXER_CHANNELS],
+    pub channels: Vec<MeterState>,
     pub master: [MeterState; 2],
+    pub aux: [MeterState; 2],
+    /// The Console's shape (None: the 4-channel Mixer).
+    pub console: Option<Console>,
 }
+
+/// How a Console shows itself: 12 or 24 channels, and which way its strips
+/// run.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Console {
+    pub channels: usize,
+    /// Strips side by side, inputs on the top edge (else stacked, inputs on
+    /// the left).
+    pub horizontal: bool,
+}
+
+impl Default for Console {
+    fn default() -> Self {
+        Self { channels: 12, horizontal: true }
+    }
+}
+
+/// Mixer input names.
+const CHANNEL_NAMES: [&str; CONSOLE_CHANNELS] =
+    ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24"];
 
 /// A knob or fader that a MIDI node can drive.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -141,7 +168,10 @@ pub enum ParamRef {
     Module(usize),
     Fader(usize),
     Pan(usize),
+    /// A mixer channel's AUX send.
+    Aux(usize),
     Master,
+    AuxMaster,
     /// A VST3 parameter id.
     Plugin(u32),
 }
@@ -386,6 +416,7 @@ impl NodeKind {
     pub fn node_type(&self) -> NodeType {
         match self {
             NodeKind::Osc(_) => NodeType::Osc,
+            NodeKind::Mixer(m) if m.console.is_some() => NodeType::Console,
             NodeKind::Mixer(_) => NodeType::Mixer,
             NodeKind::Module(m) => NodeType::Module(m.params.kind),
             NodeKind::Plugin(_) => NodeType::Plugin,
@@ -410,6 +441,8 @@ impl Node {
         } else if let NodeKind::Module(m) = &self.kind {
             // Some panels grow and shrink with their settings.
             crate::ui::modules::size_of(&m.params)
+        } else if let Some(c) = self.console() {
+            crate::ui::console::size(c)
         } else {
             nodes::type_size(self.kind.node_type())
         }
@@ -418,7 +451,7 @@ impl Node {
     pub fn inputs(&self) -> &'static [&'static str] {
         match &self.kind {
             NodeKind::Osc(_) => &["FM", "AM"],
-            NodeKind::Mixer(_) => &["1", "2", "3", "4"],
+            NodeKind::Mixer(m) => &CHANNEL_NAMES[..m.console.map_or(MIXER_CHANNELS, |c| c.channels)],
             NodeKind::Module(m) => m.params.kind.def().inputs,
             NodeKind::Plugin(p) if p.meta.inputs > 0 => &["IN"],
             NodeKind::Plugin(_) => &[],
@@ -428,10 +461,24 @@ impl Node {
     pub fn outputs(&self) -> &'static [&'static str] {
         match &self.kind {
             NodeKind::Osc(_) => &["OUT"],
-            NodeKind::Mixer(_) => &[],
+            NodeKind::Mixer(_) => &["OUT", "AUX"],
             NodeKind::Module(m) => m.params.kind.def().outputs,
             NodeKind::Plugin(_) => &["OUT"],
         }
+    }
+
+    /// The Console's shape (None for every other node).
+    pub fn console(&self) -> Option<Console> {
+        match &self.kind {
+            NodeKind::Mixer(m) => m.console,
+            _ => None,
+        }
+    }
+
+    /// Cables arrive from above: a horizontal Console's inputs sit on its
+    /// top edge.
+    pub fn inputs_on_top(&self) -> bool {
+        !self.collapsed && self.console().is_some_and(|c| c.horizontal)
     }
 
     /// Takes MIDI on a MIDI cable.
@@ -479,6 +526,8 @@ impl Node {
         self.pos
             + if self.collapsed {
                 nodes::collapsed_port(row, false)
+            } else if let Some(c) = self.console() {
+                crate::ui::console::input_offset(c, row)
             } else {
                 nodes::input_offset(self.kind.node_type(), row)
             }
@@ -491,7 +540,10 @@ impl Node {
                 nodes::collapsed_port(row, true)
             } else {
                 // On the right edge, wherever it is now.
-                let offset = nodes::output_offset(self.kind.node_type(), row);
+                let offset = match self.console() {
+                    Some(c) => crate::ui::console::output_offset(c, row),
+                    None => nodes::output_offset(self.kind.node_type(), row),
+                };
                 vec2(self.size().x, offset.y)
             }
     }
@@ -501,9 +553,11 @@ impl Node {
         match (&self.kind, p) {
             (NodeKind::Osc(_), ParamRef::Osc(i)) => OSC_PARAMS.get(i).map(|s| s.name.to_owned()),
             (NodeKind::Module(m), ParamRef::Module(i)) => m.params.kind.def().params.get(i).map(|s| s.name.to_owned()),
-            (NodeKind::Mixer(_), ParamRef::Fader(ch)) if ch < MIXER_CHANNELS => Some(format!("FADER {}", ch + 1)),
-            (NodeKind::Mixer(_), ParamRef::Pan(ch)) if ch < MIXER_CHANNELS => Some(format!("PAN {}", ch + 1)),
+            (NodeKind::Mixer(m), ParamRef::Fader(ch)) if ch < m.params.channels() => Some(format!("FADER {}", ch + 1)),
+            (NodeKind::Mixer(m), ParamRef::Pan(ch)) if ch < m.params.channels() => Some(format!("PAN {}", ch + 1)),
+            (NodeKind::Mixer(m), ParamRef::Aux(ch)) if ch < m.params.channels() => Some(format!("AUX {}", ch + 1)),
             (NodeKind::Mixer(_), ParamRef::Master) => Some("MASTER".to_owned()),
+            (NodeKind::Mixer(_), ParamRef::AuxMaster) => Some("AUX".to_owned()),
             (NodeKind::Plugin(p), ParamRef::Plugin(id)) => p.params.iter().find(|q| q.id == id).map(|q| q.name.clone()),
             _ => None,
         }
@@ -524,16 +578,18 @@ impl Node {
         if let Some(i) = specs.iter().position(|s| s.name == name) {
             return Some(wrap(i));
         }
+        let NodeKind::Mixer(m) = &self.kind else { return None };
         let channel = |prefix: &str| {
             let ch: usize = name.strip_prefix(prefix)?.trim().parse().ok()?;
-            (1..=MIXER_CHANNELS).contains(&ch).then_some(ch - 1)
+            (1..=m.params.channels()).contains(&ch).then_some(ch - 1)
         };
-        match &self.kind {
-            NodeKind::Mixer(_) if name == "MASTER" => Some(ParamRef::Master),
-            NodeKind::Mixer(_) => channel("FADER")
+        match name {
+            "MASTER" => Some(ParamRef::Master),
+            "AUX" => Some(ParamRef::AuxMaster),
+            _ => channel("FADER ")
                 .map(ParamRef::Fader)
-                .or_else(|| channel("PAN").map(ParamRef::Pan)),
-            _ => None,
+                .or_else(|| channel("PAN ").map(ParamRef::Pan))
+                .or_else(|| channel("AUX ").map(ParamRef::Aux)),
         }
     }
 
@@ -557,6 +613,9 @@ impl Node {
                     state.update(src.take(), dt);
                 }
                 for (state, src) in m.master.iter_mut().zip(&m.params.master_meter) {
+                    state.update(src.take(), dt);
+                }
+                for (state, src) in m.aux.iter_mut().zip(&m.params.aux_meter) {
                     state.update(src.take(), dt);
                 }
             }
@@ -687,6 +746,7 @@ impl Graph {
         match ty {
             NodeType::Osc => self.add_osc(pos, audio),
             NodeType::Mixer => self.add_mixer(pos, audio),
+            NodeType::Console => self.add_console(pos, audio),
             NodeType::Module(kind) => self.add_module(kind, pos, audio),
             // Plugins come from a file: see `add_plugin`. The menus never offer this.
             NodeType::Plugin => unreachable!("plugins are added with add_plugin"),
@@ -718,13 +778,18 @@ impl Graph {
     }
 
     pub fn add_mixer(&mut self, pos: Pos2, audio: &AudioHandle) -> NodeId {
-        self.add_mixer_with(pos, Arc::new(MixerParams::new()), audio)
+        self.add_mixer_with(pos, Arc::new(MixerParams::new(MIXER_CHANNELS)), None, audio)
     }
 
-    pub fn add_mixer_with(&mut self, pos: Pos2, params: Arc<MixerParams>, audio: &AudioHandle) -> NodeId {
+    pub fn add_console(&mut self, pos: Pos2, audio: &AudioHandle) -> NodeId {
+        self.add_mixer_with(pos, Arc::new(MixerParams::new(CONSOLE_CHANNELS)), Some(Console::default()), audio)
+    }
+
+    /// A Mixer, or (`console`) a Console; `params` has 4 or 24 channels.
+    pub fn add_mixer_with(&mut self, pos: Pos2, params: Arc<MixerParams>, console: Option<Console>, audio: &AudioHandle) -> NodeId {
         let id = self.alloc_id();
-        let title = self.next_title("MIXER");
-        audio.send(Command::AddNode(id, Slot::new(Box::new(Mixer::new(params.clone())), 1)));
+        let title = self.next_title(if console.is_some() { "CONSOLE" } else { "MIXER" });
+        audio.send(Command::AddNode(id, Slot::new(Box::new(Mixer::new(params.clone())), 2)));
         self.nodes.push(Node {
             id,
             pos,
@@ -732,9 +797,11 @@ impl Graph {
             accent: theme::MIXER_ACCENT,
             collapsed: false,
             kind: NodeKind::Mixer(MixerNode {
+                channels: (0..params.channels()).map(|_| MeterState::default()).collect(),
                 params,
-                channels: Default::default(),
                 master: Default::default(),
+                aux: Default::default(),
+                console,
             }),
         });
         self.sync(audio);
@@ -834,15 +901,8 @@ impl Graph {
                 self.add_osc_with(pos, Arc::new(p), audio)
             }
             NodeKind::Mixer(m) => {
-                let p = MixerParams::new();
-                for ch in 0..MIXER_CHANNELS {
-                    p.fader[ch].set(m.params.fader[ch].get());
-                    p.pan[ch].set(m.params.pan[ch].get());
-                    p.mute[ch].store(m.params.mute[ch].load(Ordering::Relaxed), Ordering::Relaxed);
-                    p.solo[ch].store(m.params.solo[ch].load(Ordering::Relaxed), Ordering::Relaxed);
-                }
-                p.master.set(m.params.master.get());
-                self.add_mixer_with(pos, Arc::new(p), audio)
+                let console = m.console;
+                self.add_mixer_with(pos, Arc::new(m.params.copy()), console, audio)
             }
             NodeKind::Plugin(p) => {
                 let (path, state, pinned) = (p.meta.path.clone(), p.save_state(), p.pinned.clone());
@@ -1057,9 +1117,11 @@ impl Graph {
                     m.params.set(i, value(spec));
                 }
             }
-            (NodeKind::Mixer(m), ParamRef::Fader(ch)) if ch < MIXER_CHANNELS => m.params.fader[ch].set(norm),
-            (NodeKind::Mixer(m), ParamRef::Pan(ch)) if ch < MIXER_CHANNELS => m.params.pan[ch].set(norm * 2.0 - 1.0),
+            (NodeKind::Mixer(m), ParamRef::Fader(ch)) if ch < m.params.channels() => m.params.fader[ch].set(norm),
+            (NodeKind::Mixer(m), ParamRef::Pan(ch)) if ch < m.params.channels() => m.params.pan[ch].set(norm * 2.0 - 1.0),
+            (NodeKind::Mixer(m), ParamRef::Aux(ch)) if ch < m.params.channels() => m.params.aux[ch].set(norm),
             (NodeKind::Mixer(m), ParamRef::Master) => m.params.master.set(norm),
+            (NodeKind::Mixer(m), ParamRef::AuxMaster) => m.params.aux_master.set(norm),
             (NodeKind::Plugin(p), ParamRef::Plugin(id)) => {
                 p.send_param(id, norm as f64);
             }
@@ -1176,6 +1238,23 @@ impl Graph {
         self.sync(audio);
     }
 
+    /// Cables a Console would lose in shape `c` (its inputs past
+    /// `c.channels`).
+    pub fn console_losses(&self, id: NodeId, c: Console) -> usize {
+        self.cables.iter().filter(|k| k.to.node == id && !is_midi(k.to.port) && k.to.port >= c.channels).count()
+    }
+
+    /// Reshapes a Console, unplugging the inputs it no longer has.
+    pub fn set_console(&mut self, id: NodeId, c: Console, audio: &AudioHandle) {
+        let Some(NodeKind::Mixer(m)) = self.node_mut(id).map(|n| &mut n.kind) else { return };
+        if m.console.is_none() {
+            return;
+        }
+        m.console = Some(c);
+        self.cables.retain(|k| k.to.node != id || is_midi(k.to.port) || k.to.port < c.channels);
+        self.sync(audio);
+    }
+
     pub fn would_cycle(&self, from: NodeId, to: NodeId) -> bool {
         from == to || self.reaches(to, from)
     }
@@ -1227,7 +1306,10 @@ impl Graph {
                     inputs[c.to.port] = Some((c.from.node, c.from.port));
                 }
             }
-            order.push(TopoEntry { id, inputs, midi_input });
+            // A mixer feeds the device unless its main output is patched.
+            let mixer = self.node(id).is_some_and(|n| matches!(n.kind, NodeKind::Mixer(_)));
+            let sink = mixer && !self.cables.iter().any(|c| c.from == PortRef { node: id, port: 0 });
+            order.push(TopoEntry { id, inputs, midi_input, sink });
             for c in self.cables.iter().filter(|c| c.from.node == id) {
                 let d = indegree.get_mut(&c.to.node).expect("cable to unknown node");
                 *d -= 1;

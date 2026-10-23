@@ -160,6 +160,61 @@ pub fn knob(
 // Fader
 // ---------------------------------------------------------------------------
 
+/// Vertical peak meter, bottom to top (see [`hmeter`]).
+pub fn vmeter(p: &Painter, rect: Rect, m: &MeterState, z: f32) {
+    p.rect_filled(rect, 1.0 * z, theme::INSET);
+    let y_of = |t: f32| emath::lerp(rect.bottom()..=rect.top(), t);
+    let lvl = if m.level > 1e-4 { meter_norm(m.level) } else { 0.0 };
+    let zones = [(-9.0, theme::METER_GREEN), (-1.0, theme::METER_YELLOW), (METER_MAX_DB, theme::METER_RED)];
+    let mut t0 = 0.0;
+    for (db, color) in zones {
+        let t1 = (db - METER_MIN_DB) / (METER_MAX_DB - METER_MIN_DB);
+        if lvl > t0 {
+            let r = Rect::from_x_y_ranges(rect.x_range(), y_of(lvl.min(t1))..=y_of(t0));
+            p.rect_filled(r, 0.0, alpha(color, 0.9));
+        }
+        t0 = t1;
+    }
+    if m.peak > 1e-4 {
+        let pk = meter_norm(m.peak);
+        let y = y_of(pk);
+        let db = METER_MIN_DB + pk * (METER_MAX_DB - METER_MIN_DB);
+        p.line_segment([pos2(rect.left(), y), pos2(rect.right(), y)], Stroke::new(1.0 * z, meter_color(db)));
+    }
+}
+
+/// Vertical fader, bottom to top, on the same law as [`hfader`].
+#[allow(clippy::too_many_arguments)]
+pub fn vfader(ui: &Ui, p: &Painter, id: Id, rect: Rect, pos: &mut f32, accent: Color32, enabled: bool, z: f32) -> Response {
+    let resp = ui
+        .interact(rect.expand2(vec2(4.0 * z, 6.0 * z)), id, Sense::CLICK | Sense::DRAG)
+        .on_hover_cursor(CursorIcon::ResizeVertical);
+    if resp.dragged() {
+        let fine = ui.input(|i| i.modifiers.shift);
+        let k = if fine { 0.2 } else { 1.0 };
+        *pos = (*pos - resp.drag_delta().y / rect.height() * k).clamp(0.0, 1.0);
+    }
+    if resp.double_clicked() {
+        *pos = FADER_UNITY;
+    }
+
+    let cx = rect.center().x;
+    let track = Rect::from_min_max(pos2(cx - 1.5 * z, rect.top()), pos2(cx + 1.5 * z, rect.bottom()));
+    p.rect_filled(track, 1.5 * z, theme::CONTROL);
+    let y = emath::lerp(rect.bottom()..=rect.top(), *pos);
+    let fill = if enabled { accent } else { theme::TEXT_FAINT };
+    p.rect_filled(Rect::from_min_max(pos2(track.min.x, y), track.max), 1.5 * z, fill);
+
+    // Unity-gain tick.
+    let uy = emath::lerp(rect.bottom()..=rect.top(), FADER_UNITY);
+    p.line_segment([pos2(cx - 7.0 * z, uy), pos2(cx - 4.0 * z, uy)], Stroke::new(1.0 * z, theme::TEXT_FAINT));
+
+    let hot = resp.dragged() || resp.hovered();
+    let thumb = Rect::from_center_size(pos2(cx, y), vec2(14.0 * z, 6.0 * z));
+    p.rect_filled(thumb, 1.5 * z, if hot { theme::TEXT } else { Color32::from_rgb(188, 192, 200) });
+    resp
+}
+
 /// Horizontal fader. `pos` is the 0..1 fader travel.
 #[allow(clippy::too_many_arguments)]
 pub fn hfader(
@@ -282,22 +337,19 @@ pub fn shadow(p: &Painter, rect: Rect, radius: f32, z: f32) {
     p.add(s.as_shape(rect, radius));
 }
 
-/// Patch cable between two screen points: a horizontal S-curve.
-pub fn cable_shape(from: Pos2, to: Pos2, z: f32) -> CubicBezierShape {
+/// Patch cable between two screen points: a horizontal S-curve, or (`top`)
+/// one that drops into an input on a node's top edge.
+pub fn cable_shape(from: Pos2, to: Pos2, top: bool, z: f32) -> CubicBezierShape {
     let dx = ((to.x - from.x).abs() * 0.5).max(40.0 * z);
-    CubicBezierShape::from_points_stroke(
-        [from, from + vec2(dx, 0.0), to - vec2(dx, 0.0), to],
-        false,
-        Color32::TRANSPARENT,
-        Stroke::NONE,
-    )
+    let end = if top { vec2(0.0, ((to.y - from.y).abs() * 0.5).max(40.0 * z)) } else { vec2(dx, 0.0) };
+    CubicBezierShape::from_points_stroke([from, from + vec2(dx, 0.0), to - end, to], false, Color32::TRANSPARENT, Stroke::NONE)
 }
 
 /// `level` (0..1) brightens the cable so active signal paths stand out.
 /// MIDI cables are dashed.
 #[allow(clippy::too_many_arguments)]
-pub fn draw_cable(p: &Painter, from: Pos2, to: Pos2, color: Color32, level: f32, hot: bool, midi: bool, z: f32) {
-    let mut s = cable_shape(from, to, z);
+pub fn draw_cable(p: &Painter, from: Pos2, to: Pos2, top: bool, color: Color32, level: f32, hot: bool, midi: bool, z: f32) {
+    let mut s = cable_shape(from, to, top, z);
     let (width, color) = if hot {
         (2.6, theme::mix(color, Color32::WHITE, 0.3))
     } else {
@@ -315,8 +367,8 @@ pub fn draw_cable(p: &Painter, from: Pos2, to: Pos2, color: Color32, level: f32,
 }
 
 /// Minimum distance from `pt` to the cable curve.
-pub fn cable_distance(from: Pos2, to: Pos2, pt: Pos2, z: f32) -> f32 {
-    let shape = cable_shape(from, to, z);
+pub fn cable_distance(from: Pos2, to: Pos2, top: bool, pt: Pos2, z: f32) -> f32 {
+    let shape = cable_shape(from, to, top, z);
     let mut prev = shape.sample(0.0);
     let mut best = f32::INFINITY;
     for i in 1..=32 {

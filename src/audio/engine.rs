@@ -29,7 +29,7 @@ pub const BLOCK: usize = 64;
 pub const PASS_BLOCKS: usize = 32;
 /// Longest pass, in frames: also the largest block plugins are given.
 pub const PASS: usize = BLOCK * PASS_BLOCKS;
-pub const MAX_INPUTS: usize = 8;
+pub const MAX_INPUTS: usize = 24;
 
 #[derive(Clone, Copy)]
 pub struct ProcessCtx {
@@ -142,11 +142,6 @@ pub trait Processor: Send {
     /// block by block, `[block][port]`. For nodes that say [`Self::wants_pass`].
     fn process_pass(&mut self, _ctx: &ProcessCtx, _inputs: &PassInputs, _outputs: &mut [Box<[Buf]>], _n: usize) {}
 
-    /// Sinks feed the audio device: their first output is summed into the mix.
-    fn is_sink(&self) -> bool {
-        false
-    }
-
     /// MIDI this node produced in its last `process` (nodes with a MIDI output).
     fn midi_out(&self) -> Option<&MidiBuf> {
         None
@@ -181,6 +176,9 @@ pub struct TopoEntry {
     pub inputs: [Option<(NodeId, usize)>; MAX_INPUTS],
     /// Node feeding the MIDI input.
     pub midi_input: Option<NodeId>,
+    /// Feeds the audio device: its first output is summed into the mix (a
+    /// mixer whose main output isn't patched elsewhere).
+    pub sink: bool,
 }
 
 /// Nodes in processing order (every node comes after its sources).
@@ -477,8 +475,8 @@ impl Engine {
                 }
             }
 
-            if let Some(slot) = nodes.get(&entry.id)
-                && slot.proc.is_sink()
+            if entry.sink
+                && let Some(slot) = nodes.get(&entry.id)
             {
                 for (k, m) in mix[..blocks].iter_mut().enumerate() {
                     let n = len(k);

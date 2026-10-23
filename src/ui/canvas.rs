@@ -20,7 +20,7 @@ use super::theme::{self, alpha};
 use super::widgets;
 use crate::audio::AudioHandle;
 use crate::audio::engine::NodeId;
-use crate::graph::{Cable, Graph, Group, GroupId, MIDI_PORT, NodeKind, NodeType, PortRef, Target, is_midi};
+use crate::graph::{Cable, Console, Graph, Group, GroupId, MIDI_PORT, NodeKind, NodeType, PortRef, Target, is_midi};
 use crate::project::{self, Preset};
 
 const GRID: f32 = 24.0;
@@ -131,6 +131,8 @@ enum Action {
     StartMapping(NodeId),
     CancelMapping,
     SetTarget(NodeId, Option<Target>),
+    /// Reshape a Console (12/24 channels, horizontal/vertical).
+    SetConsole(NodeId, Console),
 }
 
 /// A module title being edited in place.
@@ -597,9 +599,14 @@ impl Editor {
         // its members' outer ports on its card; inner ports are hidden.
         let mut in_pos: HashMap<PortRef, Pos2> = HashMap::new();
         let mut out_pos: HashMap<PortRef, Pos2> = HashMap::new();
+        // Inputs on a node's top edge: their cables drop in from above.
+        let mut on_top: HashSet<PortRef> = HashSet::new();
         for n in graph.nodes.iter().filter(|n| !hidden.contains(&n.id)) {
             for port in n.input_ports() {
                 in_pos.insert(PortRef { node: n.id, port }, self.to_screen(n.input_pos(port)));
+                if n.inputs_on_top() {
+                    on_top.insert(PortRef { node: n.id, port });
+                }
             }
             for port in n.output_ports() {
                 out_pos.insert(PortRef { node: n.id, port }, self.to_screen(n.output_pos(port)));
@@ -618,6 +625,7 @@ impl Editor {
             cable: Cable,
             a: Pos2,
             b: Pos2,
+            top: bool,
             color: Color32,
             level: f32,
             midi: bool,
@@ -631,6 +639,7 @@ impl Editor {
                     cable: *c,
                     a: *out_pos.get(&c.from)?,
                     b: *in_pos.get(&c.to)?,
+                    top: on_top.contains(&c.to),
                     color: src.accent,
                     level: src.signal_level(),
                     midi: is_midi(c.to.port),
@@ -652,7 +661,7 @@ impl Editor {
             .and_then(|p| {
                 wires
                     .iter()
-                    .map(|w| (w.cable, widgets::cable_distance(w.a, w.b, p, z)))
+                    .map(|w| (w.cable, widgets::cable_distance(w.a, w.b, w.top, p, z)))
                     .filter(|(_, d)| *d < 7.0 * z.max(0.7))
                     .min_by(|a, b| a.1.total_cmp(&b.1))
                     .map(|(c, _)| c)
@@ -744,7 +753,7 @@ impl Editor {
 
         // --- Cables ------------------------------------------------------
         for w in &wires {
-            widgets::draw_cable(&painter, w.a, w.b, w.color, w.level, hovered_cable == Some(w.cable), w.midi, z);
+            widgets::draw_cable(&painter, w.a, w.b, w.top, w.color, w.level, hovered_cable == Some(w.cable), w.midi, z);
         }
 
         // --- Nodes -------------------------------------------------------
@@ -820,7 +829,16 @@ impl Editor {
             } else {
                 match &mut node.kind {
                     NodeKind::Osc(o) => nodes::osc(&view, id, accent, o, &connected, out),
-                    NodeKind::Mixer(m) => nodes::mixer(&view, id, accent, m, &sources),
+                    NodeKind::Mixer(m) => {
+                        let outs = (out, outputs.contains(&PortRef { node: id, port: 1 }));
+                        if m.console.is_some() {
+                            if let Some(shape) = super::console::draw(&view, id, accent, m, &sources, outs) {
+                                actions.push(Action::SetConsole(id, shape));
+                            }
+                        } else {
+                            nodes::mixer(&view, id, accent, m, &sources, outs);
+                        }
+                    }
                     NodeKind::Plugin(p) => {
                         let input = connected.first().copied().unwrap_or(false);
                         let events = plugin_node::draw(&view, id, accent, p, (input, midi_in), out, now);
@@ -911,8 +929,10 @@ impl Editor {
             if let (Some(&anchor), Some(src), Some(p)) = (anchor, graph.node(d.anchor.node), pointer) {
                 let end = drop_target.map_or(p, |(_, pos)| pos);
                 let (a, b) = if d.from_output { (anchor, end) } else { (end, anchor) };
+                let input = if d.from_output { drop_target.map(|(pr, _)| pr) } else { Some(d.anchor) };
+                let top = input.is_some_and(|pr| on_top.contains(&pr));
                 let color = if drop_target.is_some() { src.accent } else { alpha(src.accent, 0.7) };
-                widgets::draw_cable(&painter, a, b, color, 0.0, drop_target.is_some(), is_midi(d.anchor.port), z);
+                widgets::draw_cable(&painter, a, b, top, color, 0.0, drop_target.is_some(), is_midi(d.anchor.port), z);
                 if drop_target.is_none() {
                     painter.circle_filled(p, 3.0 * z, color);
                 }
@@ -1435,6 +1455,12 @@ impl Editor {
                     self.selected = graph.duplicate_nodes(&ids, audio).into_iter().collect();
                 }
                 Action::ToggleCollapse(id) => graph.toggle_collapsed(id),
+                Action::SetConsole(id, shape) => {
+                    let lost = graph.console_losses(id, shape);
+                    if lost == 0 || confirm_unplug(lost) {
+                        graph.set_console(id, shape, audio);
+                    }
+                }
                 Action::CollapseSelection => self.collapse_selection(graph),
                 Action::CollapseAll(collapsed) => graph.set_all_collapsed(collapsed),
                 Action::GroupSelection => {
@@ -1726,6 +1752,22 @@ fn confirm_removal(graph: &Graph, ids: &[NodeId]) -> bool {
     match answer {
         rfd::MessageDialogResult::Ok => true,
         rfd::MessageDialogResult::Custom(label) => label == "Delete",
+        _ => false,
+    }
+}
+
+/// Asks before going down to 12 channels unplugs `lost` cables.
+fn confirm_unplug(lost: usize) -> bool {
+    let cables = if lost == 1 { "1 cable".to_owned() } else { format!("{lost} cables") };
+    let answer = rfd::MessageDialog::new()
+        .set_level(rfd::MessageLevel::Warning)
+        .set_title("12 channels")
+        .set_description(format!("Channels 13–24 have {cables} plugged in.\nGoing to 12 channels unplugs them."))
+        .set_buttons(rfd::MessageButtons::OkCancelCustom("Unplug".into(), "Cancel".into()))
+        .show();
+    match answer {
+        rfd::MessageDialogResult::Ok => true,
+        rfd::MessageDialogResult::Custom(label) => label == "Unplug",
         _ => false,
     }
 }

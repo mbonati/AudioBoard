@@ -380,8 +380,29 @@ Plugins run inside AudioBoard: a faulty plugin can make the application quit. VS
 
 ### Output
 
-**Mixer (4 channels)**: for each channel a volume fader, pan (balance on stereo signals), Mute/Solo
-and a meter; a stereo master bus with L/R meters and a clip indicator. The mixer feeds the audio device.
+**Mixer (4 channels)**: for each channel a volume fader, pan (balance on stereo signals), an **AUX** send,
+Mute/Solo and a meter. Below the channels are a stereo master bus with **MUTE**, L/R meters and a clip
+indicator, and the AUX bus with its own level and meters.
+
+**Console (12 or 24 channels)**: the same mixer, larger, with two shapes chosen with its switches.
+**H** (horizontal) lays the channel strips side by side, as on a mixing desk, with vertical faders; the
+inputs line the node's top edge and their cables drop in from above. **V** (vertical) stacks the strips as
+rows, with the inputs down the left edge. **12 / 24** sets the number of channels. Going back to 12 asks first
+if channels 13–24 have cables, since it unplugs them.
+
+**Outputs, AUX and MUTE.** Every mixer has two outputs on its right edge:
+
+- **OUT** carries the master mix. While OUT is unpatched, the mixer feeds the audio device ("Main out").
+  Patch OUT into another mixer to use it as a submix: it then reaches the device only through that cable,
+  never twice.
+- **AUX** carries the sum of the channels' AUX sends. The sends are taken after each channel's fader, pan
+  and mute.
+- Master **MUTE** silences the main mix only: the AUX sends keep playing.
+
+For example, a dry mix plus an effects layer: the tracks go into Mixer 1, which plays on the device. Turn up
+AUX on the tracks you want effected, patch Mixer 1's AUX into a Reverb (or a chain of effects), and the
+Reverb into a second mixer. That mixer also plays on the device, so you hear the clean tracks plus the
+effected layer, each with its own level. MUTE on Mixer 1 leaves only the effected layer.
 
 ### Audio buffer, load and limiter
 
@@ -510,7 +531,7 @@ src/
 │   │               plugins in one call), per-block MIDI events, global clock in beats, precomputed
 │   │               topological order, lookahead limiter, denormals flushed to zero
 │   ├── fastmath.rs fast sine, exp2, log2 and tanh for per-sample DSP (error < 1e-6)
-│   ├── dsp.rs      Oscillator and Mixer
+│   ├── dsp.rs      Oscillator and Mixer (any number of channels, main and AUX outputs)
 │   ├── modules/    drone, random, granular, resonator, filter, equalizer (after Waves F6), delay, pingpong,
 │   │               reverb, midi_cc, midi_note, sequencer, arpeggiator, midi_in, midicer (after Vermona's
 │   │               meloDICER)
@@ -535,6 +556,7 @@ src/
 │   ├── palette.rs  palette of nodes and library modules, with dragging onto the canvas
 │   ├── plugin_node.rs panel of plugin nodes (editor, parameters, MIDI, knobs)
 │   ├── nodes.rs    layout and drawing of the oscillator and mixer, shared controls
+│   ├── console.rs  the Console's panel: horizontal (inputs on top) or vertical, 12 or 24 channels
 │   ├── modules.rs  common module panel and their displays
 │   ├── frakture.rs the Frakture node's panel: HEXAGON, EFFECTS and MOTION pages
 │   ├── equalizer.rs the Equalizer's panel: graph and band markers, analyzer (FFT), band controls
