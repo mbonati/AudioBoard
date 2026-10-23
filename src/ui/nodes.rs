@@ -122,6 +122,8 @@ fn radius(r: f32, z: f32) -> u8 {
 pub struct FrameActions {
     pub close: bool,
     pub toggle_collapse: bool,
+    /// The bypass switch (effects only) was clicked.
+    pub bypass: bool,
 }
 
 /// Card, header (collapse chevron, activity LED, title, close button)
@@ -189,6 +191,27 @@ pub fn frame(v: &NodeView, node: &Node, selected: bool) -> FrameActions {
         p.line_segment([c + vec2(-d, d), c + vec2(d, -d)], Stroke::new(1.2 * z, col));
     }
 
+    // Bypass: a power switch, lit while the effect is on.
+    let mut bypass = false;
+    if node.is_effect() {
+        let off = node.bypassed();
+        let bp_rect = Rect::from_center_size(v.p(size.x - 34.0, HEADER_H * 0.5), Vec2::splat(16.0 * z));
+        let resp = v
+            .ui
+            .interact(bp_rect, Id::unique(("bypass", node.id)), Sense::CLICK)
+            .on_hover_cursor(CursorIcon::PointingHand)
+            .on_hover_text(if off { "Bypassed: click to switch the effect back on (B)" } else { "Bypass: hear the dry signal (B)" });
+        if resp.hovered() {
+            p.circle_filled(bp_rect.center(), 8.0 * z, theme::CONTROL_HI);
+        }
+        let col = if off { theme::METER_YELLOW } else { node.accent };
+        power_icon(p, bp_rect.center(), 4.0 * z, Stroke::new(1.3 * z, col));
+        if off {
+            v.text(size.x - 46.0, HEADER_H * 0.5, Align2::RIGHT_CENTER, "BYPASS", theme::strong(8.0 * z), theme::METER_YELLOW);
+        }
+        bypass = resp.clicked();
+    }
+
     if selected {
         p.rect_stroke(rect, RADIUS * z, Stroke::new(1.5 * z, node.accent), StrokeKind::Outside);
     } else {
@@ -197,7 +220,28 @@ pub fn frame(v: &NodeView, node: &Node, selected: bool) -> FrameActions {
     FrameActions {
         close: close.clicked(),
         toggle_collapse: fold.clicked(),
+        bypass,
     }
+}
+
+/// A power symbol: a ring open at the top, and a bar through the gap.
+fn power_icon(p: &Painter, c: Pos2, r: f32, stroke: Stroke) {
+    let arc: Vec<Pos2> = (0..=20)
+        .map(|k| {
+            let a = -std::f32::consts::FRAC_PI_2 + 0.7 + (std::f32::consts::TAU - 1.4) * k as f32 / 20.0;
+            c + vec2(a.cos(), a.sin()) * r
+        })
+        .collect();
+    p.add(Shape::line(arc, stroke));
+    p.line_segment([c + vec2(0.0, -r * 1.25), c + vec2(0.0, -r * 0.2)], stroke);
+}
+
+/// A bypassed effect's body, dimmed over its controls.
+pub fn bypass_veil(v: &NodeView, node: &Node) {
+    let size = node.size();
+    let rect = v.r(0.0, HEADER_H, size.x, size.y);
+    let bottom = CornerRadius { nw: 0, ne: 0, sw: radius(RADIUS, v.z), se: radius(RADIUS, v.z) };
+    v.painter.rect_filled(rect, bottom, alpha(theme::NODE_BODY, 0.55));
 }
 
 // ---------------------------------------------------------------------------

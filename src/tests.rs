@@ -745,6 +745,7 @@ fn projects_round_trip_through_a_file() {
     g.set_console(console, crate::graph::Console { channels: 24, horizontal: false }, &a);
     mixer_params(&g, console).master_mute.store(true, Ordering::Relaxed);
     mixer_params(&g, console).aux[20].set(0.7);
+    g.node(reverb_id).unwrap().set_bypass(true);
     osc_params(&g, x).set_waveform(Waveform::Square);
     g.set_collapsed(filter, true);
     let gid = g.create_group(&[random, drone_id]).unwrap();
@@ -2742,4 +2743,179 @@ fn pops_waveforms_can_be_reshaped() {
             assert!(rms_of(&hit) > 0.001 && peak_of(&hit) < 4.0, "{inst}: {} {}", rms_of(&hit), peak_of(&hit));
         }
     }
+}
+
+fn tape_params() -> Arc<ModuleParams> {
+    let p = Arc::new(ModuleParams::new(ModuleKind::Tape));
+    p.set(crate::audio::modules::tape::WOW, 0.0);
+    p.set(crate::audio::modules::tape::FLUTTER, 0.0);
+    p
+}
+
+/// The amplitude of the `hz` component of `buf` (a whole number of cycles
+/// at 48 kHz).
+fn tone_amp(buf: &[f32], hz: f32) -> f32 {
+    let (mut re, mut im) = (0.0f64, 0.0f64);
+    for (n, &x) in buf.iter().enumerate() {
+        let a = std::f64::consts::TAU * hz as f64 * n as f64 / 48_000.0;
+        re += x as f64 * a.cos();
+        im += x as f64 * a.sin();
+    }
+    (2.0 * (re * re + im * im).sqrt() / buf.len() as f64) as f32
+}
+
+#[test]
+fn tape_is_clean_when_quiet_and_saturates_when_driven() {
+    use crate::audio::modules::tape::{INPUT, Tape, viz};
+    let p = tape_params();
+    let mut t = Tape::new(p.clone(), 48_000.0);
+    let (l, _) = drive_stereo(&mut t, 24_000, sine(1000.0, 0.05), None);
+    let tail = &l[14_400..24_000];
+    let fundamental = tone_amp(tail, 1000.0);
+    assert!((fundamental / 0.05 - 1.0).abs() < 0.12, "unity when quiet: {fundamental}");
+    assert!(tone_amp(tail, 3000.0) < fundamental * 0.003, "clean when quiet");
+    // Driven 18 dB (AUTO keeps the level): squeezed, with harmonics.
+    p.set(INPUT, 18.0);
+    let mut t = Tape::new(p.clone(), 48_000.0);
+    let (l, _) = drive_stereo(&mut t, 24_000, sine(1000.0, 0.25), None);
+    let tail = &l[14_400..24_000];
+    let fundamental = tone_amp(tail, 1000.0);
+    assert!(fundamental < 0.25 * 0.7, "squeezed: {fundamental}");
+    assert!(tone_amp(tail, 3000.0) > fundamental * 0.03, "third harmonic");
+    assert!(p.viz[viz::SAT].get() < -1.0, "the panel sees it: {}", p.viz[viz::SAT].get());
+}
+
+#[test]
+fn tape_lines_up_dry_and_wet() {
+    use crate::audio::modules::tape::{MIX, Tape};
+    let click = |n: usize| if n == 4800 { (0.5, 0.5) } else { (0.0, 0.0) };
+    let peak_at = |mix: f32| {
+        let p = tape_params();
+        p.set(MIX, mix);
+        let mut t = Tape::new(p, 48_000.0);
+        let (l, _) = drive_stereo(&mut t, 9600, click, None);
+        l.iter().enumerate().max_by(|a, b| a.1.abs().total_cmp(&b.1.abs())).unwrap().0
+    };
+    let (dry, wet) = (peak_at(0.0), peak_at(1.0));
+    assert!(dry.abs_diff(wet) <= 3, "dry {dry}, wet {wet}");
+}
+
+#[test]
+fn tape_stops_and_spins_back_up() {
+    use crate::audio::modules::tape::{Tape, data, viz};
+    let p = tape_params();
+    let mut t = Tape::new(p.clone(), 48_000.0);
+    let tone = sine(220.0, 0.2);
+    let (running, _) = drive_stereo(&mut t, 24_000, &tone, None);
+    let level = rms_of(&running[12_000..]);
+    p.data[data::RUNNING].set(0.0);
+    let (stopping, _) = drive_stereo(&mut t, 72_000, &tone, None);
+    assert!(rms_of(&stopping[57_600..]) < 1e-4, "stopped");
+    assert_eq!(p.viz[viz::SPEED].get(), 0.0);
+    // Slowing down: the pitch falls (fewer crossings late than early).
+    let ups = |s: &[f32]| s.windows(2).filter(|w| w[0] < 0.0 && w[1] >= 0.0).count();
+    assert!(ups(&stopping[24_000..33_600]) < ups(&stopping[..9600]));
+    p.data[data::RUNNING].set(1.0);
+    let (starting, _) = drive_stereo(&mut t, 48_000, &tone, None);
+    assert_eq!(p.viz[viz::SPEED].get(), 1.0);
+    let back = rms_of(&starting[33_600..]);
+    assert!((back / level - 1.0).abs() < 0.1, "back to {back} from {level}");
+    assert!(starting.iter().all(|s| s.is_finite() && s.abs() <= 1.0));
+}
+
+#[test]
+fn tape_wow_and_flutter_bend_the_pitch() {
+    use crate::audio::modules::tape::{FLUTTER, Tape, WOW, data};
+    let spread = |wow: f32| {
+        let p = tape_params();
+        p.data[data::MACHINE].set(2.0); // cassette: the most wobble
+        p.set(WOW, wow);
+        p.set(FLUTTER, wow);
+        let mut t = Tape::new(p, 48_000.0);
+        let (l, _) = drive_stereo(&mut t, 96_000, sine(1000.0, 0.1), None);
+        // Periods between upward crossings (interpolated), after settling.
+        let mut at = Vec::new();
+        for (n, w) in l.windows(2).enumerate().skip(4800) {
+            if w[0] < 0.0 && w[1] >= 0.0 {
+                at.push(n as f32 + w[0] / (w[0] - w[1]));
+            }
+        }
+        let periods: Vec<f32> = at.windows(2).map(|w| w[1] - w[0]).collect();
+        let lo = periods.iter().copied().fold(f32::MAX, f32::min);
+        let hi = periods.iter().copied().fold(0.0, f32::max);
+        (hi - lo) / 48.0
+    };
+    assert!(spread(0.0) < 0.002, "steady: {}", spread(0.0));
+    assert!(spread(1.0) > 0.01, "wobbling: {}", spread(1.0));
+}
+
+#[test]
+fn tape_hisses_only_when_asked_and_then_rests() {
+    use crate::audio::modules::tape::{HISS, Tape};
+    let p = tape_params();
+    let silent = |_: usize| (0.0, 0.0);
+    let mut t = Tape::new(p.clone(), 48_000.0);
+    let (l, _) = drive_stereo(&mut t, 48_000, silent, None);
+    assert!(l.iter().all(|s| *s == 0.0), "no hiss by default");
+    p.set(HISS, 1.0);
+    let (l, _) = drive_stereo(&mut t, 48_000, silent, None);
+    let db = 20.0 * rms_of(&l[24_000..]).log10();
+    assert!((-75.0..-40.0).contains(&db), "hiss at {db} dB");
+}
+
+#[test]
+fn every_tape_setting_stays_finite_and_bounded() {
+    use crate::audio::modules::tape::{AGE, BIAS, HISS, INPUT, Tape, data};
+    for machine in 0..3 {
+        for speed in 0..3 {
+            for tape in 0..3 {
+                for eq in 0..2 {
+                    let p = tape_params();
+                    for (i, v) in [(data::MACHINE, machine), (data::SPEED, speed), (data::TAPE, tape), (data::EQ, eq)] {
+                        p.data[i].set(v as f32);
+                    }
+                    p.set(INPUT, 18.0);
+                    p.set(BIAS, if eq == 0 { -1.0 } else { 1.0 });
+                    p.set(AGE, 1.0);
+                    p.set(HISS, 1.0);
+                    let mut t = Tape::new(p, 48_000.0);
+                    let (l, r) = drive_stereo(&mut t, 9600, sine(80.0, 0.9), None);
+                    assert!(l.iter().chain(&r).all(|s| s.is_finite() && s.abs() <= 1.0));
+                    assert!(rms_of(&l[4800..]) > 0.01, "{machine} {speed} {tape} {eq}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn effects_bypass_without_clicks() {
+    use crate::audio::modules::filter;
+    let (mut g, a, mut e) = setup();
+    let x = g.add_osc(pos2(0.0, 0.0), &a);
+    osc_params(&g, x).set(osc::FREQ, 4000.0);
+    let f = g.add_module(ModuleKind::Filter, pos2(0.0, 0.0), &a);
+    module_params(&g, f).set(filter::CUTOFF, 80.0);
+    let m = g.add_mixer(pos2(0.0, 0.0), &a);
+    g.connect(port(x, 0), port(f, 0), &a);
+    g.connect(port(f, 0), port(m, 0), &a);
+    render_buf(&mut e, 9600);
+    let filtered = rms_of(&render_buf(&mut e, 9600));
+    // Bypassed: the oscillator straight through, faded in.
+    g.node(f).unwrap().set_bypass(true);
+    let fade = render_buf(&mut e, 9600);
+    let dry = rms_of(&render_buf(&mut e, 9600));
+    assert!(dry > filtered * 10.0, "bypassed {dry}, filtered {filtered}");
+    // No jumps bigger than the sine itself makes (4 kHz at this level).
+    let steepest = fade.chunks(2).collect::<Vec<_>>().windows(2).map(|w| (w[1][0] - w[0][0]).abs()).fold(0.0, f32::max);
+    let sine_step = dry * std::f32::consts::SQRT_2 * std::f32::consts::TAU * 4000.0 / 48_000.0;
+    assert!(steepest <= sine_step * 1.1, "click: {steepest} > {sine_step}");
+    // And back.
+    g.node(f).unwrap().set_bypass(false);
+    render_buf(&mut e, 9600);
+    assert!((rms_of(&render_buf(&mut e, 9600)) - filtered).abs() < filtered * 0.2 + 1e-4);
+    // Only effects bypass.
+    g.node(x).unwrap().set_bypass(true);
+    assert!(!g.node(x).unwrap().bypassed());
+    assert!(g.node(f).unwrap().is_effect() && !g.node(m).unwrap().is_effect());
 }

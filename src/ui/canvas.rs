@@ -133,6 +133,9 @@ enum Action {
     SetTarget(NodeId, Option<Target>),
     /// Reshape a Console (12/24 channels, horizontal/vertical).
     SetConsole(NodeId, Console),
+    /// Bypass these effects, or switch them back on if all are bypassed.
+    ToggleBypass(Vec<NodeId>),
+    BypassSelection,
 }
 
 /// A module title being edited in place.
@@ -805,6 +808,9 @@ impl Editor {
             if header.close {
                 actions.push(Action::Remove(id));
             }
+            if header.bypass {
+                actions.push(Action::ToggleBypass(vec![id]));
+            }
             let on_header = body
                 .interact_pointer_pos()
                 .is_some_and(|p| p.y < rect_s.top() + nodes::HEADER_H * z);
@@ -880,6 +886,10 @@ impl Editor {
                         }
                     }
                 }
+            }
+
+            if node.bypassed() {
+                nodes::bypass_veil(&view, node);
             }
 
             // Ports last so they sit on top of everything else in the node.
@@ -1052,7 +1062,7 @@ impl Editor {
                     }
                 }
                 MenuTarget::Node(id) => match graph.node(id) {
-                    Some(n) => node_menu(ui, n.collapsed, graph.group_of(id).is_some(), &mut actions),
+                    Some(n) => node_menu(ui, n.collapsed, n.is_effect(), graph.group_of(id).is_some(), &mut actions),
                     None => ui.close(),
                 },
                 MenuTarget::Group(gid) => match graph.group(gid) {
@@ -1272,6 +1282,15 @@ impl Editor {
                 actions.push(Action::CollapseSelection);
             }
         }
+        if !cmd && !shift && pressed(Key::B) {
+            // The effect under the pointer, else the selected ones.
+            let hovered = ui.input(|i| i.pointer.hover_pos()).and_then(|q| self.node_under(graph, q));
+            match hovered {
+                Some(id) => actions.push(Action::ToggleBypass(vec![id])),
+                None if has_selection => actions.push(Action::BypassSelection),
+                None => {}
+            }
+        }
         if !cmd && pressed(Key::F) {
             actions.push(if shift { Action::FitSelection } else { Action::FitAll });
         }
@@ -1455,6 +1474,11 @@ impl Editor {
                     self.selected = graph.duplicate_nodes(&ids, audio).into_iter().collect();
                 }
                 Action::ToggleCollapse(id) => graph.toggle_collapsed(id),
+                Action::ToggleBypass(ids) => toggle_bypass(graph, &ids),
+                Action::BypassSelection => {
+                    let ids = self.ordered_selection(graph);
+                    toggle_bypass(graph, &ids);
+                }
                 Action::SetConsole(id, shape) => {
                     let lost = graph.console_losses(id, shape);
                     if lost == 0 || confirm_unplug(lost) {
@@ -1773,7 +1797,17 @@ fn confirm_unplug(lost: usize) -> bool {
 }
 
 /// Acts on the selection (right-clicking a node selects it first).
-fn node_menu(ui: &mut Ui, collapsed: bool, in_group: bool, actions: &mut Vec<Action>) {
+/// Bypasses the effects among `ids`, or switches them all back on when
+/// every one already is.
+fn toggle_bypass(graph: &Graph, ids: &[NodeId]) {
+    let effects: Vec<_> = ids.iter().filter_map(|&id| graph.node(id)).filter(|n| n.is_effect()).collect();
+    let on = effects.iter().any(|n| !n.bypassed());
+    for n in effects {
+        n.set_bypass(on);
+    }
+}
+
+fn node_menu(ui: &mut Ui, collapsed: bool, effect: bool, in_group: bool, actions: &mut Vec<Action>) {
     let fold = if collapsed { "Expand" } else { "Collapse" };
     let mut item = |label: &str, hint: &str, action: Action| {
         if menu_item(ui, label, hint) {
@@ -1783,6 +1817,9 @@ fn node_menu(ui: &mut Ui, collapsed: bool, in_group: bool, actions: &mut Vec<Act
     };
     item(fold, "C", Action::CollapseSelection);
     item("Zoom to node", "Z", Action::FocusSelection);
+    if effect {
+        item("Bypass on / off", "B", Action::BypassSelection);
+    }
     item("Make module", "Cmd+G", Action::GroupSelection);
     item("Duplicate", "Cmd+D", Action::DuplicateSelection);
     item("Delete", "Del", Action::RemoveSelection);

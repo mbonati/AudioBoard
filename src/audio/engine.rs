@@ -13,7 +13,7 @@
 use std::collections::HashMap;
 use std::hash::{BuildHasherDefault, Hasher};
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::time::Instant;
 
@@ -156,7 +156,15 @@ pub struct Slot {
     outputs: Box<[Box<[Buf]>]>,
     /// MIDI out of each block (nodes with a MIDI output only).
     midi: Box<[MidiBuf]>,
+    /// Bypassed: input 0 goes straight to output 0. The node keeps running
+    /// underneath, so switching back is seamless.
+    bypass: Arc<AtomicBool>,
+    /// How far output 0 has crossfaded to the input (0: the node's own).
+    dry: f32,
 }
+
+/// Bypass crossfades take this long.
+const BYPASS_SECONDS: f32 = 0.015;
 
 impl Slot {
     pub fn new(proc: Box<dyn Processor>, outputs: usize) -> Box<Self> {
@@ -166,7 +174,31 @@ impl Slot {
             proc,
             outputs: blocks.collect(),
             midi: vec![MidiBuf::default(); midi].into_boxed_slice(),
+            bypass: Arc::new(AtomicBool::new(false)),
+            dry: 0.0,
         })
+    }
+
+    /// The switch the UI flips to bypass this node.
+    pub fn bypass(&self) -> Arc<AtomicBool> {
+        self.bypass.clone()
+    }
+
+    /// Bypass: crossfades block `k`'s output 0 to `input` (silence when
+    /// unpatched) and back.
+    fn blend_bypass(&mut self, k: usize, input: Option<&Buf>, n: usize, step: f32) {
+        let target = if self.bypass.load(Ordering::Relaxed) { 1.0 } else { 0.0 };
+        if self.dry == 0.0 && target == 0.0 {
+            return;
+        }
+        let Some(out) = self.outputs[k].first_mut() else { return };
+        for i in 0..n {
+            self.dry = if target > self.dry { (self.dry + step).min(1.0) } else { (self.dry - step).max(0.0) };
+            for (c, ch) in out.iter_mut().enumerate() {
+                let x = input.map_or(0.0, |b| b[c][i]);
+                ch[i] += (x - ch[i]) * self.dry;
+            }
+        }
     }
 }
 
@@ -406,6 +438,7 @@ impl Engine {
         for buf in mix[..blocks].iter_mut() {
             *buf = [[0.0; BLOCK]; 2];
         }
+        let bypass_step = 1.0 / (BYPASS_SECONDS * ctx.sample_rate);
         let (slowest, fastest) = TEMPO_RANGE;
         ctx.beats_per_sample = self.shared.tempo.get().clamp(slowest, fastest) as f64 / (60.0 * ctx.sample_rate as f64);
         ctx.playing = self.shared.running.load(Ordering::Relaxed);
@@ -444,6 +477,9 @@ impl Engine {
                     midi_connected: entry.midi_input.is_some(),
                 };
                 slot.proc.process_pass(&pass, &pass_inputs, &mut slot.outputs[..blocks], frames);
+                for k in 0..blocks {
+                    slot.blend_bypass(k, connected.then(|| &pass_audio[k]), len(k), bypass_step);
+                }
             } else {
                 for k in 0..blocks {
                     let n = len(k);
@@ -466,6 +502,7 @@ impl Engine {
 
                     let Some(slot) = nodes.get_mut(&entry.id) else { break };
                     slot.proc.process(&block_ctx(k), inputs, &mut slot.outputs[k], n);
+                    slot.blend_bypass(k, inputs.get(0), n, bypass_step);
                     if !slot.midi.is_empty() {
                         match slot.proc.midi_out() {
                             Some(events) => slot.midi[k].copy_from(events),
