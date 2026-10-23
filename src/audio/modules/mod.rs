@@ -17,11 +17,13 @@ pub mod midicer;
 pub mod pingpong;
 pub mod pops;
 pub mod midi_note;
+pub mod oversample;
 pub mod random;
 pub mod resonator;
 pub mod reverb;
 pub mod sequencer;
 pub mod steps;
+pub mod tape;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -42,6 +44,7 @@ pub enum ModuleKind {
     Filter,
     Magma,
     Equalizer,
+    Tape,
     Delay,
     PingPong,
     Reverb,
@@ -90,7 +93,7 @@ pub struct ModuleDef {
 }
 
 impl ModuleKind {
-    pub const ALL: [ModuleKind; 18] = [
+    pub const ALL: [ModuleKind; 19] = [
         ModuleKind::Drone,
         ModuleKind::Random,
         ModuleKind::Pops,
@@ -100,6 +103,7 @@ impl ModuleKind {
         ModuleKind::Filter,
         ModuleKind::Magma,
         ModuleKind::Equalizer,
+        ModuleKind::Tape,
         ModuleKind::Delay,
         ModuleKind::PingPong,
         ModuleKind::Reverb,
@@ -122,6 +126,7 @@ impl ModuleKind {
             ModuleKind::Filter => &filter::DEF,
             ModuleKind::Equalizer => &equalizer::DEF,
             ModuleKind::Magma => &magma::DEF,
+            ModuleKind::Tape => &tape::DEF,
             ModuleKind::Delay => &delay::DEF,
             ModuleKind::PingPong => &pingpong::DEF,
             ModuleKind::Reverb => &reverb::DEF,
@@ -149,6 +154,7 @@ impl ModuleKind {
             ModuleKind::Filter => Box::new(filter::Filter::new(params, sample_rate)),
             ModuleKind::Equalizer => Box::new(equalizer::Equalizer::new(params, sample_rate)),
             ModuleKind::Magma => Box::new(magma::Magma::new(params, midi.clone(), sample_rate)),
+            ModuleKind::Tape => Box::new(tape::Tape::new(params, sample_rate)),
             ModuleKind::Delay => Box::new(delay::Delay::new(params, sample_rate)),
             ModuleKind::PingPong => Box::new(pingpong::PingPong::new(params, sample_rate)),
             ModuleKind::Reverb => Box::new(reverb::Reverb::new(params, sample_rate)),

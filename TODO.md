@@ -8,8 +8,9 @@
 - mixer aux out
 - mixer mute su master
 - possibilità di salvare kits su Pops 66 e di salvare patterns
-- tape emulator
 
 
 DONE
 - mixer a 16/24 canali verticale/orizzontale
+- tape emulator
+

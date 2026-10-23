@@ -239,7 +239,7 @@ pub fn spec(i: usize) -> &'static ParamSpec {
 
 /// dB to the shelf/bell amplitude A (gain = A²).
 #[inline]
-fn amp(db: f32) -> f32 {
+pub(crate) fn amp(db: f32) -> f32 {
     fastmath::exp2(db * 0.083_048_2)
 }
 
@@ -289,14 +289,14 @@ fn shelf_q(kind: usize, q: f32) -> f32 {
 
 /// State of a state-variable filter (Simper's trapezoidal SVF).
 #[derive(Clone, Copy, Default)]
-struct Svf {
+pub(crate) struct Svf {
     ic1: f32,
     ic2: f32,
 }
 
 /// SVF coefficients and output mix: y = m0·x + m1·band + m2·low.
 #[derive(Clone, Copy, Default)]
-struct Coeffs {
+pub(crate) struct Coeffs {
     a1: f32,
     a2: f32,
     a3: f32,
@@ -306,14 +306,14 @@ struct Coeffs {
 }
 
 impl Coeffs {
-    fn svf(g: f32, k: f32, m: (f32, f32, f32)) -> Self {
+    pub(crate) fn svf(g: f32, k: f32, m: (f32, f32, f32)) -> Self {
         let a1 = 1.0 / (1.0 + g * (g + k));
         let a2 = g * a1;
         Self { a1, a2, a3: g * a2, m0: m.0, m1: m.1, m2: m.2 }
     }
 
     /// A band of type `kind`: `g` is tan(π·f/sr), `a` the amplitude.
-    fn band(kind: usize, g: f32, q: f32, a: f32) -> Self {
+    pub(crate) fn band(kind: usize, g: f32, q: f32, a: f32) -> Self {
         let q = shelf_q(kind, q);
         match kind {
             LOW_SHELF => {
@@ -345,7 +345,7 @@ impl Svf {
     }
 
     #[inline]
-    fn apply(&mut self, c: &Coeffs, x: f32) -> f32 {
+    pub(crate) fn apply(&mut self, c: &Coeffs, x: f32) -> f32 {
         let (v1, v2) = self.tick(c, x);
         c.m0 * x + c.m1 * v1 + c.m2 * v2
     }
