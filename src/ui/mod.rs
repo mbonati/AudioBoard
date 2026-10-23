@@ -11,6 +11,7 @@ pub mod macos;
 pub mod modules;
 pub mod monitor;
 pub mod nodes;
+pub mod nullpunkt;
 pub mod palette;
 pub mod plugin_node;
 pub mod pops;

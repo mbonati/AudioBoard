@@ -1,5 +1,6 @@
 mod audio;
 mod graph;
+mod presets;
 mod project;
 mod ui;
 

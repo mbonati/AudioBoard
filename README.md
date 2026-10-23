@@ -93,6 +93,62 @@ Like any node, it also collapses entirely to its title bar (C).
 
 The preset rhythms are new patterns written in each style, not decoded from the original's diode matrix.
 
+**Nullpunkt**: an instrument for clicks, pulses and glitches, in the manner of Alva Noto. A tone to lay under it
+can come from an Oscillator or a Drone.
+
+**Four micro-voices**, each with its own lane of steps:
+
+- **CLICK**: impulses through a short resonance. COLOR sets its pitch; DECAY sets how long it rings.
+- **SINE**: high sine blips.
+- **SUB**: sub-bass sine pulses.
+- **DATA**: 1-bit digital noise, held at the GRAIN rate.
+
+Each voice has **HITS** and **LEN**, **PROB** (the chance a step that hits actually plays), TONE, DECAY,
+LEVEL and **M** (mute).
+
+- HITS and LEN lay down a Euclidean pattern: HITS spread as evenly as possible over LEN steps.
+- Each voice has its own length, so the patterns phase against each other.
+- Click a step to toggle it, drag to paint, Shift-drag sideways to rotate the lane.
+- Turning HITS or LEN lays the Euclidean pattern down again, over your edits.
+
+**The grid** runs on the board's clock, while the board plays. Its division can be 1/4, 1/8, 1/8T, 1/16,
+1/16T, 1/32, 1/32T or 1/64.
+
+**STUTTER** repeats grains of the sound, always in time:
+
+- **CHANCE**: how likely a step is to start a stutter.
+- **LENGTH**: the most steps it runs on.
+- **GRAIN**: how fine its grains may get. Each grain is a subdivision of the step (1/2, 1/3, 1/4, 1/6, 1/8,
+  1/12, 1/16, 1/24 or 1/32), so the repeats stay on the board's tempo, triplets included.
+- **SCATTER**: gives some grains another shape (an octave up or down, backwards, or taken from a grain before
+  the stutter) and lets longer stutters start afresh on a new step.
+
+**PLAY** shapes how the patterns are performed:
+
+- **MUTATE**: flips steps now and then and adds ratchets (quick repeats inside a step).
+- **JITTER**: varies each hit's level, tone and decay.
+- **WIDTH**: scatters hits across the stereo field.
+- **LEVEL**: the output level.
+
+**GLITCH** works on everything:
+
+- **SKIP**: a step sticks on a slice of what just played, like a CD skipping.
+- **REVERSE**: a step plays the one before it backwards.
+- **WARP**: a step loops a slice an octave up or down.
+- **CUT**: a step drops to digital silence.
+- **STATIC**: bursts of digital errors.
+- **CRUSH**: fewer bits, from 16 down to 2.
+- **RATE**: holds samples, from every sample down to 1 in 48.
+
+The header has the division and two buttons:
+
+- **RANDOMIZE** rolls new patterns and sounds for the voices that aren't muted (Shift-click: patterns only).
+- **PRESETS** saves the current scene under a name and loads saved ones. Presets are kept in the app's data
+  folder, so every project sees them. Five built-in scenes are there to start from: Default, Raster, Pulse,
+  Static and Broken.
+
+The glitches light up in the header as they happen. The output shows as a barcode of recent peaks.
+
 ### Texture
 
 **Granular**: records its input into an 8-second loop and plays it back as a cloud of grains.
@@ -485,6 +541,7 @@ clipping it into crackles, and recovers over about 150 ms. While it works, the s
 | New / open project | Cmd+N / Cmd+O, or the project name in the toolbar |
 | Save / save as | Cmd+S / Shift+Cmd+S |
 | Start / stop | the Start / Stop button in the toolbar, or Space |
+| Record / stop recording | REC in the toolbar, or R; stopping opens the export (see Recording and export) |
 | Tempo | drag the BPM field, click it to type, TAP or T to tap it |
 | Show / hide the oscilloscope and spectrum | panel button in the toolbar |
 
@@ -545,6 +602,27 @@ category and the library modules, with a search field. Click a category's headin
 want (an outline shows where it lands), or click it to add it in the middle of the view. On library
 entries, the × removes the module from the library.
 
+## Recording and export
+
+**REC** in the toolbar (or **R**) records what the board plays: the device's output, after the limiter, so
+exactly what you hear. While it records, the button turns red and counts the time. The take goes straight to
+a temporary file on disk, so it can be as long as you like, and the audio is never held up.
+
+**R** again stops recording and opens **Export recording**, which shows the take's length, sample rate and
+peak. To export it:
+
+1. Pick a format:
+   - **WAV**: 24-bit, 16-bit (with TPDF dither) or 32-bit float.
+   - **AIFF**: 24-bit or 16-bit.
+   - **FLAC**, **Apple Lossless** (.m4a) or **AAC 256 kbps** (.m4a), encoded by macOS's own `afconvert`.
+   - **MP3 320 kbps**, available when `ffmpeg` or `lame` is installed (e.g. `brew install lame`).
+2. Choose the options: normalize the peak to −1 dBFS, and trim the silence at both ends (on by default; 10 ms
+   are kept around the sound).
+3. Click **Export…** to pick where to save it. The export runs in the background.
+
+The take stays available for more exports, in other formats, from **EXPORT** in the toolbar, until the next
+recording, **Discard take**, or quitting.
+
 ## Projects and library
 
 **Projects.** The project name in the toolbar opens the File menu (New project, Open…, Save, Save as…).
@@ -581,15 +659,19 @@ src/
 │   │   │               motion (hexagon sliders, magnet, drawn/recorded paths, timeline)
 │   │   ├── pops.rs     Pops 66 (after the KORG Mini Pops-7): instruments, user patterns, clock, MIDI in/out
 │   │   ├── pops/       voices (the fifteen synthesized instruments), rhythms (the twenty presets, combining)
+│   │   ├── nullpunkt.rs Nullpunkt: step patterns, synced stutter, glitch stage, built-in scenes
 │   │   ├── tape.rs     Tape: record EQ, magnetic curve, transport (wow, flutter, stop/start), playback head
 │   │   ├── oversample.rs 2× oversampling (half-band FIR) shared by Magma and Tape
 │   │   ├── steps.rs step grid on the global tempo, outgoing notes, held keys
 │   │   └── mod.rs  module descriptions (ModuleDef), generic parameters and DSP helpers
 │   ├── midi.rs     MIDI inputs (midir) and shared state read by the MIDI nodes
 │   ├── plugin.rs   VST3 plugins (vst3-host): loading, scanning, processing on the audio thread
+│   ├── record.rs   recording the output: a lock-free tap on the audio thread, a writer thread, takes
+│   ├── export.rs   takes to WAV/AIFF (written here), FLAC/ALAC/AAC (afconvert), MP3 (ffmpeg or lame)
 │   └── mod.rs      opening the output stream (cpal)
 ├── graph.rs        UI-side patch model (nodes, cables, modules, Kahn ordering)
 ├── project.rs      saving/loading projects and the module library (JSON)
+├── presets.rs      named presets of a module, one file per kind in the app's data folder
 ├── ui/
 │   ├── canvas.rs   canvas with pan/zoom, selection, cable drag & drop, context menus
 │   ├── groups.rs   modules: frame (expanded) and card with the boundary ports (collapsed)
@@ -603,6 +685,7 @@ src/
 │   ├── equalizer.rs the Equalizer's panel: graph and band markers, analyzer (FFT), band controls
 │   ├── magma.rs    the Magma panel: display and dots, filter controls, sources and slots (drag & drop)
 │   ├── tape.rs     the Tape panel: the sketched deck (reels, tape, head, needles, keys), COMPACT / FULL
+│   ├── nullpunkt.rs the Nullpunkt panel: editable lanes, randomize, presets, knob groups
 │   ├── pops.rs     the Pops 66 panel: MACHINE, MIXER and EDITOR detail levels (the node resizes), waveform preview
 │   ├── widgets.rs  hand-drawn knobs, faders, meters, ports and cables
 │   ├── monitor.rs  bottom panel: oscilloscope and spectrum (FFT)
@@ -640,7 +723,7 @@ sideways drift.
 To add a new module: a file in `audio/modules/` with its `ModuleDef` (knobs, ports, modes, toggle) and a
 `Processor`, an entry in `ModuleKind` and, in `ui/modules.rs`, the readout and the display.
 The panel (ports, selector, knobs) is generated from the definition; Frakture, too large for the generic
-panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`), Magma (`ui/magma.rs`), Tape (`ui/tape.rs`) and Pops 66
+panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`), Magma (`ui/magma.rs`), Tape (`ui/tape.rs`), Nullpunkt (`ui/nullpunkt.rs`) and Pops 66
 (`ui/pops.rs`, whose size follows its detail level through `modules::size_of`). Frakture's hexagon runs on the audio thread, block by block: the panel
 hands it the mouse through the module's display values, so paths keep time even when the window doesn't
 redraw.

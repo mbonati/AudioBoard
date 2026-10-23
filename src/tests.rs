@@ -1632,7 +1632,7 @@ fn palette_categories_fold() {
         texts = run(&mut palette, vec![]);
     }
     assert!(!shows(&texts, "Oscillator") && shows(&texts, "SOURCES"), "folded");
-    assert!(shows(&texts, "4"), "a folded category shows its count");
+    assert!(shows(&texts, "5"), "a folded category shows its count");
     assert!(shows(&texts, "Reverb"), "the others stay open");
 
     // Searching opens what matches; clearing it folds it again.
@@ -2918,4 +2918,338 @@ fn effects_bypass_without_clicks() {
     g.node(x).unwrap().set_bypass(true);
     assert!(!g.node(x).unwrap().bypassed());
     assert!(g.node(f).unwrap().is_effect() && !g.node(m).unwrap().is_effect());
+}
+
+/// Runs Nullpunkt for `blocks` at 120 BPM (playing or not); returns the
+/// left channel.
+fn run_nullpunkt(p: &Arc<ModuleParams>, blocks: usize, playing: bool) -> Vec<f32> {
+    use crate::audio::modules::nullpunkt::Nullpunkt;
+    let mut proc = Nullpunkt::new(p.clone(), 48_000.0);
+    let mut ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing, restart: false };
+    let inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: false });
+    let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
+    let mut left = Vec::new();
+    for _ in 0..blocks {
+        proc.process(&ctx, &inputs, &mut outputs, 64);
+        left.extend_from_slice(&outputs[0][0]);
+        if playing {
+            ctx.beat += ctx.beats_per_sample * 64.0;
+        }
+    }
+    left
+}
+
+/// Nullpunkt with nothing on: no voices, no field, no glitches.
+fn quiet_nullpunkt() -> Arc<ModuleParams> {
+    use crate::audio::modules::nullpunkt::{CUT, JITTER, MUTATE, SKIP, STUTTER, data, knob, voice, vp};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Nullpunkt));
+    for v in 0..voice::COUNT {
+        p.set(vp(v, knob::LEVEL), 0.0);
+        p.data[data::ROT + v].set(0.0);
+    }
+    for i in [SKIP, CUT, MUTATE, STUTTER, JITTER] {
+        p.set(i, 0.0);
+    }
+    p
+}
+
+#[test]
+fn nullpunkt_patterns_are_euclidean() {
+    use crate::audio::modules::nullpunkt::euclid;
+    let hits = |k: usize, n: usize| (0..n).filter(|&s| euclid(k, n, s)).collect::<Vec<_>>();
+    assert_eq!(hits(3, 8), [0, 3, 6]);
+    assert_eq!(hits(4, 16), [0, 4, 8, 12]);
+    for n in 1..=32 {
+        for k in 0..=n {
+            assert_eq!(hits(k, n).len(), k, "{k} of {n}");
+        }
+    }
+    assert_eq!(hits(40, 8).len(), 8, "no more hits than steps");
+}
+
+#[test]
+fn nullpunkt_voices_play_on_the_board_clock() {
+    use crate::audio::modules::nullpunkt::{knob, regenerate, viz, voice, vp};
+    for v in 0..voice::COUNT {
+        let p = quiet_nullpunkt();
+        p.set(vp(v, knob::LEVEL), 0.8);
+        p.set(vp(v, knob::HITS), 4.0);
+        p.set(vp(v, knob::LEN), 16.0);
+        regenerate(&p, v);
+        // 120 BPM, sixteenths: a step every 6000 frames, a hit every fourth.
+        let left = run_nullpunkt(&p, 1500, true);
+        assert_eq!(p.viz[viz::HITS + v].get(), 4.0, "{}: steps 0, 4, 8, 12", voice::NAMES[v]);
+        assert!(left.iter().all(|s| s.is_finite() && s.abs() <= 1.0));
+        assert!(peak_of(&left[..3000]) > 0.01, "{} sounds on step 0", voice::NAMES[v]);
+        assert!(peak_of(&left[12_100..23_900]) < peak_of(&left[..3000]) * 0.5, "{} quieter between hits", voice::NAMES[v]);
+        // Stopped: nothing.
+        let p2 = quiet_nullpunkt();
+        p2.set(vp(v, knob::LEVEL), 0.8);
+        assert_eq!(peak_of(&run_nullpunkt(&p2, 400, false)), 0.0);
+    }
+}
+
+#[test]
+fn nullpunkt_cuts_steps_and_survives_every_glitch() {
+    use crate::audio::modules::nullpunkt::{CRUSH, CUT, MUTATE, RATE, REVERSE, SKIP, STATIC, WARP, knob, regenerate, voice, vp};
+    // DATA on every step, ringing through it; CUT at full: about half the
+    // steps fall silent.
+    let p = quiet_nullpunkt();
+    let data = |k| vp(voice::DATA, k);
+    p.set(data(knob::LEVEL), 0.8);
+    p.set(data(knob::HITS), 16.0);
+    p.set(data(knob::LEN), 16.0);
+    p.set(data(knob::DECAY), 0.4);
+    regenerate(&p, voice::DATA);
+    p.set(CUT, 1.0);
+    let left = run_nullpunkt(&p, 3000, true);
+    let silent = left.chunks(6000).skip(1).filter(|step| rms_of(&step[200..5800]) < 1e-3).count();
+    assert!((6..26).contains(&silent), "{silent} of 31 steps cut");
+    // Everything at once stays finite and bounded.
+    let p = Arc::new(ModuleParams::new(ModuleKind::Nullpunkt));
+    use crate::audio::modules::nullpunkt::{GRAIN, JITTER, SCATTER, STUTTER, STUTTER_LEN};
+    for (i, v) in [
+        (SKIP, 1.0),
+        (CUT, 1.0),
+        (REVERSE, 1.0),
+        (WARP, 1.0),
+        (STATIC, 1.0),
+        (CRUSH, 1.0),
+        (RATE, 1.0),
+        (MUTATE, 1.0),
+        (STUTTER, 0.6),
+        (STUTTER_LEN, 8.0),
+        (GRAIN, 1.0),
+        (SCATTER, 1.0),
+        (JITTER, 1.0),
+    ] {
+        p.set(i, v);
+    }
+    let left = run_nullpunkt(&p, 3000, true);
+    assert!(left.iter().all(|s| s.is_finite() && s.abs() <= 1.0));
+    assert!(rms_of(&left) > 0.005);
+}
+
+#[test]
+fn nullpunkt_steps_can_be_edited_rotated_and_muted() {
+    use crate::audio::modules::nullpunkt::{data, knob, rotate, set_step, set_steps, steps, viz, voice, vp};
+    let p = quiet_nullpunkt();
+    let sub = voice::SUB;
+    p.set(vp(sub, knob::LEVEL), 0.8);
+    p.set(vp(sub, knob::LEN), 8.0);
+    // One hit, on step 3 of 8: steps are 6000 frames at 120 BPM.
+    set_steps(&p, sub, 0);
+    set_step(&p, sub, 3, true);
+    let left = run_nullpunkt(&p, 375, true);
+    assert_eq!(p.viz[viz::HITS + sub].get(), 1.0);
+    assert!(peak_of(&left[..17_900]) < 1e-6 && peak_of(&left[18_000..21_000]) > 0.05, "struck on step 3");
+    // Rotating turns it a step later, within the length.
+    rotate(&p, sub, 1);
+    assert_eq!(steps(&p, sub), 1 << 4);
+    rotate(&p, sub, 5);
+    assert_eq!(steps(&p, sub), 1 << 1, "wraps round at LEN");
+    // Muted: silent.
+    p.data[data::MUTE + sub].set(1.0);
+    assert_eq!(peak_of(&run_nullpunkt(&p, 375, true)), 0.0);
+}
+
+#[test]
+fn nullpunkt_randomizes_what_is_not_muted() {
+    use crate::audio::modules::nullpunkt::{data, knob, pattern, randomize, steps, voice, vp};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Nullpunkt));
+    p.data[data::MUTE + voice::SINE].set(1.0);
+    let sine = (steps(&p, voice::SINE), p.get(vp(voice::SINE, knob::TONE)));
+    let before: Vec<u32> = (0..voice::COUNT).map(|v| steps(&p, v)).collect();
+    randomize(&p, 1234, true);
+    let after: Vec<u32> = (0..voice::COUNT).map(|v| steps(&p, v)).collect();
+    assert_ne!(before, after);
+    assert_eq!((steps(&p, voice::SINE), p.get(vp(voice::SINE, knob::TONE))), sine, "muted voices stay");
+    for v in 0..voice::COUNT {
+        let (_, len, _) = pattern(&p, v);
+        assert!(steps(&p, v) & ((1u64 << len) - 1) as u32 != 0, "something to play");
+    }
+    // The same seed, the same scene.
+    let q = Arc::new(ModuleParams::new(ModuleKind::Nullpunkt));
+    q.data[data::MUTE + voice::SINE].set(1.0);
+    randomize(&q, 1234, true);
+    assert_eq!(after, (0..voice::COUNT).map(|v| steps(&q, v)).collect::<Vec<_>>());
+}
+
+#[test]
+fn nullpunkt_scenes_save_as_presets() {
+    use crate::audio::modules::nullpunkt::{FACTORY, SKIP, data, load_factory, set_step, steps, voice};
+    use crate::presets::{self, ModulePreset};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Nullpunkt));
+    set_step(&p, voice::CLICK, 1, true);
+    p.data[data::MUTE + voice::DATA].set(1.0);
+    p.set(SKIP, 0.42);
+    let dir = TempDir::new("presets");
+    let mut list = presets::load(&dir.0, ModuleKind::Nullpunkt);
+    assert!(list.is_empty());
+    presets::store(&mut list, ModulePreset::capture(&p, "Mine"));
+    presets::save(&dir.0, ModuleKind::Nullpunkt, &list).unwrap();
+    let loaded = presets::load(&dir.0, ModuleKind::Nullpunkt);
+    assert_eq!(loaded, list);
+    // Into a fresh node: the same scene.
+    let q = Arc::new(ModuleParams::new(ModuleKind::Nullpunkt));
+    loaded[0].apply(&q);
+    assert_eq!(steps(&q, voice::CLICK), steps(&p, voice::CLICK));
+    assert_eq!(q.get(SKIP), 0.42);
+    assert!(q.data[data::MUTE + voice::DATA].get() > 0.5);
+    // Saving under the same name replaces it.
+    presets::store(&mut list, ModulePreset::capture(&q, "Mine"));
+    assert_eq!(list.len(), 1);
+    // The built-in scenes all load and play.
+    for (k, (name, _)) in FACTORY.iter().enumerate() {
+        load_factory(&q, k);
+        let left = run_nullpunkt(&q, 1500, true);
+        assert!(left.iter().all(|s| s.is_finite() && s.abs() <= 1.0), "{name}");
+        assert!(rms_of(&left) > 0.001, "{name} plays");
+    }
+}
+
+#[test]
+fn nullpunkt_plays_triplets_and_probabilities_on_the_grid() {
+    use crate::audio::modules::nullpunkt::{data, knob, set_steps, viz, voice, vp};
+    let p = quiet_nullpunkt();
+    let sub = voice::SUB;
+    p.set(vp(sub, knob::LEVEL), 0.8);
+    p.set(vp(sub, knob::LEN), 6.0);
+    set_steps(&p, sub, 0b1001);
+    // Eighth-note triplets at 120 BPM: a step every 8000 frames; hits on
+    // steps 0 and 3.
+    p.data[data::DIV].set(2.0);
+    let left = run_nullpunkt(&p, 750, true);
+    assert_eq!(p.viz[viz::HITS + sub].get(), 2.0);
+    assert!(peak_of(&left[23_900..24_000]) < peak_of(&left[24_000..25_000]) * 0.2, "the second hit on frame 24000");
+    // PROB: no hits at 0; about half at 0.5.
+    set_steps(&p, sub, 0b111111);
+    p.set(vp(sub, knob::PROB), 0.0);
+    run_nullpunkt(&p, 3000, true);
+    assert_eq!(p.viz[viz::HITS + sub].get(), 0.0);
+    p.set(vp(sub, knob::PROB), 0.5);
+    run_nullpunkt(&p, 6000, true);
+    let played = p.viz[viz::HITS + sub].get();
+    assert!((15.0..=33.0).contains(&played), "{played} of 48");
+}
+
+#[test]
+fn nullpunkt_stutters_in_time() {
+    use crate::audio::modules::nullpunkt::{GRAIN, SCATTER, STUTTER, STUTTER_LEN, knob, set_steps, voice, vp};
+    let p = quiet_nullpunkt();
+    let sub = voice::SUB;
+    p.set(vp(sub, knob::LEVEL), 0.8);
+    p.set(vp(sub, knob::LEN), 1.0);
+    set_steps(&p, sub, 1);
+    // Every step stutters in halves (GRAIN 0), nothing scattered: the
+    // second half of each step repeats the first, exactly a half-step on.
+    p.set(STUTTER, 1.0);
+    p.set(STUTTER_LEN, 1.0);
+    p.set(GRAIN, 0.0);
+    p.set(SCATTER, 0.0);
+    let left = run_nullpunkt(&p, 1500, true);
+    for step in 1..15 {
+        let at = step * 6000;
+        let worst = (64..2900).map(|u| (left[at + 3000 + u] - left[at + u]).abs()).fold(0.0, f32::max);
+        assert!(worst < 1e-3, "step {step}: off by {worst}");
+    }
+}
+
+/// Records `seconds` of an oscillator through a mixer with the offline
+/// engine: silence, `sound` seconds of tone, silence.
+fn record_take(silence: f32, sound: f32) -> std::sync::Arc<crate::audio::record::Take> {
+    use crate::audio::params::EngineShared;
+    use crate::audio::record::Recorder;
+    let shared = Arc::new(EngineShared::new());
+    let (handle, mut engine) = crate::audio::offline(shared.clone(), 48_000);
+    let mut g = Graph::default();
+    let x = g.add_osc(pos2(0.0, 0.0), &handle);
+    let m = g.add_mixer(pos2(0.0, 0.0), &handle);
+    let mut recorder = Recorder::new(shared.clone());
+    recorder.start(48_000).unwrap();
+    render(&mut engine, (silence * 48_000.0) as usize);
+    g.connect(port(x, 0), port(m, 0), &handle);
+    render(&mut engine, (sound * 48_000.0) as usize);
+    g.disconnect(g.cables[0], &handle);
+    render(&mut engine, (silence * 48_000.0) as usize);
+    recorder.stop().unwrap()
+}
+
+#[test]
+fn the_board_records_to_a_take() {
+    let take = record_take(0.0, 1.0);
+    assert_eq!(take.frames, 48_000);
+    assert_eq!(take.dropped, 0);
+    assert!(take.peak > 0.05 && take.peak <= 1.0, "peak {}", take.peak);
+    assert_eq!(std::fs::metadata(&take.path).unwrap().len(), 48_000 * 8);
+    let path = take.path.clone();
+    drop(take);
+    assert!(!path.exists(), "a dropped take cleans up after itself");
+}
+
+#[test]
+fn takes_export_to_wav_and_aiff() {
+    use crate::audio::export::{Format, Options, export};
+    let take = record_take(0.25, 0.5);
+    let dir = TempDir::new("export");
+    let raw = std::fs::read(&take.path).unwrap();
+    let sample = |frame: usize| f32::from_le_bytes(raw[frame * 8..frame * 8 + 4].try_into().unwrap());
+    let all = Options { format: Format::Wav24, normalize: false, trim: false };
+
+    // WAV, 24-bit: a plain header, then every frame.
+    let wav = dir.0.join("t.wav");
+    export(&take, all, &wav).unwrap();
+    let bytes = std::fs::read(&wav).unwrap();
+    assert_eq!(&bytes[..4], b"RIFF");
+    assert_eq!(&bytes[8..16], b"WAVEfmt ");
+    assert_eq!(u16::from_le_bytes([bytes[22], bytes[23]]), 2, "stereo");
+    assert_eq!(u32::from_le_bytes(bytes[24..28].try_into().unwrap()), 48_000);
+    assert_eq!(u16::from_le_bytes([bytes[34], bytes[35]]), 24);
+    assert_eq!(bytes.len() as u64, 44 + take.frames * 6);
+    let at = 44 + 18_000 * 6;
+    let v = i32::from_le_bytes([0, bytes[at], bytes[at + 1], bytes[at + 2]]) >> 8;
+    assert!((v as f32 / 8_388_607.0 - sample(18_000)).abs() < 1e-6, "the same samples");
+
+    // 32-bit float.
+    let float = dir.0.join("f.wav");
+    export(&take, Options { format: Format::WavFloat, ..all }, &float).unwrap();
+    let bytes = std::fs::read(&float).unwrap();
+    assert_eq!(u16::from_le_bytes([bytes[20], bytes[21]]), 3, "IEEE float");
+    assert_eq!(f32::from_le_bytes(bytes[44 + 18_000 * 8..44 + 18_000 * 8 + 4].try_into().unwrap()), sample(18_000));
+
+    // AIFF, 16-bit: big-endian, the rate as an 80-bit float.
+    let aiff = dir.0.join("t.aiff");
+    export(&take, Options { format: Format::Aiff16, ..all }, &aiff).unwrap();
+    let bytes = std::fs::read(&aiff).unwrap();
+    assert_eq!(&bytes[..4], b"FORM");
+    assert_eq!(&bytes[8..16], b"AIFFCOMM");
+    assert_eq!(u32::from_be_bytes(bytes[22..26].try_into().unwrap()) as u64, take.frames);
+    assert_eq!(&bytes[28..38], &[0x40, 0x0E, 0xBB, 0x80, 0, 0, 0, 0, 0, 0], "48000 Hz");
+    assert_eq!(bytes.len() as u64, 54 + take.frames * 4);
+
+    // Trimmed: the silence goes (10 ms kept each side); normalized: the
+    // peak at −1 dBFS.
+    let trimmed = dir.0.join("trim.wav");
+    export(&take, Options { format: Format::WavFloat, normalize: true, trim: true }, &trimmed).unwrap();
+    let bytes = std::fs::read(&trimmed).unwrap();
+    let frames = (bytes.len() - 44) / 8;
+    assert!((24_000..=25_500).contains(&frames), "{frames} frames of sound");
+    let peak = bytes[44..].as_chunks::<4>().0.iter().map(|b| f32::from_le_bytes(*b).abs()).fold(0.0, f32::max);
+    assert!((peak - 0.891).abs() < 0.002, "peak {peak}");
+}
+
+#[test]
+fn takes_export_through_the_system_encoders() {
+    use crate::audio::export::{Format, Options, export};
+    if Format::Flac.missing().is_some() {
+        return; // not on macOS
+    }
+    let take = record_take(0.0, 0.5);
+    let dir = TempDir::new("encode");
+    for (format, magic, at) in [(Format::Flac, &b"fLaC"[..], 0), (Format::Alac, &b"ftyp"[..], 4), (Format::Aac, &b"ftyp"[..], 4)] {
+        let path = dir.0.join(format!("t.{}", format.extension()));
+        export(&take, Options { format, normalize: false, trim: false }, &path).unwrap();
+        let bytes = std::fs::read(&path).unwrap();
+        assert_eq!(&bytes[at..at + 4], magic, "{}", format.label());
+    }
 }

@@ -16,7 +16,9 @@ use super::tempo::TempoControl;
 use super::theme::{self, alpha};
 use crate::audio::engine::NodeId;
 use crate::audio::modules::{ModuleKind, ModuleParams, delay, drone, filter, granular, random, reverb};
+use crate::audio::export::{self, FORMATS};
 use crate::audio::params::{EngineShared, Waveform};
+use crate::audio::record::Recorder;
 use crate::audio::midi::MidiInputs;
 use crate::audio::{self, AudioHandle};
 use crate::graph::{Graph, NodeKind, PortRef};
@@ -53,6 +55,7 @@ const SHORTCUTS: &[(&str, &str)] = &[
     ("A", "Auto-fit: keep the patch in view"),
     ("Cmd+= / Cmd+− / Cmd+0", "Zoom in / out / 100%"),
     ("Space", "Start / stop (stop goes back to the start)"),
+    ("R", "Record the board · R again stops and opens the export"),
     ("T", "Tap tempo (on each beat)"),
     ("Click BPM", "Type the tempo (drag to change it)"),
 ];
@@ -134,6 +137,9 @@ pub struct AudioBoardApp {
     overloads: (u32, f64),
     /// The output limiter's deepest reduction shown (dB), and since when.
     limiting: (f32, f64),
+    /// Recording the board, and exporting the take.
+    recorder: Recorder,
+    export: ExportWindow,
     #[cfg(target_os = "macos")]
     window: Option<super::macos::NativeWindow>,
 }
@@ -158,6 +164,8 @@ impl AudioBoardApp {
         let plugin_catalog = load_catalog();
         editor.plugins = plugin_entries(&plugin_catalog);
         Self {
+            recorder: Recorder::new(shared.clone()),
+            export: ExportWindow::default(),
             shared,
             audio,
             doc: Document::new(None, project::snapshot(&graph)),
@@ -195,6 +203,107 @@ impl AudioBoardApp {
             self.shared.rewinds.fetch_add(1, Ordering::Relaxed);
         }
         self.shared.running.fetch_xor(true, Ordering::Relaxed);
+    }
+
+    /// R: starts recording what the board plays, or stops and offers the
+    /// take for export.
+    fn toggle_recording(&mut self, now: f64) {
+        if self.recorder.recording() {
+            match self.recorder.stop() {
+                Ok(take) => {
+                    let lost = if take.dropped > 0 { format!(" ({} frames lost)", take.dropped) } else { String::new() };
+                    self.notify(now, format!("Recorded {}{lost}", clock(take.seconds())), take.dropped > 0);
+                    self.export.open = true;
+                }
+                Err(e) => self.notify(now, format!("Recording failed: {e}"), true),
+            }
+        } else if let Err(e) = self.recorder.start(self.audio.info.sample_rate) {
+            self.notify(now, format!("Could not record: {e}"), true);
+        }
+    }
+
+    /// The export window: format, options, Export… (a save dialog), and
+    /// the export running in the background.
+    fn export_window(&mut self, ctx: &egui::Context, now: f64) {
+        if let Some(job) = self.export.job.take_if(|j| j.is_finished()) {
+            match job.join() {
+                Ok(Ok(path)) => {
+                    let name = path.file_name().map_or(String::new(), |n| n.to_string_lossy().into_owned());
+                    self.notify(now, format!("Exported {name}"), false);
+                    self.export.open = false;
+                }
+                Ok(Err(e)) => self.notify(now, format!("Export failed: {e}"), true),
+                Err(_) => self.notify(now, "Export failed", true),
+            }
+        }
+        if !self.export.open {
+            return;
+        }
+        let Some(take) = self.recorder.take.clone() else {
+            self.export.open = false;
+            return;
+        };
+        let mut open = true;
+        let mut start = false;
+        let mut discard = false;
+        let busy = self.export.job.is_some();
+        egui::Window::new("Export recording")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(Align2::CENTER_CENTER, vec2(0.0, 0.0))
+            .open(&mut open)
+            .show(ctx, |ui| {
+                let peak = 20.0 * take.peak.max(1e-6).log10();
+                ui.label(
+                    RichText::new(format!("{} · {} Hz · peak {:.1} dBFS", clock(take.seconds()), take.sample_rate, peak))
+                        .color(theme::TEXT_DIM),
+                );
+                ui.add_space(6.0);
+                ui.label("Format");
+                for format in FORMATS {
+                    let missing = format.missing();
+                    let pick = ui.add_enabled(missing.is_none(), egui::RadioButton::new(self.export.options.format == format, format.label()));
+                    let pick = match missing {
+                        Some(why) => pick.on_disabled_hover_text(why),
+                        None => pick,
+                    };
+                    if pick.clicked() {
+                        self.export.options.format = format;
+                    }
+                }
+                ui.add_space(6.0);
+                ui.checkbox(&mut self.export.options.normalize, "Normalize the peak to −1 dBFS");
+                ui.checkbox(&mut self.export.options.trim, "Trim the silence at the start and end");
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    if busy {
+                        ui.spinner();
+                        ui.label("Exporting…");
+                    } else {
+                        start = ui.button("Export…").clicked();
+                        discard = ui.button("Discard take").clicked();
+                    }
+                });
+            });
+        if discard {
+            self.recorder.take = None;
+            self.export.open = false;
+            return;
+        }
+        self.export.open = open;
+        if start {
+            let format = self.export.options.format;
+            let name = format!("{} take {}.{}", self.doc.name(), self.recorder.count, format.extension());
+            let picked = rfd::FileDialog::new()
+                .set_title("Export recording")
+                .set_file_name(&name)
+                .add_filter(format.label(), &[format.extension()])
+                .save_file();
+            if let Some(path) = picked {
+                let options = self.export.options;
+                self.export.job = Some(std::thread::spawn(move || export::export(&take, options, &path).map(|()| path)));
+            }
+        }
     }
 
     fn notify(&mut self, now: f64, text: impl Into<String>, error: bool) {
@@ -530,6 +639,20 @@ impl AudioBoardApp {
                 if transport_button(ui, self.running()).clicked() {
                     self.toggle_running();
                 }
+                ui.add_space(4.0);
+                let recording = self.recorder.recording();
+                if record_button(ui, recording, self.recorder.seconds(), now).clicked() {
+                    self.toggle_recording(now);
+                }
+                if !recording && self.recorder.take.is_some() {
+                    ui.add_space(2.0);
+                    let export = ui
+                        .add(egui::Button::new(RichText::new("EXPORT").size(10.5).color(theme::TEXT_DIM)).corner_radius(10.0))
+                        .on_hover_text("Export the last recording");
+                    if export.clicked() {
+                        self.export.open = true;
+                    }
+                }
                 ui.add_space(6.0);
                 let beat = self.running().then(|| self.shared.beat.get());
                 let on_tempo = self.tempo.show(ui, &mut self.graph.tempo, beat, now);
@@ -777,6 +900,9 @@ impl eframe::App for AudioBoardApp {
             if ui.input(|i| i.key_pressed(Key::T) && !i.modifiers.any()) {
                 self.tempo.tap(&mut self.graph.tempo, now);
             }
+            if ui.input(|i| i.key_pressed(Key::R) && !i.modifiers.any()) {
+                self.toggle_recording(now);
+            }
         }
 
         let bar_frame = |margin: Margin| Frame::NONE.fill(theme::PANEL).inner_margin(margin);
@@ -814,6 +940,10 @@ impl eframe::App for AudioBoardApp {
             .show(ui, |ui| self.editor.show(ui, &mut self.graph, &self.audio));
         for notice in std::mem::take(&mut self.editor.notices) {
             self.notify(now, notice, false);
+        }
+        self.export_window(ui.ctx(), now);
+        if self.recorder.recording() {
+            ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
         }
         for request in std::mem::take(&mut self.editor.requests) {
             self.handle_request(request, now);
@@ -1061,6 +1191,45 @@ fn icon_button(ui: &mut Ui, icon: Icon, active: bool) -> Response {
         }
     }
     resp.on_hover_cursor(CursorIcon::PointingHand)
+}
+
+/// The export window's state.
+#[derive(Default)]
+struct ExportWindow {
+    open: bool,
+    options: export::Options,
+    job: Option<std::thread::JoinHandle<Result<PathBuf, String>>>,
+}
+
+/// Minutes and seconds.
+fn clock(seconds: f64) -> String {
+    let s = seconds.max(0.0) as u64;
+    format!("{:02}:{:02}", s / 60, s % 60)
+}
+
+/// REC: a red dot; while recording, the time so far on red, the dot
+/// pulsing.
+fn record_button(ui: &mut Ui, recording: bool, seconds: f64, now: f64) -> Response {
+    let (rect, resp) = ui.allocate_exact_size(vec2(if recording { 74.0 } else { 58.0 }, 24.0), Sense::CLICK);
+    let p = ui.painter();
+    let hot = resp.hovered();
+    let red = theme::MUTE;
+    let (fill, border) = if recording {
+        (alpha(red, if hot { 0.22 } else { 0.14 }), alpha(red, 0.6))
+    } else {
+        (if hot { theme::CONTROL } else { Color32::TRANSPARENT }, theme::NODE_BORDER)
+    };
+    p.rect(rect, 12.0, fill, Stroke::new(1.0, border), StrokeKind::Inside);
+    let c = pos2(rect.left() + 14.0, rect.center().y);
+    let pulse = if recording { 0.55 + 0.45 * (now * 4.0).sin().abs() as f32 } else { 1.0 };
+    p.circle_filled(c, 4.0, alpha(red, pulse));
+    let text = if recording { clock(seconds) } else { "REC".to_owned() };
+    p.text(pos2(rect.left() + 24.0, rect.center().y), Align2::LEFT_CENTER, text, FontId::monospace(11.0), theme::TEXT);
+    resp.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(if recording {
+        "Stop recording, and export the take (R)"
+    } else {
+        "Record what the board plays (R)"
+    })
 }
 
 /// Start / Stop: a play triangle while stopped; while playing, a stop

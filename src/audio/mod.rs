@@ -5,6 +5,8 @@ pub mod midi;
 pub mod modules;
 pub mod params;
 pub mod plugin;
+pub mod record;
+pub mod export;
 
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};

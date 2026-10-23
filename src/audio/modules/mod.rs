@@ -17,6 +17,7 @@ pub mod midicer;
 pub mod pingpong;
 pub mod pops;
 pub mod midi_note;
+pub mod nullpunkt;
 pub mod oversample;
 pub mod random;
 pub mod resonator;
@@ -38,6 +39,7 @@ pub enum ModuleKind {
     Drone,
     Random,
     Pops,
+    Nullpunkt,
     Granular,
     Frakture,
     Resonator,
@@ -93,10 +95,11 @@ pub struct ModuleDef {
 }
 
 impl ModuleKind {
-    pub const ALL: [ModuleKind; 19] = [
+    pub const ALL: [ModuleKind; 20] = [
         ModuleKind::Drone,
         ModuleKind::Random,
         ModuleKind::Pops,
+        ModuleKind::Nullpunkt,
         ModuleKind::Granular,
         ModuleKind::Frakture,
         ModuleKind::Resonator,
@@ -120,6 +123,7 @@ impl ModuleKind {
             ModuleKind::Drone => &drone::DEF,
             ModuleKind::Random => &random::DEF,
             ModuleKind::Pops => &pops::DEF,
+            ModuleKind::Nullpunkt => &nullpunkt::DEF,
             ModuleKind::Granular => &granular::DEF,
             ModuleKind::Frakture => &frakture::DEF,
             ModuleKind::Resonator => &resonator::DEF,
@@ -148,6 +152,7 @@ impl ModuleKind {
             ModuleKind::Drone => Box::new(drone::Drone::new(params, sample_rate)),
             ModuleKind::Random => Box::new(random::Random::new(params, sample_rate)),
             ModuleKind::Pops => Box::new(pops::Pops::new(params, sample_rate)),
+            ModuleKind::Nullpunkt => Box::new(nullpunkt::Nullpunkt::new(params, sample_rate)),
             ModuleKind::Granular => Box::new(granular::Granular::new(params, sample_rate)),
             ModuleKind::Frakture => Box::new(frakture::Frakture::new(params, sample_rate)),
             ModuleKind::Resonator => Box::new(resonator::Resonator::new(params, sample_rate)),
