@@ -83,6 +83,7 @@ impl NodeType {
                 NodeType::Module(ModuleKind::Filter),
                 NodeType::Module(ModuleKind::Magma),
                 NodeType::Module(ModuleKind::Equalizer),
+                NodeType::Module(ModuleKind::Tape),
                 NodeType::Module(ModuleKind::Delay),
                 NodeType::Module(ModuleKind::PingPong),
                 NodeType::Module(ModuleKind::Reverb),

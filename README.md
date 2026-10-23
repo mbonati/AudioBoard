@@ -231,6 +231,42 @@ chain) and MIDI.
 
   Hovering the graph shows the frequency, the note with its cents and the analyzer's level there.
 
+**Tape**: a tape machine, after the classic tape emulation plugins. The sound is recorded, carried by a moving
+tape and played back:
+
+- **Record.** The record EQ lifts the highs into the tape, so loud highs saturate first. The magnetic curve
+  runs on 2× oversampling: soft saturation with a touch of even harmonics. Loud swings lose some top, as
+  real tape does.
+- **The tape.** Wow, flutter (capstan, pinch roller and scrape), and wear's dropouts.
+- **Playback.** The playback EQ undoes the record EQ. Then come the head bump (a lift in the lows), its dip,
+  the low rolloff, gap loss (the top end) and hiss.
+
+The switches:
+
+- **MACHINE**: STUDIO (a warm 2-track, round head bump, soft saturation), MASTER (a clean mastering deck,
+  tighter lows, more open top, steadier) or CASSETTE (1⅞ ips: narrow, hissy and wobbly).
+- **SPEED** (reel machines): 7½, 15 or 30 ips. Faster is brighter, with the head bump higher and the
+  flutter faster.
+- **TAPE**: CLASSIC (little headroom, early warm saturation), MODERN or HOT (most headroom).
+- **EQ**: NAB (fuller lows) or IEC/CCIR.
+- **AUTO GAIN**: OUTPUT follows INPUT, so driving the tape doesn't make it louder.
+
+The knobs: **INPUT** (record level, −12 to +18 dB), **BIAS** (under: brighter and grittier, saturating
+sooner; over: cleaner and darker), **WOW** and **FLUTTER** (shown as the pitch deviation they cause),
+**HISS**, **AGE** (worn tape: dropouts and a duller top), **OUTPUT** and **MIX**.
+
+The deck runs with the sound:
+
+- The reels turn at their real ratio as the tape winds from one to the other.
+- The tension arms sway with wow and flutter.
+- The record and play heads glow with the signal, and a counter shows the tape time.
+- The **■** and **▶** keys stop the tape: it slows to a halt with its pitch falling, and spins back up when
+  restarted.
+- Two VU meters with needles show the input and the output (0 VU = −12 dBFS RMS), and a SAT lamp lights
+  when the tape squeezes the peaks.
+
+The dry signal is lined up with the tape's latency, so MIX doesn't comb.
+
 **Delay**: stereo tape echo up to 2 s. TIME (changes glide, like tape), FEEDBACK,
 TONE (darkens the repeats), WOW (wow & flutter), PING (ping-pong), MIX. **SYNC** locks the time to the
 global tempo: DIV picks the note value (1/32 to 1/1, with dotted "D" and triplet "T" values, up to 4 s) and
@@ -542,6 +578,8 @@ src/
 │   │   │               motion (hexagon sliders, magnet, drawn/recorded paths, timeline)
 │   │   ├── pops.rs     Pops 66 (after the KORG Mini Pops-7): instruments, user patterns, clock, MIDI in/out
 │   │   ├── pops/       voices (the fifteen synthesized instruments), rhythms (the twenty presets, combining)
+│   │   ├── tape.rs     Tape: record EQ, magnetic curve, transport (wow, flutter, stop/start), playback head
+│   │   ├── oversample.rs 2× oversampling (half-band FIR) shared by Magma and Tape
 │   │   ├── steps.rs step grid on the global tempo, outgoing notes, held keys
 │   │   └── mod.rs  module descriptions (ModuleDef), generic parameters and DSP helpers
 │   ├── midi.rs     MIDI inputs (midir) and shared state read by the MIDI nodes
@@ -561,6 +599,7 @@ src/
 │   ├── frakture.rs the Frakture node's panel: HEXAGON, EFFECTS and MOTION pages
 │   ├── equalizer.rs the Equalizer's panel: graph and band markers, analyzer (FFT), band controls
 │   ├── magma.rs    the Magma panel: display and dots, filter controls, sources and slots (drag & drop)
+│   ├── tape.rs     the Tape panel: the animated deck (reels, arms, heads, keys), VU meters, switches
 │   ├── pops.rs     the Pops 66 panel: MACHINE, MIXER and EDITOR detail levels (the node resizes), waveform preview
 │   ├── widgets.rs  hand-drawn knobs, faders, meters, ports and cables
 │   ├── monitor.rs  bottom panel: oscilloscope and spectrum (FFT)
@@ -598,7 +637,7 @@ sideways drift.
 To add a new module: a file in `audio/modules/` with its `ModuleDef` (knobs, ports, modes, toggle) and a
 `Processor`, an entry in `ModuleKind` and, in `ui/modules.rs`, the readout and the display.
 The panel (ports, selector, knobs) is generated from the definition; Frakture, too large for the generic
-panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`), Magma (`ui/magma.rs`) and Pops 66
+panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`), Magma (`ui/magma.rs`), Tape (`ui/tape.rs`) and Pops 66
 (`ui/pops.rs`, whose size follows its detail level through `modules::size_of`). Frakture's hexagon runs on the audio thread, block by block: the panel
 hands it the mouse through the module's display values, so paths keep time even when the window doesn't
 redraw.
