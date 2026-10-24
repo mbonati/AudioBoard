@@ -15,7 +15,7 @@ use super::widgets;
 use crate::audio::engine::NodeId;
 use crate::audio::modules::ModuleParams;
 use crate::audio::modules::tape::{
-    self as tp, AGE, BIAS, CASSETTE, FLUTTER, HISS, INPUT, MACHINES, MIX, OUTPUT, SPEEDS, TAPES, WOW, data, viz,
+    self as tp, AGE, BIAS, CASSETTE, FLUTTER, HISS, INPUT, MACHINES, MIX, OUTPUT, SATURATION, SPEEDS, TAPES, WOW, data, viz,
 };
 use crate::graph::{ModuleNode, ParamRef};
 
@@ -45,8 +45,9 @@ struct Layout {
     knobs: &'static [(usize, &'static str, &'static str)],
 }
 
-const ALL_KNOBS: [(usize, &str, &str); 8] = [
+const ALL_KNOBS: [(usize, &str, &str); 9] = [
     (INPUT, "INPUT", "Record level: drive the tape"),
+    (SATURATION, "SATURATION", "How hard into the tape, at the same level: harmonics, warmth, rounded and compressed peaks"),
     (BIAS, "BIAS", "Under: brighter, grittier · over: cleaner, darker"),
     (WOW, "WOW", "Slow pitch drift of the transport"),
     (FLUTTER, "FLUTTER", "Fast pitch jitter: capstan and pinch roller"),
@@ -55,7 +56,7 @@ const ALL_KNOBS: [(usize, &str, &str); 8] = [
     (OUTPUT, "OUTPUT", "Playback level (with AUTO GAIN it follows INPUT)"),
     (MIX, "MIX", "Dry against tape"),
 ];
-const FEW_KNOBS: [(usize, &str, &str); 5] = [ALL_KNOBS[0], ALL_KNOBS[1], ALL_KNOBS[2], ALL_KNOBS[3], ALL_KNOBS[7]];
+const FEW_KNOBS: [(usize, &str, &str); 5] = [ALL_KNOBS[0], ALL_KNOBS[1], ALL_KNOBS[3], ALL_KNOBS[4], ALL_KNOBS[8]];
 
 const COMPACT: Layout = Layout {
     size: vec2(380.0, 206.0),

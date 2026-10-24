@@ -429,7 +429,7 @@ impl MixerParams {
             mute: flags(),
             solo: flags(),
             aux: each(0.0),
-            master: AtomicF32::new(0.63), // about -6 dB: friendly to ears
+            master: AtomicF32::new(FADER_UNITY),
             master_mute: AtomicBool::new(false),
             aux_master: AtomicF32::new(FADER_UNITY),
             ch_meter: each(0.0),
@@ -529,6 +529,8 @@ pub struct EngineShared {
     /// Deepest gain reduction of the output limiter (dB, positive) since
     /// the UI last looked.
     pub limiting: AtomicF32,
+    /// The board's output level (linear), before the limiter.
+    pub output: AtomicF32,
     pub scope: Scope,
     /// Where the output goes while the board is being recorded.
     pub tap: super::record::Tap,
@@ -546,6 +548,7 @@ impl EngineShared {
             overloads: AtomicU32::new(0),
             frames: AtomicU32::new(0),
             limiting: AtomicF32::new(0.0),
+            output: AtomicF32::new(1.0),
             scope: Scope::new(),
             tap: super::record::Tap::new(),
         }

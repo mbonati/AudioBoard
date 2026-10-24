@@ -307,9 +307,19 @@ The switches:
 - **EQ**: NAB (fuller lows) or IEC/CCIR.
 - **AUTO GAIN**: OUTPUT follows INPUT, so driving the tape doesn't make it louder.
 
-The knobs: **INPUT** (record level, −12 to +18 dB), **BIAS** (under: brighter and grittier, saturating
-sooner; over: cleaner and darker), **WOW** and **FLUTTER** (shown as the pitch deviation they cause),
-**HISS**, **AGE** (worn tape: dropouts and a duller top), **OUTPUT** and **MIX**.
+The knobs:
+
+- **INPUT**: record level, −12 to +18 dB.
+- **SATURATION**: how hard the signal goes into the tape's curve, at the same level. It starts at 35%, so
+  the tape is heard: about 3–4% distortion on a −12 dBFS signal, 2nd and 3rd harmonics alike. Turning it
+  up pushes the curve up to 21 dB harder and adds even-harmonic warmth. Quiet passages come up a little,
+  loud ones are rounded and compressed (tape's "glue"), and makeup gain keeps typical levels within a
+  few dB. At 0 the tape is clean.
+- **BIAS**: under is brighter and grittier, saturating sooner; over is cleaner and darker.
+- **WOW** and **FLUTTER**: shown as the pitch deviation they cause.
+- **HISS**.
+- **AGE**: worn tape, with dropouts and a duller top.
+- **OUTPUT** and **MIX**.
 
 The deck is only sketched, and runs with the sound:
 
@@ -320,7 +330,7 @@ The deck is only sketched, and runs with the sound:
 - The **■** and **▶** keys stop the tape: it slows to a halt with its pitch falling, and spins back up when
   restarted.
 
-**COMPACT / FULL** in the header picks the view. COMPACT has the deck and INPUT, BIAS, WOW, FLUTTER and MIX;
+**COMPACT / FULL** in the header picks the view. COMPACT has the deck and INPUT, SATURATION, WOW, FLUTTER and MIX;
 FULL adds the switches, every knob and the tape time.
 
 The dry signal is lined up with the tape's latency, so MIX doesn't comb.
@@ -513,6 +523,17 @@ The output goes through a safety **limiter** just under full scale (−0.3 dBFS)
 when the sum gets too loud (several plugins, high faders) it turns the level down smoothly instead of
 clipping it into crackles, and recovers over about 150 ms. While it works, the status bar shows
 "limit −x dB": lower the master or the plugins. Below full scale it does nothing.
+
+**OUT** in the toolbar sets the board's overall output level, from −24 to +12 dB (0 dB by default). Drag it, or
+click it to type a value. It sits before the limiter, so turning it up makes everything louder without
+clipping, and it is kept between launches.
+
+Gain staging follows a DAW's:
+
+- A new mixer's MASTER starts at 0 dB.
+- A channel's pan works as a stereo balance: both sides at unity in the centre, the far side fading out as you
+  turn, so a centred channel keeps its level.
+- A source at −6 dBFS through a fresh mixer reaches the device at −6 dBFS.
 
 ## Controls
 

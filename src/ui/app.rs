@@ -151,6 +151,7 @@ impl AudioBoardApp {
         // The patch waits for Start.
         shared.running.store(false, Ordering::Relaxed);
         let settings = load_settings();
+        shared.output.set(db_to_gain(settings.output_db));
         let audio = audio::start(shared.clone(), settings.buffer_size);
         let mut graph = Graph::default();
         demo_patch(&mut graph, &audio);
@@ -203,6 +204,33 @@ impl AudioBoardApp {
             self.shared.rewinds.fetch_add(1, Ordering::Relaxed);
         }
         self.shared.running.fetch_xor(true, Ordering::Relaxed);
+    }
+
+    /// The board's output level: drag it, or click to type. Returns whether
+    /// the pointer is on it.
+    fn output_control(&mut self, ui: &mut Ui) -> bool {
+        let mut db = self.settings.output_db;
+        // A pill like TAP's, the value inside it.
+        let (rect, _) = ui.allocate_exact_size(vec2(92.0, 24.0), Sense::hover());
+        ui.painter().rect(rect, 12.0, Color32::TRANSPARENT, Stroke::new(1.0, theme::NODE_BORDER), StrokeKind::Inside);
+        let resp = ui
+            .scope(|ui| {
+                ui.style_mut().override_font_id = Some(FontId::proportional(11.5));
+                ui.put(
+                    rect.shrink2(vec2(8.0, 3.0)),
+                    egui::DragValue::new(&mut db).range(-24.0..=12.0).speed(0.1).fixed_decimals(1).prefix("OUT ").suffix(" dB"),
+                )
+            })
+            .inner
+            .on_hover_text("The board's output level: drag, or click to type (the limiter keeps it under 0 dBFS)");
+        if db != self.settings.output_db {
+            self.settings.output_db = db;
+            self.shared.output.set(db_to_gain(db));
+        }
+        if resp.drag_stopped() || resp.lost_focus() {
+            save_settings(&self.settings);
+        }
+        resp.hovered() || resp.dragged() || resp.has_focus()
     }
 
     /// R: starts recording what the board plays, or stops and offers the
@@ -654,10 +682,12 @@ impl AudioBoardApp {
                     }
                 }
                 ui.add_space(6.0);
+                let on_output = self.output_control(ui);
+                ui.add_space(6.0);
                 let beat = self.running().then(|| self.shared.beat.get());
-                let on_tempo = self.tempo.show(ui, &mut self.graph.tempo, beat, now);
-                // Dragging the BPM (or selecting typed text) must not drag
-                // the window: the toolbar is also the title bar.
+                let on_tempo = self.tempo.show(ui, &mut self.graph.tempo, beat, now) || on_output;
+                // Dragging the BPM or the output (or selecting typed text)
+                // must not drag the window: the toolbar is also the title bar.
                 #[cfg(target_os = "macos")]
                 if let Some(w) = &self.window {
                     w.set_movable(!on_tempo);
@@ -1201,6 +1231,10 @@ struct ExportWindow {
     job: Option<std::thread::JoinHandle<Result<PathBuf, String>>>,
 }
 
+fn db_to_gain(db: f32) -> f32 {
+    10f32.powf(db / 20.0)
+}
+
 /// Minutes and seconds.
 fn clock(seconds: f64) -> String {
     let s = seconds.max(0.0) as u64;
@@ -1305,6 +1339,9 @@ struct AppSettings {
     /// Audio buffer size in frames (None: the device's own).
     #[serde(default)]
     buffer_size: Option<u32>,
+    /// The board's output level, dB.
+    #[serde(default)]
+    output_db: f32,
 }
 
 fn settings_path() -> Option<PathBuf> {
