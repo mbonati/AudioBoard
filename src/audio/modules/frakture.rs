@@ -5,6 +5,12 @@
 //! input) and SPACE (a hall reverb) — between global IN, OUT and WET, with
 //! a safety limiter, INPUT THRU and bypass.
 //!
+//! MUTATE pushes the grains further: FEEDBACK sends them back into the
+//! buffer, SWARM spawns clouds of them, GLIDE bends each one's pitch,
+//! SHIMMER throws some up an octave or a fifth, RESONATE makes them ring on
+//! the harmonics of KEY, BLUR melts them together and ERODE wears some of
+//! them down to a few bits.
+//!
 //! Every effect knob can be mapped to one of six macro sliders laid out as a
 //! hexagon (each mapping with its own range), or to the input's level. A
 //! magnet cursor moves the sliders' nodes: it attracts or repels them along
@@ -24,7 +30,7 @@ use super::{ModuleDef, ModuleParams, Quiet, approach, silence, soft_limit, time_
 use crate::audio::engine::{BLOCK, Buf, Inputs, ProcessCtx, Processor};
 use crate::audio::fastmath;
 use crate::audio::params::{ParamSpec, Unit, format_db, format_hz, format_seconds, gain_to_db};
-use grains::{GrainSettings, Grains, LayerSettings, Playhead, Rate};
+use grains::{GrainSettings, Grains, LayerSettings, MutateSettings, Playhead, Rate};
 use motion::{Motion, SLIDERS};
 use rhythm::{Gate, GateSettings, Repeat, RepeatSettings};
 use space::Space;
@@ -91,24 +97,41 @@ pub const REP_RATE: usize = 41;
 pub const REP_VOLUME: usize = 42;
 pub const SPACE_LENGTH: usize = 43;
 pub const SPACE_MIX: usize = 44;
+/// MUTATE: grains back into the buffer; grains per trigger; each grain's
+/// pitch bend (bipolar); octave and fifth jumps; resonance on KEY's
+/// harmonics, and KEY; the grains melted together; grains worn down.
+pub const FEEDBACK: usize = 45;
+pub const SWARM: usize = 46;
+pub const GLIDE: usize = 47;
+pub const SHIMMER: usize = 48;
+pub const RESONATE: usize = 49;
+pub const KEY: usize = 50;
+pub const BLUR: usize = 51;
+pub const ERODE: usize = 52;
 /// Parameters below this are effect settings, which can be mapped to the
 /// hexagon; the rest set the hexagon itself.
-pub const MAPPABLE: usize = 45;
-pub const AR_GAIN: usize = 45;
-pub const AR_ATTACK: usize = 46;
-pub const AR_RELEASE: usize = 47;
-pub const AR_THRESHOLD: usize = 48;
-pub const CUR_RANGE: usize = 49;
-pub const CUR_STRENGTH: usize = 50;
+pub const MAPPABLE: usize = 53;
+pub const AR_GAIN: usize = 53;
+pub const AR_ATTACK: usize = 54;
+pub const AR_RELEASE: usize = 55;
+pub const AR_THRESHOLD: usize = 56;
+pub const CUR_RANGE: usize = 57;
+pub const CUR_STRENGTH: usize = 58;
 /// At its maximum the sliders stay where the magnet left them.
-pub const CUR_HOLD: usize = 51;
-pub const CUR_RELEASE: usize = 52;
+pub const CUR_HOLD: usize = 59;
+pub const CUR_RELEASE: usize = 60;
 /// The path's duration: a note value with TIME SYNC, else seconds.
-pub const TL_TIME: usize = 53;
+pub const TL_TIME: usize = 61;
 /// Index into [`MULTIPLIERS`].
-pub const TL_MULT: usize = 54;
-pub const TL_OFFSET: usize = 55;
-pub const PARAM_COUNT: usize = 56;
+pub const TL_MULT: usize = 62;
+pub const TL_OFFSET: usize = 63;
+/// MUTATE's note values, used with SYNC: how far apart a swarm's grains
+/// come, how long GLIDE's bend takes, how late FEEDBACK's grains return
+/// (indices into [`DIVS`]).
+pub const SWARM_RATE: usize = 64;
+pub const GLIDE_TIME: usize = 65;
+pub const FEEDBACK_TIME: usize = 66;
+pub const PARAM_COUNT: usize = 67;
 
 const M60: f32 = 0.001;
 const M24: f32 = 0.063_095_73;
@@ -148,6 +171,16 @@ pub const GATE_DIVS: DivRange = (0, 10);
 pub const TRIGGER_DIVS: DivRange = (10, 17);
 pub const REPEAT_DIVS: DivRange = (0, 13);
 pub const TIME_DIVS: DivRange = (4, 17);
+pub const SPACE_DIVS: DivRange = (10, 17);
+pub const SWARM_DIVS: DivRange = (0, 7);
+pub const GLIDE_DIVS: DivRange = (4, 17);
+pub const FEEDBACK_DIVS: DivRange = (4, 15);
+
+/// SCAN's speeds with SYNC, times the buffer's own (so the scan stays
+/// locked to the transport).
+pub const SCAN_RATIOS: [(&str, f32); 8] =
+    [("−2×", -2.0), ("−1×", -1.0), ("−½×", -0.5), ("−¼×", -0.25), ("¼×", 0.25), ("½×", 0.5), ("1×", 1.0), ("2×", 2.0)];
+pub const SCAN_RANGE: DivRange = (0, 7);
 
 /// Free (unsynced) ranges of the settings that can also be synced.
 pub const DENSITY_HZ: (f32, f32) = (0.5, 100.0);
@@ -228,6 +261,14 @@ const PARAMS: [ParamSpec; PARAM_COUNT] = [
     ParamSpec::log("REPEAT VOLUME", M60, P6, 1.0, Unit::Decibel),
     ParamSpec::log("SPACE LENGTH", 0.3, 20.0, 2.5, Unit::Seconds),
     ParamSpec::lin("SPACE MIX", 0.0, 1.0, 0.2, Unit::Percent),
+    ParamSpec::lin("FEEDBACK", 0.0, 1.0, 0.3, Unit::Percent),
+    ParamSpec::lin("SWARM", 0.0, 1.0, 0.3, Unit::Percent),
+    ParamSpec::lin("GLIDE", -1.0, 1.0, 0.0, Unit::Percent).bipolar(),
+    ParamSpec::lin("SHIMMER", 0.0, 1.0, 0.15, Unit::Percent),
+    ParamSpec::lin("RESONATE", 0.0, 1.0, 0.25, Unit::Percent),
+    ParamSpec::log("KEY", 30.0, 600.0, 110.0, Unit::Hz),
+    ParamSpec::lin("BLUR", 0.0, 1.0, 0.35, Unit::Percent),
+    ParamSpec::lin("ERODE", 0.0, 1.0, 0.0, Unit::Percent),
     ParamSpec::log("AUDIO GAIN", M12, P24, 1.0, Unit::Decibel),
     ParamSpec::log("AUDIO ATTACK", 0.001, 0.5, 0.01, Unit::Seconds),
     ParamSpec::log("AUDIO RELEASE", 0.01, 5.0, 0.25, Unit::Seconds),
@@ -239,6 +280,9 @@ const PARAMS: [ParamSpec; PARAM_COUNT] = [
     ParamSpec::lin("TIME", 0.0, 1.0, div_norm(15, TIME_DIVS), Unit::Percent),
     ParamSpec::lin("MULTIPLIER", 0.0, 7.0, 5.0, Unit::Integer),
     ParamSpec::lin("PATH OFFSET", 0.0, 1.0, 0.0, Unit::Percent),
+    ParamSpec::lin("SWARM RATE", SWARM_DIVS.0 as f32, SWARM_DIVS.1 as f32, 2.0, Unit::Integer),
+    ParamSpec::lin("GLIDE TIME", GLIDE_DIVS.0 as f32, GLIDE_DIVS.1 as f32, 10.0, Unit::Integer),
+    ParamSpec::lin("FEEDBACK TIME", FEEDBACK_DIVS.0 as f32, FEEDBACK_DIVS.1 as f32, 10.0, Unit::Integer),
 ];
 
 /// HOLD at (or near) its maximum: the sliders never return.
@@ -351,7 +395,16 @@ pub mod data {
     /// MAPPABLE × (slot, min, max): slot 0 none, 1…6 a slider, 7 the
     /// input level; min and max as knob positions (0…1).
     pub const MAP: usize = REC + MAX_REC * 3;
-    pub const LEN: usize = MAP + MAPPABLE * 3;
+    /// Per grain layer: MUTATE changes it.
+    pub const MUTATE_LAYERS: usize = MAP + MAPPABLE * 3;
+    /// Locked to the tempo: each layer's SCAN, SPACE's length, and
+    /// MUTATE's SWARM, GLIDE and FEEDBACK.
+    pub const SCAN_SYNC: usize = MUTATE_LAYERS + 2;
+    pub const SPACE_SYNC: usize = SCAN_SYNC + 2;
+    pub const SWARM_SYNC: usize = SPACE_SYNC + 1;
+    pub const GLIDE_SYNC: usize = SWARM_SYNC + 1;
+    pub const FEEDBACK_SYNC: usize = GLIDE_SYNC + 1;
+    pub const LEN: usize = FEEDBACK_SYNC + 1;
 }
 
 /// Cosine and sine of 0°, 30°, … 330°, for the default circular path.
@@ -429,26 +482,39 @@ const DATA: [f32; data::LEN] = {
         d[at + 3] = 1.0;
         i += 1;
     }
-    let maps: [(usize, f32, f32); 6] = [
-        (lp(0, layer::DENSITY), 0.0, 0.6),
-        (lp(0, layer::PITCH), 1.0 / 3.0, 2.0 / 3.0),
-        (lp(0, layer::RANGE), 0.0, 0.6),
-        (lp(0, layer::CHAOS), 0.0, 1.0),
-        (SPACE_MIX, 0.05, 0.6),
-        (lp(0, layer::WET), 0.75, 0.97),
+    // Slider by slider: what it moves, and over what range.
+    let maps: [(usize, usize, f32, f32); 6] = [
+        (1, lp(0, layer::DENSITY), 0.0, 0.6),
+        (2, lp(0, layer::PITCH), 1.0 / 3.0, 2.0 / 3.0),
+        (3, lp(0, layer::RANGE), 0.0, 0.6),
+        (4, lp(0, layer::CHAOS), 0.0, 1.0),
+        (5, SPACE_MIX, 0.05, 0.6),
+        (6, lp(0, layer::WET), 0.75, 0.97),
     ];
     let mut s = 0;
-    while s < 6 {
-        let at = data::MAP + maps[s].0 * 3;
-        d[at] = (s + 1) as f32;
-        d[at + 1] = maps[s].1;
-        d[at + 2] = maps[s].2;
+    while s < maps.len() {
+        let at = data::MAP + maps[s].1 * 3;
+        d[at] = maps[s].0 as f32;
+        d[at + 1] = maps[s].2;
+        d[at + 2] = maps[s].3;
         s += 1;
     }
+    d[data::MUTATE_LAYERS] = 1.0;
+    d[data::MUTATE_LAYERS + 1] = 1.0;
     d
 };
 
 pub const VIZ_GRAINS: usize = 24;
+/// Values shown per grain: position, pitch now, level, kind (see
+/// [`grain_kind`]), pitch at its start.
+pub const GRAIN_VIZ: usize = 5;
+
+/// What a grain shown has been through, as bits of its kind value.
+pub mod grain_kind {
+    pub const RESONANT: u32 = 1;
+    pub const ERODED: u32 = 2;
+    pub const SHIMMER: u32 = 4;
+}
 pub const OVERVIEW: usize = 128;
 pub const GATE_BINS: usize = 64;
 pub const SLICE_BINS: usize = 48;
@@ -456,7 +522,7 @@ pub const SLICE_BINS: usize = 48;
 /// Layout of `ModuleParams::viz`: what the processor shows the panel, and a
 /// few values the panel hands the processor (the mouse over the hexagon).
 pub mod viz {
-    use super::{GATE_BINS, MAPPABLE, OVERVIEW, SLICE_BINS, VIZ_GRAINS};
+    use super::{GATE_BINS, GRAIN_VIZ, MAPPABLE, OVERVIEW, SLICE_BINS, VIZ_GRAINS};
     /// The six sliders' live values.
     pub const SLIDERS: usize = 0;
     /// The input-level follower, 0…1.
@@ -487,12 +553,12 @@ pub mod viz {
     pub const GRAIN_COUNT: usize = PLAYHEADS + 2;
     /// Peak level per section of the buffer.
     pub const OVERVIEW_AT: usize = GRAIN_COUNT + 2;
-    /// Per layer, VIZ_GRAINS × (position, pitch in semitones, level; a
-    /// negative level: none).
+    /// Per layer, VIZ_GRAINS × GRAIN_VIZ (position, pitch in semitones,
+    /// level, kind, starting pitch; a negative level: none).
     pub const GRAINS: usize = OVERVIEW_AT + OVERVIEW;
     /// Position in the gate pattern (0…1), and the levels before and after
     /// the gate along it.
-    pub const GATE_POS: usize = GRAINS + 2 * VIZ_GRAINS * 3;
+    pub const GATE_POS: usize = GRAINS + 2 * VIZ_GRAINS * GRAIN_VIZ;
     pub const GATE_IN: usize = GATE_POS + 1;
     pub const GATE_OUT: usize = GATE_IN + GATE_BINS;
     /// 0 idle, 1 taking a slice, 2 repeating it; repeats played; position
@@ -617,9 +683,20 @@ pub fn label(i: usize) -> &'static str {
         REP_AMOUNT => "AMOUNT",
         REP_TRIGGER => "TRIGGER",
         REP_OFFSET | TL_OFFSET => "OFFSET",
+        SWARM_RATE => "SPACING",
+        GLIDE_TIME => "BEND",
+        FEEDBACK_TIME => "ECHO",
         REP_DUCK => "DUCK",
         REP_VOLUME => "VOLUME",
         SPACE_LENGTH => "LENGTH",
+        FEEDBACK => "FEEDBACK",
+        SWARM => "SWARM",
+        GLIDE => "GLIDE",
+        SHIMMER => "SHIMMER",
+        RESONATE => "RESONATE",
+        KEY => "KEY",
+        BLUR => "BLUR",
+        ERODE => "ERODE",
         AR_GAIN => "GAIN",
         AR_THRESHOLD => "THRESH",
         CUR_RANGE => "RANGE",
@@ -640,10 +717,12 @@ pub fn section(i: usize) -> &'static str {
         _ if i < GATE_STEPS => "Grains 2",
         _ if i < REP_LO => "Gate",
         _ if i < SPACE_LENGTH => "Repeat",
-        _ if i < MAPPABLE => "Space",
+        _ if i < FEEDBACK => "Space",
+        _ if i < MAPPABLE => "Mutate",
         _ if i < CUR_RANGE => "Audio",
         _ if i < TL_TIME => "Cursor",
-        _ => "Timeline",
+        _ if i < SWARM_RATE => "Timeline",
+        _ => "Mutate",
     }
 }
 
@@ -666,6 +745,7 @@ pub fn format(p: &ModuleParams, i: usize, v: f32) -> String {
         let k = (i - LAYER0) / layer::COUNT;
         return match (i - LAYER0) % layer::COUNT {
             layer::PLAYHEAD => match choice(p, data::PLAYHEAD_MODE + k, 5) {
+                SCAN if on(p, data::SCAN_SYNC + k) => SCAN_RATIOS[pick(v, SCAN_RANGE)].0.to_owned(),
                 SCAN => format!("{:+.2}×", (v - 0.5) * 2.0 * SCAN_SPEED),
                 OFFSET_SYNC => div(v, OFFSET_DIVS),
                 OFFSET_MS => format_seconds(log_range(v, OFFSET_S)),
@@ -695,14 +775,41 @@ pub fn format(p: &ModuleParams, i: usize, v: f32) -> String {
         REP_RATE if on(p, data::REPEAT_SYNC) => div(v, REPEAT_DIVS),
         REP_RATE => format_seconds(log_range(v, REPEAT_S)),
         REP_VOLUME => format_level(v),
+        SPACE_LENGTH if on(p, data::SPACE_SYNC) => div(PARAMS[SPACE_LENGTH].to_norm(v), SPACE_DIVS),
         SPACE_LENGTH | AR_ATTACK | AR_RELEASE | CUR_RELEASE => format_seconds(v),
+        SWARM_RATE | GLIDE_TIME | FEEDBACK_TIME => DIVS[(v.round().max(0.0) as usize).min(DIVS.len() - 1)].0.to_owned(),
         CUR_HOLD if v >= HOLD_FOREVER => "∞".to_owned(),
         CUR_HOLD => format_seconds(v),
         TL_TIME if on(p, data::TIME_SYNC) => div(v, TIME_DIVS),
         TL_TIME => format_seconds(log_range(v, TIME_S)),
         TL_MULT => MULTIPLIERS[(v.round().max(0.0) as usize).min(MULTIPLIERS.len() - 1)].0.to_owned(),
+        GLIDE if v.abs() < 0.005 => "none".to_owned(),
+        GLIDE => format!("{:+.0} st", v * GLIDE_OCTAVES * 12.0),
+        SWARM => format!("×{}", swarm_most(v)),
+        KEY => format!("{} · {}", format_hz(v), note_name(v)),
+        FEEDBACK | SHIMMER | RESONATE | BLUR | ERODE if v <= 0.0 => "off".to_owned(),
         _ => pct(v),
     }
+}
+
+/// GLIDE's reach at full, either way.
+pub const GLIDE_OCTAVES: f32 = 2.0;
+
+/// The most grains SWARM spawns at a time.
+pub fn swarm_most(v: f32) -> usize {
+    1 + (v.clamp(0.0, 1.0) * 7.0).round() as usize
+}
+
+/// A note value's beats, from its index into [`DIVS`].
+fn note(index: f32) -> f64 {
+    DIVS[(index.round().max(0.0) as usize).min(DIVS.len() - 1)].1
+}
+
+/// The nearest note's name ("A2").
+fn note_name(hz: f32) -> String {
+    const NAMES: [&str; 12] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+    let n = (69.0 + 12.0 * (hz / 440.0).log2()).round() as i32;
+    format!("{}{}", NAMES[n.rem_euclid(12) as usize], n.div_euclid(12) - 1)
 }
 
 /// A parameter's spec.
@@ -891,6 +998,7 @@ impl Frakture {
             };
             let head = at(layer::PLAYHEAD);
             let playhead = match choice(p, data::PLAYHEAD_MODE + k, 5) {
+                SCAN if on(p, data::SCAN_SYNC + k) => Playhead::ScanSync(SCAN_RATIOS[pick(head, SCAN_RANGE)].1),
                 SCAN => Playhead::Scan((head - 0.5) * 2.0 * SCAN_SPEED),
                 OFFSET_SYNC => Playhead::Behind(DIVS[pick(head, OFFSET_DIVS)].1 * spb),
                 OFFSET_MS => Playhead::Behind(log_range(head, OFFSET_S) as f64 * sr),
@@ -921,6 +1029,20 @@ impl Frakture {
             record: !on(p, data::FREEZE) && on(p, data::THRU),
             refresh: clock.started && on(p, data::RETRIG),
             layers: [layer(0), layer(1)],
+            mutate: MutateSettings {
+                feedback: v[FEEDBACK],
+                swarm: v[SWARM],
+                glide: v[GLIDE] * GLIDE_OCTAVES,
+                shimmer: v[SHIMMER],
+                resonate: v[RESONATE],
+                key: v[KEY],
+                blur: v[BLUR],
+                erode: v[ERODE],
+                layers: [on(p, data::MUTATE_LAYERS), on(p, data::MUTATE_LAYERS + 1)],
+                swarm_step: on(p, data::SWARM_SYNC).then(|| (note(v[SWARM_RATE]) * spb) as f32),
+                glide_len: on(p, data::GLIDE_SYNC).then(|| (note(v[GLIDE_TIME]) * spb) as f32),
+                feedback_delay: on(p, data::FEEDBACK_SYNC).then(|| (note(v[FEEDBACK_TIME]) * spb) as usize),
+            },
         }
     }
 
@@ -1039,7 +1161,14 @@ impl Processor for Frakture {
         let grain_settings = self.grain_settings(&clock);
         let gate_settings = self.gate_settings();
         let repeat_settings = self.repeat_settings(&clock);
-        let (length, space_mix) = (self.vals[SPACE_LENGTH], self.vals[SPACE_MIX]);
+        // SPACE's length, or with SYNC a note value at the tempo.
+        let length = if on(&p, data::SPACE_SYNC) {
+            let beats = DIVS[pick(PARAMS[SPACE_LENGTH].to_norm(self.vals[SPACE_LENGTH]), SPACE_DIVS)].1;
+            (beats * clock.seconds_per_beat).clamp(0.3, 40.0) as f32
+        } else {
+            self.vals[SPACE_LENGTH]
+        };
+        let space_mix = self.vals[SPACE_MIX];
         for section in routing(&p) {
             let target = on(&p, data::SECTION_ON + section);
             if !target && self.fade[section] < 1e-4 {

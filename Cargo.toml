@@ -19,6 +19,13 @@ objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSResponder", "NSView", "NSWindow"] }
 raw-window-handle = "0.6"
 
+# vst3-host 0.10.0 with one fix (vendor/vst3-host/src/internal/module_info.rs):
+# a plugin that declines IPluginCompatibility::getCompatibilityJSON (Kontakt 8
+# returns kResultFalse) loads without compatibility data instead of failing.
+# Drop this once a release upstream includes the fix.
+[patch.crates-io]
+vst3-host = { path = "vendor/vst3-host" }
+
 # Fastest build for playing: whole-program optimisation inlines the
 # per-sample DSP across modules and crates (10–15% less audio CPU), but
 # takes minutes to build. `cargo build --profile dist`.
