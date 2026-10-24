@@ -2110,7 +2110,8 @@ fn drive(proc: &mut dyn Processor, frames: usize, from: usize, input: impl Fn(us
     (l, r)
 }
 
-/// A Frakture with only the given effects on and nothing mapped.
+/// A Frakture with only the given effects on, nothing mapped and nothing
+/// mutated.
 fn frakture_with(sections: &[usize]) -> Arc<ModuleParams> {
     use crate::audio::modules::frakture::{self, data};
     let p = Arc::new(ModuleParams::new(ModuleKind::Frakture));
@@ -2119,6 +2120,9 @@ fn frakture_with(sections: &[usize]) -> Arc<ModuleParams> {
     }
     for i in 0..frakture::MAPPABLE {
         frakture::set_mapping(&p, i, None);
+    }
+    for i in [frakture::FEEDBACK, frakture::SWARM, frakture::GLIDE, frakture::SHIMMER, frakture::RESONATE, frakture::BLUR, frakture::ERODE] {
+        p.set(i, 0.0);
     }
     p
 }
@@ -3303,4 +3307,101 @@ fn tape_saturation_adds_harmonics_at_a_steady_level() {
         let db = 20.0 * (level / clean).log10();
         assert!((-3.5..1.0).contains(&db), "{what} keeps the level: {db:.1} dB");
     }
+}
+
+/// Grains only: layer 1 alone and fully wet (no dry signal), mutations off.
+fn grains_only() -> Arc<ModuleParams> {
+    use crate::audio::modules::frakture::{self, data, layer, lp};
+    let p = frakture_with(&[frakture::GRAINS]);
+    p.data[data::LAYER_ON + 1].set(0.0);
+    p.set(lp(0, layer::DRY), 0.001);
+    p.set(lp(0, layer::WET), 1.0);
+    p
+}
+
+/// Steady white noise, the same every run.
+fn noise(frame: usize) -> f32 {
+    let h = (frame as u32).wrapping_mul(2_654_435_761) ^ 0x5bd1_e995;
+    let h = h.wrapping_mul(0x2c1b_3c6d) ^ (h >> 15);
+    0.3 * ((h >> 8) as f32 / (1u32 << 24) as f32 * 2.0 - 1.0)
+}
+
+#[test]
+fn frakture_mutations_reshape_the_grains() {
+    use crate::audio::modules::frakture::{self, Frakture, GRAIN_VIZ, VIZ_GRAINS, grain_kind, viz};
+    // FEEDBACK: after the input stops, the grains keep regenerating.
+    let tail = |feedback: f32| {
+        let p = grains_only();
+        p.set(frakture::FEEDBACK, feedback);
+        let mut fx = Frakture::new(p, 48_000.0);
+        drive(&mut fx, 96_000, 0, saw);
+        let (after, _) = drive(&mut fx, 192_000, 96_000, |_| 0.0);
+        rms_of(&after[144_000..])
+    };
+    let (dry_tail, fed_tail) = (tail(0.0), tail(0.9));
+    assert!(fed_tail > 0.01 && fed_tail > 10.0 * dry_tail, "feedback tail {fed_tail} vs {dry_tail}");
+
+    // SWARM: clouds, many more grains at once.
+    let grains = |swarm: f32| {
+        let p = grains_only();
+        p.set(frakture::SWARM, swarm);
+        let mut fx = Frakture::new(p.clone(), 48_000.0);
+        drive(&mut fx, 96_000, 0, saw);
+        p.viz[viz::GRAIN_COUNT].get()
+    };
+    let (alone, cloud) = (grains(0.0), grains(1.0));
+    assert!(cloud >= 3.0 * alone.max(1.0), "{cloud} grains in a swarm, {alone} without");
+
+    // GLIDE and SHIMMER: grains end up away from their starting pitch, and
+    // some jump up; ERODE marks some as eroded.
+    let p = grains_only();
+    p.set(frakture::GLIDE, 1.0);
+    p.set(frakture::SHIMMER, 1.0);
+    p.set(frakture::ERODE, 1.0);
+    p.set(frakture::SWARM, 1.0);
+    let mut fx = Frakture::new(p.clone(), 48_000.0);
+    drive(&mut fx, 96_000, 0, saw);
+    let shown: Vec<(f32, f32, u32)> = (0..VIZ_GRAINS)
+        .map(|g| viz::GRAINS + g * GRAIN_VIZ)
+        .filter(|&at| p.viz[at + 2].get() >= 0.0)
+        .map(|at| (p.viz[at + 1].get(), p.viz[at + 4].get(), p.viz[at + 3].get() as u32))
+        .collect();
+    assert!(shown.iter().any(|(now, start, _)| now - start > 3.0), "no grain glided: {shown:?}");
+    assert!(shown.iter().all(|(_, _, kind)| kind & grain_kind::SHIMMER != 0), "shimmer at full jumps every grain");
+    assert!(shown.iter().all(|(_, _, kind)| kind & grain_kind::ERODED != 0), "erode at full wears every grain");
+
+    // RESONATE: noise comes out pitched, on the harmonics of KEY.
+    let peaks = |resonate: f32| {
+        let p = grains_only();
+        p.set(frakture::RESONATE, resonate);
+        p.set(frakture::KEY, 220.0);
+        let mut fx = Frakture::new(p, 48_000.0);
+        let (l, _) = drive(&mut fx, 144_000, 0, noise);
+        let tail = &l[48_000..];
+        let on: f32 = [220.0, 440.0, 660.0, 880.0].iter().map(|&f| tone_amp(tail, f)).sum();
+        let off: f32 = [330.0, 550.0, 770.0, 990.0].iter().map(|&f| tone_amp(tail, f)).sum();
+        on / off.max(1e-9)
+    };
+    let (flat, rung) = (peaks(0.0), peaks(1.0));
+    assert!(rung > 3.0 * flat, "harmonics of KEY stand out: {rung:.2} vs {flat:.2}");
+}
+
+#[test]
+fn frakture_mutated_to_the_extreme_stays_in_bounds() {
+    use crate::audio::modules::frakture::{self, Frakture};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Frakture));
+    for (i, v) in [
+        (frakture::FEEDBACK, 1.0),
+        (frakture::SWARM, 1.0),
+        (frakture::GLIDE, -1.0),
+        (frakture::SHIMMER, 1.0),
+        (frakture::RESONATE, 1.0),
+        (frakture::BLUR, 1.0),
+        (frakture::ERODE, 1.0),
+    ] {
+        p.set(i, v);
+    }
+    let (l, r) = drive(&mut Frakture::new(p, 48_000.0), 192_000, 0, saw);
+    assert!(l.iter().chain(&r).all(|s| s.is_finite() && s.abs() <= 1.0));
+    assert!(rms_of(&l[96_000..]) > 0.01, "still sounding");
 }

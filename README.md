@@ -157,7 +157,7 @@ position and timing), SPRAY (random pitch), SPREAD (stereo), MIX. Direction FWD 
 **FREEZE** stops recording: the cloud keeps exploring the captured sound. The POS input moves the read
 position (e.g. with a Random or an LFO). The display shows the loop and the active grains.
 
-**Frakture**: a granular rhythm effect after Excite Audio's Motion: Fractal. Its panel has three pages.
+**Frakture**: a granular rhythm effect after Excite Audio's Motion: Fractal. Its panel has four pages.
 
 - **EFFECTS**: four effects in a chain. Drag their names in the ROUTING row to change the order.
   - **Grains** records its input into a buffer locked to the tempo. BUFFER sets its length, from 1/4 to
@@ -177,6 +177,24 @@ position (e.g. with a Random or an LFO). The display shows the loop and the acti
   - **Space** is a hall reverb with LENGTH and MIX.
   - VIEW shows displays: the grains over the buffer (position across, pitch ±36 up and down) with both
     layers' grain shapes, the gate's levels before and after, and the slice being repeated.
+- **MUTATE**: pushes the grains further, past a granular delay, into textures that keep changing. It
+  works on the layers switched on with LAYER 1 / LAYER 2, and **DICE** rolls new mutations.
+  - **FEEDBACK**: the grains are written back into the buffer, so they regenerate. Each pass is a little
+    darker and softly clipped; at the top the texture lives on after the input stops.
+  - **SWARM**: a cloud of up to 8 grains per trigger, scattered a few milliseconds apart and slightly
+    detuned.
+  - **GLIDE**: each grain bends its pitch as it plays, up to ±24 semitones, each by its own amount; with
+    CHAOS some bend the other way.
+  - **SHIMMER**: the chance a grain jumps up an octave, a twelfth or two octaves.
+  - **RESONATE**: each grain rings through a band-pass on a harmonic of **KEY** (1st to 8th, following
+    the grain's pitch), so noise and drums turn into chords on KEY.
+  - **BLUR**: four allpasses per channel melt the grains into a wash.
+  - **ERODE**: the chance a grain is worn down: its samples held and rounded to a few bits.
+  - A live cloud shows the grains: across, where they are in the buffer; up, their pitch now. A tail
+    shows how far a grain has glided, a halo BLUR, a ring a resonating grain, a square an eroded one, a
+    + a shimmering one. FEEDBACK's echoes ripple out from the buffer.
+  - Every MUTATE knob can be mapped to the hexagon (right-click it), like the other effect knobs. They
+    start with a moderate amount of feedback, swarm, shimmer, resonance and blur.
 - **HEXAGON**: six macro sliders around a centre, and IN, OUT, WET, the LIMIT safety limiter (never
   above 0 dB) and THRU (off, nothing new comes in and the grains play out). BYPASS sits in the header.
   - Mapping: right-click any effect knob to map it to slider 1…6, or to the input level (A,
@@ -676,7 +694,7 @@ src/
 │   │   ├── magma.rs    Magma (after FabFilter Volcano 3): parameters, routing, oversampling, slots
 │   │   ├── magma/      filter (non-linear SVF styles, responses), modulation (XLFO, EG, EF, MIDI, XY)
 │   │   ├── frakture.rs Frakture (after Excite Audio's Motion: Fractal): parameters, mappings, the chain
-│   │   ├── frakture/   grains (tempo-locked buffer, two layers), rhythm (gate, repeat), space (hall),
+│   │   ├── frakture/   grains (tempo-locked buffer, two layers, MUTATE), rhythm (gate, repeat), space (hall),
 │   │   │               motion (hexagon sliders, magnet, drawn/recorded paths, timeline)
 │   │   ├── pops.rs     Pops 66 (after the KORG Mini Pops-7): instruments, user patterns, clock, MIDI in/out
 │   │   ├── pops/       voices (the fifteen synthesized instruments), rhythms (the twenty presets, combining)
@@ -702,7 +720,7 @@ src/
 │   ├── nodes.rs    layout and drawing of the oscillator and mixer, shared controls
 │   ├── console.rs  the Console's panel: horizontal (inputs on top) or vertical, 12 or 24 channels
 │   ├── modules.rs  common module panel and their displays
-│   ├── frakture.rs the Frakture node's panel: HEXAGON, EFFECTS and MOTION pages
+│   ├── frakture.rs the Frakture node's panel: HEXAGON, EFFECTS, MUTATE (the grain cloud) and MOTION pages
 │   ├── equalizer.rs the Equalizer's panel: graph and band markers, analyzer (FFT), band controls
 │   ├── magma.rs    the Magma panel: display and dots, filter controls, sources and slots (drag & drop)
 │   ├── tape.rs     the Tape panel: the sketched deck (reels, tape, head, needles, keys), COMPACT / FULL

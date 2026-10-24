@@ -1,7 +1,7 @@
-//! Panel of the Frakture node, in three pages like Motion: Fractal's main
-//! view and its two side panels: HEXAGON (the macro sliders, their
-//! mappings and the global controls), EFFECTS (grains, gate, repeat, space
-//! and their routing) and MOTION (cursor, path and timeline).
+//! Panel of the Frakture node, in four pages: HEXAGON (the macro sliders,
+//! their mappings and the global controls), EFFECTS (grains, gate, repeat,
+//! space and their routing), MUTATE (the grains pushed further, around a
+//! live cloud of them) and MOTION (cursor, path and timeline).
 
 use egui::epaint::{Mesh, Vertex, WHITE_UV};
 use egui::{Align2, Color32, CursorIcon, Id, Pos2, Rect, Response, Sense, Shape, Stroke, Vec2, pos2, vec2};
@@ -12,7 +12,7 @@ use super::widgets;
 use crate::audio::engine::NodeId;
 use crate::audio::modules::ModuleParams;
 use crate::audio::modules::frakture::motion::{self, PathPoint, SLIDERS};
-use crate::audio::modules::frakture::{self as fx, data, layer, lp, viz};
+use crate::audio::modules::frakture::{self as fx, data, grain_kind, layer, lp, viz};
 use crate::audio::params::gain_to_db;
 use crate::graph::{ModuleNode, ParamRef};
 
@@ -23,10 +23,23 @@ const TOP: f32 = 62.0;
 /// Grain layer 2's colour (layer 1 uses the node's).
 const SECOND: Color32 = Color32::from_rgb(96, 165, 238);
 
-const PAGES: [(&str, &str); 3] = [
+const PAGES: [(&str, &str); 4] = [
     ("HEXAGON", "The macro sliders, their mappings and the global controls"),
     ("EFFECTS", "Grains, gate, repeat, space and their order"),
+    ("MUTATE", "Push the grains further: feedback, swarms, glides, resonance, blur"),
     ("MOTION", "Cursor, path and timeline"),
+];
+
+/// MUTATE's knobs, and what each does (the legend under them).
+const MUTATE: [(usize, &str); 8] = [
+    (fx::FEEDBACK, "grains back into the buffer, regenerating"),
+    (fx::SWARM, "a cloud of grains per trigger"),
+    (fx::GLIDE, "each grain bends up (or down) as it plays"),
+    (fx::SHIMMER, "grains thrown up an octave or a fifth"),
+    (fx::RESONATE, "grains ringing on a harmonic of KEY"),
+    (fx::KEY, "the note RESONATE rings on"),
+    (fx::BLUR, "grains melted into a wash"),
+    (fx::ERODE, "grains worn down to a few bits"),
 ];
 
 /// Path tools.
@@ -61,8 +74,8 @@ pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, patched: 
     v.text(PAD, 42.0, Align2::LEFT_CENTER, "IN", v.font(9.0), label_col(patched.0));
     v.text(W - PAD, 42.0, Align2::RIGHT_CENTER, "OUT", v.font(9.0), label_col(patched.1));
 
-    let page = fx::choice(s.p, data::PAGE, 3);
-    s.seg("page", v.r(200.0, 34.0, 440.0, 52.0), &PAGES, data::PAGE);
+    let page = fx::choice(s.p, data::PAGE, PAGES.len());
+    s.seg("page", v.r(150.0, 34.0, 480.0, 52.0), &PAGES, data::PAGE);
     let bypass = fx::on(s.p, data::BYPASS);
     if s.chip("bypass", v.r(500.0, 34.0, 570.0, 52.0), "BYPASS", bypass, "Bypass: the input passes through untouched").clicked() {
         s.flip(data::BYPASS);
@@ -73,6 +86,7 @@ pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, patched: 
     match page {
         0 => s.hexagon_page(m),
         1 => s.effects_page(),
+        2 => s.mutate_page(),
         _ => s.motion_page(),
     }
 }
@@ -1109,7 +1123,7 @@ impl Panel<'_, '_> {
             }
             painter.vline(x_of(p.viz[viz::PLAYHEADS + k].get()), r.y_range(), Stroke::new(1.4 * z, alpha(color, 0.9)));
             for g in 0..fx::VIZ_GRAINS {
-                let at = viz::GRAINS + (k * fx::VIZ_GRAINS + g) * 3;
+                let at = viz::GRAINS + (k * fx::VIZ_GRAINS + g) * fx::GRAIN_VIZ;
                 let amp = p.viz[at + 2].get();
                 if amp < 0.0 {
                     continue;
@@ -1290,6 +1304,164 @@ impl Panel<'_, '_> {
                 }
             }
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // MUTATE page
+    // -----------------------------------------------------------------------
+
+    fn mutate_page(&self) {
+        let (v, p, z) = (self.v, self.p, self.z());
+        self.title(PAD, TOP + 9.0, "MUTATE");
+        v.text(PAD + 66.0, TOP + 9.0, Align2::LEFT_CENTER, "push the grains further", v.font(8.5), theme::TEXT_FAINT);
+        for (k, label) in ["LAYER 1", "LAYER 2"].into_iter().enumerate() {
+            let x = 330.0 + 66.0 * k as f32;
+            self.switch(data::MUTATE_LAYERS + k, v.r(x, TOP, x + 60.0, TOP + 18.0), label, "MUTATE changes this grain layer");
+        }
+        let dice = self.chip("dice", v.r(W - PAD - 70.0, TOP, W - PAD, TOP + 18.0), "DICE", false, "Roll new mutations");
+        if dice.clicked() {
+            self.roll_mutations();
+        }
+
+        self.cloud(v.r(PAD, TOP + 26.0, W - PAD, TOP + 326.0));
+
+        let cw = (W - 2.0 * PAD) / MUTATE.len() as f32;
+        for (k, (i, _)) in MUTATE.iter().enumerate() {
+            self.knob(*i, PAD + cw * (k as f32 + 0.5), TOP + 336.0);
+        }
+        // The legend: what each knob does.
+        let y0 = TOP + 392.0;
+        for (k, (i, what)) in MUTATE.iter().enumerate() {
+            let (col, row) = (k % 2, k / 2);
+            let x = PAD + 6.0 + (W - 2.0 * PAD) * 0.5 * col as f32;
+            let y = y0 + 16.0 * row as f32;
+            v.text(x, y, Align2::LEFT_CENTER, fx::label(*i), theme::strong(8.0 * z), self.accent);
+            v.text(x + 66.0, y, Align2::LEFT_CENTER, *what, v.font(8.0), theme::TEXT_DIM);
+        }
+        let marks = "●  a grain     ◯  resonating     ■  eroded     +  shimmer     │  glide     ⋯  feedback echoes";
+        v.text(W * 0.5, y0 + 72.0, Align2::CENTER_CENTER, marks, v.font(7.5), theme::TEXT_FAINT);
+        if p.viz[viz::GRAIN_COUNT].get() + p.viz[viz::GRAIN_COUNT + 1].get() > 0.0 {
+            v.ui.ctx().request_repaint_after(std::time::Duration::from_millis(33));
+        }
+    }
+
+    /// DICE: new mutations, each within a range that stays musical.
+    fn roll_mutations(&self) {
+        let p = self.p;
+        let seed = (self.v.ui.input(|i| i.time) * 1000.0) as u32 ^ self.id.wrapping_mul(0x9e37_79b9);
+        let mut rng = crate::audio::modules::Rng::new(seed);
+        let mut set = |i: usize, lo: f32, hi: f32| p.set(i, lo + (hi - lo) * rng.unit());
+        set(fx::FEEDBACK, 0.0, 0.7);
+        set(fx::SWARM, 0.0, 1.0);
+        set(fx::GLIDE, -0.6, 0.6);
+        set(fx::SHIMMER, 0.0, 0.6);
+        set(fx::RESONATE, 0.0, 0.8);
+        set(fx::BLUR, 0.0, 0.8);
+        set(fx::ERODE, 0.0, 0.4);
+        // KEY on a semitone between A1 and A4.
+        let semis = (rng.unit() * 36.0).round();
+        p.set(fx::KEY, 55.0 * (semis / 12.0).exp2());
+    }
+
+    /// The grains as a living cloud: across, where they are in the buffer;
+    /// up, their pitch now. A tail shows how far GLIDE has bent one, a halo
+    /// how BLUR smears them, a ring a resonating grain, a square an eroded
+    /// one, a spark a shimmering one; FEEDBACK echoes the buffer outward.
+    fn cloud(&self, rect: Rect) {
+        let (p, z) = (self.p, self.z());
+        self.inset(rect);
+        let painter = self.v.painter.with_clip_rect(rect.intersect(self.v.painter.clip_rect()));
+        let r = rect.shrink2(vec2(12.0, 12.0) * z);
+        let (mid, half) = (r.center().y, r.height() * 0.5);
+        let y_of = |semis: f32| mid - (semis / 36.0).clamp(-1.0, 1.0) * half;
+        let x_of = |f: f32| r.left() + r.width() * f.clamp(0.0, 1.0);
+        let font = theme::font(7.0 * z);
+        for semis in [-36.0f32, -24.0, -12.0, 0.0, 12.0, 24.0, 36.0] {
+            let y = y_of(semis);
+            let a = if semis == 0.0 { 0.18 } else { 0.07 };
+            painter.hline(r.x_range(), y, Stroke::new(1.0 * z, alpha(theme::TEXT, a)));
+            if semis != 0.0 {
+                painter.text(pos2(r.left() + 2.0 * z, y - 1.0 * z), Align2::LEFT_BOTTOM, format!("{semis:+.0}"), font.clone(), theme::TEXT_FAINT);
+            }
+        }
+
+        // The buffer as thin bars, and FEEDBACK's echoes of it as ghostly
+        // outlines, each fainter and further out.
+        let feedback = self.value(fx::FEEDBACK);
+        let level = |k: usize| p.viz[viz::OVERVIEW_AT + k].get().min(1.0).sqrt();
+        let x_at = |k: usize| r.left() + r.width() * (k as f32 + 0.5) / fx::OVERVIEW as f32;
+        for k in 0..fx::OVERVIEW {
+            let h = level(k) * half * 0.3;
+            if h >= 0.5 {
+                painter.line_segment([pos2(x_at(k), mid - h), pos2(x_at(k), mid + h)], Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.3)));
+            }
+        }
+        for echo in 1..4 {
+            let a = feedback * 0.45 / echo as f32;
+            if a < 0.02 {
+                continue;
+            }
+            let reach = half * (0.3 + 0.2 * echo as f32);
+            for side in [-1.0f32, 1.0] {
+                let outline: Vec<Pos2> = (0..fx::OVERVIEW).map(|k| pos2(x_at(k), mid + side * level(k) * reach)).collect();
+                painter.add(Shape::line(outline, Stroke::new(1.0 * z, alpha(self.accent, a))));
+            }
+        }
+        painter.vline(x_of(p.viz[viz::WRITE_HEAD].get()), r.y_range(), Stroke::new(1.0 * z, alpha(theme::TEXT, 0.35)));
+
+        let blur = self.value(fx::BLUR);
+        let resonate = self.value(fx::RESONATE);
+        let colors = [self.accent, SECOND];
+        let mut count = 0;
+        for (k, &color) in colors.iter().enumerate() {
+            if !self.on(data::LAYER_ON + k) {
+                continue;
+            }
+            for g in 0..fx::VIZ_GRAINS {
+                let at = viz::GRAINS + (k * fx::VIZ_GRAINS + g) * fx::GRAIN_VIZ;
+                let amp = p.viz[at + 2].get();
+                if amp < 0.0 {
+                    continue;
+                }
+                count += 1;
+                let kind = p.viz[at + 3].get() as u32;
+                let (x, y, y0) = (x_of(p.viz[at].get()), y_of(p.viz[at + 1].get()), y_of(p.viz[at + 4].get()));
+                let c = pos2(x, y);
+                let rad = (2.2 + 4.5 * amp) * z;
+                if blur > 0.02 {
+                    painter.circle_filled(c, rad * (2.0 + 6.0 * blur), alpha(color, 0.07 * amp * blur));
+                }
+                if (y - y0).abs() > 1.5 * z {
+                    painter.line_segment([pos2(x, y0), c], Stroke::new(1.2 * z, alpha(color, 0.25 + 0.35 * amp)));
+                    painter.circle_filled(pos2(x, y0), 1.2 * z, alpha(color, 0.4));
+                }
+                let fill = alpha(color, 0.35 + 0.65 * amp);
+                if kind & grain_kind::ERODED != 0 {
+                    painter.rect_filled(Rect::from_center_size(c, Vec2::splat(rad * 1.7)), 0.0, fill);
+                } else {
+                    painter.circle_filled(c, rad, fill);
+                }
+                if kind & grain_kind::RESONANT != 0 {
+                    painter.circle_stroke(c, rad + (2.5 + 5.0 * resonate) * z, Stroke::new(1.0 * z, alpha(color, 0.15 + 0.55 * amp * resonate)));
+                }
+                if kind & grain_kind::SHIMMER != 0 {
+                    let s = c - vec2(0.0, rad + 6.0 * z);
+                    let d = 3.5 * z;
+                    let spark = Stroke::new(1.0 * z, alpha(Color32::WHITE, 0.3 + 0.7 * amp));
+                    painter.line_segment([s - vec2(d, 0.0), s + vec2(d, 0.0)], spark);
+                    painter.line_segment([s - vec2(0.0, d), s + vec2(0.0, d)], spark);
+                }
+            }
+        }
+        let seconds = p.viz[viz::BUF_SECONDS].get();
+        let key = self.value(fx::KEY);
+        painter.text(
+            rect.right_top() + vec2(-8.0, 6.0) * z,
+            Align2::RIGHT_TOP,
+            format!("{count} grains · {seconds:.1} s of buffer · KEY {}", fx::format(p, fx::KEY, key)),
+            theme::font(8.0 * z),
+            theme::TEXT_DIM,
+        );
     }
 
     // -----------------------------------------------------------------------
