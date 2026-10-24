@@ -3405,3 +3405,151 @@ fn frakture_mutated_to_the_extreme_stays_in_bounds() {
     assert!(l.iter().chain(&r).all(|s| s.is_finite() && s.abs() <= 1.0));
     assert!(rms_of(&l[96_000..]) > 0.01, "still sounding");
 }
+
+#[test]
+fn frakture_scan_sync_is_locked_to_the_transport() {
+    use crate::audio::modules::frakture::{self, Frakture, SCAN, SCAN_RANGE, data, div_norm, layer, lp, viz};
+    // A 1-bar buffer (4 beats, 96000 frames at 120 BPM): at 1× the playhead
+    // makes one pass per bar, at −½× half a pass backwards, wherever the
+    // transport starts.
+    for (ratio, at) in [(6, 1.0), (2, -0.5)] {
+        for from in [0, 30_000] {
+            let p = grains_only();
+            p.data[data::PLAYHEAD_MODE].set(SCAN as f32);
+            p.data[data::SCAN_SYNC].set(1.0);
+            p.set(lp(0, layer::PLAYHEAD), div_norm(ratio, SCAN_RANGE));
+            let mut fx = Frakture::new(p.clone(), 48_000.0);
+            // The display is published every 4th block: end on one.
+            for frames in [6_464, 64_064] {
+                drive(&mut fx, frames, from, saw);
+                let beat = (from + frames - 1) as f64 / 24_000.0;
+                let want = (beat / 4.0 * at).rem_euclid(1.0) as f32;
+                let got = p.viz[viz::PLAYHEADS].get();
+                let off = (got - want).abs();
+                assert!(off.min(1.0 - off) < 0.002, "{at}× from {from}: playhead {got}, want {want}");
+                fx = Frakture::new(p.clone(), 48_000.0);
+            }
+        }
+    }
+    let p = grains_only();
+    p.data[data::PLAYHEAD_MODE].set(SCAN as f32);
+    p.data[data::SCAN_SYNC].set(1.0);
+    assert_eq!(frakture::format(&p, lp(0, layer::PLAYHEAD), div_norm(6, SCAN_RANGE)), "1×");
+}
+
+#[test]
+fn frakture_synced_swarm_rolls_in_time() {
+    use crate::audio::modules::frakture::{self, DENSITY_DIVS, Frakture, SIZE_DIVS, data, div_norm, layer, lp, viz};
+    // A cloud every half note, grains a quarter long; with SYNC its grains
+    // start one after another, a 1/32 (3000 frames) apart.
+    let run = |sync: bool| {
+        let p = grains_only();
+        p.set(frakture::SWARM, 1.0);
+        p.data[data::SWARM_SYNC].set(if sync { 1.0 } else { 0.0 });
+        p.set(frakture::SWARM_RATE, 2.0);
+        p.set(lp(0, layer::DENSITY), div_norm(13, DENSITY_DIVS));
+        p.data[data::SIZE_SYNC].set(1.0);
+        p.set(lp(0, layer::SIZE), div_norm(10, SIZE_DIVS));
+        let mut fx = Frakture::new(p.clone(), 48_000.0);
+        let (mut last, mut most, mut starts) = (0.0, 0.0f32, Vec::new());
+        for block in 0..4 * 48_000 / 64 {
+            drive(&mut fx, 64, block * 64, saw);
+            // Published every 4th block: 256 frames at a time.
+            if block % 4 != 0 {
+                continue;
+            }
+            let count = p.viz[viz::GRAIN_COUNT].get();
+            if count > last {
+                starts.push((block, count - last));
+            }
+            (last, most) = (count, most.max(count));
+        }
+        (starts, most)
+    };
+    let (starts, most) = run(true);
+    assert!(most >= 3.0, "still a cloud: {most} grains at once");
+    for &(block, added) in &starts {
+        assert_eq!(added, 1.0, "one grain at a time, block {block}");
+        let into = (block * 64 + 63) % 3_000;
+        assert!(into < 256 + 2, "block {block} isn't on the 1/32 grid ({into} frames past it)");
+    }
+    let (free, _) = run(false);
+    assert!(free.iter().any(|&(_, added)| added > 1.0), "unsynced, a cloud starts all at once");
+}
+
+#[test]
+fn frakture_synced_glide_bends_in_a_note_value() {
+    use crate::audio::modules::frakture::{self, Frakture, GRAIN_VIZ, SIZE_DIVS, VIZ_GRAINS, data, div_norm, layer, lp, viz};
+    // Whole-note grains, a new one every 1/16, each bending 12…36 st: synced
+    // to 1/16, nearly all of them are past 12 st; free, the bend lasts the
+    // whole grain and fewer than half are.
+    let bent = |sync: bool| {
+        let p = grains_only();
+        p.set(frakture::GLIDE, 1.0);
+        p.data[data::GLIDE_SYNC].set(if sync { 1.0 } else { 0.0 });
+        p.set(frakture::GLIDE_TIME, 4.0);
+        p.data[data::SIZE_SYNC].set(1.0);
+        p.set(lp(0, layer::SIZE), div_norm(15, SIZE_DIVS));
+        let mut fx = Frakture::new(p.clone(), 48_000.0);
+        let (mut done, mut all) = (0, 0);
+        for k in 0..12 {
+            drive(&mut fx, 9_600, 96_000 + k * 9_600, saw);
+            if k < 2 {
+                continue;
+            }
+            for g in 0..VIZ_GRAINS {
+                let at = viz::GRAINS + g * GRAIN_VIZ;
+                if p.viz[at + 2].get() >= 0.0 {
+                    all += 1;
+                    done += ((p.viz[at + 1].get() - p.viz[at + 4].get()).abs() >= 11.9) as usize;
+                }
+            }
+        }
+        done as f32 / all.max(1) as f32
+    };
+    let (synced, free) = (bent(true), bent(false));
+    assert!(synced > 0.85 && free < 0.65, "bent past 12 st: {synced:.2} synced, {free:.2} free");
+}
+
+#[test]
+fn frakture_synced_feedback_echoes_a_note_value_later() {
+    use crate::audio::modules::frakture::{self, Frakture, layer, lp};
+    // The default layer 1 plays a quarter note (24000 frames) behind, here
+    // without scatter: a short burst comes back at 24000, then fed back
+    // straight away at 48000, 72000… or, a half note later, at 96000.
+    let tail = |sync: bool| {
+        let p = grains_only();
+        p.set(lp(0, layer::RANGE), 0.0);
+        p.set(lp(0, layer::CHAOS), 0.0);
+        p.set(frakture::FEEDBACK, 0.9);
+        p.data[frakture::data::FEEDBACK_SYNC].set(if sync { 1.0 } else { 0.0 });
+        p.set(frakture::FEEDBACK_TIME, 13.0);
+        let (l, _) = drive(&mut Frakture::new(p, 48_000.0), 120_000, 0, |f| if f < 4_800 { saw(f) } else { 0.0 });
+        let w = |from: usize| rms_of(&l[from..from + 8_000]);
+        (w(24_500), w(48_500), w(72_500), w(96_500))
+    };
+    let (first, early, later, late) = tail(true);
+    assert!(first > 0.01 && late > 0.1 * first, "the echo comes back: {first} then {late}");
+    assert!(early < 0.05 * late && later < 0.05 * late, "nothing in between: {early}, {later} vs {late}");
+    let (_, free, _, _) = tail(false);
+    assert!(free > 20.0 * early, "unsynced it's straight back: {free} vs {early}");
+}
+
+#[test]
+fn frakture_synced_space_shows_note_values() {
+    use crate::audio::modules::frakture::{self, SPACE_DIVS, data, div_norm};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Frakture));
+    let spec = &frakture::DEF.params[frakture::SPACE_LENGTH];
+    let v = spec.denorm(div_norm(13, SPACE_DIVS));
+    p.data[data::SPACE_SYNC].set(1.0);
+    assert_eq!(frakture::format(&p, frakture::SPACE_LENGTH, v), "1/2");
+    p.data[data::SPACE_SYNC].set(0.0);
+    assert!(frakture::format(&p, frakture::SPACE_LENGTH, v).ends_with('s'));
+    for (i, label) in [(frakture::SWARM_RATE, "1/32"), (frakture::GLIDE_TIME, "1/4"), (frakture::FEEDBACK_TIME, "1/4")] {
+        assert_eq!(frakture::format(&p, i, spec_default(i)), label);
+    }
+}
+
+fn spec_default(i: usize) -> f32 {
+    crate::audio::modules::frakture::DEF.params[i].default
+}

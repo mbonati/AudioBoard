@@ -44,6 +44,9 @@ pub enum Playhead {
     Behind(f64),
     /// A fraction of the buffer behind the recording.
     BehindFraction(f32),
+    /// Moving through the buffer at this many times its length per pass,
+    /// locked to the transport.
+    ScanSync(f32),
 }
 
 #[derive(Clone, Copy)]
@@ -82,6 +85,15 @@ pub struct MutateSettings {
     pub erode: f32,
     /// The layers it changes.
     pub layers: [bool; 2],
+    /// SWARM with SYNC: a cloud's grains come one after another, this many
+    /// samples apart (else scattered a few milliseconds).
+    pub swarm_step: Option<f32>,
+    /// GLIDE with SYNC: the bend takes this many samples (else the grain's
+    /// length).
+    pub glide_len: Option<f32>,
+    /// FEEDBACK with SYNC: the grains come back this many samples later
+    /// (else at once).
+    pub feedback_delay: Option<usize>,
 }
 
 #[derive(Clone, Copy)]
@@ -109,6 +121,8 @@ const SWARM_DETUNE: f32 = 0.3;
 const FEEDBACK_MAX: f32 = 0.92;
 const FEEDBACK_LO: f32 = 60.0;
 const FEEDBACK_HI: f32 = 6000.0;
+/// FEEDBACK SYNC's longest delay (seconds): a whole note at 40 BPM.
+const FEEDBACK_SECONDS: f32 = 6.0;
 /// BLUR's diffusers: allpass delays per channel (ms).
 const DIFFUSION_MS: [[f32; 4]; 2] = [[4.3, 7.9, 12.7, 19.1], [5.1, 8.9, 13.9, 21.3]];
 
@@ -207,10 +221,13 @@ struct Grain {
     gl: f32,
     gr: f32,
     side: f32,
-    /// Pitch at the start (semitones), and GLIDE's bend over the grain's
-    /// life (octaves).
+    /// Pitch at the start (semitones), GLIDE's bend (octaves), and one
+    /// over the samples it takes.
     pitch: f32,
     glide: f32,
+    glide_inv: f32,
+    /// SWARM SYNC: samples before it starts.
+    wait: u32,
     /// RESONATE: the ringing, and how much of it (0: none).
     res: Res,
     res_mix: f32,
@@ -236,9 +253,15 @@ impl Grain {
         }
     }
 
+    /// How far through GLIDE's bend it is (0…1).
+    #[inline]
+    fn bent(&self) -> f32 {
+        (self.age as f32 * self.glide_inv).min(1.0)
+    }
+
     /// Its pitch now, with GLIDE's bend.
     fn pitch_now(&self) -> f32 {
-        self.pitch + self.glide * 12.0 * self.age as f32 * self.inv_len
+        self.pitch + self.glide * 12.0 * self.bent()
     }
 }
 
@@ -277,7 +300,7 @@ impl Layer {
         let lenf = len as f64;
         let at = match self.playhead {
             Playhead::At(v) => v as f64 * lenf,
-            Playhead::Scan(_) => self.scan,
+            Playhead::Scan(_) | Playhead::ScanSync(_) => self.scan,
             Playhead::Behind(d) => w as f64 - d,
             Playhead::BehindFraction(f) => w as f64 - f as f64 * lenf,
         };
@@ -291,12 +314,13 @@ impl Layer {
             _ => 1,
         };
         for k in 0..count {
-            self.spawn_one(s, m, w, len, sr, k > 0);
+            self.spawn_one(s, m, w, len, sr, k);
         }
     }
 
-    /// One grain; `extra`: one of a swarm's, scattered and detuned a little.
-    fn spawn_one(&mut self, s: &LayerSettings, m: Option<&MutateSettings>, w: usize, len: usize, sr: f32, extra: bool) {
+    /// Grain `index` of a cloud: past the first, a swarm's grains are
+    /// scattered and detuned a little, or with SYNC wait their turn.
+    fn spawn_one(&mut self, s: &LayerSettings, m: Option<&MutateSettings>, w: usize, len: usize, sr: f32, index: usize) {
         let Some(slot) = self.grains.iter().position(|g| !g.active) else {
             return;
         };
@@ -307,10 +331,17 @@ impl Layer {
         let mut semis = quantize(s.pitch + s.spread * rng.bipolar(), s.pitch_mode);
         let mut kind = 0;
         let mut glide = 0.0;
+        let mut wait = 0;
         if let Some(m) = m {
-            if extra {
-                start = (start + (rng.bipolar() * m.swarm * SWARM_SPREAD * sr) as f64).rem_euclid(lenf);
-                semis += rng.bipolar() * m.swarm * SWARM_DETUNE;
+            if index > 0 {
+                match m.swarm_step {
+                    // In time: the same slice again, a note value later.
+                    Some(step) => wait = (index as f32 * step) as u32,
+                    None => {
+                        start = (start + (rng.bipolar() * m.swarm * SWARM_SPREAD * sr) as f64).rem_euclid(lenf);
+                        semis += rng.bipolar() * m.swarm * SWARM_DETUNE;
+                    }
+                }
             }
             if roll(rng, m.shimmer) {
                 semis += JUMPS[(rng.unit() * JUMPS.len() as f32) as usize % JUMPS.len()];
@@ -385,6 +416,8 @@ impl Layer {
             side: 1.0 - pan.abs(),
             pitch: semis,
             glide,
+            glide_inv: m.and_then(|m| m.glide_len).map_or(1.0 / len_g as f32, |l| 1.0 / l.max(1.0)),
+            wait,
             res,
             res_mix,
             hold,
@@ -419,6 +452,8 @@ pub struct Grains {
     fb_lp: [f32; 2],
     fb_hp: [f32; 2],
     blur: Diffuser,
+    /// FEEDBACK SYNC: the grains, waiting their note value.
+    fb_line: [DelayLine; 2],
 }
 
 impl Grains {
@@ -441,6 +476,7 @@ impl Grains {
             fb_lp: [0.0; 2],
             fb_hp: [0.0; 2],
             blur: Diffuser::new(sample_rate),
+            fb_line: std::array::from_fn(|_| DelayLine::new((FEEDBACK_SECONDS * sample_rate) as usize)),
         }
     }
 
@@ -516,7 +552,15 @@ impl Grains {
                 let mut rec = [in_l, in_r];
                 if feedback > 0.0 {
                     for ch in 0..2 {
-                        self.fb_lp[ch] += (self.fed[ch] * feedback - self.fb_lp[ch]) * fb_lp_k;
+                        // With SYNC they come back a note value later.
+                        let back = match m.feedback_delay {
+                            Some(d) => {
+                                self.fb_line[ch].push(self.fed[ch]);
+                                self.fb_line[ch].tap_at(d.clamp(1, self.fb_line[ch].len() - 2) - 1)
+                            }
+                            None => self.fed[ch],
+                        };
+                        self.fb_lp[ch] += (back * feedback - self.fb_lp[ch]) * fb_lp_k;
                         self.fb_hp[ch] += (self.fb_lp[ch] - self.fb_hp[ch]) * fb_hp_k;
                         rec[ch] += fastmath::tanh(self.fb_lp[ch] - self.fb_hp[ch]);
                     }
@@ -543,8 +587,11 @@ impl Grains {
                 let set = &s.layers[k];
                 approach(&mut layer.norm, norm_t[k], self.smooth);
                 approach(&mut layer.wet, if set.on { set.wet } else { 0.0 }, self.smooth);
-                if let Playhead::Scan(speed) = set.playhead {
-                    layer.scan = (layer.scan + speed as f64).rem_euclid(lenf);
+                match set.playhead {
+                    Playhead::Scan(speed) => layer.scan = (layer.scan + speed as f64).rem_euclid(lenf),
+                    // Where the transport says: whole passes per buffer.
+                    Playhead::ScanSync(ratio) => layer.scan = (beat / s.buffer_beats * ratio as f64).rem_euclid(1.0) * lenf,
+                    _ => {}
                 }
                 if set.on {
                     let due = match set.density {
@@ -576,6 +623,11 @@ impl Grains {
                     if !g.active {
                         continue;
                     }
+                    if g.wait > 0 {
+                        g.wait -= 1;
+                        top = slot + 1;
+                        continue;
+                    }
                     let env = g.envelope();
                     // ERODE: samples held and coarsely rounded.
                     let (mut l, mut r) = if g.hold > 1 {
@@ -599,7 +651,7 @@ impl Grains {
                     ll += env * (mid * g.gl + side);
                     lr += env * (mid * g.gr - side);
                     // GLIDE bends the speed (so the pitch) over the grain.
-                    g.pos += if g.glide != 0.0 { g.inc * fastmath::exp2(g.glide * g.age as f32 * g.inv_len) as f64 } else { g.inc };
+                    g.pos += if g.glide != 0.0 { g.inc * fastmath::exp2(g.glide * g.bent()) as f64 } else { g.inc };
                     if g.pos >= lenf {
                         g.pos -= lenf;
                     } else if g.pos < 0.0 {
@@ -639,7 +691,7 @@ impl Grains {
             viz[viz::PLAYHEADS + k].set((layer.head(self.w, self.len) / lenf) as f32);
             let mut shown = 0;
             let mut count = 0;
-            for g in layer.grains[..layer.top].iter().filter(|g| g.active) {
+            for g in layer.grains[..layer.top].iter().filter(|g| g.active && g.wait == 0) {
                 count += 1;
                 if shown < VIZ_GRAINS {
                     let at = viz::GRAINS + (k * VIZ_GRAINS + shown) * GRAIN_VIZ;

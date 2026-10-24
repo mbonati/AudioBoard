@@ -165,6 +165,8 @@ position (e.g. with a Random or an LFO). The display shows the loop and the acti
     the grains. Two grain layers (1, 2, each with its own ON switch) play from the buffer:
     - PLAYHEAD has five modes: MANual position, SCAN (moves through the buffer forwards or backwards),
       and an offset behind the recording, as a note value (SYNC), in ms or in % (a granular delay).
+      SCAN with **SYNC** is locked to the transport: −2× … 2× passes of the buffer per BUFFER length, so
+      the playhead is always in the same place on the same beat.
     - RANGE (spread around the playhead), DENSITY and SIZE (free, or note values with SYNC).
     - CHAOS (randomizes width, direction and shape), DIRECTION (−100% reversed … +100% forwards).
     - PITCH and SPREAD, snapped by the pitch mode: free, chromatic, octaves, fourths, fifths, 4ths & 5ths.
@@ -174,7 +176,7 @@ position (e.g. with a Random or an LFO). The display shows the loop and the acti
   - **Repeat** is a stutter. Once per TRIGGER (OFFSET into it) it takes a slice RATE long (a note value
     with SYNC, else ms) and plays it AMOUNT more times. DUCK lowers the dry signal meanwhile; it has a
     LO–HI band and a VOLUME.
-  - **Space** is a hall reverb with LENGTH and MIX.
+  - **Space** is a hall reverb with LENGTH and MIX; with **SYNC** the LENGTH is a note value (1/4 … 4/1).
   - VIEW shows displays: the grains over the buffer (position across, pitch ±36 up and down) with both
     layers' grain shapes, the gate's levels before and after, and the slice being repeated.
 - **MUTATE**: pushes the grains further, past a granular delay, into textures that keep changing. It
@@ -193,6 +195,11 @@ position (e.g. with a Random or an LFO). The display shows the loop and the acti
   - A live cloud shows the grains: across, where they are in the buffer; up, their pitch now. A tail
     shows how far a grain has glided, a halo BLUR, a ring a resonating grain, a square an eroded one, a
     + a shimmering one. FEEDBACK's echoes ripple out from the buffer.
+  - **SYNC** under FEEDBACK, SWARM and GLIDE puts them in time, with a note value each:
+    - FEEDBACK: the grains come back that much later, as echoes in time (1/16 … 1/1).
+    - SWARM: a cloud's grains start one after another, a note value apart, on the same slice: rolls and
+      ratchets (1/64 … 1/8).
+    - GLIDE: the bend takes the note value, however long the grain (1/16 … 4/1).
   - Every MUTATE knob can be mapped to the hexagon (right-click it), like the other effect knobs. They
     start with a moderate amount of feedback, swarm, shimmer, resonance and blur.
 - **HEXAGON**: six macro sliders around a centre, and IN, OUT, WET, the LIMIT safety limiter (never

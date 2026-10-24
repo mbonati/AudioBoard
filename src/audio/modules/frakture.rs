@@ -125,7 +125,13 @@ pub const TL_TIME: usize = 61;
 /// Index into [`MULTIPLIERS`].
 pub const TL_MULT: usize = 62;
 pub const TL_OFFSET: usize = 63;
-pub const PARAM_COUNT: usize = 64;
+/// MUTATE's note values, used with SYNC: how far apart a swarm's grains
+/// come, how long GLIDE's bend takes, how late FEEDBACK's grains return
+/// (indices into [`DIVS`]).
+pub const SWARM_RATE: usize = 64;
+pub const GLIDE_TIME: usize = 65;
+pub const FEEDBACK_TIME: usize = 66;
+pub const PARAM_COUNT: usize = 67;
 
 const M60: f32 = 0.001;
 const M24: f32 = 0.063_095_73;
@@ -165,6 +171,16 @@ pub const GATE_DIVS: DivRange = (0, 10);
 pub const TRIGGER_DIVS: DivRange = (10, 17);
 pub const REPEAT_DIVS: DivRange = (0, 13);
 pub const TIME_DIVS: DivRange = (4, 17);
+pub const SPACE_DIVS: DivRange = (10, 17);
+pub const SWARM_DIVS: DivRange = (0, 7);
+pub const GLIDE_DIVS: DivRange = (4, 17);
+pub const FEEDBACK_DIVS: DivRange = (4, 15);
+
+/// SCAN's speeds with SYNC, times the buffer's own (so the scan stays
+/// locked to the transport).
+pub const SCAN_RATIOS: [(&str, f32); 8] =
+    [("−2×", -2.0), ("−1×", -1.0), ("−½×", -0.5), ("−¼×", -0.25), ("¼×", 0.25), ("½×", 0.5), ("1×", 1.0), ("2×", 2.0)];
+pub const SCAN_RANGE: DivRange = (0, 7);
 
 /// Free (unsynced) ranges of the settings that can also be synced.
 pub const DENSITY_HZ: (f32, f32) = (0.5, 100.0);
@@ -264,6 +280,9 @@ const PARAMS: [ParamSpec; PARAM_COUNT] = [
     ParamSpec::lin("TIME", 0.0, 1.0, div_norm(15, TIME_DIVS), Unit::Percent),
     ParamSpec::lin("MULTIPLIER", 0.0, 7.0, 5.0, Unit::Integer),
     ParamSpec::lin("PATH OFFSET", 0.0, 1.0, 0.0, Unit::Percent),
+    ParamSpec::lin("SWARM RATE", SWARM_DIVS.0 as f32, SWARM_DIVS.1 as f32, 2.0, Unit::Integer),
+    ParamSpec::lin("GLIDE TIME", GLIDE_DIVS.0 as f32, GLIDE_DIVS.1 as f32, 10.0, Unit::Integer),
+    ParamSpec::lin("FEEDBACK TIME", FEEDBACK_DIVS.0 as f32, FEEDBACK_DIVS.1 as f32, 10.0, Unit::Integer),
 ];
 
 /// HOLD at (or near) its maximum: the sliders never return.
@@ -378,7 +397,14 @@ pub mod data {
     pub const MAP: usize = REC + MAX_REC * 3;
     /// Per grain layer: MUTATE changes it.
     pub const MUTATE_LAYERS: usize = MAP + MAPPABLE * 3;
-    pub const LEN: usize = MUTATE_LAYERS + 2;
+    /// Locked to the tempo: each layer's SCAN, SPACE's length, and
+    /// MUTATE's SWARM, GLIDE and FEEDBACK.
+    pub const SCAN_SYNC: usize = MUTATE_LAYERS + 2;
+    pub const SPACE_SYNC: usize = SCAN_SYNC + 2;
+    pub const SWARM_SYNC: usize = SPACE_SYNC + 1;
+    pub const GLIDE_SYNC: usize = SWARM_SYNC + 1;
+    pub const FEEDBACK_SYNC: usize = GLIDE_SYNC + 1;
+    pub const LEN: usize = FEEDBACK_SYNC + 1;
 }
 
 /// Cosine and sine of 0°, 30°, … 330°, for the default circular path.
@@ -657,6 +683,9 @@ pub fn label(i: usize) -> &'static str {
         REP_AMOUNT => "AMOUNT",
         REP_TRIGGER => "TRIGGER",
         REP_OFFSET | TL_OFFSET => "OFFSET",
+        SWARM_RATE => "SPACING",
+        GLIDE_TIME => "BEND",
+        FEEDBACK_TIME => "ECHO",
         REP_DUCK => "DUCK",
         REP_VOLUME => "VOLUME",
         SPACE_LENGTH => "LENGTH",
@@ -692,7 +721,8 @@ pub fn section(i: usize) -> &'static str {
         _ if i < MAPPABLE => "Mutate",
         _ if i < CUR_RANGE => "Audio",
         _ if i < TL_TIME => "Cursor",
-        _ => "Timeline",
+        _ if i < SWARM_RATE => "Timeline",
+        _ => "Mutate",
     }
 }
 
@@ -715,6 +745,7 @@ pub fn format(p: &ModuleParams, i: usize, v: f32) -> String {
         let k = (i - LAYER0) / layer::COUNT;
         return match (i - LAYER0) % layer::COUNT {
             layer::PLAYHEAD => match choice(p, data::PLAYHEAD_MODE + k, 5) {
+                SCAN if on(p, data::SCAN_SYNC + k) => SCAN_RATIOS[pick(v, SCAN_RANGE)].0.to_owned(),
                 SCAN => format!("{:+.2}×", (v - 0.5) * 2.0 * SCAN_SPEED),
                 OFFSET_SYNC => div(v, OFFSET_DIVS),
                 OFFSET_MS => format_seconds(log_range(v, OFFSET_S)),
@@ -744,7 +775,9 @@ pub fn format(p: &ModuleParams, i: usize, v: f32) -> String {
         REP_RATE if on(p, data::REPEAT_SYNC) => div(v, REPEAT_DIVS),
         REP_RATE => format_seconds(log_range(v, REPEAT_S)),
         REP_VOLUME => format_level(v),
+        SPACE_LENGTH if on(p, data::SPACE_SYNC) => div(PARAMS[SPACE_LENGTH].to_norm(v), SPACE_DIVS),
         SPACE_LENGTH | AR_ATTACK | AR_RELEASE | CUR_RELEASE => format_seconds(v),
+        SWARM_RATE | GLIDE_TIME | FEEDBACK_TIME => DIVS[(v.round().max(0.0) as usize).min(DIVS.len() - 1)].0.to_owned(),
         CUR_HOLD if v >= HOLD_FOREVER => "∞".to_owned(),
         CUR_HOLD => format_seconds(v),
         TL_TIME if on(p, data::TIME_SYNC) => div(v, TIME_DIVS),
@@ -765,6 +798,11 @@ pub const GLIDE_OCTAVES: f32 = 2.0;
 /// The most grains SWARM spawns at a time.
 pub fn swarm_most(v: f32) -> usize {
     1 + (v.clamp(0.0, 1.0) * 7.0).round() as usize
+}
+
+/// A note value's beats, from its index into [`DIVS`].
+fn note(index: f32) -> f64 {
+    DIVS[(index.round().max(0.0) as usize).min(DIVS.len() - 1)].1
 }
 
 /// The nearest note's name ("A2").
@@ -960,6 +998,7 @@ impl Frakture {
             };
             let head = at(layer::PLAYHEAD);
             let playhead = match choice(p, data::PLAYHEAD_MODE + k, 5) {
+                SCAN if on(p, data::SCAN_SYNC + k) => Playhead::ScanSync(SCAN_RATIOS[pick(head, SCAN_RANGE)].1),
                 SCAN => Playhead::Scan((head - 0.5) * 2.0 * SCAN_SPEED),
                 OFFSET_SYNC => Playhead::Behind(DIVS[pick(head, OFFSET_DIVS)].1 * spb),
                 OFFSET_MS => Playhead::Behind(log_range(head, OFFSET_S) as f64 * sr),
@@ -1000,6 +1039,9 @@ impl Frakture {
                 blur: v[BLUR],
                 erode: v[ERODE],
                 layers: [on(p, data::MUTATE_LAYERS), on(p, data::MUTATE_LAYERS + 1)],
+                swarm_step: on(p, data::SWARM_SYNC).then(|| (note(v[SWARM_RATE]) * spb) as f32),
+                glide_len: on(p, data::GLIDE_SYNC).then(|| (note(v[GLIDE_TIME]) * spb) as f32),
+                feedback_delay: on(p, data::FEEDBACK_SYNC).then(|| (note(v[FEEDBACK_TIME]) * spb) as usize),
             },
         }
     }
@@ -1119,7 +1161,14 @@ impl Processor for Frakture {
         let grain_settings = self.grain_settings(&clock);
         let gate_settings = self.gate_settings();
         let repeat_settings = self.repeat_settings(&clock);
-        let (length, space_mix) = (self.vals[SPACE_LENGTH], self.vals[SPACE_MIX]);
+        // SPACE's length, or with SYNC a note value at the tempo.
+        let length = if on(&p, data::SPACE_SYNC) {
+            let beats = DIVS[pick(PARAMS[SPACE_LENGTH].to_norm(self.vals[SPACE_LENGTH]), SPACE_DIVS)].1;
+            (beats * clock.seconds_per_beat).clamp(0.3, 40.0) as f32
+        } else {
+            self.vals[SPACE_LENGTH]
+        };
+        let space_mix = self.vals[SPACE_MIX];
         for section in routing(&p) {
             let target = on(&p, data::SECTION_ON + section);
             if !target && self.fade[section] < 1e-4 {

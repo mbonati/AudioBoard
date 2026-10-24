@@ -1086,13 +1086,15 @@ impl Panel<'_, '_> {
             let cx = x0 + cw * ((k % cols) as f32 + 0.5);
             let row_y = y + 56.0 * (k / cols) as f32;
             self.knob(i, cx, row_y);
+            let scanning = fx::choice(p, data::PLAYHEAD_MODE + shown, fx::PLAYHEAD_MODES.len()) == fx::SCAN;
             let sync = match k {
-                layer::DENSITY => Some(data::DENSITY_SYNC + shown),
-                layer::SIZE => Some(data::SIZE_SYNC + shown),
+                layer::DENSITY => Some((data::DENSITY_SYNC + shown, "Sync to the tempo (note values)")),
+                layer::SIZE => Some((data::SIZE_SYNC + shown, "Sync to the tempo (note values)")),
+                layer::PLAYHEAD if scanning => Some((data::SCAN_SYNC + shown, "Scan in time: whole passes of the buffer, locked to the transport")),
                 _ => None,
             };
-            if let Some(d) = sync {
-                self.switch(d, v.r(cx + 15.0, row_y + 12.0, cx + 41.0, row_y + 26.0), "SYNC", "Sync to the tempo (note values)");
+            if let Some((d, tip)) = sync {
+                self.switch(d, v.r(cx + 15.0, row_y + 12.0, cx + 41.0, row_y + 26.0), "SYNC", tip);
             }
         }
     }
@@ -1219,6 +1221,7 @@ impl Panel<'_, '_> {
 
         // Space.
         self.section_switch(fx::SPACE, x0, y, 70.0);
+        self.switch(data::SPACE_SYNC, v.r(x0 + 76.0, y, x0 + 120.0, y + 18.0), "SYNC", "LENGTH in note values at the tempo");
         y += 26.0;
         self.knob(fx::SPACE_LENGTH, x0 + cw3 * 0.5, y);
         self.knob(fx::SPACE_MIX, x0 + cw3 * 1.5, y);
@@ -1323,14 +1326,30 @@ impl Panel<'_, '_> {
             self.roll_mutations();
         }
 
-        self.cloud(v.r(PAD, TOP + 26.0, W - PAD, TOP + 326.0));
+        self.cloud(v.r(PAD, TOP + 26.0, W - PAD, TOP + 282.0));
 
         let cw = (W - 2.0 * PAD) / MUTATE.len() as f32;
         for (k, (i, _)) in MUTATE.iter().enumerate() {
-            self.knob(*i, PAD + cw * (k as f32 + 0.5), TOP + 336.0);
+            let cx = PAD + cw * (k as f32 + 0.5);
+            self.knob(*i, cx, TOP + 290.0);
+            // SWARM, GLIDE and FEEDBACK can follow the tempo: SYNC, and the
+            // note value under it.
+            let sync = match *i {
+                fx::SWARM => Some((data::SWARM_SYNC, fx::SWARM_RATE, "A cloud's grains one after another, a note value apart: rolls in time")),
+                fx::GLIDE => Some((data::GLIDE_SYNC, fx::GLIDE_TIME, "The bend takes a note value, whatever the grain's length")),
+                fx::FEEDBACK => Some((data::FEEDBACK_SYNC, fx::FEEDBACK_TIME, "The grains come back a note value later: echoes in time")),
+                _ => None,
+            };
+            if let Some((d, rate, tip)) = sync {
+                let y = TOP + 336.0;
+                self.switch(d, v.r(cx - 30.0, y, cx + 30.0, y + 16.0), "SYNC", tip);
+                if self.on(d) {
+                    self.spinner(rate, v.r(cx - 34.0, y + 20.0, cx + 34.0, y + 36.0), "", tip);
+                }
+            }
         }
         // The legend: what each knob does.
-        let y0 = TOP + 392.0;
+        let y0 = TOP + 384.0;
         for (k, (i, what)) in MUTATE.iter().enumerate() {
             let (col, row) = (k % 2, k / 2);
             let x = PAD + 6.0 + (W - 2.0 * PAD) * 0.5 * col as f32;
@@ -1339,7 +1358,7 @@ impl Panel<'_, '_> {
             v.text(x + 66.0, y, Align2::LEFT_CENTER, *what, v.font(8.0), theme::TEXT_DIM);
         }
         let marks = "●  a grain     ◯  resonating     ■  eroded     +  shimmer     │  glide     ⋯  feedback echoes";
-        v.text(W * 0.5, y0 + 72.0, Align2::CENTER_CENTER, marks, v.font(7.5), theme::TEXT_FAINT);
+        v.text(W * 0.5, y0 + 70.0, Align2::CENTER_CENTER, marks, v.font(7.5), theme::TEXT_FAINT);
         if p.viz[viz::GRAIN_COUNT].get() + p.viz[viz::GRAIN_COUNT + 1].get() > 0.0 {
             v.ui.ctx().request_repaint_after(std::time::Duration::from_millis(33));
         }
