@@ -29,8 +29,11 @@ pub const HISS: usize = 4;
 pub const AGE: usize = 5;
 pub const OUTPUT: usize = 6;
 pub const MIX: usize = 7;
+/// How hard the signal goes into the tape's curve, at the same level:
+/// harmonics, warmth and rounded, compressed peaks.
+pub const SATURATION: usize = 8;
 
-const PARAMS: [ParamSpec; 8] = [
+const PARAMS: [ParamSpec; 9] = [
     ParamSpec::lin("INPUT", -12.0, 18.0, 0.0, Unit::Db),
     ParamSpec::lin("BIAS", -1.0, 1.0, 0.0, Unit::Percent).bipolar(),
     ParamSpec::lin("WOW", 0.0, 1.0, 0.15, Unit::Percent),
@@ -39,7 +42,13 @@ const PARAMS: [ParamSpec; 8] = [
     ParamSpec::lin("AGE", 0.0, 1.0, 0.0, Unit::Percent),
     ParamSpec::lin("OUTPUT", -18.0, 12.0, 0.0, Unit::Db),
     ParamSpec::lin("MIX", 0.0, 1.0, 1.0, Unit::Percent),
+    ParamSpec::lin("SATURATION", 0.0, 1.0, 0.35, Unit::Percent),
 ];
+
+/// SATURATION's push into the curve at full, in octaves of gain (+21 dB),
+/// and the even-harmonic tilt it adds.
+const SATURATION_OCTAVES: f32 = 3.5;
+const SATURATION_TILT: f32 = 0.08;
 
 /// The switches, kept with the settings.
 pub mod data {
@@ -266,6 +275,7 @@ pub fn format(p: &ModuleParams, i: usize) -> String {
         HISS if v <= 0.0 => "off".to_owned(),
         HISS => format!("{:.0} dB", hiss_db(m, speed(p).hiss, v)),
         AGE if v <= 0.0 => "new".to_owned(),
+        SATURATION if v <= 0.0 => "clean".to_owned(),
         _ => format!("{:.0}%", v * 100.0),
     }
 }
@@ -317,7 +327,16 @@ struct Curve {
     norm: f32,
     /// How much loud signals smear (the tape can't follow at once).
     memory: f32,
+    /// SATURATION's makeup: the level its extra push takes off a typical
+    /// signal, mostly given back.
+    makeup: f32,
 }
+
+/// A typical signal's peak (about −14 dBFS), where SATURATION's makeup is
+/// measured, and how much of the loss it gives back (the rest is the
+/// tape's compression).
+const MAKEUP_REFERENCE: f32 = 0.2;
+const MAKEUP_SHARE: f32 = 0.75;
 
 pub struct Tape {
     params: Arc<ModuleParams>,
@@ -419,10 +438,19 @@ impl Tape {
         let tape = TAPES[choice(p, data::TAPE, TAPES.len())];
         let bias = p.get(BIAS);
         let under = (-bias).max(0.0);
-        let tilt = m.asym + tape.3 + under * 0.12;
+        let sat = p.get(SATURATION);
+        let tilt = m.asym + tape.3 + under * 0.12 + sat * SATURATION_TILT;
         let tanh_tilt = fastmath::tanh(tilt);
+        let base = m.drive * fastmath::exp2(-bias * 0.5) / tape.2;
+        let gain = base * fastmath::exp2(sat * SATURATION_OCTAVES);
+        // How much of a typical signal the curve keeps, without and with
+        // SATURATION's push.
+        let kept = |g: f32| fastmath::tanh(MAKEUP_REFERENCE * g) / (MAKEUP_REFERENCE * g);
         Curve {
-            gain: m.drive * fastmath::exp2(-bias * 0.5) / tape.2,
+            // The curve's way back out divides by the same gain, so quiet
+            // passages keep their level and only the peaks get squeezed.
+            gain,
+            makeup: (kept(base) / kept(gain)).powf(MAKEUP_SHARE),
             tilt,
             tanh_tilt,
             norm: 1.0 / (1.0 - tanh_tilt * tanh_tilt),
@@ -437,7 +465,7 @@ impl Tape {
         let y = (fastmath::tanh(u + c.tilt) - c.tanh_tilt) * c.norm;
         // The tape can't follow loud swings at once: they lose top.
         *mag += (y - *mag) / (1.0 + c.memory * u.abs());
-        *mag / c.gain
+        *mag / c.gain * c.makeup
     }
 
     /// The tape read `lag` samples behind the write head (cubic).
@@ -536,7 +564,7 @@ impl Processor for Tape {
                 for ch in 0..2 {
                     mag[k][ch] = Self::magnetize(&mut self.chains[ch].mag, s[ch], &curve);
                     sat_in += s[ch].abs();
-                    sat_out += mag[k][ch].abs();
+                    sat_out += mag[k][ch].abs() / curve.makeup;
                 }
             }
             let rec = self.over.down(mag);

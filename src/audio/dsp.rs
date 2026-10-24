@@ -1,6 +1,6 @@
 //! Signal processors for each node type.
 
-use std::f32::consts::{FRAC_PI_4, TAU};
+use std::f32::consts::{FRAC_PI_2, TAU};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
@@ -185,6 +185,15 @@ impl Processor for Oscillator {
     }
 }
 
+/// A channel's pan as a stereo balance: both sides at unity in the centre
+/// (signals here are stereo, so a centred channel keeps its level), the
+/// far side fading out (on a quarter cosine) as it turns.
+pub fn balance(pan: f32) -> (f32, f32) {
+    let pan = pan.clamp(-1.0, 1.0);
+    let fade = |x: f32| (x * FRAC_PI_2).cos();
+    (if pan > 0.0 { fade(pan) } else { 1.0 }, if pan < 0.0 { fade(-pan) } else { 1.0 })
+}
+
 /// Any number of channels into two stereo outputs: the main mix (after
 /// MASTER) and the AUX mix (each channel's send, after AUX).
 pub struct Mixer {
@@ -207,8 +216,8 @@ impl Mixer {
         Self {
             params,
             gain: vec![0.0; n].into(),
-            pan_l: vec![FRAC_PI_4.cos(); n].into(),
-            pan_r: vec![FRAC_PI_4.sin(); n].into(),
+            pan_l: vec![1.0; n].into(),
+            pan_r: vec![1.0; n].into(),
             send: vec![0.0; n].into(),
             idle: vec![true; n].into(),
             master: 0.0,
@@ -238,9 +247,7 @@ impl Processor for Mixer {
             let soloed = p.solo[ch].load(Ordering::Relaxed);
             let audible = !muted && (!any_solo || soloed);
             let gain_t = if audible { fader_gain(p.fader[ch].get()) } else { 0.0 };
-            // Constant-power pan law (-3 dB at centre).
-            let theta = (p.pan[ch].get().clamp(-1.0, 1.0) + 1.0) * FRAC_PI_4;
-            let (pan_lt, pan_rt) = (theta.cos(), theta.sin());
+            let (pan_lt, pan_rt) = balance(p.pan[ch].get());
             let send_t = fader_gain(p.aux[ch].get());
             if self.idle[ch] {
                 self.idle[ch] = false;

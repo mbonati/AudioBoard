@@ -276,6 +276,8 @@ pub struct Engine {
     pass_midi: Box<[MidiBuf]>,
     /// The sinks' sum over the pass.
     mix: Box<[Buf]>,
+    /// The output level now, gliding to the shared one.
+    output: f32,
     limiter: Limiter,
 }
 
@@ -384,6 +386,7 @@ impl Engine {
             pass_audio: vec![[[0.0; BLOCK]; 2]; PASS_BLOCKS].into_boxed_slice(),
             pass_midi: vec![MidiBuf::default(); PASS_BLOCKS].into_boxed_slice(),
             mix: vec![[[0.0; BLOCK]; 2]; PASS_BLOCKS].into_boxed_slice(),
+            output: 1.0,
             limiter: Limiter::new(sample_rate),
         }
     }
@@ -549,6 +552,7 @@ impl Engine {
         let mut mono = [0.0f32; PASS];
         let mut done = 0;
         let recording = self.shared.tap.recording();
+        let output = self.shared.output.get();
 
         // Always processed, even when stopped: tails ring out.
         while done < frames {
@@ -558,7 +562,8 @@ impl Engine {
             let mut lowest = 1.0f32;
             for i in 0..n {
                 let block = &self.mix[i / BLOCK];
-                let (l, r, gain) = self.limiter.frame(block[0][i % BLOCK], block[1][i % BLOCK]);
+                self.output += (output - self.output) * self.ctx.smooth;
+                let (l, r, gain) = self.limiter.frame(block[0][i % BLOCK] * self.output, block[1][i % BLOCK] * self.output);
                 lowest = lowest.min(gain);
                 let (l, r) = (l.clamp(-1.0, 1.0), r.clamp(-1.0, 1.0));
                 if recording {

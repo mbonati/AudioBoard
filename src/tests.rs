@@ -145,7 +145,8 @@ fn mixers_send_on_aux_mute_their_master_and_patch_their_out() {
     dp.master_mute.store(false, Ordering::Relaxed);
     dp.aux[0].set(0.0);
     // OUT patched into another mixer: no longer to the device itself, so the
-    // device hears it once, through the second mixer.
+    // device hears it once, through the second mixer (at −6 dB).
+    wp.master.set(FADER_UNITY * 0.5f32.cbrt());
     let alone = render(&mut e, 9600).0;
     assert!(g.connect(port(dry, 0), port(wet, 1), &a));
     render(&mut e, 4800);
@@ -3251,5 +3252,55 @@ fn takes_export_through_the_system_encoders() {
         export(&take, Options { format, normalize: false, trim: false }, &path).unwrap();
         let bytes = std::fs::read(&path).unwrap();
         assert_eq!(&bytes[at..at + 4], magic, "{}", format.label());
+    }
+}
+
+#[test]
+fn a_centred_channel_keeps_its_level_and_the_output_sets_the_board() {
+    use crate::audio::dsp::balance;
+    use crate::audio::params::EngineShared;
+    // Balance: unity both sides in the centre; turning fades the far side.
+    assert_eq!(balance(0.0), (1.0, 1.0));
+    assert_eq!(balance(-1.0).0, 1.0);
+    assert!(balance(-1.0).1 < 1e-6 && balance(1.0).0 < 1e-6);
+    assert!((balance(0.5).0 - std::f32::consts::FRAC_1_SQRT_2).abs() < 1e-6);
+    // A saw at −6 dB through a fresh mixer reaches the device at −6 dB.
+    let shared = Arc::new(EngineShared::new());
+    let (a, mut e) = crate::audio::offline(shared.clone(), 48_000);
+    let mut g = Graph::default();
+    let x = source(&mut g, &a);
+    let m = g.add_mixer(pos2(0.0, 0.0), &a);
+    g.connect(port(x, 0), port(m, 0), &a);
+    render(&mut e, 9600);
+    let level = render(&mut e, 9600).0;
+    assert!((level - 0.5).abs() < 0.03, "−6 dBFS through the mixer: {level}");
+    // OUTPUT +3 dB: louder by as much, under the limiter's ceiling.
+    shared.output.set(10f32.powf(3.0 / 20.0));
+    render(&mut e, 9600);
+    let louder = render(&mut e, 9600).0;
+    assert!((louder / level - 1.413).abs() < 0.05, "{louder} vs {level}");
+}
+
+#[test]
+fn tape_saturation_adds_harmonics_at_a_steady_level() {
+    use crate::audio::modules::tape::{SATURATION, Tape};
+    // A sine at −12 dBFS, the tape clean and then pushed.
+    let run = |sat: f32| {
+        let p = tape_params();
+        p.set(SATURATION, sat);
+        let mut t = Tape::new(p, 48_000.0);
+        let (l, _) = drive_stereo(&mut t, 24_000, sine(1000.0, 0.25), None);
+        let tail = &l[14_400..24_000];
+        let f = tone_amp(tail, 1000.0);
+        (f, (tone_amp(tail, 2000.0) + tone_amp(tail, 3000.0)) / f)
+    };
+    let (clean, clean_h) = run(0.0);
+    let (default, default_h) = run(0.35);
+    let (full, full_h) = run(1.0);
+    assert!(default_h > 3.0 * clean_h && full_h > 3.0 * default_h, "harmonics grow: {clean_h} {default_h} {full_h}");
+    assert!(default_h > 0.03, "characterful by default: {default_h}");
+    for (level, what) in [(default, "default"), (full, "full")] {
+        let db = 20.0 * (level / clean).log10();
+        assert!((-3.5..1.0).contains(&db), "{what} keeps the level: {db:.1} dB");
     }
 }
