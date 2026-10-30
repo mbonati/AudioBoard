@@ -243,13 +243,21 @@ impl PluginWindow {
                     Retained::as_ptr(&container_view) as *mut std::ffi::c_void
                 )
             };
-            self.plugin
-                .lock()
-                .unwrap_or_else(|p| p.into_inner())
-                .open_editor(window_handle)?;
+            let attached_size = {
+                let mut plugin = self.plugin.lock().unwrap_or_else(|p| p.into_inner());
+                plugin.open_editor(window_handle)?;
+                plugin.attached_editor_size().ok().flatten()
+            };
 
-            // Match the window to the editor size, then show and center it.
-            window.setContentSize(container_frame.size);
+            // Match the window to the editor size, then show and center it. A view may only
+            // know its size once attached (Kontakt 8 answered the probe with the 800x600
+            // fallback above), so the attached view's size wins.
+            let content_size = match attached_size {
+                Some((width, height)) => NSSize::new(width as f64, height as f64),
+                None => container_frame.size,
+            };
+            container_view.setFrame(NSRect::new(NSPoint::new(0.0, 0.0), content_size));
+            window.setContentSize(content_size);
             window.makeKeyAndOrderFront(None);
             window.center();
 
