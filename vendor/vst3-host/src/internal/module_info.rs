@@ -324,20 +324,39 @@ pub(crate) fn read_factory_compatibility(
             );
             return Ok(Vec::new());
         }
-        let bytes = stream.to_vec();
-        if bytes.len() as u64 > MAX_MODULE_INFO_BYTES {
-            return invalid(format!(
-                "runtime compatibility JSON exceeds the {MAX_MODULE_INFO_BYTES} byte limit"
-            ));
-        }
-        let normalized = normalize_json5(&bytes).map_err(|message| {
-            Error::PluginLoadFailed(format!("invalid compatibility JSON: {message}"))
-        })?;
-        let raw: Vec<RawCompatibility> = serde_json::from_slice(&normalized).map_err(|error| {
-            Error::PluginLoadFailed(format!("invalid compatibility JSON: {error}"))
-        })?;
-        validate_compatibility(raw, &audio_class_ids)
+        let parsed = parse_runtime_compatibility(&stream.to_vec(), &audio_class_ids);
+        Ok(compatibility_or_none("runtime", parsed))
     }
+}
+
+fn parse_runtime_compatibility(
+    bytes: &[u8],
+    audio_class_ids: &HashSet<String>,
+) -> Result<Vec<ClassCompatibility>> {
+    if bytes.len() as u64 > MAX_MODULE_INFO_BYTES {
+        return invalid(format!(
+            "runtime compatibility JSON exceeds the {MAX_MODULE_INFO_BYTES} byte limit"
+        ));
+    }
+    let normalized = normalize_json5(bytes).map_err(|message| {
+        Error::PluginLoadFailed(format!("invalid compatibility JSON: {message}"))
+    })?;
+    let raw: Vec<RawCompatibility> = serde_json::from_slice(&normalized).map_err(|error| {
+        Error::PluginLoadFailed(format!("invalid compatibility JSON: {error}"))
+    })?;
+    validate_compatibility(raw, audio_class_ids)
+}
+
+/// Compatibility mappings only redirect old class ids to new ones. Data that fails validation
+/// is dropped with a warning instead of failing the whole plugin, as the SDK's host does.
+fn compatibility_or_none(
+    source: &str,
+    compatibility: Result<Vec<ClassCompatibility>>,
+) -> Vec<ClassCompatibility> {
+    compatibility.unwrap_or_else(|error| {
+        log::warn!("ignoring {source} compatibility data: {error}");
+        Vec::new()
+    })
 }
 
 pub(crate) fn resolve_factory_audio_class_id(
@@ -553,7 +572,10 @@ fn validate(raw: RawModuleInfo, source: PathBuf) -> Result<Option<ModuleInfo>> {
         });
     }
 
-    let compatibility = validate_compatibility(raw.compatibility, &audio_class_ids)?;
+    let compatibility = compatibility_or_none(
+        "moduleinfo.json",
+        validate_compatibility(raw.compatibility, &audio_class_ids),
+    );
 
     Ok(Some(ModuleInfo {
         source,
@@ -586,10 +608,14 @@ fn validate_compatibility(
     for (index, mapping) in raw.into_iter().enumerate() {
         let prefix = format!("Compatibility[{index}]");
         let new_class_id = normalize_uid(&format!("{prefix}.New"), &mapping.new_class_id)?;
+        // Hosts only ever look up audio classes. An entry for another class (BBC Symphony
+        // Orchestra also maps its old controller ids) is skipped, keeping the others.
         if !valid_new_class_ids.contains(&new_class_id) {
-            return invalid(format!(
-                "{prefix}.New references class {new_class_id}, which is not a current audio class"
-            ));
+            log::warn!(
+                "skipping {prefix}: New references class {new_class_id}, which is not a \
+                 current audio class"
+            );
+            continue;
         }
         if mapping.old_class_ids.len() > MAX_OLD_IDS_PER_ENTRY {
             return invalid(format!(
