@@ -3180,18 +3180,21 @@ impl PluginInternal for PluginImpl {
                 let view = ComPtr::<IPlugView>::from_raw(view_ptr)
                     .ok_or_else(|| Error::Other("Failed to wrap view".to_string()))?;
 
-                // Get view size
+                // Get view size. Only advisory before `attached()`: Kontakt 8 builds its (Qt)
+                // view on attach and answers kResultFalse until then. The host window is fitted
+                // to the attached view afterwards, or follows the view's `resizeView` request.
                 let mut view_rect = ViewRect {
                     left: 0,
                     top: 0,
                     right: 400,
                     bottom: 300,
                 };
-
-                if view.getSize(&mut view_rect) != kResultOk {
-                    return Err(Error::Other("Failed to get view size".to_string()));
+                let size_result = view.getSize(&mut view_rect);
+                if size_result != kResultOk {
+                    log::debug!("editor view has no size before attach: {size_result:#x}");
+                } else if let Err(error) = view_rect_size(&view_rect) {
+                    log::debug!("editor view has no usable size before attach: {error}");
                 }
-                view_rect_size(&view_rect)?;
 
                 // Hand the plugin an IPlugFrame (before attach, per the SDK) so it can
                 // request host-side resizes; requests land in `editor_resize`.
