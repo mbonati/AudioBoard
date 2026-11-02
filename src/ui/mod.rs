@@ -15,6 +15,7 @@ pub mod nullpunkt;
 pub mod palette;
 pub mod plugin_node;
 pub mod pops;
+pub mod settings;
 pub mod tape;
 pub mod tempo;
 pub mod theme;
