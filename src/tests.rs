@@ -3799,3 +3799,298 @@ fn audio_in_feeds_effects_and_texture_nodes() {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Automa
+// ---------------------------------------------------------------------------
+
+/// Runs Automa from frame `from` of a 120 BPM grid for `frames`, returning
+/// its events at absolute frames. `restart`: the transport was just
+/// rewound (Start).
+fn run_automa(
+    a: &mut crate::audio::modules::automa::Automa,
+    from: usize,
+    frames: usize,
+    playing: bool,
+    restart: bool,
+) -> Vec<(usize, [u8; 3])> {
+    const SR: f64 = 48_000.0;
+    let bps = 2.0 / SR;
+    let inputs = Box::new(Inputs {
+        bufs: [[[0.0; 64]; 2]; MAX_INPUTS],
+        connected: [false; MAX_INPUTS],
+        midi: MidiBuf::default(),
+        midi_connected: false,
+    });
+    let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
+    let mut events = Vec::new();
+    for done in (0..frames).step_by(64) {
+        let at = from + done;
+        let ctx = ProcessCtx {
+            sample_rate: SR as f32,
+            smooth: 0.01,
+            beat: at as f64 * bps,
+            beats_per_sample: bps,
+            playing,
+            restart: restart && done == 0,
+        };
+        a.process(&ctx, &inputs, &mut outputs, 64);
+        for e in a.midi_out().expect("sends MIDI").events() {
+            events.push((at + e.frame as usize, e.data));
+        }
+    }
+    events
+}
+
+/// Every note-on matched by a note-off.
+fn every_note_ends(events: &[(usize, [u8; 3])]) -> bool {
+    let mut held = std::collections::HashMap::<(u8, u8), i32>::new();
+    for (_, m) in events {
+        let key = (m[0] & 0x0F, m[1]);
+        match m[0] & 0xF0 {
+            0x90 if m[2] > 0 => *held.entry(key).or_default() += 1,
+            0x80 | 0x90 => *held.entry(key).or_default() -= 1,
+            _ => {}
+        }
+        if held.get(&key).is_some_and(|&n| !(0..=1).contains(&n)) {
+            return false;
+        }
+    }
+    held.values().all(|&n| n == 0)
+}
+
+const BAR: usize = 96_000;
+const SIXTEENTH: usize = 6_000;
+
+#[test]
+fn automa_melodies_stay_in_key_on_the_chords_and_in_time() {
+    use crate::audio::modules::automa::{self, Automa, data};
+    let scale = [0, 2, 4, 5, 7, 9, 11];
+    for engine in 0..4 {
+        for (tension, voices) in [(0.0, 1.0), (0.4, 1.0), (1.0, 3.0)] {
+            let p = Arc::new(ModuleParams::new(ModuleKind::Automa));
+            p.set_mode(engine);
+            p.set(automa::TENSION, tension);
+            p.set(automa::VOICES, voices);
+            p.data[data::PAD].set(1.0);
+            let mut a = Automa::new(p.clone());
+            let events = run_automa(&mut a, 0, 8 * BAR, true, true);
+            let (h, prog) = (automa::harmony(&p), automa::progression(&p));
+            let chord_at = |frame: usize| h.chord(prog.degree_at(frame as f64 / 24_000.0));
+            let ons = note_ons(&events);
+            // The melody from middle C up (OCTAVE 4), the pad under it.
+            let (melody, pad): (Vec<_>, Vec<_>) = ons.iter().partition(|o| o.1 >= 60);
+            assert!(melody.len() > 40, "engine {engine} plays: {} notes", melody.len());
+            for &(frame, note) in &melody {
+                assert_eq!(frame % SIXTEENTH, 0, "on the sixteenths of the global grid");
+                assert!(scale.contains(&(note % 12)), "engine {engine}: {note} is in C major");
+                // Every chord begins on one of its tones; with no TENSION
+                // there is nothing else.
+                if frame % BAR == 0 || tension == 0.0 {
+                    let chord = chord_at(frame);
+                    assert!(chord.contains(note % 12), "engine {engine}: {note} at frame {frame} is a tone of {}", chord.name(&h));
+                }
+            }
+            if voices > 1.0 {
+                let chords = melody.iter().filter(|a| melody.iter().filter(|b| b.0 == a.0).count() > 1).count();
+                assert!(chords > 0, "engine {engine} plays in parts");
+            }
+            // The pad: the chord's three tones on every bar line.
+            assert_eq!(pad.len(), 8 * 3, "engine {engine}");
+            for &(frame, note) in &pad {
+                assert_eq!(frame % BAR, 0);
+                assert!(chord_at(frame).contains(note % 12));
+            }
+        }
+    }
+}
+
+#[test]
+fn automa_plays_the_same_from_start_and_stop_ends_its_notes() {
+    use crate::audio::modules::automa::{self, Automa, data};
+    for engine in 0..4 {
+        let p = Arc::new(ModuleParams::new(ModuleKind::Automa));
+        p.set_mode(engine);
+        p.set(automa::VOICES, 3.0);
+        p.set(automa::GATE, 1.0);
+        p.data[data::PAD].set(1.0);
+        let mut a = Automa::new(p.clone());
+        let mut first = run_automa(&mut a, 0, 4 * BAR, true, true);
+        let stop = run_automa(&mut a, 4 * BAR, 64, false, false);
+        assert!(!stop.is_empty() && stop.iter().all(|(_, m)| m[0] & 0xF0 == 0x80), "Stop only ends notes");
+        first.extend(&stop);
+        assert!(every_note_ends(&first), "engine {engine}: no note hangs");
+        assert_eq!(p.viz[automa::viz::STEP].get(), -1.0);
+        let again = run_automa(&mut a, 0, 4 * BAR, true, true);
+        assert_eq!(note_ons(&first), note_ons(&again), "engine {engine}: Start plays the same music again");
+
+        // A new seed, other music.
+        automa::reseed(&p, 777);
+        let other = run_automa(&mut a, 0, 4 * BAR, true, true);
+        assert_ne!(note_ons(&other), note_ons(&again), "engine {engine}");
+    }
+}
+
+#[test]
+fn automa_follows_rate_swing_and_the_chord_length() {
+    use crate::audio::modules::automa::{self, Automa, data};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Automa));
+    p.set_mode(automa::CASCADE);
+    p.set(automa::DENSITY, 1.0);
+    p.set(automa::RATE, 1.0); // eighths
+    p.set(automa::CHANGE, 2.0); // two bars a chord
+    p.data[data::PAD].set(1.0);
+    let ons = note_ons(&run_automa(&mut Automa::new(p.clone()), 0, 4 * BAR, true, true));
+    let melody: Vec<usize> = ons.iter().filter(|o| o.1 >= 60).map(|o| o.0).collect();
+    assert_eq!(melody, (0..32).map(|k| k * 12_000).collect::<Vec<_>>(), "every eighth (CASCADE always offers)");
+    let pad: Vec<usize> = ons.iter().filter(|o| o.1 < 60).map(|o| o.0).collect();
+    assert_eq!(pad, [0, 0, 0, 2 * BAR, 2 * BAR, 2 * BAR]);
+    // Swing pushes the off-beats late.
+    p.set(automa::SWING, 1.0);
+    let ons = note_ons(&run_automa(&mut Automa::new(p.clone()), 0, BAR / 2, true, true));
+    let firsts: Vec<usize> = ons.iter().filter(|o| o.1 >= 60).map(|o| o.0).collect();
+    assert_eq!(firsts, [0, 18_000, 24_000, 42_000]);
+}
+
+#[test]
+fn automa_freeze_loops_the_last_bar() {
+    use crate::audio::modules::automa::{self, Automa, data, viz};
+    // TREE over one chord: the frozen bar is the last one, again and again.
+    let p = Arc::new(ModuleParams::new(ModuleKind::Automa));
+    p.set_mode(automa::TREE);
+    p.set(automa::MUTATE, 0.0);
+    automa::set_progression(&p, &[0]);
+    let mut a = Automa::new(p.clone());
+    let free = note_ons(&run_automa(&mut a, 0, 2 * BAR, true, true));
+    p.data[data::FREEZE].set(1.0);
+    let frozen = note_ons(&run_automa(&mut a, 2 * BAR, 3 * BAR, true, false));
+    let bar = |ons: &[(usize, u8)], k: usize| ons.iter().filter(|o| o.0 / BAR == k).map(|o| (o.0 % BAR, o.1)).collect::<Vec<_>>();
+    assert!(!bar(&free, 1).is_empty());
+    for k in 2..5 {
+        assert_eq!(bar(&frozen, k), bar(&free, 1), "frozen bar {k}");
+    }
+    // Let go, it carries on through the series.
+    p.data[data::FREEZE].set(0.0);
+    let after = note_ons(&run_automa(&mut a, 5 * BAR, BAR, true, false));
+    assert_ne!(bar(&after, 5), bar(&free, 1));
+
+    // Frozen, LIFE stops evolving (and keeps playing its grid).
+    let p = Arc::new(ModuleParams::new(ModuleKind::Automa));
+    p.set(automa::LIFE_GEN, 1.0);
+    let mut a = Automa::new(p.clone());
+    run_automa(&mut a, 0, BAR, true, true);
+    let generation = p.viz[viz::GENERATION].get();
+    assert!(generation > 10.0);
+    p.data[data::FREEZE].set(1.0);
+    let ons = note_ons(&run_automa(&mut a, BAR, 2 * BAR, true, false));
+    assert!(p.viz[viz::GENERATION].get() <= generation + 1.0, "it held still");
+    assert!(!ons.is_empty());
+}
+
+#[test]
+fn automa_plays_cells_drawn_on_its_grid() {
+    use crate::audio::modules::automa::{self, Automa, data, viz};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Automa));
+    automa::set_pattern(&p, &[0; 16]);
+    p.set(automa::MUTATE, 0.0);
+    p.set(automa::DENSITY, 1.0);
+    let mut a = Automa::new(p.clone());
+    run_automa(&mut a, 0, 64, false, false);
+    assert!((0..256).all(|i| p.viz[viz::CELLS + i].get() == 0.0), "an empty world");
+    // A blinker drawn on row 5, columns 4–6.
+    for x in 4..7 {
+        p.viz[viz::EDITS + 5 * 16 + x].set(1.0);
+    }
+    p.viz[viz::EDITED].set(1.0);
+    run_automa(&mut a, 0, 64, false, false);
+    let alive: Vec<usize> = (0..256).filter(|&i| p.viz[viz::CELLS + i].get() > 0.0).collect();
+    assert_eq!(alive, [84, 85, 86]);
+    // Playing (frozen, so it stays put), exactly those columns sound.
+    p.data[data::FREEZE].set(1.0);
+    let ons = note_ons(&run_automa(&mut a, 0, BAR, true, false));
+    assert_eq!(ons.iter().map(|o| o.0).collect::<Vec<_>>(), [4 * SIXTEENTH, 5 * SIXTEENTH, 6 * SIXTEENTH]);
+    // Rubbed out.
+    p.viz[viz::EDITS + 5 * 16 + 5].set(-1.0);
+    p.viz[viz::EDITED].set(1.0);
+    run_automa(&mut a, BAR, 64, true, false);
+    assert_eq!(p.viz[viz::CELLS + 85].get(), 0.0);
+}
+
+#[test]
+fn automa_survives_every_setting() {
+    use crate::audio::modules::automa::{Automa, data};
+    let def = ModuleKind::Automa.def();
+    for setting in [0.0, 0.5, 1.0] {
+        for mode in 0..4 {
+            for flags in [0.0, 1.0] {
+                let p = Arc::new(ModuleParams::new(ModuleKind::Automa));
+                for (i, spec) in def.params.iter().enumerate() {
+                    p.set(i, spec.denorm(setting));
+                }
+                p.set_mode(mode);
+                for i in [data::FREEZE, data::SEVENTHS, data::PAD, data::WANDER] {
+                    p.data[i].set(flags);
+                }
+                p.data[data::CHORDS].set(setting * 8.0);
+                let mut a = Automa::new(p.clone());
+                let mut events = run_automa(&mut a, 0, 2 * BAR, true, true);
+                events.extend(run_automa(&mut a, 2 * BAR, 64, false, false));
+                assert!(every_note_ends(&events), "setting {setting} mode {mode} flags {flags}");
+                assert!(events.iter().all(|(_, m)| m[1] < 128 && m[2] < 128));
+            }
+        }
+    }
+}
+
+#[test]
+fn automa_settings_progression_and_pattern_are_saved() {
+    use crate::audio::modules::automa::{self, data, engines};
+    let (mut g, a, _e) = setup();
+    let id = g.add_module(ModuleKind::Automa, pos2(0.0, 0.0), &a);
+    let p = module_params(&g, id);
+    p.set_mode(automa::JULIA);
+    p.set(automa::SHAPE, 0.6);
+    automa::set_progression(&p, &[5, 3, 0, 4, 1]);
+    automa::reseed(&p, 1234);
+    p.data[data::SEVENTHS].set(1.0);
+    let saved = crate::project::snapshot(&g);
+
+    let (mut h, b, _f) = setup();
+    assert_eq!(crate::project::restore(&mut h, &saved, &b), 0);
+    let q = module_params(&h, h.nodes[0].id);
+    assert_eq!(q.mode(), automa::JULIA);
+    assert_eq!(q.get(automa::SHAPE), 0.6);
+    let prog = automa::progression(&q);
+    assert_eq!((prog.len, &prog.degrees[..5]), (5, &[5, 3, 0, 4, 1][..]));
+    assert_eq!(automa::seed(&q), 1234);
+    assert_eq!(automa::pattern(&q), engines::soup(1234));
+    assert!(automa::harmony(&q).sevenths);
+    assert_eq!(crate::project::snapshot(&h), saved);
+}
+
+#[test]
+fn automa_panel_draws_every_generator() {
+    use crate::audio::modules::automa::data;
+    let shared = Arc::new(EngineShared::new());
+    shared.running.store(true, Ordering::Relaxed);
+    shared.tempo.set(120.0);
+    let (a, mut e) = audio::offline(shared, 48_000);
+    let mut g = Graph::default();
+    let id = g.add_module(ModuleKind::Automa, pos2(0.0, 0.0), &a);
+    let p = module_params(&g, id);
+    p.data[data::PAD].set(1.0);
+    let mut editor = crate::ui::canvas::Editor::new();
+    let ctx = egui::Context::default();
+    let mut time = 0.0;
+    for engine in 0..4 {
+        p.set_mode(engine);
+        for _ in 0..4 {
+            render_buf(&mut e, 4_800);
+            time += 0.1;
+            let input = egui::RawInput { time: Some(time), ..Default::default() };
+            let mut out = ctx.run_ui(input, |ui| editor.show(ui, &mut g, &a));
+            out.textures_delta.clear();
+        }
+    }
+    assert!(p.viz[crate::audio::modules::automa::viz::EVENT_SEQ].get() > 0.0, "it played while drawn");
+}

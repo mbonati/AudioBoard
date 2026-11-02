@@ -5,6 +5,7 @@
 
 pub mod arpeggiator;
 pub mod audio_in;
+pub mod automa;
 pub mod delay;
 pub mod drone;
 pub mod equalizer;
@@ -58,6 +59,7 @@ pub enum ModuleKind {
     Arpeggiator,
     MidiIn,
     Midicer,
+    Automa,
 }
 
 /// Static description of a module's panel and ports.
@@ -97,7 +99,7 @@ pub struct ModuleDef {
 }
 
 impl ModuleKind {
-    pub const ALL: [ModuleKind; 21] = [
+    pub const ALL: [ModuleKind; 22] = [
         ModuleKind::Drone,
         ModuleKind::Random,
         ModuleKind::Pops,
@@ -119,6 +121,7 @@ impl ModuleKind {
         ModuleKind::Arpeggiator,
         ModuleKind::MidiIn,
         ModuleKind::Midicer,
+        ModuleKind::Automa,
     ];
 
     pub fn def(self) -> &'static ModuleDef {
@@ -144,6 +147,7 @@ impl ModuleKind {
             ModuleKind::Arpeggiator => &arpeggiator::DEF,
             ModuleKind::MidiIn => &midi_in::DEF,
             ModuleKind::Midicer => &midicer::DEF,
+            ModuleKind::Automa => &automa::DEF,
         }
     }
 
@@ -174,6 +178,7 @@ impl ModuleKind {
             ModuleKind::Arpeggiator => Box::new(arpeggiator::Arpeggiator::new(params, midi)),
             ModuleKind::MidiIn => Box::new(midi_in::MidiIn::new(params, midi)),
             ModuleKind::Midicer => Box::new(midicer::Midicer::new(params, midi)),
+            ModuleKind::Automa => Box::new(automa::Automa::new(params)),
         }
     }
 }

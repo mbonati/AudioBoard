@@ -1,4 +1,5 @@
 pub mod app;
+pub mod automa;
 pub mod canvas;
 pub mod console;
 pub mod equalizer;
