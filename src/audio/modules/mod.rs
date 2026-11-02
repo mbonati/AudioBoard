@@ -4,6 +4,7 @@
 //! generic [`ModuleParams`] and has a single stereo output.
 
 pub mod arpeggiator;
+pub mod audio_in;
 pub mod delay;
 pub mod drone;
 pub mod equalizer;
@@ -40,6 +41,7 @@ pub enum ModuleKind {
     Random,
     Pops,
     Nullpunkt,
+    AudioIn,
     Granular,
     Frakture,
     Resonator,
@@ -95,11 +97,12 @@ pub struct ModuleDef {
 }
 
 impl ModuleKind {
-    pub const ALL: [ModuleKind; 20] = [
+    pub const ALL: [ModuleKind; 21] = [
         ModuleKind::Drone,
         ModuleKind::Random,
         ModuleKind::Pops,
         ModuleKind::Nullpunkt,
+        ModuleKind::AudioIn,
         ModuleKind::Granular,
         ModuleKind::Frakture,
         ModuleKind::Resonator,
@@ -124,6 +127,7 @@ impl ModuleKind {
             ModuleKind::Random => &random::DEF,
             ModuleKind::Pops => &pops::DEF,
             ModuleKind::Nullpunkt => &nullpunkt::DEF,
+            ModuleKind::AudioIn => &audio_in::DEF,
             ModuleKind::Granular => &granular::DEF,
             ModuleKind::Frakture => &frakture::DEF,
             ModuleKind::Resonator => &resonator::DEF,
@@ -153,6 +157,7 @@ impl ModuleKind {
             ModuleKind::Random => Box::new(random::Random::new(params, sample_rate)),
             ModuleKind::Pops => Box::new(pops::Pops::new(params, sample_rate)),
             ModuleKind::Nullpunkt => Box::new(nullpunkt::Nullpunkt::new(params, sample_rate)),
+            ModuleKind::AudioIn => Box::new(audio_in::AudioIn::new(params, audio.shared.clone(), sample_rate)),
             ModuleKind::Granular => Box::new(granular::Granular::new(params, sample_rate)),
             ModuleKind::Frakture => Box::new(frakture::Frakture::new(params, sample_rate)),
             ModuleKind::Resonator => Box::new(resonator::Resonator::new(params, sample_rate)),

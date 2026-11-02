@@ -11,7 +11,7 @@ use super::widgets;
 use crate::audio::engine::NodeId;
 use crate::audio::midi::note_hz;
 use crate::audio::modules::{
-    ModuleDef, ModuleKind, ModuleParams, arpeggiator, delay, drone, equalizer, filter, frakture, magma, pops, granular, midi_cc, midi_in, midi_note,
+    ModuleDef, ModuleKind, ModuleParams, arpeggiator, audio_in, delay, drone, equalizer, filter, frakture, magma, pops, granular, midi_cc, midi_in, midi_note,
     midicer, nullpunkt, pingpong, random, resonator, reverb, sequencer, steps, tape,
 };
 use crate::audio::params::{
@@ -226,6 +226,7 @@ pub fn draw(
     };
     match kind {
         ModuleKind::Drone => drone_display(&screen, p),
+        ModuleKind::AudioIn => audio_in_display(&screen, p),
         ModuleKind::Random | ModuleKind::MidiCc | ModuleKind::MidiNote => trace_display(&screen, m),
         ModuleKind::Granular => granular_display(&screen, p),
         ModuleKind::Frakture | ModuleKind::Equalizer | ModuleKind::Magma | ModuleKind::Pops | ModuleKind::Tape | ModuleKind::Nullpunkt => {}
@@ -421,6 +422,13 @@ fn readout(kind: ModuleKind, p: &ModuleParams, tempo: f32) -> (String, String) {
             let sub = if t == 0.0 { format!("{ch} · play a key") } else { format!("{ch} · {t:+.0} st") };
             (current_note(p), sub)
         }
+        ModuleKind::AudioIn => {
+            let (left, right) = audio_in::channels(p);
+            let main = if left == right { format!("In {}", left + 1) } else { format!("In {}–{}", left + 1, right + 1) };
+            let open = p.viz[audio_in::viz::CHANNELS].get() as usize;
+            let sub = if open == 0 { "no input open".to_owned() } else { format!("{} · {:+.1} dB", mode.to_lowercase(), p.get(audio_in::GAIN)) };
+            (main, sub)
+        }
         ModuleKind::Drone => {
             let f = p.get(drone::PITCH);
             (format_hz(f), format!("{} · {mode}", note_name(f)))
@@ -550,6 +558,45 @@ fn drone_display(s: &Screen, p: &ModuleParams) {
             }
             let a = if k == 1 { 0.85 } else { 0.4 };
             s.partial(s.log_x(fk, lo, hi), amp, alpha(s.accent, a));
+        }
+    }
+}
+
+/// Audio In: a meter per side, labelled with its input; or, with no input
+/// open, where to choose one.
+fn audio_in_display(s: &Screen, p: &ModuleParams) {
+    let r = s.rect;
+    let z = s.z;
+    let open = p.viz[audio_in::viz::CHANNELS].get() as usize;
+    if open == 0 {
+        let text = "No audio input · choose one in Settings (Cmd+,)";
+        s.p.text(r.center(), Align2::CENTER_CENTER, text, theme::mono(8.5 * z), theme::TEXT_FAINT);
+        return;
+    }
+    let (left, right) = audio_in::channels(p);
+    let sides = [(left, p.viz[audio_in::viz::LEFT].get()), (right, p.viz[audio_in::viz::RIGHT].get())];
+    let rows = if left == right { &sides[..1] } else { &sides[..] };
+    let row_h = r.height() / rows.len() as f32;
+    let label_w = 18.0 * z;
+    // −60 … 0 dBFS across.
+    let x_of = |level: f32| (1.0 + 20.0 * level.max(1e-6).log10() / 60.0).clamp(0.0, 1.0);
+    for (k, &(channel, level)) in rows.iter().enumerate() {
+        let y = r.top() + row_h * (k as f32 + 0.5);
+        let missing = channel >= open;
+        let col = if missing { theme::TEXT_FAINT } else { theme::TEXT_DIM };
+        s.p.text(pos2(r.left() + label_w * 0.5, y), Align2::CENTER_CENTER, format!("{}", channel + 1), theme::mono(9.0 * z), col);
+        let bar = Rect::from_min_max(pos2(r.left() + label_w, y - 3.0 * z), pos2(r.right(), y + 3.0 * z));
+        s.p.rect_filled(bar, 1.5 * z, alpha(theme::TEXT, 0.06));
+        if missing {
+            continue;
+        }
+        let w = bar.width() * x_of(level);
+        let fill = if level >= 0.89 { theme::METER_RED } else { s.accent };
+        s.p.rect_filled(Rect::from_min_size(bar.min, vec2(w, bar.height())), 1.5 * z, fill);
+        // −18 and −6 dBFS marks.
+        for db in [-18.0, -6.0] {
+            let x = bar.left() + bar.width() * (1.0 + db / 60.0);
+            s.p.vline(x, bar.y_range(), Stroke::new(1.0 * z, alpha(theme::TEXT, 0.18)));
         }
     }
 }

@@ -68,6 +68,7 @@ impl NodeType {
                 NodeType::Module(ModuleKind::Random),
                 NodeType::Module(ModuleKind::Pops),
                 NodeType::Module(ModuleKind::Nullpunkt),
+                NodeType::Module(ModuleKind::AudioIn),
             ],
         ),
         (
@@ -734,6 +735,16 @@ impl Graph {
 
     pub fn node_mut(&mut self, id: NodeId) -> Option<&mut Node> {
         self.nodes.iter_mut().find(|n| n.id == id)
+    }
+
+    /// Lets the plugin host go once no plugin is left, so the next one
+    /// starts a host at the current sample rate.
+    pub fn release_plugin_host(&mut self) {
+        self.graveyard.retain(|shared| Arc::strong_count(shared) > 1);
+        let plugins = self.nodes.iter().any(|n| matches!(n.kind, NodeKind::Plugin(_)));
+        if !plugins && self.graveyard.is_empty() {
+            self.plugin_host = None;
+        }
     }
 
     /// Removes every node, cable and module.

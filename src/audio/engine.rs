@@ -534,8 +534,15 @@ impl Engine {
         ctx.restart = false;
     }
 
-    /// Fills an interleaved device buffer.
+    /// Fills an interleaved device buffer, the board on its first two channels.
+    #[cfg(test)]
     pub fn render<T: Sample + FromSample<f32>>(&mut self, data: &mut [T], channels: usize) {
+        self.render_at(data, channels, 0);
+    }
+
+    /// Fills an interleaved device buffer, the board on channels `first`
+    /// and `first + 1` (0-based), silence on the others.
+    pub fn render_at<T: Sample + FromSample<f32>>(&mut self, data: &mut [T], channels: usize, first: usize) {
         let _ftz = FlushDenormals::new();
         clock::begin();
         let started = Instant::now();
@@ -549,6 +556,9 @@ impl Engine {
 
         let channels = channels.max(1);
         let frames = data.len() / channels;
+        let first = first.min(channels.saturating_sub(2));
+        // What the input captured meanwhile, for the Audio In nodes.
+        self.shared.input.begin_render(frames);
         let mut mono = [0.0f32; PASS];
         let mut done = 0;
         let recording = self.shared.tap.recording();
@@ -574,11 +584,9 @@ impl Engine {
                 if channels == 1 {
                     frame[0] = T::from_sample(mono[i]);
                 } else {
-                    frame[0] = T::from_sample(l);
-                    frame[1] = T::from_sample(r);
-                    for s in &mut frame[2..] {
-                        *s = T::EQUILIBRIUM;
-                    }
+                    frame.fill(T::EQUILIBRIUM);
+                    frame[first] = T::from_sample(l);
+                    frame[first + 1] = T::from_sample(r);
                 }
             }
             self.shared.scope.write(&mono[..n]);

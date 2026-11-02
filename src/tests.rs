@@ -308,6 +308,10 @@ fn every_module_stays_finite_across_settings() {
                 }
             }
         }
+        // Its sound comes from the interface (see audio_in_node_reaches_the_board).
+        if kind == ModuleKind::AudioIn {
+            continue;
+        }
         // Back to defaults it still makes sound.
         let fresh = ModuleParams::new(kind);
         for i in 0..def.params.len() {
@@ -1633,7 +1637,7 @@ fn palette_categories_fold() {
         texts = run(&mut palette, vec![]);
     }
     assert!(!shows(&texts, "Oscillator") && shows(&texts, "SOURCES"), "folded");
-    assert!(shows(&texts, "5"), "a folded category shows its count");
+    assert!(shows(&texts, "6"), "a folded category shows its count");
     assert!(shows(&texts, "Reverb"), "the others stay open");
 
     // Searching opens what matches; clearing it folds it again.
@@ -3552,4 +3556,246 @@ fn frakture_synced_space_shows_note_values() {
 
 fn spec_default(i: usize) -> f32 {
     crate::audio::modules::frakture::DEF.params[i].default
+}
+
+// ---------------------------------------------------------------------------
+// Audio input and devices
+// ---------------------------------------------------------------------------
+
+/// A 4-channel input whose samples say where they come from: channel c of
+/// frame f is c + f / 100000.
+fn input_sample(frame: usize, channel: usize) -> f32 {
+    channel as f32 + frame as f32 / 100_000.0
+}
+
+/// Pushes `frames` of the 4-channel test input from `from`, as a device
+/// callback would.
+fn push_input(shared: &EngineShared, from: usize, frames: usize, channels: usize) {
+    let data: Vec<f32> = (from..from + frames).flat_map(|f| (0..channels).map(move |c| input_sample(f, c))).collect();
+    shared.input.push(&data, channels);
+}
+
+/// An Audio In node's processor on `shared`'s input, with INPUT and mode.
+fn audio_in(shared: &Arc<EngineShared>, input: f32, mono: bool) -> crate::audio::modules::audio_in::AudioIn {
+    use crate::audio::modules::audio_in::{self, AudioIn};
+    let p = Arc::new(ModuleParams::new(ModuleKind::AudioIn));
+    p.set(audio_in::INPUT, input);
+    p.set_mode(if mono { audio_in::MONO } else { 0 });
+    AudioIn::new(p, shared.clone(), 48_000.0)
+}
+
+/// One output buffer of `frames`: the engine takes the input, the node
+/// plays it block by block.
+fn play_input(shared: &EngineShared, node: &mut dyn crate::audio::engine::Processor, frames: usize) -> (Vec<f32>, Vec<f32>) {
+    use crate::audio::engine::{Inputs, MAX_INPUTS, MidiBuf, ProcessCtx};
+    let ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing: true, restart: false };
+    let inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: false });
+    let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
+    shared.input.begin_render(frames);
+    let (mut l, mut r) = (Vec::new(), Vec::new());
+    for _ in 0..frames / 64 {
+        node.process(&ctx, &inputs, &mut outputs, 64);
+        l.extend_from_slice(&outputs[0][0]);
+        r.extend_from_slice(&outputs[0][1]);
+    }
+    (l, r)
+}
+
+#[test]
+fn audio_in_plays_the_chosen_input_channels_a_buffer_late() {
+    let shared = Arc::new(EngineShared::new());
+    shared.input.open(4);
+    // INPUT 3, stereo: channels 3 and 4 (2 and 3 counting from 0).
+    let mut node = audio_in(&shared, 3.0, false);
+    // The engine notices the new input (and drops anything from before).
+    play_input(&shared, &mut node, 256);
+    let (mut l, mut r) = (Vec::new(), Vec::new());
+    for k in 0..12 {
+        push_input(&shared, k * 256, 256, 4);
+        let (a, b) = play_input(&shared, &mut node, 256);
+        l.extend(a);
+        r.extend(b);
+    }
+    // The first buffer waits for the cushion (one device buffer), then
+    // every frame comes through, 256 frames late, nothing lost.
+    assert!(l[..256].iter().chain(&r[..256]).all(|&s| s == 0.0), "silent while the cushion fills");
+    for f in 256..l.len() {
+        assert_eq!((l[f], r[f]), (input_sample(f - 256, 2), input_sample(f - 256, 3)), "frame {f}");
+    }
+    assert_eq!(shared.input.dropouts.load(Ordering::Relaxed), 0);
+
+    // MONO: INPUT 2 on both sides.
+    let mut node = audio_in(&shared, 2.0, true);
+    push_input(&shared, 12 * 256, 256, 4);
+    let (l, r) = play_input(&shared, &mut node, 256);
+    assert_eq!((l[10], r[10]), (input_sample(11 * 256 + 10, 1), input_sample(11 * 256 + 10, 1)));
+}
+
+#[test]
+fn audio_in_copes_with_mono_inputs_dropouts_and_drift() {
+    // A one-channel input (a laptop's microphone): STEREO puts it on both
+    // sides; a channel it doesn't have is silence.
+    let shared = Arc::new(EngineShared::new());
+    shared.input.open(1);
+    let mut node = audio_in(&shared, 1.0, false);
+    let mut missing = audio_in(&shared, 2.0, true);
+    for k in 0..3 {
+        push_input(&shared, k * 128, 128, 1);
+        let (l, r) = play_input(&shared, &mut node, 128);
+        assert_eq!(l, r);
+    }
+    let (l, _) = play_input(&shared, &mut missing, 128);
+    assert!(l.iter().all(|&s| s == 0.0), "no channel 2 on a mono input");
+
+    // The input stops delivering: one dropout, then silence until the
+    // cushion is back.
+    let shared = Arc::new(EngineShared::new());
+    shared.input.open(2);
+    let mut node = audio_in(&shared, 1.0, false);
+    for k in 0..4 {
+        push_input(&shared, k * 256, 256, 2);
+        play_input(&shared, &mut node, 256);
+    }
+    play_input(&shared, &mut node, 256); // the cushion
+    let (l, _) = play_input(&shared, &mut node, 256);
+    assert!(l.iter().all(|&s| s == 0.0));
+    assert_eq!(shared.input.dropouts.load(Ordering::Relaxed), 1);
+    push_input(&shared, 4 * 256, 256, 2);
+    let (l, _) = play_input(&shared, &mut node, 256);
+    assert!(l.iter().all(|&s| s == 0.0), "waits for a whole cushion");
+    push_input(&shared, 5 * 256, 256, 2);
+    let (l, _) = play_input(&shared, &mut node, 256);
+    assert_eq!(l[0], input_sample(4 * 256, 0), "then plays on from where it stopped");
+
+    // An input whose clock runs fast piles up frames: some are skipped, so
+    // the delay stays short.
+    let shared = Arc::new(EngineShared::new());
+    shared.input.open(2);
+    let mut node = audio_in(&shared, 1.0, false);
+    let mut pushed = 0;
+    let mut last = Vec::new();
+    for _ in 0..200 {
+        push_input(&shared, pushed, 300, 2);
+        pushed += 300;
+        last = play_input(&shared, &mut node, 256).0;
+    }
+    assert!(shared.input.skips.load(Ordering::Relaxed) > 0);
+    let behind = pushed as f32 - (last[255] * 100_000.0).round();
+    assert!(behind <= (2 * 256 + 4 * 300) as f32, "{behind} frames behind");
+
+    // Closed: silence, and the node says so.
+    shared.input.close();
+    let (l, _) = play_input(&shared, &mut node, 256);
+    assert!(l.iter().all(|&s| s == 0.0));
+}
+
+#[test]
+fn audio_in_node_reaches_the_board() {
+    let shared = Arc::new(EngineShared::new());
+    let (a, mut e) = audio::offline(shared.clone(), 48_000);
+    let mut g = Graph::default();
+    let input = g.add_module(ModuleKind::AudioIn, pos2(0.0, 0.0), &a);
+    let mixer = g.add_mixer(pos2(300.0, 0.0), &a);
+    g.connect(port(input, 0), port(mixer, 0), &a);
+    shared.input.open(2);
+    let tone = |f: usize| 0.3 * (f as f32 * std::f32::consts::TAU * 440.0 / 48_000.0).sin();
+    let mut out = Vec::new();
+    for k in 0..40 {
+        let data: Vec<f32> = (k * 600..(k + 1) * 600).flat_map(|f| [tone(f), tone(f)]).collect();
+        shared.input.push(&data, 2);
+        out.extend(render_buf(&mut e, 600));
+    }
+    let left: Vec<f32> = out.chunks(2).map(|f| f[0]).skip(4800).collect();
+    assert!(tone_amp(&left, 440.0) > 0.05, "the input is heard: {}", tone_amp(&left, 440.0));
+    let p = module_params(&g, input);
+    assert_eq!(p.viz[crate::audio::modules::audio_in::viz::CHANNELS].get(), 2.0);
+}
+
+#[test]
+fn the_board_plays_on_the_chosen_output_pair() {
+    let (mut g, a, mut e) = setup();
+    let osc = g.add_osc(pos2(0.0, 0.0), &a);
+    let mixer = g.add_mixer(pos2(300.0, 0.0), &a);
+    g.connect(port(osc, 0), port(mixer, 0), &a);
+    let mut buf = vec![0.0f32; 4 * 4800];
+    for chunk in buf.chunks_mut(4 * 300) {
+        e.render_at(chunk, 4, 2);
+    }
+    let channel = |c: usize| buf.chunks(4).map(|f| f[c].abs()).fold(0.0f32, f32::max);
+    assert_eq!((channel(0), channel(1)), (0.0, 0.0), "1–2 silent");
+    assert!(channel(2) > 0.01 && channel(3) > 0.01, "3–4 playing");
+    // A pair past the last channels: the last two.
+    let mut buf = vec![0.0f32; 2 * 600];
+    e.render_at(&mut buf, 2, 4);
+    assert!(buf.iter().any(|s| s.abs() > 0.01));
+}
+
+#[test]
+fn audio_settings_survive_and_older_files_still_load() {
+    use crate::audio::device::{self, AudioConfig, InputChoice};
+    use crate::ui::app::AppSettings;
+    // Before the audio settings there was only the buffer size.
+    let old = AppSettings::parse(r#"{ "buffer_size": 512, "output_db": 3.0 }"#).unwrap();
+    assert_eq!((old.audio.buffer_size, old.output_db), (Some(512), 3.0));
+    assert_eq!(old.audio.input, InputChoice::SystemDefault, "the input follows the system by default");
+
+    let mut settings = AppSettings::default();
+    settings.audio = AudioConfig {
+        host: Some("CoreAudio".into()),
+        output: Some("coreaudio:BuiltInSpeakerDevice".into()),
+        output_channel: 2,
+        input: InputChoice::Device("coreaudio:Scarlett".into()),
+        sample_rate: Some(96_000),
+        buffer_size: Some(128),
+    };
+    let text = serde_json::to_string(&settings).unwrap();
+    let json: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert!(json.get("buffer_size").is_none(), "the old field isn't written again");
+    assert_eq!(AppSettings::parse(&text).unwrap(), settings);
+
+    assert_eq!(device::pairs(2), [(0, "1–2".to_owned())]);
+    assert_eq!(device::pairs(5).iter().map(|(_, l)| l.as_str()).collect::<Vec<_>>(), ["1–2", "3–4", "5"]);
+    assert_eq!(device::pairs(1), [(0, "1".to_owned())]);
+}
+
+#[test]
+fn audio_in_feeds_effects_and_texture_nodes() {
+    // The interface's input through each processing node into a mixer: it
+    // comes out, with the transport playing or stopped (a live input is not
+    // a sequenced source).
+    let kinds = [
+        ModuleKind::Filter,
+        ModuleKind::Magma,
+        ModuleKind::Equalizer,
+        ModuleKind::Tape,
+        ModuleKind::Delay,
+        ModuleKind::PingPong,
+        ModuleKind::Reverb,
+        ModuleKind::Frakture,
+        ModuleKind::Granular,
+        ModuleKind::Resonator,
+    ];
+    for playing in [true, false] {
+        for kind in kinds {
+            let shared = Arc::new(EngineShared::new());
+            shared.running.store(playing, Ordering::Relaxed);
+            let (a, mut e) = audio::offline(shared.clone(), 48_000);
+            let mut g = Graph::default();
+            let input = g.add_module(ModuleKind::AudioIn, pos2(0.0, 0.0), &a);
+            let fx = g.add_module(kind, pos2(300.0, 0.0), &a);
+            let mixer = g.add_mixer(pos2(600.0, 0.0), &a);
+            g.connect(port(input, 0), port(fx, 0), &a);
+            g.connect(port(fx, 0), port(mixer, 0), &a);
+            shared.input.open(2);
+            let tone = |f: usize| 0.3 * (f as f32 * std::f32::consts::TAU * 220.0 / 48_000.0).sin();
+            let mut out = Vec::new();
+            for k in 0..80 {
+                let data: Vec<f32> = (k * 600..(k + 1) * 600).flat_map(|f| [tone(f), tone(f)]).collect();
+                shared.input.push(&data, 2);
+                out.extend(render_buf(&mut e, 600));
+            }
+            let level = rms_of(&out[out.len() / 2..]);
+            assert!(level > 0.01, "{kind:?} (playing {playing}) passes the input on: {level}");
+        }
+    }
 }
