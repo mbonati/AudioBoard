@@ -293,6 +293,7 @@ impl PluginNode {
         if self.window.as_ref().is_some_and(|w| w.closed_by_user() || !w.is_open()) {
             self.window = None;
         }
+        self.shared.editor_open.store(self.window.is_some(), Ordering::Relaxed);
         // Every call below takes the plugin's lock, which the audio thread
         // needs for each callback: only between callbacks.
         if !audio_idle() {
@@ -887,6 +888,7 @@ impl Graph {
             plugin: Arc::new(Mutex::new(plugin)),
             meter: AtomicF32::new(0.0),
             midi_in: AtomicBool::new(instrument),
+            editor_open: AtomicBool::new(false),
             missed: AtomicU32::new(0),
         });
         let (tx, rx) = mpsc::channel();
