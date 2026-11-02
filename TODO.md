@@ -6,11 +6,11 @@
 - drum machine differenti
 - strumenti alla Alva Noto, per ottenere medesime sonorità
 - possibilità di salvare kits su Pops 66 e di salvare patterns
-- fissare apertura VST
 - aggiungere supporto per AUv3
 
 
 DONE
+- fissare apertura VST
 - mixer a 16/24 canali verticale/orizzontale
 - tape emulator
 - mixer mute su master
