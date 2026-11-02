@@ -30,6 +30,9 @@ pub struct PluginShared {
     pub meter: AtomicF32,
     /// Feed the external MIDI stream into the plugin.
     pub midi_in: AtomicBool,
+    /// Its own editor is open, where it can sound by itself (Kontakt's
+    /// preset previews and on-screen keyboard): it never rests meanwhile.
+    pub editor_open: AtomicBool,
     /// Blocks left silent because the UI held the plugin too long.
     pub missed: AtomicU32,
 }
@@ -326,7 +329,8 @@ impl Processor for PluginProcessor {
     /// One call to the plugin for the whole pass: plugins can cost a lot per
     /// call, however short. While the transport is stopped, a plugin that
     /// has been silent for a second with nothing coming in (no audio, no
-    /// MIDI) rests, and wakes at the first input or on Start.
+    /// MIDI) rests, and wakes at the first input or on Start. Not while its
+    /// editor is open: sound started there never reaches us as input.
     fn process_pass(&mut self, ctx: &ProcessCtx, inputs: &PassInputs, outputs: &mut [Box<[Buf]>], n: usize) {
         let blocks = n.div_ceil(BLOCK);
         let len = |k: usize| (n - k * BLOCK).min(BLOCK);
@@ -341,7 +345,8 @@ impl Processor for PluginProcessor {
             || inputs.midi.iter().any(|m| !m.events().is_empty())
             || (!inputs.midi_connected && self.cable_notes.iter().any(|&c| c != 0))
             || inputs.audio.is_some_and(|a| a.iter().flatten().flatten().any(|s| s.abs() > 1e-6));
-        if !ctx.playing && !incoming && self.silent >= self.rest_after {
+        let resting = !ctx.playing && !incoming && !self.shared.editor_open.load(Relaxed);
+        if resting && self.silent >= self.rest_after {
             silence(outputs);
             if !keyboard {
                 self.midi_cursor = self.midi.stream_head();
