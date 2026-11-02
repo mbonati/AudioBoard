@@ -12,6 +12,7 @@ use super::canvas::{Editor, Request, menu_item};
 use super::monitor::Monitor;
 use super::palette::{self, Palette, PluginEntry, Spawn};
 use super::plugin_node;
+use super::settings::SettingsWindow;
 use super::tempo::TempoControl;
 use super::theme::{self, alpha};
 use crate::audio::engine::NodeId;
@@ -20,6 +21,7 @@ use crate::audio::export::{self, FORMATS};
 use crate::audio::params::{EngineShared, Waveform};
 use crate::audio::record::Recorder;
 use crate::audio::midi::MidiInputs;
+use crate::audio::device::{AudioConfig, BUFFER_SIZES};
 use crate::audio::{self, AudioHandle};
 use crate::graph::{Graph, NodeKind, PortRef};
 use crate::project::{self, Library, PROJECT_EXT, Project};
@@ -140,6 +142,9 @@ pub struct AudioBoardApp {
     /// Recording the board, and exporting the take.
     recorder: Recorder,
     export: ExportWindow,
+    settings_window: SettingsWindow,
+    /// The audio engine the nodes were built for (see `AudioHandle::generation`).
+    generation: u32,
     #[cfg(target_os = "macos")]
     window: Option<super::macos::NativeWindow>,
 }
@@ -152,7 +157,7 @@ impl AudioBoardApp {
         shared.running.store(false, Ordering::Relaxed);
         let settings = load_settings();
         shared.output.set(db_to_gain(settings.output_db));
-        let audio = audio::start(shared.clone(), settings.buffer_size);
+        let audio = audio::start(shared.clone(), settings.audio.clone());
         let mut graph = Graph::default();
         demo_patch(&mut graph, &audio);
         let library = Library::open(
@@ -167,6 +172,8 @@ impl AudioBoardApp {
         Self {
             recorder: Recorder::new(shared.clone()),
             export: ExportWindow::default(),
+            settings_window: SettingsWindow::default(),
+            generation: audio.generation,
             shared,
             audio,
             doc: Document::new(None, project::snapshot(&graph)),
@@ -559,6 +566,9 @@ impl AudioBoardApp {
                 None
             }
         });
+        if ui.input_mut(|i| i.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, Key::Comma))) {
+            self.settings_window.open = !self.settings_window.open;
+        }
         if let Some(cmd) = cmd {
             self.run_file_command(cmd, now);
         }
@@ -717,16 +727,25 @@ impl AudioBoardApp {
                     self.editor.auto_layout(&mut self.graph, now);
                 }
                 icon_button(ui, Icon::Help, false).on_hover_ui(shortcuts);
+                let tip = "Settings: audio output and input (Cmd+,)";
+                if icon_button(ui, Icon::Settings, self.settings_window.open).on_hover_text(tip).clicked() {
+                    self.settings_window.open = !self.settings_window.open;
+                }
                 ui.add_space(10.0);
                 let info = &self.audio.info;
-                match &info.error {
-                    Some(e) => {
-                        ui.label(RichText::new("Audio unavailable").size(11.0).color(theme::MUTE))
-                            .on_hover_text(e);
-                    }
+                let (text, col, tip) = match &info.error {
+                    Some(e) => ("Audio unavailable".to_owned(), theme::MUTE, e.clone()),
                     None => {
-                        ui.label(RichText::new(&info.device).size(11.0).color(theme::TEXT_DIM));
+                        let input = info.input.as_ref().map_or(String::new(), |i| format!("\nInput: {i}"));
+                        (info.device.clone(), theme::TEXT_DIM, format!("Output: {}{input}\nClick for the audio settings", info.device))
                     }
+                };
+                let device = ui
+                    .add(egui::Label::new(RichText::new(text).size(11.0).color(col)).sense(Sense::click()))
+                    .on_hover_cursor(CursorIcon::PointingHand)
+                    .on_hover_text(tip);
+                if device.clicked() {
+                    self.settings_window.open = true;
                 }
             });
         });
@@ -862,7 +881,7 @@ impl AudioBoardApp {
                 Ok(()) => self.notify(now, "Audio buffer changed", false),
                 Err(e) => self.notify(now, format!("Could not use that buffer size: {e}"), true),
             }
-            self.settings.buffer_size = self.audio.info.buffer_size;
+            self.settings.audio = self.audio.config.clone();
             save_settings(&self.settings);
         }
         let info = &self.audio.info;
@@ -972,6 +991,10 @@ impl eframe::App for AudioBoardApp {
             self.notify(now, notice, false);
         }
         self.export_window(ui.ctx(), now);
+        if let Some(config) = self.settings_window.show(ui.ctx(), &self.audio, now, dt) {
+            self.apply_audio(config, now);
+        }
+        self.keep_audio_in_step();
         if self.recorder.recording() {
             ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
         }
@@ -989,6 +1012,45 @@ impl eframe::App for AudioBoardApp {
         let minimized = ui.input(|i| i.viewport().minimized == Some(true));
         if !minimized && (self.running() || self.graph.nodes.iter().any(|n| n.signal_level() > 1e-3)) {
             ui.ctx().request_repaint_after(AMBIENT_FRAME);
+        }
+    }
+}
+
+impl AudioBoardApp {
+    /// Switches the audio to `config` and keeps it for the next launch.
+    fn apply_audio(&mut self, config: AudioConfig, now: f64) {
+        if let Err(e) = self.audio.apply(config) {
+            self.notify(now, format!("Audio: {e}"), true);
+        }
+        self.settings.audio = self.audio.config.clone();
+        save_settings(&self.settings);
+        self.keep_audio_in_step();
+    }
+
+    /// Every frame: the input open while an Audio In node (or the settings
+    /// window) listens; every node built again after the engine changed
+    /// (another sample rate).
+    fn keep_audio_in_step(&mut self) {
+        let listening = self.settings_window.open
+            || self.graph.nodes.iter().any(|n| matches!(&n.kind, NodeKind::Module(m) if m.params.kind == ModuleKind::AudioIn));
+        self.audio.want_input(listening);
+        if self.audio.generation != self.generation {
+            self.generation = self.audio.generation;
+            self.rebuild_nodes();
+        }
+    }
+
+    /// Builds every node again, as it is, for the current engine.
+    fn rebuild_nodes(&mut self) {
+        let clean = !self.doc.dirty;
+        let snapshot = project::snapshot(&self.graph);
+        self.graph.clear(&self.audio);
+        self.graph.release_plugin_host();
+        project::restore(&mut self.graph, &snapshot, &self.audio);
+        self.editor.reset();
+        // The same patch: still saved if it was (its nodes have new ids).
+        if clean {
+            self.doc.saved = project::snapshot(&self.graph);
         }
     }
 }
@@ -1160,6 +1222,7 @@ enum Icon {
     Monitor,
     Compact,
     Help,
+    Settings,
 }
 
 fn icon_button(ui: &mut Ui, icon: Icon, active: bool) -> Response {
@@ -1213,6 +1276,14 @@ fn icon_button(ui: &mut Ui, icon: Icon, active: bool) -> Response {
             for dy in [-3.0, 3.0] {
                 let r = Rect::from_center_size(c + vec2(0.0, dy), vec2(13.0, 4.0));
                 p.rect_stroke(r, 1.5, Stroke::new(1.2, col), StrokeKind::Inside);
+            }
+        }
+        Icon::Settings => {
+            // Three sliders: a mixer's faders, the audio setup.
+            let stroke = Stroke::new(1.2, col);
+            for (dx, knob) in [(-4.0, 2.0), (0.0, -2.5), (4.0, 1.0)] {
+                p.vline(c.x + dx, (c.y - 6.0)..=(c.y + 6.0), stroke);
+                p.rect_filled(Rect::from_center_size(c + vec2(dx, knob), vec2(4.0, 2.6)), 1.0, col);
             }
         }
         Icon::Help => {
@@ -1335,13 +1406,28 @@ fn catalog_path() -> Option<PathBuf> {
 
 /// Preferences kept between launches.
 #[derive(serde::Serialize, serde::Deserialize, Default, Clone, Debug, PartialEq)]
-struct AppSettings {
-    /// Audio buffer size in frames (None: the device's own).
+pub(crate) struct AppSettings {
+    /// The audio devices, rate and buffer size.
     #[serde(default)]
-    buffer_size: Option<u32>,
+    pub(crate) audio: AudioConfig,
     /// The board's output level, dB.
     #[serde(default)]
-    output_db: f32,
+    pub(crate) output_db: f32,
+    /// Before the audio settings: the buffer size alone (read, then moved
+    /// into `audio`).
+    #[serde(default, skip_serializing)]
+    buffer_size: Option<u32>,
+}
+
+impl AppSettings {
+    /// Settings from the file's text (older files too).
+    pub(crate) fn parse(text: &str) -> Option<Self> {
+        let mut settings: Self = serde_json::from_str(text).ok()?;
+        if let Some(size) = settings.buffer_size.take() {
+            settings.audio.buffer_size.get_or_insert(size);
+        }
+        Some(settings)
+    }
 }
 
 fn settings_path() -> Option<PathBuf> {
@@ -1351,7 +1437,7 @@ fn settings_path() -> Option<PathBuf> {
 fn load_settings() -> AppSettings {
     settings_path()
         .and_then(|p| std::fs::read_to_string(p).ok())
-        .and_then(|text| serde_json::from_str(&text).ok())
+        .and_then(|text| AppSettings::parse(&text))
         .unwrap_or_default()
 }
 
@@ -1364,8 +1450,6 @@ fn save_settings(settings: &AppSettings) {
     }
 }
 
-/// Buffer sizes offered, in frames.
-const BUFFER_SIZES: [u32; 6] = [64, 128, 256, 512, 1024, 2048];
 
 /// What a plugin's first load told us about it.
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]

@@ -93,6 +93,13 @@ Like any node, it also collapses entirely to its title bar (C).
 
 The preset rhythms are new patterns written in each style, not decoded from the original's diode matrix.
 
+**Audio In**: the audio interface's inputs on a cable: a microphone, a guitar, a synth, another app through
+a loopback device. **INPUT** picks the channel. **STEREO** takes it and the next as left and right (INPUT 3:
+inputs 3–4); **MONO** puts it on both sides. **GAIN** goes from −24 to +24 dB. The display has a meter per
+side, with marks at −18 and −6 dBFS. Put one Audio In per source, each on its own inputs. The input device is
+chosen in **Settings** (see Audio settings) and opens only while an Audio In node is on the board. The first
+time, macOS asks for permission to use the microphone; until it's granted, the input is silent.
+
 **Nullpunkt**: an instrument for clicks, pulses and glitches, in the manner of Alva Noto. A tone to lay under it
 can come from an Oscillator or a Drone.
 
@@ -533,6 +540,29 @@ AUX on the tracks you want effected, patch Mixer 1's AUX into a Reverb (or a cha
 Reverb into a second mixer. That mixer also plays on the device, so you hear the clean tracks plus the
 effected layer, each with its own level. MUTE on Mixer 1 leaves only the effected layer.
 
+### Audio settings
+
+**Settings** (Cmd+,, the sliders button in the toolbar, or click the device name next to it) chooses the
+sound card. Every change applies at once and is kept between launches:
+
+- **Output.**
+  - **Device**: the system default (it follows the Mac's choice) or a specific interface. A device that is
+    missing at launch falls back to the default.
+  - **Channels**: the pair the board plays on (1–2, 3–4…), for interfaces with more than two outputs.
+  - **Sample rate**: the device's own, or 44.1 to 192 kHz where the device supports it. A new rate builds
+    every node again for it. The patch stays as it is, and so do its settings and cables.
+  - **Buffer size**: see below.
+- **Input**: off, the system default, or a specific device. It runs at the output's rate: a device that
+  can't is marked "other rate". While the window is open, a meter per input channel shows the levels.
+  - Input and output can be different devices. A buffer of cushion keeps them in step. If the two clocks
+    drift apart, the input now and then skips ahead or refills, which may be heard as a tiny gap. The same
+    interface for both (or an aggregate device) avoids it.
+  - The latency added is one input buffer.
+- **Audio system**: shown when the platform has more than one (CoreAudio, JACK…).
+
+**Refresh devices** reads the list again. It also refreshes itself every few seconds while the window is open,
+so an interface plugged in meanwhile appears.
+
 ### Audio buffer, load and limiter
 
 The status bar shows the audio buffer in samples and its latency ("512 smp · 10.7 ms"): click it to choose
@@ -587,6 +617,7 @@ Gain staging follows a DAW's:
 | New / open project | Cmd+N / Cmd+O, or the project name in the toolbar |
 | Save / save as | Cmd+S / Shift+Cmd+S |
 | Start / stop | the Start / Stop button in the toolbar, or Space |
+| Audio settings (devices, rate, buffer, input) | Cmd+, the sliders button in the toolbar, or the device name |
 | Record / stop recording | REC in the toolbar, or R; stopping opens the export (see Recording and export) |
 | Tempo | drag the BPM field, click it to type, TAP or T to tap it |
 | Show / hide the oscilloscope and spectrum | panel button in the toolbar |
@@ -695,7 +726,7 @@ src/
 │   │               topological order, lookahead limiter, denormals flushed to zero
 │   ├── fastmath.rs fast sine, exp2, log2 and tanh for per-sample DSP (error < 1e-6)
 │   ├── dsp.rs      Oscillator and Mixer (any number of channels, main and AUX outputs)
-│   ├── modules/    drone, random, granular, resonator, filter, equalizer (after Waves F6), delay, pingpong,
+│   ├── modules/    audio_in, drone, random, granular, resonator, filter, equalizer (after Waves F6), delay, pingpong,
 │   │               reverb, midi_cc, midi_note, sequencer, arpeggiator, midi_in, midicer (after Vermona's
 │   │               meloDICER)
 │   │   ├── magma.rs    Magma (after FabFilter Volcano 3): parameters, routing, oversampling, slots
@@ -714,7 +745,10 @@ src/
 │   ├── plugin.rs   VST3 plugins (vst3-host): loading, scanning, processing on the audio thread
 │   ├── record.rs   recording the output: a lock-free tap on the audio thread, a writer thread, takes
 │   ├── export.rs   takes to WAV/AIFF (written here), FLAC/ALAC/AAC (afconvert), MP3 (ffmpeg or lame)
-│   └── mod.rs      opening the output stream (cpal)
+│   ├── device.rs   the audio setup (devices by id, channel pair, rate, buffer), listing what the system offers
+│   ├── input.rs    the audio input: a lock-free ring from the input device to the engine, with a cushion
+│   │               against drift between the two devices' clocks
+│   └── mod.rs      opening the output and input streams (cpal); a new rate builds a new engine
 ├── graph.rs        UI-side patch model (nodes, cables, modules, Kahn ordering)
 ├── project.rs      saving/loading projects and the module library (JSON)
 ├── presets.rs      named presets of a module, one file per kind in the app's data folder
@@ -732,6 +766,7 @@ src/
 │   ├── magma.rs    the Magma panel: display and dots, filter controls, sources and slots (drag & drop)
 │   ├── tape.rs     the Tape panel: the sketched deck (reels, tape, head, needles, keys), COMPACT / FULL
 │   ├── nullpunkt.rs the Nullpunkt panel: editable lanes, randomize, presets, knob groups
+│   ├── settings.rs the Settings window: output device, channels, rate, buffer; input and its meters
 │   ├── pops.rs     the Pops 66 panel: MACHINE, MIXER and EDITOR detail levels (the node resizes), waveform preview
 │   ├── widgets.rs  hand-drawn knobs, faders, meters, ports and cables
 │   ├── monitor.rs  bottom panel: oscilloscope and spectrum (FFT)

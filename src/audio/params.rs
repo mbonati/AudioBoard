@@ -534,6 +534,8 @@ pub struct EngineShared {
     pub scope: Scope,
     /// Where the output goes while the board is being recorded.
     pub tap: super::record::Tap,
+    /// What the audio input captures, for the Audio In nodes.
+    pub input: super::input::Capture,
 }
 
 impl EngineShared {
@@ -551,6 +553,7 @@ impl EngineShared {
             output: AtomicF32::new(1.0),
             scope: Scope::new(),
             tap: super::record::Tap::new(),
+            input: super::input::Capture::new(),
         }
     }
 }
