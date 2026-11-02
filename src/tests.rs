@@ -3757,3 +3757,45 @@ fn audio_settings_survive_and_older_files_still_load() {
     assert_eq!(device::pairs(5).iter().map(|(_, l)| l.as_str()).collect::<Vec<_>>(), ["1–2", "3–4", "5"]);
     assert_eq!(device::pairs(1), [(0, "1".to_owned())]);
 }
+
+#[test]
+fn audio_in_feeds_effects_and_texture_nodes() {
+    // The interface's input through each processing node into a mixer: it
+    // comes out, with the transport playing or stopped (a live input is not
+    // a sequenced source).
+    let kinds = [
+        ModuleKind::Filter,
+        ModuleKind::Magma,
+        ModuleKind::Equalizer,
+        ModuleKind::Tape,
+        ModuleKind::Delay,
+        ModuleKind::PingPong,
+        ModuleKind::Reverb,
+        ModuleKind::Frakture,
+        ModuleKind::Granular,
+        ModuleKind::Resonator,
+    ];
+    for playing in [true, false] {
+        for kind in kinds {
+            let shared = Arc::new(EngineShared::new());
+            shared.running.store(playing, Ordering::Relaxed);
+            let (a, mut e) = audio::offline(shared.clone(), 48_000);
+            let mut g = Graph::default();
+            let input = g.add_module(ModuleKind::AudioIn, pos2(0.0, 0.0), &a);
+            let fx = g.add_module(kind, pos2(300.0, 0.0), &a);
+            let mixer = g.add_mixer(pos2(600.0, 0.0), &a);
+            g.connect(port(input, 0), port(fx, 0), &a);
+            g.connect(port(fx, 0), port(mixer, 0), &a);
+            shared.input.open(2);
+            let tone = |f: usize| 0.3 * (f as f32 * std::f32::consts::TAU * 220.0 / 48_000.0).sin();
+            let mut out = Vec::new();
+            for k in 0..80 {
+                let data: Vec<f32> = (k * 600..(k + 1) * 600).flat_map(|f| [tone(f), tone(f)]).collect();
+                shared.input.push(&data, 2);
+                out.extend(render_buf(&mut e, 600));
+            }
+            let level = rms_of(&out[out.len() / 2..]);
+            assert!(level > 0.01, "{kind:?} (playing {playing}) passes the input on: {level}");
+        }
+    }
+}
