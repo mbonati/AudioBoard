@@ -102,7 +102,7 @@ fn frame_at(ctx: &ProcessCtx, beat: f64) -> f64 {
 }
 
 /// The nearest frame within this block for a beat.
-fn frame_of(ctx: &ProcessCtx, n: usize, beat: f64) -> usize {
+pub fn frame_of(ctx: &ProcessCtx, n: usize, beat: f64) -> usize {
     (frame_at(ctx, beat).round().max(0.0) as usize).min(n.saturating_sub(1))
 }
 

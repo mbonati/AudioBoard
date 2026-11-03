@@ -4,21 +4,18 @@
 //! to toggle, drag to paint, Shift-drag to rotate) with its mute and knobs;
 //! then the glitch stage and the output.
 
-use std::sync::Arc;
-
 use egui::{Align2, Color32, CursorIcon, Id, Sense, Stroke, Vec2, vec2};
 
 use super::nodes::{NodeView, segmented};
 use super::theme::{self, alpha};
-use super::widgets;
+use super::{preset_menu, widgets};
 use crate::audio::engine::NodeId;
 use crate::audio::modules::nullpunkt::{
     self as np, CRUSH, CUT, DIVS, FACTORY, GRAIN, JITTER, LEVEL, MAX_LEN, MUTATE, RATE, REVERSE, SCATTER, SKIP, STATIC, STUTTER,
     STUTTER_LEN, WARP, WIDTH, data, glitch, knob, voice, vp, viz,
 };
-use crate::audio::modules::{ModuleKind, ModuleParams};
+use crate::audio::modules::ModuleParams;
 use crate::graph::{ModuleNode, ParamRef};
-use crate::presets::{self, ModulePreset};
 
 pub const SIZE: Vec2 = vec2(760.0, 446.0);
 const W: f32 = SIZE.x;
@@ -108,30 +105,6 @@ pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, out: bool
     }
 }
 
-/// Where the session keeps the saved presets.
-fn saved_id() -> Id {
-    Id::unique("nullpunkt-presets")
-}
-
-/// The saved presets, read once and kept for the session.
-fn saved(ui: &egui::Ui) -> Arc<Vec<ModulePreset>> {
-    let id = saved_id();
-    if let Some(list) = ui.data(|d| d.get_temp::<Arc<Vec<ModulePreset>>>(id)) {
-        return list;
-    }
-    let list = Arc::new(presets::dir().map(|dir| presets::load(&dir, ModuleKind::Nullpunkt)).unwrap_or_default());
-    ui.data_mut(|d| d.insert_temp(id, list.clone()));
-    list
-}
-
-/// Writes the saved presets back, and keeps them for the session.
-fn keep(ui: &egui::Ui, list: Vec<ModulePreset>) -> Result<(), String> {
-    let dir = presets::dir().ok_or("no folder for presets")?;
-    presets::save(&dir, ModuleKind::Nullpunkt, &list)?;
-    ui.data_mut(|d| d.insert_temp(saved_id(), Arc::new(list)));
-    Ok(())
-}
-
 impl Panel<'_, '_> {
     fn z(&self) -> f32 {
         self.v.z
@@ -172,7 +145,8 @@ impl Panel<'_, '_> {
         }
         let menu = widgets::toggle(v.ui, v.painter, self.uid("presets"), v.r(322.0, 34.0, 402.0, 50.0), "PRESETS ▾", false, self.accent, z)
             .on_hover_text("Save this scene as a preset, or load one");
-        self.presets_menu(&menu);
+        let names = FACTORY.map(|(name, _)| name);
+        preset_menu::show(&menu, p, self.uid("presets"), "scene", &names, |k| np::load_factory(p, k));
 
         let playing = p.viz[viz::STEP].get() >= 0.0;
         let state = if playing { "in time" } else { "waiting for Start" };
@@ -184,66 +158,6 @@ impl Panel<'_, '_> {
             let x = W - 252.0 + 38.0 * k as f32;
             v.text(x, 42.0, Align2::CENTER_CENTER, label, theme::strong(7.5 * z), if on { theme::TEXT } else { alpha(theme::TEXT_FAINT, 0.5) });
         }
-    }
-
-    /// Save the scene under a name; load a built-in or a saved preset;
-    /// delete a saved one.
-    fn presets_menu(&self, button: &egui::Response) {
-        let p = self.p;
-        let name_id = self.uid("preset-name");
-        let error_id = self.uid("preset-error");
-        egui::Popup::menu(button).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
-            ui.set_min_width(200.0);
-            ui.label("Save this scene as");
-            let mut name: String = ui.data(|d| d.get_temp(name_id)).unwrap_or_else(|| "My scene".to_owned());
-            let mut save = false;
-            ui.horizontal(|ui| {
-                let field = ui.text_edit_singleline(&mut name);
-                save = ui.button("Save").clicked() || (field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)));
-            });
-            ui.data_mut(|d| d.insert_temp(name_id, name.clone()));
-            let list = saved(ui);
-            if save && !name.trim().is_empty() {
-                let mut next = (*list).clone();
-                presets::store(&mut next, ModulePreset::capture(p, name.trim()));
-                let result = keep(ui, next);
-                ui.data_mut(|d| d.insert_temp(error_id, result.err().unwrap_or_default()));
-            }
-            if let Some(error) = ui.data(|d| d.get_temp::<String>(error_id)).filter(|e| !e.is_empty()) {
-                ui.colored_label(theme::MUTE, format!("Could not save: {error}"));
-            }
-            ui.separator();
-            ui.weak("Built in");
-            for (k, (name, _)) in FACTORY.iter().enumerate() {
-                if ui.button(*name).clicked() {
-                    np::load_factory(p, k);
-                    ui.close();
-                }
-            }
-            let list = saved(ui);
-            if !list.is_empty() {
-                ui.separator();
-                ui.weak("Saved");
-                let mut remove = None;
-                for (k, preset) in list.iter().enumerate() {
-                    ui.horizontal(|ui| {
-                        if ui.button(&preset.name).clicked() {
-                            preset.apply(p);
-                            ui.close();
-                        }
-                        if ui.small_button("×").on_hover_text("Delete this preset").clicked() {
-                            remove = Some(k);
-                        }
-                    });
-                }
-                if let Some(k) = remove {
-                    let mut next = (*list).clone();
-                    next.remove(k);
-                    let result = keep(ui, next);
-                    ui.data_mut(|d| d.insert_temp(error_id, result.err().unwrap_or_default()));
-                }
-            }
-        });
     }
 
     /// The output as a barcode: one bar per recent slice, newest on the

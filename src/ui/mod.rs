@@ -1,10 +1,14 @@
+pub mod aether;
 pub mod app;
+pub mod automa;
 pub mod canvas;
 pub mod console;
 pub mod equalizer;
 pub mod frakture;
 pub mod groups;
+pub mod larsen;
 pub mod layout;
+pub mod looper;
 pub mod magma;
 #[cfg(target_os = "macos")]
 pub mod macos;
@@ -15,6 +19,7 @@ pub mod nullpunkt;
 pub mod palette;
 pub mod plugin_node;
 pub mod pops;
+pub mod preset_menu;
 pub mod settings;
 pub mod tape;
 pub mod tempo;
