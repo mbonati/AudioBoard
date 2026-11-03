@@ -1637,7 +1637,7 @@ fn palette_categories_fold() {
         texts = run(&mut palette, vec![]);
     }
     assert!(!shows(&texts, "Oscillator") && shows(&texts, "SOURCES"), "folded");
-    assert!(shows(&texts, "7"), "a folded category shows its count");
+    assert!(shows(&texts, "8"), "a folded category shows its count");
     assert!(shows(&texts, "Reverb"), "the others stay open");
 
     // Searching opens what matches; clearing it folds it again.
@@ -3749,6 +3749,655 @@ fn aether_sounds_save_as_presets() {
         assert!(peak < 0.9, "{name}: peak {peak}");
         assert!(rms_of(&l[48_000..]) > 0.01, "{name} plays");
     }
+}
+
+/// Runs a Larsen for `blocks` blocks: MIDI as (block, message), an input
+/// on IN (a function of the sample), and `each` called before every block
+/// (to turn knobs on the way). Left and right.
+fn run_larsen_with(
+    p: &Arc<ModuleParams>,
+    blocks: usize,
+    playing: impl Fn(usize) -> bool,
+    midi: &[(usize, [u8; 3])],
+    input: Option<&dyn Fn(usize) -> f32>,
+    each: &dyn Fn(usize),
+) -> (Vec<f32>, Vec<f32>) {
+    use crate::audio::modules::larsen::Larsen;
+    let mut proc = Larsen::new(p.clone(), Arc::new(crate::audio::midi::MidiState::new()), 48_000.0);
+    let mut ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing: true, restart: false };
+    let mut inputs =
+        Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: !midi.is_empty() });
+    inputs.connected[0] = input.is_some();
+    let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
+    let (mut left, mut right) = (Vec::new(), Vec::new());
+    for b in 0..blocks {
+        each(b);
+        ctx.playing = playing(b);
+        inputs.midi.clear();
+        for (_, msg) in midi.iter().filter(|(at, _)| *at == b) {
+            inputs.midi.push(0, *msg);
+        }
+        if let Some(f) = input {
+            for i in 0..64 {
+                let x = f(b * 64 + i);
+                (inputs.bufs[0][0][i], inputs.bufs[0][1][i]) = (x, x);
+            }
+        }
+        proc.process(&ctx, &inputs, &mut outputs, 64);
+        left.extend_from_slice(&outputs[0][0]);
+        right.extend_from_slice(&outputs[0][1]);
+    }
+    (left, right)
+}
+
+fn run_larsen(p: &Arc<ModuleParams>, blocks: usize, midi: &[(usize, [u8; 3])]) -> (Vec<f32>, Vec<f32>) {
+    run_larsen_with(p, blocks, |_| true, midi, None, &|_| {})
+}
+
+/// The strongest pitch in `buf` between `lo` and `hi` Hz, to a tenth of a
+/// semitone.
+fn strongest_hz(buf: &[f32], lo: f32, hi: f32) -> f32 {
+    let mut best = (0.0, lo);
+    let mut hz = lo;
+    while hz < hi {
+        let a = tone_amp(buf, hz);
+        if a > best.0 {
+            best = (a, hz);
+        }
+        hz *= 2f32.powf(1.0 / 120.0);
+    }
+    best.1
+}
+
+fn cents(got: f32, want: f32) -> f32 {
+    1200.0 * (got / want).log2()
+}
+
+/// Blocks in `secs` seconds.
+fn blocks(secs: f32) -> usize {
+    (secs * 750.0) as usize
+}
+
+#[test]
+fn larsen_drones_on_its_own_and_stays_in_range() {
+    use crate::audio::modules::larsen::FEEDBACK;
+    let p = Arc::new(ModuleParams::new(ModuleKind::Larsen));
+    let (l, r) = run_larsen(&p, blocks(6.0), &[]);
+    // From a floor of noise to a drone within the first second, on both
+    // sides (two strings, not one copied).
+    assert!(rms_of(&l[24_000..48_000]) > 0.03, "it starts: {}", rms_of(&l[24_000..48_000]));
+    assert!(rms_of(&r[96_000..]) > 0.03 && rms_of(&l[96_000..]) > 0.03);
+    assert!(l != r, "two strings");
+    assert!(l.iter().chain(&r).all(|s| s.is_finite()));
+    let peak = peak_of(&l).max(peak_of(&r));
+    assert!(peak < 0.9, "peak {peak}");
+    // Too little FEEDBACK and the loop dies away; with more it sustains.
+    p.set(FEEDBACK, -36.0);
+    let (l, _) = run_larsen(&p, blocks(3.0), &[]);
+    assert!(rms_of(&l[96_000..]) < 1e-3, "closed: {}", rms_of(&l[96_000..]));
+    p.set(FEEDBACK, 12.0);
+    let (l, r) = run_larsen(&p, blocks(3.0), &[]);
+    assert!(rms_of(&l[96_000..]) > 0.05);
+    assert!(peak_of(&l).max(peak_of(&r)) < 0.9, "saturating, not running away");
+}
+
+#[test]
+fn larsen_body_moves_the_drone_between_partials() {
+    use crate::audio::modules::larsen::BODY;
+    let p = Arc::new(ModuleParams::new(ModuleKind::Larsen));
+    let mut pitches = Vec::new();
+    for body in [0.002, 0.01, 0.05] {
+        p.set(BODY, body);
+        let (l, _) = run_larsen(&p, blocks(3.0), &[]);
+        pitches.push(strongest_hz(&l[96_000..96_000 + 16_384], 40.0, 3000.0));
+    }
+    pitches.dedup_by(|a, b| cents(*a, *b).abs() < 50.0);
+    assert!(pitches.len() >= 2, "BODY moved it: {pitches:?}");
+}
+
+#[test]
+fn larsen_pitch_follows_the_keys_and_the_knob_takes_it_back() {
+    use crate::audio::midi::note_hz;
+    use crate::audio::modules::larsen::{FREQ, data, viz};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Larsen));
+    p.data[data::PITCH].set(1.0);
+    for note in [36u8, 48, 60, 72] {
+        let (l, _) = run_larsen(&p, blocks(3.0), &[(5, [0x90, note, 100])]);
+        let want = note_hz(note as f32);
+        let got = strongest_hz(&l[96_000..96_000 + 32_768], want * 0.7, want * 1.4);
+        assert!(cents(got, want).abs() < 30.0, "note {note}: {got} Hz for {want}");
+        assert!(p.viz[viz::MIDI].get() > 0.5 && p.viz[viz::TUNED].get() > 0.5);
+        // BODY snapped to a whole number of the note's periods (less the
+        // filters' lag, a fraction of one).
+        let periods = p.viz[viz::BODY].get() * want;
+        assert!((periods - periods.round()).abs() < 0.35 && periods.round() >= 2.0, "{periods} periods");
+    }
+    // Bend: up two semitones at most.
+    let bent = [(5, [0x90, 60, 100]), (5, [0xE0, 0x7F, 0x7F])];
+    let (l, _) = run_larsen(&p, blocks(3.0), &bent);
+    let got = strongest_hz(&l[96_000..96_000 + 32_768], 250.0, 340.0);
+    assert!(cents(got, note_hz(62.0)).abs() < 30.0, "bent to {got}");
+    // Let go: the note stays; FREQ moved with no key down takes it back.
+    let tap = [(5, [0x90, 60, 100]), (100, [0x80, 60, 0])];
+    let freq = p.get(FREQ);
+    run_larsen_with(&p, 400, |_| true, &tap, None, &|b| {
+        if b == 300 {
+            p.set(FREQ, freq + 1.0);
+        }
+        if b == 200 {
+            assert!(p.viz[viz::MIDI].get() > 0.5, "the note stays after its key");
+        }
+    });
+    assert!(p.viz[viz::MIDI].get() < 0.5, "the knob has it back");
+    assert!((p.viz[viz::NOTE].get() - (freq + 1.0)).abs() < 0.5);
+}
+
+#[test]
+fn larsen_gate_opens_the_loop_only_while_a_key_is_held() {
+    use crate::audio::modules::larsen::{data, viz};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Larsen));
+    p.data[data::PITCH].set(1.0);
+    p.data[data::GATE].set(1.0);
+    let held = [(750, [0x90, 48, 100]), (2250, [0x80, 48, 0])];
+    let (l, _) = run_larsen(&p, blocks(6.0), &held);
+    assert!(rms_of(&l[..48_000]) < 1e-3, "silent until a key: {}", rms_of(&l[..48_000]));
+    let sounding = rms_of(&l[96_000..144_000]);
+    assert!(sounding > 0.03, "it swells on the key: {sounding}");
+    assert!(rms_of(&l[l.len() - 24_000..]) < sounding * 0.1, "and dies away after");
+    assert_eq!(p.viz[viz::OPEN].get(), 0.0);
+}
+
+#[test]
+fn larsen_three_strings_play_three_notes() {
+    use crate::audio::midi::note_hz;
+    use crate::audio::modules::larsen::{FACTORY, FREQ, load_factory, viz};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Larsen));
+    let find = |name: &str| FACTORY.iter().position(|s| s.0 == name).unwrap();
+    // From the knobs, LOCK on: FREQ, a fifth and an octave up.
+    load_factory(&p, find("Fifths"));
+    let (l, r) = run_larsen(&p, blocks(4.0), &[]);
+    let root = p.get(FREQ);
+    for st in [0.0, 7.0, 12.0] {
+        let want = note_hz(root + st);
+        let got = strongest_hz(&l[144_000..144_000 + 32_768], want * 0.97, want * 1.03);
+        assert!(cents(got, want).abs() < 30.0, "+{st}: {got} Hz for {want}");
+        assert!(tone_amp(&l[144_000..144_000 + 32_768], got) > 0.01, "+{st} sounds");
+    }
+    assert!(peak_of(&l).max(peak_of(&r)) < 0.9);
+    // From three keys, coupled.
+    load_factory(&p, find("Chord keys"));
+    let chord = [(5, [0x90, 48, 100]), (5, [0x90, 52, 100]), (5, [0x90, 55, 100])];
+    let (l, _) = run_larsen(&p, blocks(3.0), &chord);
+    for note in [48.0, 52.0, 55.0] {
+        let want = note_hz(note);
+        let got = strongest_hz(&l[96_000..96_000 + 32_768], want * 0.97, want * 1.03);
+        assert!(cents(got, want).abs() < 30.0, "{note}: {got} Hz for {want}");
+        assert!(tone_amp(&l[96_000..96_000 + 32_768], got) > 0.01, "{note} sounds");
+    }
+    // One key sounds one string: those never played stay closed.
+    run_larsen(&p, blocks(1.0), &[(5, [0x90, 50, 100])]);
+    let open: Vec<f32> = (0..3).map(|s| p.viz[viz::OPEN + s].get()).collect();
+    assert_eq!(open, vec![1.0, 0.0, 0.0]);
+}
+
+#[test]
+fn larsen_echo_repeats_warps_and_pongs() {
+    use crate::audio::modules::larsen::{FACTORY, REPEATS, SEND, TIME, data, load_factory, viz};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Larsen));
+    // The loop shut (Init): a burst on IN, and its repeats.
+    load_factory(&p, FACTORY.iter().position(|s| s.0 == "Init").unwrap());
+    p.set(SEND, 1.0);
+    p.set(REPEATS, 0.6);
+    p.set(TIME, 0.5);
+    let burst = |i: usize| if i < 480 { 0.5 * (i as f32 * 0.3).sin() } else { 0.0 };
+    // Around repeat `k`, and just before it (once the string has stopped
+    // ringing).
+    let window = |x: &[f32], k: usize| rms_of(&x[k * 24_000 - 3000..k * 24_000 + 3000]);
+    let before = |x: &[f32], k: usize| rms_of(&x[k * 24_000 - 7000..k * 24_000 - 4000]);
+    let (l, r) = run_larsen_with(&p, blocks(2.0), |_| true, &[], Some(&burst), &|_| {});
+    // CLASSIC: every 0.5 s, on both sides.
+    for k in 1..=3 {
+        assert!(window(&l, k) > 1e-4 && window(&r, k) > 1e-4, "repeat {k}");
+        assert!(window(&l, k) > 10.0 * before(&l, k), "repeat {k}: {} against {}", window(&l, k), before(&l, k));
+    }
+    // PONG: the first on the left, the next on the right, and so on.
+    p.data[data::PONG].set(1.0);
+    let (l, r) = run_larsen_with(&p, blocks(2.0), |_| true, &[], Some(&burst), &|_| {});
+    assert!(window(&l, 1) > 3.0 * window(&r, 1), "first left");
+    assert!(window(&r, 2) > 3.0 * window(&l, 2), "then right");
+    assert!(window(&l, 3) > 3.0 * window(&r, 3), "then left");
+    // WARP: a quarter of the time above the shortest.
+    p.data[data::WARP].set(1.0);
+    run_larsen(&p, blocks(1.0), &[]);
+    assert!((p.viz[viz::ECHO].get() - (0.05 + 0.45 / 4.0)).abs() < 1e-3, "{}", p.viz[viz::ECHO].get());
+}
+
+#[test]
+fn larsen_rests_once_stopped_and_needs_input_as_a_resonator() {
+    use crate::audio::modules::larsen::{FACTORY, SEND, load_factory};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Larsen));
+    // Stopped, it is silent; stopped after playing, it dies away to
+    // nothing and rests.
+    let (l, _) = run_larsen_with(&p, blocks(2.0), |_| false, &[], None, &|_| {});
+    assert!(l.iter().all(|&s| s == 0.0));
+    // (No echo: its repeats would take their time.)
+    p.set(SEND, 0.0);
+    let (l, _) = run_larsen_with(&p, blocks(16.0), |b| b < blocks(3.0), &[], None, &|_| {});
+    assert!(rms_of(&l[96_000..144_000]) > 0.03);
+    assert!(l[l.len() - 48_000..].iter().all(|&s| s == 0.0), "rests");
+    // The resonator plays only what comes in.
+    load_factory(&p, FACTORY.iter().position(|s| s.0 == "Resonator (IN)").unwrap());
+    let (l, _) = run_larsen(&p, blocks(3.0), &[]);
+    assert!(rms_of(&l) < 1e-3, "nothing in, nothing out: {}", rms_of(&l));
+    let pulses = |i: usize| if i % 24_000 < 200 { 0.3 * (i as f32 * 0.37).sin() } else { 0.0 };
+    let (l, r) = run_larsen_with(&p, blocks(3.0), |_| true, &[], Some(&pulses), &|_| {});
+    assert!(rms_of(&l) > 0.005, "it rings with the input: {}", rms_of(&l));
+    assert!(peak_of(&l).max(peak_of(&r)) < 0.9);
+}
+
+#[test]
+fn larsen_settings_and_sounds_are_saved() {
+    use crate::audio::modules::larsen::{BODY, FACTORY, FEEDBACK, LEVEL, data, flag, load_factory, spec};
+    use crate::presets::{self, ModulePreset};
+    let (mut g, a, _e) = setup();
+    let id = g.add_module(ModuleKind::Larsen, pos2(0.0, 0.0), &a);
+    let p = module_params(&g, id);
+    p.set(FEEDBACK, 3.0);
+    p.set(BODY, 0.042);
+    for d in [data::PONG, data::POLY, data::GATE] {
+        p.data[d].set(1.0);
+    }
+    p.data[data::LOCK].set(0.0);
+    let saved = crate::project::snapshot(&g);
+    let (mut h, b, _f) = setup();
+    assert_eq!(crate::project::restore(&mut h, &saved, &b), 0);
+    let q = module_params(&h, h.nodes[0].id);
+    assert_eq!((q.get(FEEDBACK), q.get(BODY)), (3.0, 0.042));
+    assert!(flag(&q, data::PONG) && flag(&q, data::POLY) && flag(&q, data::GATE) && !flag(&q, data::LOCK) && !flag(&q, data::PITCH));
+    assert_eq!(crate::project::snapshot(&h), saved);
+
+    // A preset holds the switches too.
+    let dir = TempDir::new("larsen-presets");
+    presets::save(&dir.0, ModuleKind::Larsen, &[ModulePreset::capture(&q, "Mine")]).unwrap();
+    let loaded = presets::load(&dir.0, ModuleKind::Larsen);
+    let fresh = Arc::new(ModuleParams::new(ModuleKind::Larsen));
+    loaded[0].apply(&fresh);
+    assert_eq!(fresh.get(BODY), 0.042);
+    assert!(flag(&fresh, data::POLY) && !flag(&fresh, data::LOCK));
+
+    // The built-in sounds keep the player's LEVEL; those that drone on
+    // their own do, and all stay in range.
+    fresh.set(LEVEL, 0.3);
+    for (k, (name, ..)) in FACTORY.iter().enumerate() {
+        load_factory(&fresh, k);
+        assert_eq!(fresh.get(LEVEL), 0.3, "{name}");
+        fresh.set(LEVEL, spec(LEVEL).default);
+        let (l, r) = run_larsen(&fresh, blocks(4.0), &[]);
+        assert!(l.iter().chain(&r).all(|s| s.is_finite()), "{name}");
+        let peak = peak_of(&l).max(peak_of(&r));
+        assert!(peak < 0.9, "{name}: peak {peak}");
+        let waits = matches!(*name, "Keys" | "Chord keys" | "Resonator (IN)" | "Init");
+        let rms = rms_of(&l[96_000..]);
+        assert!(if waits { rms < 1e-3 } else { rms > 0.03 }, "{name}: {rms}");
+        fresh.set(LEVEL, 0.3);
+    }
+}
+
+#[test]
+fn larsen_panel_draws_while_it_plays() {
+    use crate::audio::modules::larsen::{data, viz};
+    let shared = Arc::new(EngineShared::new());
+    shared.tempo.set(120.0);
+    let (a, mut e) = audio::offline(shared, 48_000);
+    let mut g = Graph::default();
+    let id = g.add_module(ModuleKind::Larsen, pos2(0.0, 0.0), &a);
+    let mix = g.add_mixer(pos2(900.0, 0.0), &a);
+    g.connect(port(id, 0), port(mix, 0), &a);
+    let p = module_params(&g, id);
+    let mut editor = crate::ui::canvas::Editor::new();
+    let ctx = egui::Context::default();
+    let mut time = 0.0;
+    for round in 0..8 {
+        p.data[data::POLY].set((round % 2) as f32);
+        p.data[data::PONG].set((round / 2 % 2) as f32);
+        p.data[data::PITCH].set((round / 4) as f32);
+        for _ in 0..3 {
+            render_buf(&mut e, 4_800);
+            time += 0.1;
+            let input = egui::RawInput { time: Some(time), ..Default::default() };
+            let mut out = ctx.run_ui(input, |ui| editor.show(ui, &mut g, &a));
+            out.textures_delta.clear();
+        }
+    }
+    assert!(p.viz[viz::LEVEL].get() > 0.01, "it sounded while drawn");
+}
+
+/// Runs a MIDI Looper at 120 BPM (a beat is 24 000 samples): MIDI on its
+/// cable as (sample, message), the board's transport `playing`, and `each`
+/// called before every block. What comes out, as (sample, message).
+fn run_looper(p: &Arc<ModuleParams>, blocks: usize, playing: bool, midi: &[(usize, [u8; 3])], each: &dyn Fn(usize)) -> Vec<(usize, [u8; 3])> {
+    use crate::audio::modules::looper::Looper;
+    let mut proc = Looper::new(p.clone(), Arc::new(crate::audio::midi::MidiState::new()), 48_000.0);
+    let mut ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing, restart: playing };
+    let mut inputs =
+        Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: true });
+    let mut outputs: Vec<crate::audio::engine::Buf> = Vec::new();
+    let mut out = Vec::new();
+    for b in 0..blocks {
+        each(b);
+        inputs.midi.clear();
+        for &(at, msg) in midi.iter().filter(|(at, _)| at / 64 == b) {
+            inputs.midi.push(at % 64, msg);
+        }
+        proc.process(&ctx, &inputs, &mut outputs, 64);
+        for e in proc.midi_out().map(|m| m.events()).unwrap_or(&[]) {
+            out.push((b * 64 + e.frame as usize, e.data));
+        }
+        if playing {
+            ctx.beat += ctx.beats_per_sample * 64.0;
+        }
+        ctx.restart = false;
+    }
+    out
+}
+
+/// Samples a beat at 120 BPM.
+const BEAT: usize = 24_000;
+
+/// When `key` starts, in samples.
+fn looper_ons(out: &[(usize, [u8; 3])], key: u8) -> Vec<usize> {
+    out.iter().filter(|(_, m)| m[0] & 0xF0 == 0x90 && m[2] > 0 && m[1] == key).map(|&(at, _)| at).collect()
+}
+
+fn near(at: usize, want: usize) -> bool {
+    at.abs_diff(want) <= 64
+}
+
+fn looper_with(notes: &[(usize, u8, u32, u32)]) -> Arc<ModuleParams> {
+    use crate::audio::modules::looper::{Note, add_note, set_bars};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Looper));
+    for &(scene, key, at, len) in notes {
+        set_bars(&p, scene, 1);
+        add_note(&p, scene, Note { at, len, key, velocity: 100, channel: 0 });
+    }
+    p
+}
+
+#[test]
+fn looper_records_its_bars_and_plays_them_back() {
+    use crate::audio::modules::looper::{ask, count, data, note, request, set_bars, state, viz};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Looper));
+    set_bars(&p, 0, 1);
+    let arm = |b: usize| {
+        if b == 0 {
+            request(&p, ask::REC, 0.0);
+        }
+    };
+    // Armed, it records from the next bar (beat 0): two notes in a bar.
+    let played = [
+        (BEAT / 2, [0x90, 60, 90]),
+        (BEAT, [0x80, 60, 0]),
+        (2 * BEAT, [0x90, 64, 110]),
+        (5 * BEAT / 2, [0x80, 64, 0]),
+    ];
+    let out = run_looper(&p, 3 * 4 * BEAT / 64, true, &played, &arm);
+    assert_eq!(count(&p, 0), 2);
+    assert_eq!(p.viz[viz::STATE].get() as usize, state::PLAYING);
+    let n = note(&p, 0, 0);
+    assert_eq!((n.key, n.at, n.len, n.velocity), (60, 48, 48, 90));
+    // Heard as played (THRU), then from the loop on every pass after.
+    let ons = looper_ons(&out, 60);
+    assert_eq!(ons.len(), 3, "{ons:?}");
+    assert!(near(ons[0], BEAT / 2) && near(ons[1], 4 * BEAT + BEAT / 2) && near(ons[2], 8 * BEAT + BEAT / 2), "{ons:?}");
+    assert!(looper_ons(&out, 64).iter().any(|&at| near(at, 6 * BEAT)));
+    // Each note ends as long as it was held.
+    let off = out.iter().find(|(at, m)| *at > 4 * BEAT && m[0] & 0xF0 == 0x80 && m[1] == 60).unwrap().0;
+    assert!(near(off, 5 * BEAT), "{off}");
+    // Without THRU, only the loop is heard.
+    p.data[data::THRU].set(0.0);
+    let out = run_looper(&p, 4 * BEAT / 64, true, &played, &|_| {});
+    assert_eq!(looper_ons(&out, 60).len(), 1);
+}
+
+#[test]
+fn looper_starts_on_the_first_note_overdubs_and_undoes() {
+    use crate::audio::modules::looper::{ON_NOTE, ask, count, data, note, request, set_bars, state, viz};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Looper));
+    set_bars(&p, 0, 1);
+    p.data[data::TRIGGER].set(ON_NOTE as f32);
+    // Waits, armed, until a note: the bar it falls in is the loop's start.
+    let played = [
+        (4 * BEAT + BEAT / 4, [0x90, 60, 100]),
+        (4 * BEAT + BEAT / 2, [0x80, 60, 0]),
+        // Overdubbed in the next pass, at the loop's second beat.
+        (9 * BEAT, [0x90, 67, 100]),
+        (9 * BEAT + BEAT / 2, [0x80, 67, 0]),
+    ];
+    let dub_at = (8 * BEAT + BEAT / 2) / 64;
+    let undo_at = (13 * BEAT + BEAT / 2) / 64;
+    let out = run_looper(&p, 14 * BEAT / 64, true, &played, &|b| {
+        if b == 0 {
+            request(&p, ask::REC, 0.0);
+        }
+        if b == 4 * BEAT / 64 - 10 {
+            assert_eq!(p.viz[viz::STATE].get() as usize, state::ARMED, "still armed");
+        }
+        if b == dub_at {
+            request(&p, ask::DUB, 0.0);
+        }
+        if b == undo_at {
+            assert_eq!(count(&p, 0), 2, "the overdub joined the loop");
+            request(&p, ask::UNDO, 0.0);
+        }
+    });
+    assert_eq!(note(&p, 0, 0).at, 24, "a quarter beat into its bar");
+    // The overdubbed note plays from the pass after it was played.
+    assert!(looper_ons(&out, 67).iter().any(|&at| near(at, 13 * BEAT)), "{:?}", looper_ons(&out, 67));
+    assert_eq!(count(&p, 0), 1, "UNDO took the overdub back");
+
+    // Played an eighth early, a note opens the next bar.
+    let early = Arc::new(ModuleParams::new(ModuleKind::Looper));
+    set_bars(&early, 0, 1);
+    early.data[data::TRIGGER].set(ON_NOTE as f32);
+    let played = [(4 * BEAT - BEAT / 5, [0x90, 62, 100]), (4 * BEAT + BEAT / 2, [0x80, 62, 0])];
+    run_looper(&early, 9 * BEAT / 64, true, &played, &|b| {
+        if b == 0 {
+            request(&early, ask::REC, 0.0);
+        }
+    });
+    assert_eq!(count(&early, 0), 1);
+    assert_eq!(note(&early, 0, 0).at, 0);
+}
+
+#[test]
+fn looper_plays_reversed_and_picks_at_random() {
+    use crate::audio::modules::looper::{GRID, RANDOM, REVERSE, set_direction};
+    let notes: Vec<(usize, u8, u32, u32)> = [60u8, 62, 64, 65].iter().enumerate().map(|(k, &key)| (0, key, k as u32 * 96, 48)).collect();
+    let p = looper_with(&notes);
+    let first = |out: &[(usize, [u8; 3])], key: u8| looper_ons(out, key)[0];
+    let out = run_looper(&p, 4 * BEAT / 64, true, &[], &|_| {});
+    assert!(near(first(&out, 60), 0) && near(first(&out, 65), 3 * BEAT));
+    // Reversed: each note ends where it started, from the end back.
+    set_direction(&p, 0, REVERSE);
+    let out = run_looper(&p, 4 * BEAT / 64, true, &[], &|_| {});
+    for (key, at) in [(65, BEAT / 2), (64, 3 * BEAT / 2), (62, 5 * BEAT / 2), (60, 7 * BEAT / 2)] {
+        assert!(near(first(&out, key), at), "{key}: {}", first(&out, key));
+    }
+    // RANDOM: a beat's slice at a time (GRID 1/4), each picked anew.
+    set_direction(&p, 0, RANDOM);
+    p.set(GRID, 0.0);
+    let out = run_looper(&p, 32 * BEAT / 64, true, &[], &|_| {});
+    let ons: Vec<(usize, u8)> = out.iter().filter(|(_, m)| m[0] & 0xF0 == 0x90 && m[2] > 0).map(|&(at, m)| (at, m[1])).collect();
+    assert_eq!(ons.len(), 32, "a note every beat");
+    assert!(ons.iter().all(|&(at, _)| near(at, (at + BEAT / 2) / BEAT * BEAT)), "on the beats");
+    let keys: Vec<u8> = ons.iter().map(|&(_, k)| k).collect();
+    let forward: Vec<u8> = (0..32).map(|k| [60, 62, 64, 65][k % 4]).collect();
+    assert_ne!(keys, forward, "not in order");
+    for key in [60, 62, 64, 65] {
+        assert!(keys.contains(&key), "{key} picked");
+    }
+}
+
+#[test]
+fn looper_switches_scenes_on_launch_and_follows_on() {
+    use crate::audio::modules::looper::{HALT, NEXT, ask, data, request, scene, set_follow, set_repeats, state, viz};
+    let p = looper_with(&[(0, 60, 0, 48), (1, 72, 0, 48), (2, 84, 0, 48)]);
+    // Scene 1 twice, then the next: scene 2, for good.
+    set_repeats(&p, 0, 2);
+    set_follow(&p, 0, NEXT);
+    // Asked for mid-bar, scene 1 comes back on the next bar line.
+    let ask_at = (13 * BEAT) / 64;
+    let out = run_looper(&p, 20 * BEAT / 64, true, &[], &|b| {
+        if b == ask_at {
+            request(&p, ask::SCENE, 0.0);
+            assert!(p.viz[viz::QUEUED].get() < 0.0 || p.viz[viz::QUEUED].get() >= 0.0);
+        }
+    });
+    let ons = looper_ons(&out, 60);
+    assert!(near(ons[0], 0) && near(ons[1], 4 * BEAT) && near(ons[2], 16 * BEAT), "{ons:?}");
+    let ons = looper_ons(&out, 72);
+    assert!(near(ons[0], 8 * BEAT) && near(ons[1], 12 * BEAT) && ons.len() == 2, "{ons:?}");
+    // Program Change 3 picks scene 3 the same way.
+    p.data[data::SCENE].set(0.0);
+    set_repeats(&p, 0, 0);
+    let out = run_looper(&p, 9 * BEAT / 64, true, &[(BEAT, [0xC0, 2, 0])], &|_| {});
+    assert!(looper_ons(&out, 84).iter().any(|&at| near(at, 4 * BEAT)));
+    assert_eq!(scene(&p), 2);
+    // STOP after the last repeat.
+    p.data[data::SCENE].set(0.0);
+    set_repeats(&p, 0, 1);
+    set_follow(&p, 0, HALT);
+    let out = run_looper(&p, 12 * BEAT / 64, true, &[], &|_| {});
+    assert_eq!(looper_ons(&out, 60).len(), 1);
+    assert_eq!(p.viz[viz::STATE].get() as usize, state::STOPPED);
+}
+
+#[test]
+fn looper_follows_a_midi_clock() {
+    use crate::audio::midi::MidiState;
+    use crate::audio::modules::looper::{data, viz};
+    let p = looper_with(&[(0, 60, 96, 48)]);
+    p.data[data::SYNC].set(1.0);
+    // Start, then 24 ticks a beat at 120 BPM, then Stop in the second bar.
+    let mut clock = vec![(0, [0xFA, 0, 0])];
+    clock.extend((0..6 * 24).map(|k| (k * 1000, [0xF8, 0, 0])));
+    clock.push((6 * BEAT + 10, [0xFC, 0, 0]));
+    clock.sort_by_key(|&(at, m)| (at, m[0] != 0xFA));
+    // The board stands still: only the clock moves it.
+    let out = run_looper(&p, 8 * BEAT / 64, false, &clock, &|b| {
+        if b == 3 * BEAT / 64 {
+            assert!((p.viz[viz::TEMPO].get() - 120.0).abs() < 1.0, "{}", p.viz[viz::TEMPO].get());
+        }
+    });
+    let ons = looper_ons(&out, 60);
+    assert_eq!(ons.len(), 2, "{ons:?}");
+    assert!(near(ons[0], BEAT) && near(ons[1], 5 * BEAT), "{ons:?}");
+    assert!(out.iter().filter(|(at, _)| *at > 6 * BEAT + 64).all(|(_, m)| m[0] & 0xF0 != 0x90), "nothing after Stop");
+
+    // The clock reaches the stream (for the looper), but is no activity.
+    let midi = MidiState::new();
+    let (cursor, events) = (midi.stream_head(), midi.events());
+    midi.handle(&[0xF8]);
+    midi.handle(&[0xFA]);
+    let mut got = Vec::new();
+    midi.read_stream(&mut { cursor }, |m| got.push(m[0]));
+    assert_eq!(got, vec![0xF8, 0xFA]);
+    assert_eq!(midi.events(), events);
+}
+
+#[test]
+fn looper_step_records_and_takes_commands_over_midi() {
+    use crate::audio::modules::looper::{count, data, note, scene, set_bars, state, viz};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Looper));
+    set_bars(&p, 0, 1);
+    p.data[data::STEP].set(1.0);
+    // A note, a chord, a note: three steps (a sixteenth each).
+    let played = [
+        (0, [0x90, 60, 100]),
+        (100, [0x80, 60, 0]),
+        (200, [0x90, 64, 80]),
+        (210, [0x90, 67, 80]),
+        (300, [0x80, 64, 0]),
+        (310, [0x80, 67, 0]),
+        (400, [0x90, 72, 100]),
+        (500, [0x80, 72, 0]),
+        // CTRL channel 16: C2 arms REC (not heard, not recorded).
+        (600, [0x9F, 36, 100]),
+        (700, [0x8F, 36, 0]),
+        // Program Change 2: scene 2.
+        (800, [0xC0, 1, 0]),
+    ];
+    let out = run_looper(&p, 20, true, &played, &|_| {});
+    let notes: Vec<(u32, u8, u32)> = (0..count(&p, 0)).map(|i| note(&p, 0, i)).map(|n| (n.at, n.key, n.len)).collect();
+    assert_eq!(notes, vec![(0, 60, 24), (24, 64, 24), (24, 67, 24), (48, 72, 24)]);
+    assert_eq!(p.viz[viz::CURSOR].get(), 72.0);
+    assert_eq!(p.viz[viz::STATE].get() as usize, state::ARMED);
+    assert!(out.iter().all(|(_, m)| m[1] != 36 || m[0] & 0x0F != 15), "commands are not music");
+    assert_eq!(scene(&p), 1);
+}
+
+#[test]
+fn looper_scenes_are_saved() {
+    use crate::audio::modules::looper::{
+        Note, REVERSE, add_note, bars, count, data, direction, follow, note, repeats, scene, set_bars, set_direction, set_follow, set_repeats,
+    };
+    let (mut g, a, _e) = setup();
+    let id = g.add_module(ModuleKind::Looper, pos2(0.0, 0.0), &a);
+    let p = module_params(&g, id);
+    set_bars(&p, 5, 12);
+    set_repeats(&p, 5, 4);
+    set_direction(&p, 5, REVERSE);
+    set_follow(&p, 5, 1);
+    let n = Note { at: 4000, len: 300, key: 91, velocity: 77, channel: 9 };
+    add_note(&p, 5, n);
+    p.data[data::SCENE].set(5.0);
+    p.data[data::SYNC].set(1.0);
+    let saved = crate::project::snapshot(&g);
+    let (mut h, b, _f) = setup();
+    assert_eq!(crate::project::restore(&mut h, &saved, &b), 0);
+    let q = module_params(&h, h.nodes[0].id);
+    assert_eq!((bars(&q, 5), repeats(&q, 5), direction(&q, 5), follow(&q, 5), count(&q, 5)), (12, 4, REVERSE, 1, 1));
+    assert_eq!(note(&q, 5, 0), n);
+    assert_eq!(scene(&q), 5);
+    assert_eq!(crate::project::snapshot(&h), saved);
+}
+
+#[test]
+fn looper_panel_draws_while_it_plays() {
+    use crate::audio::modules::looper::{RANDOM, REVERSE, ask, request, set_direction, viz};
+    let shared = Arc::new(EngineShared::new());
+    shared.tempo.set(120.0);
+    let (a, mut e) = audio::offline(shared, 48_000);
+    let mut g = Graph::default();
+    let id = g.add_module(ModuleKind::Looper, pos2(0.0, 0.0), &a);
+    let p = module_params(&g, id);
+    for s in 0..3 {
+        for k in 0..8u32 {
+            crate::audio::modules::looper::add_note(&p, s, crate::audio::modules::looper::Note { at: k * 48, len: 40, key: 50 + (k * 5 % 30) as u8, velocity: 100, channel: 0 });
+        }
+    }
+    crate::audio::modules::looper::set_bars(&p, 1, 9);
+    set_direction(&p, 1, REVERSE);
+    set_direction(&p, 2, RANDOM);
+    let mut editor = crate::ui::canvas::Editor::new();
+    let ctx = egui::Context::default();
+    let mut time = 0.0;
+    for round in 0..9 {
+        if round % 3 == 0 {
+            request(&p, ask::SCENE, (round / 3) as f32);
+        }
+        if round == 7 {
+            request(&p, ask::REC, 0.0);
+        }
+        for _ in 0..3 {
+            render_buf(&mut e, 9_600);
+            time += 0.1;
+            let input = egui::RawInput { time: Some(time), ..Default::default() };
+            let mut out = ctx.run_ui(input, |ui| editor.show(ui, &mut g, &a));
+            out.textures_delta.clear();
+        }
+    }
+    assert!(p.viz[viz::RUNNING].get() > 0.5, "it ran while drawn");
 }
 
 /// Records `seconds` of an oscillator through a mixer with the offline

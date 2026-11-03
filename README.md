@@ -92,6 +92,49 @@ partial's track over the last 18 seconds, on a log-frequency scale, with glitche
 timbre's motion over one period around now. The motion is the same every time, so what is coming is drawn
 too.
 
+**Larsen**: a feedback drone. A floor of noise excites two plucked strings, one a side, inside a loop that
+saturates, so it sounds on its own, with no notes and no input. It is an independent take on the circuit of
+Drosera (codeskine) and the Audrey II firmware it grew from, written anew for the board.
+
+- **The loop.** The strings ring, a steep drive bounds them, a LOWPASS and a HIGHPASS and a REVERB (MIX, and
+  DECAY up to endless) shape them, and BODY (1–100 ms), the loop's outer delay, brings it all back into the
+  strings. FEEDBACK (−60 to +12 dB) is the gain round it: low, the loop dies away; from about −25 dB it
+  sustains and saturates. FREQ (notes 16–72) tunes the strings, but the drone settles where their harmonics
+  and BODY's resonances meet, which is rarely just that note, and moving BODY can jump it to another partial.
+  Everything in the loop changes what sustains, not only the tone. IN feeds the strings (INPUT, 0 dB at the
+  middle): with FEEDBACK down it is a resonator for whatever comes in.
+- **ECHO** after the loop: SEND, TIME (50 ms to 5 s; it glides like tape when moved) and REPEATS. Every repeat
+  is band-passed and soft clipped, so REPEATS can pass 100% and swell without running away. **WARP** quarters
+  the time above 50 ms, three to four times shorter: a warp more than a halving. **PONG** bounces the repeats
+  from left to right, starting on the left. Its knobs shape them: DRIVE (up to +12 dB into the clip, and each
+  bounce comes back louder, so at full the echo runs away from 50%), TONE (the band, 200 Hz to 3.2 kHz), WIDTH
+  and GAIN (the repeats' level, not what feeds back).
+- **Keys** on the MIDI input (a MIDI cable, or else the keyboards). **PITCH** puts the drone on the key (notes
+  16–84, bend ±2). BODY then snaps to a whole number of the note's periods, less what the filters lag there,
+  and a band-pass keeps the loop on the fundamental, so it plays in tune (within about 15 cents). The note
+  stays after the key; moving FREQ with no key down takes the pitch back. **GATE** opens the loop only while
+  a key is held: it swells on the key and dies away after.
+- **Three strings.** **POLY** runs three loops. From the knobs they sit on FREQ and two intervals (INTERVAL 2
+  and 3, ±24 semitones): with **LOCK** on they are tuned to those notes as keys are, with LOCK off each roams to
+  its own resonance. With PITCH, three keys set them: a new note takes a string that has never played, else
+  the one let go longest ago, else the one held longest; a string keeps its note after its key is up. One
+  key sounds one string. **COUPLING** lets each loop hear the other two, like sympathetic strings.
+- **Level.** The output has a limiter and a soft ceiling, since the loop can get loud. A long reverb builds
+  the drone up, so the output is trimmed by as much: DECAY and MIX change the sound, not how loud it comes out.
+- **PRESETS** saves the settings and the switches under a name. Sixteen built-in sounds: Default, Cellar,
+  Whistle, Nave, Drift, Warp, Undertow, Howl, Small room, Keys (PITCH and GATE: play it), Resonator (IN, needs
+  an input), Init (silent), Fifths and Sympathetic (three strings from the knobs), Chord keys (three keys,
+  coupled) and Embers (PONG). Loading one keeps your LEVEL.
+
+Like every source it plays while the transport runs, or while keys are held. Stopped, the loop closes and dies
+away, and once quiet it rests and costs nothing.
+
+The panel shows the loop's field: the output's spectrum on a log-frequency scale, over the band the two filters
+let through. The strings' harmonics rise from the bottom and BODY's resonances hang from the top: the drone
+settles where they meet. Each string's note floats over its fundamental, glowing with its loop. The knobs
+inside the loop wear the node's colour, those after it amber. FREQ and BODY show what really plays: the key's
+note (MIDI) and the snapped BODY (SNAP).
+
 **Random**: a random modulation source. RATE, CHAOS (irregular timing), SMOOTH (from sample & hold to
 continuous glide), LEVEL. Patch it into any control input (cutoff, pitch, grain position…).
 
@@ -454,11 +497,11 @@ semitone knobs the distance from middle C, and the others the key's position. Th
 messages that arrive after mapping. **UNMAP** removes the mapping. Mappings are saved in the project and in
 library modules.
 
-### MIDI sequences: Step Sequencer, MIDIcer, Automa, Arpeggiator, MIDI In
+### MIDI sequences: Step Sequencer, MIDIcer, Automa, MIDI Looper, Arpeggiator, MIDI In
 
 Besides audio cables there are **MIDI cables**: square ports (audio ports are round) and dashed cables.
 A MIDI cable only joins a MIDI output to a MIDI input. VST3 plugins that accept MIDI (instruments), the
-Arpeggiator, MIDIcer and MIDI Note have a MIDI input.
+Arpeggiator, MIDIcer, the MIDI Looper and MIDI Note have a MIDI input.
 
 **Start / Stop** (toolbar, or Space) drive the transport, not the audio: Stop ends the sound's generation
 but lets it die away. Sequencers, arpeggiators, MIDIcer and Automa stop and end the notes they were holding (VST
@@ -566,6 +609,37 @@ U+D (up and down), RAND or ORDER (as played) order. RATE, GATE, SWING, CHANCE, V
 sequencer. Notes come from its MIDI cable or, with no cable, straight from the MIDI keyboard.
 **LATCH** keeps the chord going after you let go of the keys, until you play a new one.
 
+**MIDI Looper**: records what you play on its MIDI input (its cable or, with none, the MIDI keyboard) into
+loops of a given number of bars, in time, and plays them back on its MIDI output, to a VST instrument or
+anything else with a MIDI input.
+
+- **Eight scenes**, each a loop of its own: BARS (1–16), REPEATS (∞, or 1 to 16 times), direction and what
+  follows its last repeat (THEN: the NEXT scene with notes, a RANDOM one, or STOP). **FWD** plays forward,
+  **REV** reversed (each note ends where it started, from the end back), **RANDOM** picks: every GRID step
+  plays a slice of the loop chosen at random. Click a scene to play it: it starts on the next beat, bar,
+  or when the loop playing ends (LAUNCH); stopped, the click just picks it. **COPY →** copies the scene
+  into the next empty one.
+- **REC** arms the scene. Recording starts as **REC ON** says: on the next bar, with the first note you
+  play (on its bar; played up to an eighth early, on the next one), or on a Start (the board's Stop and
+  Start, or a MIDI clock's). It runs for the scene's bars, then the scene plays. REC again stops recording
+  early (or cancels the arm). **DUB** plays over the loop and adds what you play; pressed while recording,
+  it keeps layering after the first pass. Recorded notes join the loop at the end of their pass, pulled
+  onto the GRID as far as **QUANTIZE** says. **UNDO** takes back the last recording, overdub, step session
+  or **CLEAR** (pressed again, it redoes it). **THRU** lets what you play through, so you hear it.
+- **Step sequencer.** The roll shows the scene's notes over two octaves (▲ ▼), four bars at a time (‹ ›; it
+  follows the playhead while playing). Click to add a note a GRID step long, drag to stretch it, click a
+  note to take it away. With **STEP**, each note or chord you play goes in at the cursor, a GRID step
+  long, and the cursor moves on a step; click the ruler to move the cursor.
+- **SYNC**: **BOARD** follows the board's tempo and transport; **CLOCK** follows a MIDI clock on the MIDI
+  input instead (24 ticks a beat, with Start, Stop, Continue and the song position), between ticks at the
+  tempo they keep. MIDI inputs now let the clock and transport through to the MIDI nodes (MIDI In passes
+  them on, whatever its channel); they do not count as MIDI activity.
+- **MIDI control.** Program Change 1–8 (any channel) picks scenes 1–8. On the **CTRL CH** channel (16 by
+  default; off turns it off) notes are commands, neither heard nor recorded: C2 REC, C#2 DUB, D2 PLAY/STOP,
+  D#2 UNDO, E2 CLEAR, F2 and F#2 reverse or random pick on and off, C3–G3 scenes 1–8.
+- **TRANSPOSE** shifts what plays back, **OUT CH** puts it all on one channel (or as played). A scene holds
+  up to 256 notes; the scenes, their settings and the switches are saved in the project.
+
 **MIDI In**: the MIDI keyboard on a cable, to send it into an arpeggiator or a plugin; CHANNEL filters one
 channel, TRANSPOSE shifts the notes (controllers and pitch bend pass through unchanged).
 
@@ -574,6 +648,7 @@ Examples:
   from the keyboard too);
 - *MIDI In → Arpeggiator → VST instrument*: arpeggios from what you play;
 - *Automa → VST instrument*: generative lines in key (with **PAD**, the chords as well);
+- *MIDI Looper → VST instrument*: play a phrase, loop it, layer it, and switch between scenes;
 - *Step Sequencer → MIDI Note*, with ENV into an oscillator's AM and MAP on its FREQ: the sequence plays
   the built-in nodes.
 
@@ -840,14 +915,21 @@ src/
 │   │   │               RANDOM, built-in sounds
 │   │   ├── aether/     fractal (octaves of smooth noise, the spectra), glitch (pings, tuned skips, ratchets),
 │   │   │               space (soft saturation, chorus, diffuse space with tuned air)
+│   │   ├── larsen.rs   Larsen: the loop (strings, drive, filters, reverb, BODY), tuning to notes, three strings
+│   │   │               and COUPLING, the output's limiter, built-in sounds
+│   │   ├── larsen/     parts (string, drive, filters, the loop's reverb), echo (CLASSIC and PONG), keys (the
+│   │   │               strings' notes)
 │   │   ├── automa.rs   Automa: steps, choosing and fitting notes, voices, pad, FREEZE, what the panel shows
 │   │   ├── automa/     engines (LIFE, CASCADE, TREE, JULIA), harmony (scales, chords, progressions,
 │   │   │               consonance rules, functional substitutions)
+│   │   ├── looper.rs   MIDI Looper: scenes and their notes, transport, recording and overdub, playing
+│   │   │               forward, reversed or by random slices, launching and following scenes, MIDI control
+│   │   ├── looper/     clock (following a MIDI clock: ticks, Start, Stop, Continue, song position)
 │   │   ├── tape.rs     Tape: record EQ, magnetic curve, transport (wow, flutter, stop/start), playback head
 │   │   ├── oversample.rs 2× oversampling (half-band FIR) shared by Magma, Tape and Aether
 │   │   ├── steps.rs step grid on the global tempo, outgoing notes, held keys
 │   │   └── mod.rs  module descriptions (ModuleDef), generic parameters and DSP helpers
-│   ├── midi.rs     MIDI inputs (midir) and shared state read by the MIDI nodes
+│   ├── midi.rs     MIDI inputs (midir) and shared state read by the MIDI nodes (clock and transport too)
 │   ├── plugin.rs   VST3 plugins (vst3-host): loading, scanning, processing on the audio thread
 │   ├── record.rs   recording the output: a lock-free tap on the audio thread, a writer thread, takes
 │   ├── export.rs   takes to WAV/AIFF (written here), FLAC/ALAC/AAC (afconvert), MP3 (ffmpeg or lame)
@@ -874,7 +956,10 @@ src/
 │   ├── tape.rs     the Tape panel: the sketched deck (reels, tape, head, needles, keys), COMPACT / FULL
 │   ├── nullpunkt.rs the Nullpunkt panel: editable lanes, randomize, presets, knob groups
 │   ├── aether.rs   the Aether panel: the fractal flower, the partials' aurora, the motion strip, knob groups
-│   ├── preset_menu.rs the PRESETS ▾ menu shared by Nullpunkt and Aether: save, load, delete
+│   ├── larsen.rs   the Larsen panel: the loop's field (spectrum, filter band, harmonics, BODY's resonances),
+│   │               switches, knob groups
+│   ├── preset_menu.rs the PRESETS ▾ menu shared by Nullpunkt, Aether and Larsen: save, load, delete
+│   ├── looper.rs   the MIDI Looper panel: transport, scenes and their settings, the editable roll, knobs
 │   ├── automa.rs   the Automa panel: the generator's world (grid, waterfall, tree, Julia set), the roll over
 │   │               the chord lanes, the progression strip, knob groups
 │   ├── settings.rs the Settings window: output device, channels, rate, buffer; input and its meters
@@ -915,7 +1000,7 @@ sideways drift.
 To add a new module: a file in `audio/modules/` with its `ModuleDef` (knobs, ports, modes, toggle) and a
 `Processor`, an entry in `ModuleKind` and, in `ui/modules.rs`, the readout and the display.
 The panel (ports, selector, knobs) is generated from the definition; Frakture, too large for the generic
-panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`), Magma (`ui/magma.rs`), Tape (`ui/tape.rs`), Nullpunkt (`ui/nullpunkt.rs`), Aether (`ui/aether.rs`), Automa (`ui/automa.rs`) and Pops 66
+panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`), Magma (`ui/magma.rs`), Tape (`ui/tape.rs`), Nullpunkt (`ui/nullpunkt.rs`), Aether (`ui/aether.rs`), Larsen (`ui/larsen.rs`), the MIDI Looper (`ui/looper.rs`), Automa (`ui/automa.rs`) and Pops 66
 (`ui/pops.rs`, whose size follows its detail level through `modules::size_of`). Frakture's hexagon runs on the audio thread, block by block: the panel
 hands it the mouse through the module's display values, so paths keep time even when the window doesn't
 redraw.

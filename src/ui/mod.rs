@@ -6,7 +6,9 @@ pub mod console;
 pub mod equalizer;
 pub mod frakture;
 pub mod groups;
+pub mod larsen;
 pub mod layout;
+pub mod looper;
 pub mod magma;
 #[cfg(target_os = "macos")]
 pub mod macos;

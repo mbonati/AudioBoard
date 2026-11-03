@@ -13,6 +13,8 @@ pub mod equalizer;
 pub mod filter;
 pub mod frakture;
 pub mod granular;
+pub mod larsen;
+pub mod looper;
 pub mod magma;
 pub mod midi_cc;
 pub mod midi_in;
@@ -41,6 +43,7 @@ use super::params::{AtomicF32, ParamSpec};
 pub enum ModuleKind {
     Drone,
     Aether,
+    Larsen,
     Random,
     Pops,
     Nullpunkt,
@@ -62,6 +65,7 @@ pub enum ModuleKind {
     MidiIn,
     Midicer,
     Automa,
+    Looper,
 }
 
 /// Static description of a module's panel and ports.
@@ -101,9 +105,10 @@ pub struct ModuleDef {
 }
 
 impl ModuleKind {
-    pub const ALL: [ModuleKind; 23] = [
+    pub const ALL: [ModuleKind; 25] = [
         ModuleKind::Drone,
         ModuleKind::Aether,
+        ModuleKind::Larsen,
         ModuleKind::Random,
         ModuleKind::Pops,
         ModuleKind::Nullpunkt,
@@ -125,12 +130,14 @@ impl ModuleKind {
         ModuleKind::MidiIn,
         ModuleKind::Midicer,
         ModuleKind::Automa,
+        ModuleKind::Looper,
     ];
 
     pub fn def(self) -> &'static ModuleDef {
         match self {
             ModuleKind::Drone => &drone::DEF,
             ModuleKind::Aether => &aether::DEF,
+            ModuleKind::Larsen => &larsen::DEF,
             ModuleKind::Random => &random::DEF,
             ModuleKind::Pops => &pops::DEF,
             ModuleKind::Nullpunkt => &nullpunkt::DEF,
@@ -152,6 +159,7 @@ impl ModuleKind {
             ModuleKind::MidiIn => &midi_in::DEF,
             ModuleKind::Midicer => &midicer::DEF,
             ModuleKind::Automa => &automa::DEF,
+            ModuleKind::Looper => &looper::DEF,
         }
     }
 
@@ -163,6 +171,7 @@ impl ModuleKind {
         match self {
             ModuleKind::Drone => Box::new(drone::Drone::new(params, sample_rate)),
             ModuleKind::Aether => Box::new(aether::Aether::new(params, midi.clone(), sample_rate)),
+            ModuleKind::Larsen => Box::new(larsen::Larsen::new(params, midi.clone(), sample_rate)),
             ModuleKind::Random => Box::new(random::Random::new(params, sample_rate)),
             ModuleKind::Pops => Box::new(pops::Pops::new(params, sample_rate)),
             ModuleKind::Nullpunkt => Box::new(nullpunkt::Nullpunkt::new(params, sample_rate)),
@@ -184,6 +193,7 @@ impl ModuleKind {
             ModuleKind::MidiIn => Box::new(midi_in::MidiIn::new(params, midi)),
             ModuleKind::Midicer => Box::new(midicer::Midicer::new(params, midi)),
             ModuleKind::Automa => Box::new(automa::Automa::new(params)),
+            ModuleKind::Looper => Box::new(looper::Looper::new(params, midi, sample_rate)),
         }
     }
 }
