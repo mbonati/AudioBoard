@@ -72,25 +72,23 @@ impl MidiState {
         }
     }
 
-    /// Takes one raw MIDI message (note on/off and control change; the rest
-    /// is ignored).
+    /// Takes one raw MIDI message (note on/off and control change; the
+    /// clock and transport only go to the stream; the rest is ignored).
     pub fn handle(&self, msg: &[u8]) {
         let Some(&status) = msg.first() else {
             return;
         };
+        let data = |i: usize| msg.get(i).copied().unwrap_or(0) & 0x7F;
+        if is_clock(status) {
+            self.push(status, data(1), data(2));
+            return;
+        }
         if !(0x80..0xF0).contains(&status) {
             return;
         }
         self.events.fetch_add(1, Relaxed);
         let ch = (status & 0x0F) as usize + 1;
-        let data = |i: usize| msg.get(i).copied().unwrap_or(0) & 0x7F;
-        {
-            let _writer = self.ring_writer.lock().unwrap_or_else(|e| e.into_inner());
-            let head = self.ring_head.load(Relaxed);
-            let packed = status as u32 | (data(1) as u32) << 8 | (data(2) as u32) << 16;
-            self.ring[head as usize % RING].store(packed, Relaxed);
-            self.ring_head.store(head.wrapping_add(1), Release);
-        }
+        self.push(status, data(1), data(2));
         match status & 0xF0 {
             0x90 if data(2) > 0 => self.note_on(ch, data(1), data(2)),
             0x80 | 0x90 => self.note_off(ch, data(1)),
@@ -106,6 +104,15 @@ impl MidiState {
             }
             _ => {}
         }
+    }
+
+    /// Onto the stream the MIDI nodes read.
+    fn push(&self, status: u8, d1: u8, d2: u8) {
+        let _writer = self.ring_writer.lock().unwrap_or_else(|e| e.into_inner());
+        let head = self.ring_head.load(Relaxed);
+        let packed = status as u32 | (d1 as u32) << 8 | (d2 as u32) << 16;
+        self.ring[head as usize % RING].store(packed, Relaxed);
+        self.ring_head.store(head.wrapping_add(1), Release);
     }
 
     fn held(&self) -> std::sync::MutexGuard<'_, [Vec<u8>; CHANNELS]> {
@@ -196,6 +203,12 @@ impl MidiState {
     }
 }
 
+/// The clock and transport: timing clock, Start, Continue, Stop and the
+/// song position. Only the MIDI Looper follows them.
+pub fn is_clock(status: u8) -> bool {
+    matches!(status, 0xF2 | 0xF8 | 0xFA | 0xFB | 0xFC)
+}
+
 /// Open connections to every MIDI input on the system.
 pub struct MidiInputs {
     connections: Vec<(String, midir::MidiInputConnection<()>)>,
@@ -235,14 +248,19 @@ impl MidiInputs {
             let Ok(mut input) = midir::MidiInput::new("AudioBoard") else {
                 continue;
             };
-            input.ignore(midir::Ignore::All);
+            // The clock and transport come through (for the looper).
+            input.ignore(midir::Ignore::SysexAndActiveSense);
             let Some(port) = input.ports().into_iter().find(|p| input.port_name(p).ok().as_ref() == Some(&name)) else {
                 continue;
             };
             let (state, wake) = (state.clone(), wake.clone());
             let callback = move |_: u64, msg: &[u8], _: &mut ()| {
                 state.handle(msg);
-                wake();
+                // A clock ticks 48 times a second at 120 BPM: no reason to
+                // redraw.
+                if !msg.first().is_some_and(|&s| is_clock(s)) {
+                    wake();
+                }
             };
             if let Ok(conn) = input.connect(&port, "AudioBoard in", callback, ()) {
                 self.connections.push((name, conn));

@@ -11,7 +11,7 @@ use super::widgets;
 use crate::audio::engine::NodeId;
 use crate::audio::midi::note_hz;
 use crate::audio::modules::{
-    ModuleDef, ModuleKind, ModuleParams, arpeggiator, audio_in, delay, drone, equalizer, filter, frakture, magma, pops, granular, midi_cc, midi_in, midi_note,
+    ModuleDef, ModuleKind, ModuleParams, aether, arpeggiator, larsen, looper, audio_in, automa, delay, drone, equalizer, filter, frakture, magma, pops, granular, midi_cc, midi_in, midi_note,
     midicer, nullpunkt, pingpong, random, resonator, reverb, sequencer, steps, tape,
 };
 use crate::audio::params::{
@@ -88,6 +88,18 @@ pub fn size(def: &ModuleDef) -> Vec2 {
     if std::ptr::eq(def, &nullpunkt::DEF) {
         return super::nullpunkt::SIZE;
     }
+    if std::ptr::eq(def, &aether::DEF) {
+        return super::aether::SIZE;
+    }
+    if std::ptr::eq(def, &larsen::DEF) {
+        return super::larsen::SIZE;
+    }
+    if std::ptr::eq(def, &looper::DEF) {
+        return super::looper::SIZE;
+    }
+    if std::ptr::eq(def, &automa::DEF) {
+        return super::automa::SIZE;
+    }
     let cols = columns(def);
     let rows = def.params.len().div_ceil(cols);
     vec2(
@@ -153,6 +165,22 @@ pub fn draw(
     }
     if kind == ModuleKind::Nullpunkt {
         super::nullpunkt::draw(v, id, accent, m, outputs.first().copied().unwrap_or(false));
+        return MapButton::default();
+    }
+    if kind == ModuleKind::Aether {
+        super::aether::draw(v, id, accent, m, (midi.0, outputs.first().copied().unwrap_or(false)));
+        return MapButton::default();
+    }
+    if kind == ModuleKind::Looper {
+        super::looper::draw(v, id, accent, m, midi);
+        return MapButton::default();
+    }
+    if kind == ModuleKind::Larsen {
+        super::larsen::draw(v, id, accent, m, (patched(0), midi.0, outputs.first().copied().unwrap_or(false)));
+        return MapButton::default();
+    }
+    if kind == ModuleKind::Automa {
+        super::automa::draw(v, id, accent, m, midi.1);
         return MapButton::default();
     }
     if kind == ModuleKind::Tape {
@@ -229,7 +257,7 @@ pub fn draw(
         ModuleKind::AudioIn => audio_in_display(&screen, p),
         ModuleKind::Random | ModuleKind::MidiCc | ModuleKind::MidiNote => trace_display(&screen, m),
         ModuleKind::Granular => granular_display(&screen, p),
-        ModuleKind::Frakture | ModuleKind::Equalizer | ModuleKind::Magma | ModuleKind::Pops | ModuleKind::Tape | ModuleKind::Nullpunkt => {}
+        ModuleKind::Frakture | ModuleKind::Equalizer | ModuleKind::Magma | ModuleKind::Pops | ModuleKind::Tape | ModuleKind::Nullpunkt | ModuleKind::Aether | ModuleKind::Larsen | ModuleKind::Automa | ModuleKind::Looper => {}
         ModuleKind::Resonator => resonator_display(&screen, p),
         ModuleKind::Filter => filter_display(&screen, p),
         ModuleKind::Delay => delay_display(&screen, p, echo_seconds(p, v.tempo)),
@@ -446,6 +474,10 @@ fn readout(kind: ModuleKind, p: &ModuleParams, tempo: f32) -> (String, String) {
         ModuleKind::Pops => super::pops::readout(p),
         ModuleKind::Tape => super::tape::readout(p),
         ModuleKind::Nullpunkt => super::nullpunkt::readout(p),
+        ModuleKind::Aether => super::aether::readout(p),
+        ModuleKind::Larsen => super::larsen::readout(p),
+        ModuleKind::Looper => super::looper::readout(p),
+        ModuleKind::Automa => super::automa::readout(p),
         ModuleKind::Granular => {
             let n = p.viz[granular::viz::COUNT].get() as usize;
             let state = if p.toggled() { "Frozen" } else { "Recording" };

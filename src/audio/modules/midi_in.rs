@@ -70,7 +70,8 @@ impl Processor for MidiIn {
         let transpose = p.get(TRANSPOSE).round() as i32;
         let Self { midi, cursor, out, sent, held, .. } = self;
         midi.read_stream(cursor, |[status, d1, d2]| {
-            if channel > 0 && status & 0x0F != channel - 1 {
+            // The clock and transport are on no channel: they always pass.
+            if channel > 0 && status < 0xF0 && status & 0x0F != channel - 1 {
                 return;
             }
             let key = d1 as usize & 0x7F;
