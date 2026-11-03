@@ -43,6 +43,55 @@ Each voice drifts slowly in pitch and level, so the sound never stands still.
 Knobs: PITCH, DETUNE (cents), DRIFT, TONE (from dark sines to bright saws), SPREAD (stereo width),
 P.MOD / T.MOD (depth of the PITCH and TONE inputs), LEVEL.
 
+**Aether**: warm drones and slowly turning pads for ambient music, moved by fractal motion, with glitches
+in tune. It plays on its own while the transport plays.
+
+- **Voices.** Five voices hold a chord: a shape (5TH, SUS, MAJ9, MIN9, MIN11, 4THS, LYD) on ROOT. **FREE**
+  imposes no chord and no scale, for a plain pad. Each key you play gets a voice of its own and fades in, and
+  fades out on its own note when you let it go. With no keys, ROOT sounds alone, in unison on all five voices.
+  Each voice is two layers of eight partials, built one by one and DETUNE apart, so every partial can move on
+  its own.
+  COLOR picks the timbre among four: WARM (a soft flute), SILK (strings), HOLLOW (a reed, odd partials) and
+  CHOIR (a vowel). TONE goes from dark to bright.
+- **Fractal motion.** Everything moves along one kind of curve: six octaves of smooth noise, each twice as fast
+  as the one below and ROUGH times as large, so it looks alike at every time scale: slow swells carry faster
+  ripples. EVOLVE sets the slowest period. With **SYNC** it is 1 to 64 bars of the board's tempo, and every
+  octave turns on a bar line or a fraction of one; without, it runs from 4 s to 4 minutes. Motion faster than
+  0.12 s is left out, as it would tremble. The motion morphs the timbre around COLOR and opens and closes the
+  tone (MORPH sets how far). It also drifts each voice's pitch, level and place, and makes the detune breathe.
+  SHIMMER ripples each partial's level and tuning, the higher partials faster. Every Start plays the same
+  evolution; **RESEED** (by SYNC) picks another.
+- **Harmonic glitches.** CHANCE is the chance that a step of the glitch grid (1/4 to 1/32, triplets too)
+  glitches. A glitch lands on a harmonic of a chord tone, up to HARM; the sour ones (7th, 11th, 13th–15th) are
+  skipped. A *ping* is a glassy sine that starts like a bell and rings pure for DECAY. A *skip* (SKIP sets their
+  share) loops a slice of the sound like a CD sticking. The slice is cut to an octave of a harmonic's period, so
+  the loop itself is in tune. REPEAT ratchets a glitch into 2, 3, 4, 6 or 8 parts of the step. Half the ratchets
+  climb: pings up the harmonic series, skips an octave each time. LEVEL sets how loud they are.
+- **Warmth.** DRIVE saturates softly; it is oversampled when partials are high enough to fold back. CHORUS adds
+  three swaying copies on each side. SPACE sends the sound into a wide, diffuse space (2.5 to 12.5 s). AIR lifts
+  the space's highs and adds a breath of noise through resonances tuned to the chord's upper harmonics. WIDTH
+  spreads the voices, and LEVEL sets the output.
+- **MIDI.** Keys on the MIDI input (a MIDI cable, or else the keyboards) take over the chord. One key plays the
+  shape on it; more keys play themselves, doubled an octave up to fill five voices. In FREE they play exactly
+  as pressed, up to five at once (more are thinned evenly). **LATCH** keeps the chord of the last key pressed,
+  even as you let go of the keys one by one (the × in the header goes back to ROOT). **GATE** sounds only while
+  keys are held. Held keys play even with the transport stopped. **GLIDE** (on the VOICE title line, off by
+  default) makes the voices glide to their new notes; off, they step straight there.
+- **RANDOM** rolls a new sound: the chord shape, timbre, motion and its seed, the warm stages and the glitches,
+  each drawn from the part of its range that stays warm. ROOT, LEVEL, SYNC, GLIDE and the keys' mode stay, and FREE
+  stays FREE. Shift-click changes only the timbre and the warm stages.
+- **PRESETS** saves the sound under a name, with its chord shape and SYNC, and loads saved ones. Like
+  Nullpunkt's, they are kept in the app's data folder, so every project sees them. Seven built-in sounds are
+  there to start from: Default, Plain pad (FREE), Glass choir, Deep drone, Hollow fourths, Shards and Night
+  air. Loading one keeps your ROOT, LEVEL, GLIDE and keys' mode.
+
+The panel shows the motion. On the left is a fractal flower: a branch per voice forks four times into its
+sixteen partials. Each fork is bent by a faster octave of the motion, so the trunks sway slowly and the twigs
+quiver. The tips glow with their partials and flare where glitches land. On the right is the aurora: every
+partial's track over the last 18 seconds, on a log-frequency scale, with glitches as sparks. Under them, the
+timbre's motion over one period around now. The motion is the same every time, so what is coming is drawn
+too.
+
 **Random**: a random modulation source. RATE, CHAOS (irregular timing), SMOOTH (from sample & hold to
 continuous glide), LEVEL. Patch it into any control input (cutoff, pitch, grain position…).
 
@@ -405,14 +454,14 @@ semitone knobs the distance from middle C, and the others the key's position. Th
 messages that arrive after mapping. **UNMAP** removes the mapping. Mappings are saved in the project and in
 library modules.
 
-### MIDI sequences: Step Sequencer, MIDIcer, Arpeggiator, MIDI In
+### MIDI sequences: Step Sequencer, MIDIcer, Automa, Arpeggiator, MIDI In
 
 Besides audio cables there are **MIDI cables**: square ports (audio ports are round) and dashed cables.
 A MIDI cable only joins a MIDI output to a MIDI input. VST3 plugins that accept MIDI (instruments), the
 Arpeggiator, MIDIcer and MIDI Note have a MIDI input.
 
 **Start / Stop** (toolbar, or Space) drive the transport, not the audio: Stop ends the sound's generation
-but lets it die away. Sequencers, arpeggiators and MIDIcer stop and end the notes they were holding (VST
+but lets it die away. Sequencers, arpeggiators, MIDIcer and Automa stop and end the notes they were holding (VST
 instruments and MIDI Note release them as usual), oscillators and Drones fade out in a few milliseconds,
 while effects (Delay, Ping Pong, Reverb, Granular, Resonator, Filter) and plugins keep running, so their
 tails ring on. Stop also goes back to the start: on the next Start everything begins again from its first
@@ -463,6 +512,55 @@ your settings, so it is played like an instrument.
 - The tempo is the global one (with TAP in the toolbar). Settings, faders and the kept random values are
   saved in the project and in library modules, like meloDICER's patterns.
 
+**Automa**: a generative melody node. A generator offers notes on every step of the global grid, and a
+harmony layer fits each one to the chord under it, so the lines stay consonant whatever the generator does:
+the first step of each chord always lands on one of its tones, and colour notes come only on weaker steps,
+as far as TENSION allows. The panel shows the generator's world on the left and, on the right, a roll of
+the notes with the melody's line, over lanes for each chord's tones (the coming chords too, behind a veil),
+coloured by function: blue tonic, green subdominant, orange dominant.
+- Generators (the selector at the top):
+  - **LIFE**: a cellular automaton on a 16 × 16 torus, read column by column like a sequencer; each row is
+    a scale degree, the lowest at the bottom. RULE picks Conway's Game of Life or a relative (HighLife,
+    Day & Night, Amoeba, Maze, Seeds); GEN is how many steps each generation lasts (16: once a sweep). Click
+    a cell to bring it to life or kill it, drag to paint; **KEEP** makes the grid as it is LIFE's start
+    (drawn while stopped, it is the start already), **CLEAR** kills every cell.
+  - **CASCADE**: an elementary (one-dimensional) automaton, Wolfram's rules 90, 30, 110, 150, 45, 73, 105
+    and 22. Each generation is a row of sixteen degrees (low on the left), and the generations pour down the
+    display; rule 90 draws Sierpiński's triangle.
+  - **TREE**: Per Nørgård's infinity series, a melody that holds itself at every scale: every second note
+    plays it upside down, every fourth plays it again. It is drawn as a binary tree, its branches coloured
+    by their term, with the path to the term playing lit. STRIDE reads every so many terms (2 inverts the
+    melody, 4 repeats it, odd strides make new ones), INTERVAL is the degrees per step of the series.
+  - **JULIA**: the orbit of a point under z → z² + c, its angle round the fixed point the pitch. SHAPE
+    places c round the edge of the Mandelbrot set's main cardioid, and so the angle the orbit turns by: the
+    figure the melody traces. CHAOS takes c inside the cardioid (the orbit spirals in, a phrase that
+    settles), onto its edge (figures that circle) or past it (escapes: rests). MORPH lets c drift with the
+    beat. The display shows the Julia set with the orbit, and the Mandelbrot set in a corner with c on it.
+- **MUTATE** keeps the generators going: LIFE gets cells born now and then, and a new shape when its world
+  dies or settles into a loop; CASCADE has cells flipped; TREE jumps to other branches; JULIA gets noise
+  on its orbit. **PHRASE** starts the generator again every so many steps, on the grid (∞: never).
+- *Rhythm*: RATE (1/4 to 1/32, triplets), DENSITY (how many steps play; the strong ones more often), SWING,
+  GATE.
+- *Melody*: **LEAP** (low: the line moves to the nearest offered note; high: it may jump anywhere. TREE and
+  JULIA: how wide a range they play in), **TENSION** (at 0 only chord tones; higher, 9ths, 11ths and 13ths
+  on the off-beats, then on the beats), **VOICES** (up to four parts: the melody, then harmony from the other
+  cells that offered, as chord tones), OCTAVE (of the bottom row).
+- *Harmony*: KEY, SCALE (major, minor, dorian, phrygian, lydian, mixolydian, harmonic and melodic minor),
+  CHANGE (each chord lasts half a bar to four bars). The progression is the strip under the display, up to
+  eight chords: drag a chord up or down to change it, click one past the end to lengthen the progression;
+  **CHORDS ▾** holds the presets (Pop, Axis, Doo-wop, Jazz turnaround, Circle, Canon, Royal road, Epic,
+  Andalusian, Modal vamp, Floating, Drone) and the length. **7THS** adds the seventh to the chords, **PAD**
+  plays them too, under the melody's range and voiced by inversion, and **WANDER** lets a chord give way to
+  another of the same function after the first time round (a "~" marks it).
+- **FREEZE** loops what is playing: LIFE stops evolving and its grid keeps sounding (drawing on it still
+  works), the others repeat their last bar (PHRASE steps, if set). The loop is chosen from as it was but
+  fitted to the chords as they change. **RESEED** gives every generator a new start and LIFE a random grid.
+  **PLAY** pauses it while the transport runs.
+- Everything follows the transport: Start plays from the start state, so the same settings play the same
+  music again. VELOCITY, DYNAMICS (how much the beat and the generator's energy accent the notes) and the
+  output CHANNEL. Settings, progression, LIFE's start grid and the seed are saved in the project and in
+  library modules.
+
 **Arpeggiator**: plays the held notes one at a time, in time, over 1–4 octaves (OCTAVES), in UP, DOWN,
 U+D (up and down), RAND or ORDER (as played) order. RATE, GATE, SWING, CHANCE, VELOCITY as in the
 sequencer. Notes come from its MIDI cable or, with no cable, straight from the MIDI keyboard.
@@ -475,6 +573,7 @@ Examples:
 - *Step Sequencer → VST instrument*: the plugin plays the sequence (leave **KEYBOARD** on to play over it
   from the keyboard too);
 - *MIDI In → Arpeggiator → VST instrument*: arpeggios from what you play;
+- *Automa → VST instrument*: generative lines in key (with **PAD**, the chords as well);
 - *Step Sequencer → MIDI Note*, with ENV into an oscillator's AM and MAP on its FREQ: the sequence plays
   the built-in nodes.
 
@@ -737,8 +836,15 @@ src/
 │   │   ├── pops.rs     Pops 66 (after the KORG Mini Pops-7): instruments, user patterns, clock, MIDI in/out
 │   │   ├── pops/       voices (the fifteen synthesized instruments), rhythms (the twenty presets, combining)
 │   │   ├── nullpunkt.rs Nullpunkt: step patterns, synced stutter, glitch stage, built-in scenes
+│   │   ├── aether.rs   Aether: chords, FREE and keys, additive voices in vector banks, the motion's targets,
+│   │   │               RANDOM, built-in sounds
+│   │   ├── aether/     fractal (octaves of smooth noise, the spectra), glitch (pings, tuned skips, ratchets),
+│   │   │               space (soft saturation, chorus, diffuse space with tuned air)
+│   │   ├── automa.rs   Automa: steps, choosing and fitting notes, voices, pad, FREEZE, what the panel shows
+│   │   ├── automa/     engines (LIFE, CASCADE, TREE, JULIA), harmony (scales, chords, progressions,
+│   │   │               consonance rules, functional substitutions)
 │   │   ├── tape.rs     Tape: record EQ, magnetic curve, transport (wow, flutter, stop/start), playback head
-│   │   ├── oversample.rs 2× oversampling (half-band FIR) shared by Magma and Tape
+│   │   ├── oversample.rs 2× oversampling (half-band FIR) shared by Magma, Tape and Aether
 │   │   ├── steps.rs step grid on the global tempo, outgoing notes, held keys
 │   │   └── mod.rs  module descriptions (ModuleDef), generic parameters and DSP helpers
 │   ├── midi.rs     MIDI inputs (midir) and shared state read by the MIDI nodes
@@ -751,7 +857,8 @@ src/
 │   └── mod.rs      opening the output and input streams (cpal); a new rate builds a new engine
 ├── graph.rs        UI-side patch model (nodes, cables, modules, Kahn ordering)
 ├── project.rs      saving/loading projects and the module library (JSON)
-├── presets.rs      named presets of a module, one file per kind in the app's data folder
+├── presets.rs      named presets of a module (knobs, settings, mode, toggle), one file per kind in the app's
+│                   data folder
 ├── ui/
 │   ├── canvas.rs   canvas with pan/zoom, selection, cable drag & drop, context menus
 │   ├── groups.rs   modules: frame (expanded) and card with the boundary ports (collapsed)
@@ -766,6 +873,10 @@ src/
 │   ├── magma.rs    the Magma panel: display and dots, filter controls, sources and slots (drag & drop)
 │   ├── tape.rs     the Tape panel: the sketched deck (reels, tape, head, needles, keys), COMPACT / FULL
 │   ├── nullpunkt.rs the Nullpunkt panel: editable lanes, randomize, presets, knob groups
+│   ├── aether.rs   the Aether panel: the fractal flower, the partials' aurora, the motion strip, knob groups
+│   ├── preset_menu.rs the PRESETS ▾ menu shared by Nullpunkt and Aether: save, load, delete
+│   ├── automa.rs   the Automa panel: the generator's world (grid, waterfall, tree, Julia set), the roll over
+│   │               the chord lanes, the progression strip, knob groups
 │   ├── settings.rs the Settings window: output device, channels, rate, buffer; input and its meters
 │   ├── pops.rs     the Pops 66 panel: MACHINE, MIXER and EDITOR detail levels (the node resizes), waveform preview
 │   ├── widgets.rs  hand-drawn knobs, faders, meters, ports and cables
@@ -804,7 +915,7 @@ sideways drift.
 To add a new module: a file in `audio/modules/` with its `ModuleDef` (knobs, ports, modes, toggle) and a
 `Processor`, an entry in `ModuleKind` and, in `ui/modules.rs`, the readout and the display.
 The panel (ports, selector, knobs) is generated from the definition; Frakture, too large for the generic
-panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`), Magma (`ui/magma.rs`), Tape (`ui/tape.rs`), Nullpunkt (`ui/nullpunkt.rs`) and Pops 66
+panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`), Magma (`ui/magma.rs`), Tape (`ui/tape.rs`), Nullpunkt (`ui/nullpunkt.rs`), Aether (`ui/aether.rs`), Automa (`ui/automa.rs`) and Pops 66
 (`ui/pops.rs`, whose size follows its detail level through `modules::size_of`). Frakture's hexagon runs on the audio thread, block by block: the panel
 hands it the mouse through the module's display values, so paths keep time even when the window doesn't
 redraw.

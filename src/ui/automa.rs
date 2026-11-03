@@ -41,7 +41,7 @@ const STRIP: [f32; 2] = [338.0, 380.0];
 const ROWS_Y: [f32; 2] = [392.0, 456.0];
 
 /// Steps the roll shows, and the part of it that is still to come.
-const ROLL_STEPS: f64 = 64.0;
+const ROLL_STEPS: f64 = 48.0;
 const AHEAD: f64 = 0.2;
 /// How far JULIA's picture reaches from 0.
 const EXTENT: f32 = 1.7;
@@ -459,8 +459,7 @@ impl Panel<'_, '_> {
             let at = (self.beat * steps_per_beat(p.get(RATE))).rem_euclid(COLS as f64) as f32;
             let x = rect.left() + at * cs;
             painter.rect_filled(Rect::from_min_max(pos2(x, rect.top()), pos2(x + cs, rect.bottom())), 2.0 * z, alpha(self.accent, 0.1));
-            let column = cell(at as usize, 0);
-            painter.vline(column.left(), rect.y_range(), Stroke::new(1.0 * z, alpha(self.accent, 0.35)));
+            painter.vline(x + cs, rect.y_range(), Stroke::new(1.0 * z, alpha(self.accent, 0.4)));
         }
         for y in 0..H {
             for x in 0..COLS {
@@ -750,6 +749,24 @@ impl Panel<'_, '_> {
             painter.text(pos2(rect.left() + 4.0 * z, y_of(pitch)), Align2::LEFT_CENTER, note_label(pitch), v.font(6.5), alpha(theme::TEXT_FAINT, 0.9));
         }
 
+        // The melody's line: its notes joined, broken by rests over a beat.
+        let mut line: Vec<Pos2> = Vec::new();
+        let mut previous: Option<f64> = None;
+        let contour = Stroke::new(1.2 * z, alpha(mix(self.accent, Color32::WHITE, 0.4), 0.45));
+        for m in view.marks.iter().filter(|m| m.voice == 0) {
+            if previous.is_some_and(|s| m.step - s > per_beat) {
+                if line.len() > 1 {
+                    painter.add(Shape::line(std::mem::take(&mut line), contour));
+                }
+                line.clear();
+            }
+            line.push(pos2(x_of(m.step + m.length * 0.5), y_of(m.pitch as i32)));
+            previous = Some(m.step);
+        }
+        if line.len() > 1 {
+            painter.add(Shape::line(line, contour));
+        }
+
         for m in &view.marks {
             let (x0, x1) = (x_of(m.step), x_of(m.step + m.length));
             if x1 < rect.left() || x0 > rect.right() {
@@ -760,8 +777,11 @@ impl Panel<'_, '_> {
             let level = 0.45 + 0.55 * m.velocity as f32 / 127.0;
             let r = Rect::from_min_max(pos2(x0, y - rh * 0.42), pos2(x1.max(x0 + 2.0 * z), y + rh * 0.42));
             if m.voice as usize == PAD_VOICE {
-                let degree = self.chord_at(m.step / per_beat).0;
-                painter.rect_filled(r, 1.5 * z, alpha(function_color(degree), 0.28 * level));
+                // The pad: the chord held, framed in its function's colour.
+                let color = function_color(self.chord_at(m.step / per_beat).0);
+                let r = r.shrink2(vec2(1.0 * z, 0.0));
+                painter.rect_filled(r, 2.0 * z, alpha(color, 0.38 * level));
+                painter.rect_stroke(r, 2.0 * z, Stroke::new(1.0 * z, alpha(color, 0.85)), StrokeKind::Inside);
                 continue;
             }
             let color = if m.voice == 0 { mix(self.accent, Color32::WHITE, 0.35) } else { mix(self.accent, theme::TEXT_DIM, 0.35) };
@@ -979,7 +999,7 @@ fn shade(t: f32, accent: Color32) -> Color32 {
     if t >= 1.0 {
         return mix(theme::INSET, accent, 0.16);
     }
-    let g = t.powf(0.55);
-    let edge = ((t - 0.55) / 0.45).clamp(0.0, 1.0);
-    mix(mix(theme::INSET, accent, g * 0.85), Color32::WHITE, edge * edge * 0.55)
+    let g = t.powf(0.5);
+    let edge = ((t - 0.5) / 0.5).clamp(0.0, 1.0);
+    mix(mix(theme::INSET, accent, g), Color32::WHITE, edge * edge * 0.7)
 }

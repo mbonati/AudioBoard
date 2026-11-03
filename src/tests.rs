@@ -1637,7 +1637,7 @@ fn palette_categories_fold() {
         texts = run(&mut palette, vec![]);
     }
     assert!(!shows(&texts, "Oscillator") && shows(&texts, "SOURCES"), "folded");
-    assert!(shows(&texts, "6"), "a folded category shows its count");
+    assert!(shows(&texts, "7"), "a folded category shows its count");
     assert!(shows(&texts, "Reverb"), "the others stay open");
 
     // Searching opens what matches; clearing it folds it again.
@@ -3161,6 +3161,593 @@ fn nullpunkt_stutters_in_time() {
         let at = step * 6000;
         let worst = (64..2900).map(|u| (left[at + 3000 + u] - left[at + u]).abs()).fold(0.0, f32::max);
         assert!(worst < 1e-3, "step {step}: off by {worst}");
+    }
+}
+
+/// What a run of Aether gives: both channels and the glitches it fired
+/// (frame, frequency, kind).
+type AetherRun = (Vec<f32>, Vec<f32>, Vec<(usize, f32, u8)>);
+
+/// Aether alone for `blocks` blocks at 120 BPM, its MIDI cable carrying
+/// `midi` (block, message) if any.
+fn run_aether(p: &Arc<ModuleParams>, blocks: usize, playing: bool, midi: &[(usize, [u8; 3])]) -> AetherRun {
+    use crate::audio::modules::aether::{Aether, viz};
+    let mut proc = Aether::new(p.clone(), Arc::new(crate::audio::midi::MidiState::new()), 48_000.0);
+    let mut ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing, restart: false };
+    let mut inputs =
+        Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: !midi.is_empty() });
+    let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
+    let (mut left, mut right, mut events) = (Vec::new(), Vec::new(), Vec::new());
+    let mut seen = p.viz[viz::FIRED].get() as u32;
+    for b in 0..blocks {
+        inputs.midi.clear();
+        for (_, msg) in midi.iter().filter(|(at, _)| *at == b) {
+            inputs.midi.push(0, *msg);
+        }
+        proc.process(&ctx, &inputs, &mut outputs, 64);
+        left.extend_from_slice(&outputs[0][0]);
+        right.extend_from_slice(&outputs[0][1]);
+        let fired = p.viz[viz::FIRED].get() as u32;
+        for n in seen + 1..=fired {
+            let at = viz::EVENT + 3 * (n as usize % viz::EVENTS);
+            events.push((b * 64, p.viz[at + 1].get(), p.viz[at + 2].get() as u8));
+        }
+        seen = fired;
+        if playing {
+            ctx.beat += ctx.beats_per_sample * 64.0;
+        }
+    }
+    (left, right, events)
+}
+
+/// Brightness: how much the signal changes from sample to sample, for its
+/// level (rises with the share of high frequencies).
+fn brightness(x: &[f32]) -> f32 {
+    let diff = (x.windows(2).map(|w| (w[1] - w[0]).powi(2)).sum::<f32>() / x.len() as f32).sqrt();
+    diff / rms_of(x).max(1e-9)
+}
+
+#[test]
+fn aether_sounds_warm_finite_and_under_full_scale() {
+    use crate::audio::modules::aether::{DRIVE, LEVEL, SPACE, TONE};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Aether));
+    let (l, r, _) = run_aether(&p, 3000, true, &[]);
+    let all = || l.iter().chain(&r);
+    assert!(all().all(|s| s.is_finite()));
+    let peak = all().fold(0.0f32, |m, s| m.max(s.abs()));
+    assert!(peak < 0.6, "headroom at the defaults: {peak}");
+    let body = &l[48_000..];
+    assert!(rms_of(body) > 0.04, "it sounds: {}", rms_of(body));
+    let warm = brightness(body);
+    assert!(warm < 0.1, "warm, not bright: {warm}");
+    // Wide: the sides differ.
+    let corr = l[48_000..].iter().zip(&r[48_000..]).map(|(a, b)| a * b).sum::<f32>() / (rms_of(&l[48_000..]) * rms_of(&r[48_000..]) * (l.len() - 48_000) as f32);
+    assert!(corr < 0.95, "stereo, not mono: {corr}");
+
+    // TONE opens it up.
+    p.set(TONE, 1.0);
+    let (bright, _, _) = run_aether(&p, 2000, true, &[]);
+    assert!(brightness(&bright[48_000..]) > warm * 1.5, "TONE brightens: {} vs {warm}", brightness(&bright[48_000..]));
+
+    // Everything up, everything down: never past full scale.
+    for setting in [0.0, 1.0] {
+        let def = ModuleKind::Aether.def();
+        for (i, spec) in def.params.iter().enumerate() {
+            p.set(i, spec.denorm(setting));
+        }
+        p.set(LEVEL, 1.0);
+        p.set(DRIVE, setting);
+        p.set(SPACE, setting);
+        for mode in [0, 6] {
+            p.set_mode(mode);
+            let (l, r, _) = run_aether(&p, 1500, true, &[]);
+            let peak = l.iter().chain(&r).fold(0.0f32, |m, s| m.max(s.abs()));
+            assert!(l.iter().chain(&r).all(|s| s.is_finite()) && peak < 1.0, "setting {setting} mode {mode}: {peak}");
+        }
+    }
+}
+
+#[test]
+fn aether_evolves_slowly_and_the_same_from_start() {
+    use crate::audio::modules::aether::{EVOLVE, GLITCH, viz};
+    use crate::audio::modules::aether::fractal::PARTIALS;
+    let p = Arc::new(ModuleParams::new(ModuleKind::Aether));
+    p.set(GLITCH, 0.0);
+    p.set(EVOLVE, 0.0); // a bar: 2 s at 120 BPM
+    let snapshot = |p: &ModuleParams| -> Vec<f32> { (0..5 * PARTIALS).map(|k| p.viz[viz::AMP + k].get()).collect() };
+    // The partials' levels move while the knobs stand still…
+    let mut shots = Vec::new();
+    let mut colors = Vec::new();
+    for _ in 0..6 {
+        run_aether(&p, 375, true, &[]); // half a second each
+        shots.push(snapshot(&p));
+        colors.push(p.viz[viz::COLOR].get());
+    }
+    let change = |a: &[f32], b: &[f32]| a.iter().zip(b).map(|(x, y)| (x - y).abs()).sum::<f32>() / a.iter().sum::<f32>().max(1e-9);
+    // (each run starts from Start: the same moment every time)
+    assert!(change(&shots[0], &shots[5]) < 1e-6, "from Start it plays the same");
+
+    // Over one long run, sampled as it goes.
+    let mut proc_shots = Vec::new();
+    {
+        use crate::audio::modules::aether::Aether;
+        let mut proc = Aether::new(p.clone(), Arc::new(crate::audio::midi::MidiState::new()), 48_000.0);
+        let mut ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing: true, restart: false };
+        let inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: false });
+        let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
+        for b in 0..750 * 8 {
+            proc.process(&ctx, &inputs, &mut outputs, 64);
+            ctx.beat += ctx.beats_per_sample * 64.0;
+            if b % 375 == 374 {
+                proc_shots.push((snapshot(&p), p.viz[viz::COLOR].get(), p.viz[viz::POS].get()));
+            }
+        }
+    }
+    // Slowly: little changes in a 20th of a second…
+    let steps: Vec<f32> = proc_shots.windows(2).map(|w| change(&w[0].0, &w[1].0)).collect();
+    let far = change(&proc_shots[0].0, &proc_shots[proc_shots.len() - 1].0);
+    assert!(far > 0.1, "the timbre has moved over 8 s: {far}");
+    let colors: Vec<f32> = proc_shots.iter().map(|s| s.1).collect();
+    let spread = colors.iter().fold(f32::MIN, |m, c| m.max(*c)) - colors.iter().fold(f32::MAX, |m, c| m.min(*c));
+    assert!(spread > 0.02, "COLOR wanders: {colors:?}");
+    assert!(steps.iter().all(|s| s.is_finite()));
+    // Synced, the motion is on the bars: a period is a bar of 4 beats.
+    let (_, _, pos) = proc_shots[3];
+    let beats = 375.0 * 4.0 * 64.0 * 2.0 / 48_000.0;
+    assert!((pos - beats / 4.0).abs() < 0.01, "position {pos} after {beats} beats");
+
+    // RESEED: another evolution.
+    let before = colors.clone();
+    crate::audio::modules::aether::reseed(&p, 777);
+    run_aether(&p, 375 * 3, true, &[]);
+    assert!((p.viz[viz::COLOR].get() - before[2]).abs() > 1e-4, "another seed, another path");
+}
+
+/// Whether `hz` is a harmonic of one of `notes`, an octave or more down
+/// allowed (pings fold into a warm range), within 15 cents.
+fn on_a_harmonic(hz: f32, notes: &[f32], octaves_up: bool) -> bool {
+    use crate::audio::modules::aether::glitch::HARMONICS;
+    notes.iter().any(|&n| {
+        let f = crate::audio::midi::note_hz(n);
+        HARMONICS.iter().chain(&[1]).any(|&h| {
+            (-6..=if octaves_up { 6 } else { 0 }).any(|k| {
+                let want = f * h as f32 * 2f32.powi(k);
+                (1200.0 * (hz / want).log2()).abs() < 15.0
+            })
+        })
+    })
+}
+
+#[test]
+fn aether_glitches_ring_on_harmonics_in_time() {
+    use crate::audio::modules::aether::glitch::{PING, SKIP as SKIPPED};
+    use crate::audio::modules::aether::{DECAY, GLITCH, HARM, MORPH, REPEAT, SKIP, SPARK, data, knob_chord};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Aether));
+    p.set(MORPH, 0.0); // the voices barely drift
+    p.set(GLITCH, 1.0);
+    p.set(REPEAT, 0.0);
+    p.set(SKIP, 0.0);
+    p.data[data::DIV].set(0.0); // quarter notes: every 24 000 frames
+    let notes = knob_chord(&p);
+    let (with, _, events) = run_aether(&p, 3000, true, &[]);
+    assert!(events.len() >= 7, "one a beat: {}", events.len());
+    for &(frame, hz, kind) in &events {
+        assert_eq!(kind, PING);
+        assert!(frame % 24_000 < 64, "on the beat: frame {frame}");
+        assert!(on_a_harmonic(hz, &notes, false), "{hz} Hz is not a harmonic of {notes:?}");
+    }
+    // In tune, not noise: the glitches alone (with them minus without)
+    // ring at their pitch and not a quarter tone off.
+    p.set(GLITCH, 0.0);
+    let (without, _, _) = run_aether(&p, 3000, true, &[]);
+    let alone: Vec<f32> = with.iter().zip(&without).map(|(a, b)| a - b).collect();
+    for &(frame, hz, _) in events.iter().skip(1).take(4) {
+        let len = 19_200;
+        let window: Vec<f32> = alone[frame + 240..frame + 240 + len]
+            .iter()
+            .enumerate()
+            .map(|(i, x)| x * (0.5 - 0.5 * (std::f32::consts::TAU * i as f32 / len as f32).cos()))
+            .collect();
+        let tuned = tone_amp(&window, hz);
+        let off = tone_amp(&window, hz * 2f32.powf(1.0 / 12.0)).max(tone_amp(&window, hz * 2f32.powf(-1.0 / 12.0)));
+        assert!(tuned > 4.0 * off, "{hz} Hz: {tuned} on pitch, {off} a semitone off");
+    }
+
+    // HARM keeps them low: at 2, only the octave (folded down or not).
+    p.set(GLITCH, 1.0);
+    p.set(HARM, 2.0);
+    let (_, _, events) = run_aether(&p, 1500, true, &[]);
+    for &(_, hz, _) in &events {
+        let ok = notes.iter().any(|&n| {
+            let ratio = hz / crate::audio::midi::note_hz(n);
+            (0..6).any(|k| (1200.0 * (ratio / (2.0 / (1 << k) as f32)).log2()).abs() < 15.0)
+        });
+        assert!(ok, "{hz} Hz is an octave of a chord tone");
+    }
+
+    // Skips loop in tune: an octave of a harmonic of the root.
+    p.set(HARM, 16.0);
+    p.set(SKIP, 1.0);
+    p.set(DECAY, 0.2);
+    let (l, _, events) = run_aether(&p, 3000, true, &[]);
+    assert!(!events.is_empty() && events.iter().all(|e| e.2 == SKIPPED));
+    for &(_, hz, _) in &events {
+        assert!(on_a_harmonic(hz, &notes[..1], true), "skip at {hz} Hz");
+    }
+    assert!(l.iter().all(|s| s.is_finite() && s.abs() < 1.0));
+
+    // REPEAT ratchets them in subdivisions of the step.
+    p.set(SKIP, 0.0);
+    p.set(REPEAT, 1.0);
+    p.set(SPARK, 1.0);
+    let (_, _, events) = run_aether(&p, 3000, true, &[]);
+    assert!(events.len() > 12, "ratchets: {} glitches in 8 beats", events.len());
+    let subdivided = events.iter().filter(|e| e.0 % 24_000 >= 64).count();
+    assert!(subdivided > 0);
+    for &(frame, _, _) in &events {
+        // Every ratchet sits on a 2, 3, 4, 6 or 8-way split of the beat.
+        let within = (frame % 24_000) as f32 / 24_000.0;
+        let on_grid = [2.0, 3.0, 4.0, 6.0, 8.0].iter().any(|d: &f32| ((within * d).round() - within * d).abs() * 24_000.0 / d < 64.0);
+        assert!(on_grid || within < 0.003, "frame {frame} off the grid");
+    }
+
+    // GLITCH at 0: none.
+    p.set(GLITCH, 0.0);
+    assert!(run_aether(&p, 1500, true, &[]).2.is_empty());
+}
+
+#[test]
+fn aether_plays_the_keys_latches_and_gates() {
+    use crate::audio::modules::aether::{CHORDS, GLITCH, MORPH, data, viz};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Aether));
+    p.set(GLITCH, 0.0);
+    p.set(MORPH, 0.0);
+    let notes = |p: &ModuleParams| -> Vec<i32> { (0..5).map(|v| p.viz[viz::NOTE + v].get().round() as i32).collect() };
+    // One key: the chord shape on it.
+    let one = [(10, [0x90, 48, 100])];
+    run_aether(&p, 400, true, &one);
+    assert_eq!(p.viz[viz::SOURCE].get(), 1.0, "keys held");
+    let shape = CHORDS[0].2;
+    assert_eq!(notes(&p), shape.iter().map(|s| 48 + s).collect::<Vec<_>>());
+    // Three keys: themselves, doubled an octave up.
+    let three = [(10, [0x90, 50, 100]), (10, [0x90, 53, 100]), (10, [0x90, 57, 100])];
+    run_aether(&p, 400, true, &three);
+    assert_eq!(notes(&p), vec![50, 53, 57, 62, 65]);
+    // Let go: latched, still sounding while the transport plays.
+    let tap = [(10, [0x90, 50, 100]), (20, [0x80, 50, 0])];
+    let (l, _, _) = run_aether(&p, 1500, true, &tap);
+    assert_eq!(p.viz[viz::SOURCE].get(), 2.0, "latched");
+    assert!(rms_of(&l[l.len() - 24_000..]) > 0.03);
+    // GATE: once the key is up, it fades away, even while playing.
+    p.data[data::KEYS].set(1.0);
+    p.set(crate::audio::modules::aether::SPACE, 0.0);
+    let second = [(10, [0x90, 50, 100]), (760, [0x80, 50, 0])];
+    let (l, _, _) = run_aether(&p, 2300, true, &second);
+    let held = rms_of(&l[38_000..48_000]);
+    assert!(held > 0.03, "it sounds while held");
+    assert!(rms_of(&l[l.len() - 4_800..]) < held * 0.1, "it fades after the key");
+    // And with the transport stopped, a held key still plays.
+    p.data[data::KEYS].set(0.0);
+    let held = [(10, [0x90, 45, 100])];
+    let (l, _, _) = run_aether(&p, 1200, false, &held);
+    assert!(rms_of(&l[48_000..]) > 0.03, "keys play while stopped");
+    let (l, _, _) = run_aether(&p, 1200, false, &[]);
+    assert!(l.iter().all(|&s| s == 0.0), "stopped and no keys: silent");
+}
+
+#[test]
+fn aether_swells_in_fades_out_and_rests() {
+    let p = Arc::new(ModuleParams::new(ModuleKind::Aether));
+    use crate::audio::modules::aether::Aether;
+    let mut proc = Aether::new(p.clone(), Arc::new(crate::audio::midi::MidiState::new()), 48_000.0);
+    let mut ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing: true, restart: false };
+    let inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: false });
+    let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
+    let mut run = |ctx: &mut ProcessCtx, blocks: usize| -> Vec<f32> {
+        let mut out = Vec::new();
+        for _ in 0..blocks {
+            proc.process(ctx, &inputs, &mut outputs, 64);
+            out.extend_from_slice(&outputs[0][0]);
+            ctx.beat += ctx.beats_per_sample * 64.0;
+        }
+        out
+    };
+    let start = run(&mut ctx, 1500);
+    assert!(rms_of(&start[..2_400]) < rms_of(&start[48_000..]) * 0.5, "it swells in");
+    assert!(start.windows(2).all(|w| (w[1] - w[0]).abs() < 0.1), "no clicks");
+    ctx.playing = false;
+    let stop = run(&mut ctx, 750);
+    assert!(rms_of(&stop[..4_800]) > 0.01, "no cut: it fades");
+    // The tail rings out, then it rests in exact silence.
+    let mut rest = Vec::new();
+    for _ in 0..40 {
+        rest = run(&mut ctx, 750);
+        if rest.iter().all(|&s| s == 0.0) {
+            break;
+        }
+    }
+    assert!(rest.iter().all(|&s| s == 0.0), "resting");
+    ctx.playing = true;
+    let again = run(&mut ctx, 1500);
+    assert!(rms_of(&again[48_000..]) > 0.04, "Start: it sounds again");
+}
+
+#[test]
+fn aether_settings_are_saved() {
+    use crate::audio::modules::aether::{COLOR, EVOLVE, HARM, data, glides, reseed, seed};
+    let (mut g, a, _e) = setup();
+    let id = g.add_module(ModuleKind::Aether, pos2(0.0, 0.0), &a);
+    let p = module_params(&g, id);
+    p.set_mode(4);
+    p.set_toggle(false);
+    p.set(COLOR, 0.8);
+    p.set(HARM, 5.0);
+    p.set(EVOLVE, 0.25);
+    p.data[data::DIV].set(5.0);
+    p.data[data::KEYS].set(1.0);
+    p.data[data::GLIDE].set(1.0);
+    reseed(&p, 4321);
+    let saved = crate::project::snapshot(&g);
+
+    let (mut h, b, _f) = setup();
+    assert_eq!(crate::project::restore(&mut h, &saved, &b), 0);
+    let q = module_params(&h, h.nodes[0].id);
+    assert_eq!(q.mode(), 4);
+    assert!(!q.toggled());
+    assert_eq!((q.get(COLOR), q.get(HARM), q.get(EVOLVE)), (0.8, 5.0, 0.25));
+    assert_eq!(q.data[data::DIV].get(), 5.0);
+    assert_eq!(q.data[data::KEYS].get(), 1.0);
+    assert!(glides(&q));
+    assert_eq!(seed(&q), 4321);
+    assert_eq!(crate::project::snapshot(&h), saved);
+}
+
+#[test]
+fn aether_panel_draws_while_it_plays() {
+    use crate::audio::modules::aether::{GLITCH, REPEAT, SKIP, viz};
+    let shared = Arc::new(EngineShared::new());
+    shared.tempo.set(120.0);
+    let (a, mut e) = audio::offline(shared, 48_000);
+    let mut g = Graph::default();
+    let id = g.add_module(ModuleKind::Aether, pos2(0.0, 0.0), &a);
+    let mix = g.add_mixer(pos2(900.0, 0.0), &a);
+    g.connect(port(id, 0), port(mix, 0), &a);
+    let p = module_params(&g, id);
+    p.set(GLITCH, 0.8);
+    p.set(REPEAT, 0.6);
+    p.set(SKIP, 0.4);
+    let mut editor = crate::ui::canvas::Editor::new();
+    let ctx = egui::Context::default();
+    let mut time = 0.0;
+    for chord in 0..crate::audio::modules::aether::CHORDS.len() {
+        p.set_mode(chord);
+        p.set_toggle(chord % 2 == 0);
+        for _ in 0..3 {
+            render_buf(&mut e, 4_800);
+            time += 0.1;
+            let input = egui::RawInput { time: Some(time), ..Default::default() };
+            let mut out = ctx.run_ui(input, |ui| editor.show(ui, &mut g, &a));
+            out.textures_delta.clear();
+        }
+    }
+    assert!(p.viz[viz::FIRED].get() > 0.0, "it glitched while drawn");
+    assert!(p.viz[viz::RUN].get() > 0.5, "and sounded");
+}
+
+#[test]
+fn aether_free_notes_impose_nothing() {
+    use crate::audio::modules::aether::{VOICES, free_notes};
+    // No keys: ROOT alone, on every voice.
+    assert_eq!(free_notes(&[], 45.2), ([45.0; VOICES], VOICES));
+    // The keys as they are: each once, low to high, nothing added.
+    let (notes, n) = free_notes(&[64, 60, 64, 61], 45.0);
+    assert_eq!(&notes[..n], &[60.0, 61.0, 64.0]);
+    // More keys than voices: spread evenly, the lowest and highest kept.
+    let (notes, n) = free_notes(&[50, 52, 53, 55, 57, 59, 60, 62], 45.0);
+    assert_eq!(n, VOICES);
+    assert_eq!((notes[0], notes[VOICES - 1]), (50.0, 62.0));
+    assert!(notes.windows(2).all(|w| w[0] < w[1]));
+}
+
+#[test]
+fn aether_free_plays_the_keys_as_a_plain_pad() {
+    use crate::audio::midi::note_hz;
+    use crate::audio::modules::aether::glitch::SKIP as SKIPPED;
+    use crate::audio::modules::aether::{FREE, GLITCH, MORPH, data, viz};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Aether));
+    p.set(GLITCH, 0.0);
+    p.set(MORPH, 0.0);
+    // The notes of the voices that sound (faded in), low to high.
+    let sounding = |p: &ModuleParams| -> Vec<i32> {
+        let mut notes: Vec<i32> =
+            (0..5).filter(|&v| p.viz[viz::LIVE + v].get() > 0.5).map(|v| p.viz[viz::NOTE + v].get().round() as i32).collect();
+        notes.sort_unstable();
+        notes
+    };
+    // The fifth over ROOT (E3 over A2), for ROOT's level, over a second.
+    let fifth = |l: &[f32]| {
+        let len = 48_000;
+        let w: Vec<f32> =
+            l[96_000..96_000 + len].iter().enumerate().map(|(i, x)| x * (0.5 - 0.5 * (std::f32::consts::TAU * i as f32 / len as f32).cos())).collect();
+        tone_amp(&w, note_hz(52.0)) / tone_amp(&w, note_hz(45.0))
+    };
+    let (l, _, _) = run_aether(&p, 2300, true, &[]);
+    let shaped = fifth(&l);
+    // FREE adds nothing to ROOT: it sounds alone, in unison on every voice.
+    p.set_mode(FREE);
+    let (l, _, _) = run_aether(&p, 2300, true, &[]);
+    assert_eq!(sounding(&p), vec![45; 5]);
+    assert!(fifth(&l) < shaped * 0.05, "no fifth: {} against {shaped}", fifth(&l));
+    assert!(rms_of(&l[96_000..]) > 0.02, "and it sounds");
+
+    // One key: that note alone, on one voice; the others fade out.
+    run_aether(&p, 1500, true, &[(10, [0x90, 62, 100])]);
+    assert_eq!(sounding(&p), vec![62]);
+    assert_eq!(p.viz[viz::SOURCE].get(), 1.0);
+    // Three keys: those three, nothing doubled or added.
+    let three = [(10, [0x90, 50, 100]), (10, [0x90, 53, 100]), (10, [0x90, 58, 100])];
+    run_aether(&p, 1500, true, &three);
+    assert_eq!(sounding(&p), vec![50, 53, 58]);
+    // LATCH: letting go of the keys one by one keeps the chord whole (a
+    // voice let go would have faded below 0.95 by the end).
+    let letting_go = [three[0], three[1], three[2], (900, [0x80, 58, 0]), (1000, [0x80, 53, 0])];
+    run_aether(&p, 1050, true, &letting_go);
+    assert_eq!(sounding(&p), vec![50, 53, 58]);
+    let lives: Vec<f32> = (0..5).map(|v| p.viz[viz::LIVE + v].get()).filter(|&l| l > 0.5).collect();
+    assert!(lives.iter().all(|&l| l > 0.95), "none let go: {lives:?}");
+    // Five keys at once stay under full scale.
+    let five: Vec<(usize, [u8; 3])> = [45, 52, 57, 61, 64].iter().map(|&k| (0, [0x90, k, 100])).collect();
+    let (l, r, _) = run_aether(&p, 1500, true, &five);
+    let peak = peak_of(&l).max(peak_of(&r));
+    assert!(peak < 0.9, "five keys: peak {peak}");
+    // GATE: a key let go fades out on its own note while the rest play on.
+    p.data[data::KEYS].set(1.0);
+    let gated = [(10, [0x90, 50, 100]), (10, [0x90, 57, 100]), (600, [0x80, 57, 0])];
+    let (l, _, _) = run_aether(&p, 1500, true, &gated);
+    assert_eq!(sounding(&p), vec![50]);
+    let fading = (0..5).find(|&v| p.viz[viz::NOTE + v].get().round() as i32 == 57).expect("it keeps its note");
+    let live = p.viz[viz::LIVE + fading].get();
+    assert!(live > 0.0 && live < 0.5, "fading: {live}");
+    assert!(l.windows(2).all(|w| (w[1] - w[0]).abs() < 0.1), "no clicks");
+
+    // Glitches ring on harmonics of the keys played.
+    p.data[data::KEYS].set(0.0);
+    p.set(GLITCH, 1.0);
+    p.data[data::DIV].set(0.0);
+    let chord = [(0, [0x90, 50, 100]), (0, [0x90, 57, 100])];
+    let (_, _, events) = run_aether(&p, 3000, true, &chord);
+    assert!(events.len() >= 5, "{} glitches", events.len());
+    for &(_, hz, kind) in &events {
+        assert!(on_a_harmonic(hz, &[50.0, 57.0], kind == SKIPPED), "{hz} Hz is not a harmonic of the keys");
+    }
+}
+
+#[test]
+fn aether_glides_only_with_glide() {
+    use crate::audio::modules::aether::{GLITCH, MORPH, data, glides, viz};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Aether));
+    p.set(GLITCH, 0.0);
+    p.set(MORPH, 0.0);
+    // C3 latched, then G3: the lowest voice goes from 48 to 55.
+    let change = [(10, [0x90, 48, 100]), (300, [0x80, 48, 0]), (400, [0x90, 55, 100])];
+    let lowest = |p: &ModuleParams| p.viz[viz::NOTE].get();
+    // Off at first: the voices step there, without a click.
+    assert!(!glides(&p));
+    let (l, r, _) = run_aether(&p, 403, true, &change);
+    assert!((lowest(&p) - 55.0).abs() < 0.1, "stepped: {}", lowest(&p));
+    assert!(l.windows(2).chain(r.windows(2)).all(|w| (w[1] - w[0]).abs() < 0.1), "no clicks");
+    // With GLIDE they are on their way (from wherever the glide from ROOT
+    // to C3 had got to), and get there.
+    p.data[data::GLIDE].set(1.0);
+    run_aether(&p, 400, true, &change);
+    let before = lowest(&p);
+    run_aether(&p, 403, true, &change);
+    let after = lowest(&p);
+    assert!(after > before + 0.1 && after < 50.0, "gliding: {before} to {after}");
+    run_aether(&p, 1300, true, &change);
+    assert!((lowest(&p) - 55.0).abs() < 0.1, "there: {}", lowest(&p));
+}
+
+#[test]
+fn aether_randomizes_within_warm_ranges() {
+    use crate::audio::modules::aether::{CHORDS, DECAY, FREE, GLITCH, HARM, LEVEL, REPEAT, ROOT, SKIP, SPARK, data, randomize, seed, spec};
+    let fresh = || {
+        let p = Arc::new(ModuleParams::new(ModuleKind::Aether));
+        p.set(ROOT, 50.0);
+        p.set(LEVEL, 0.5);
+        p.set_toggle(false);
+        p.data[data::KEYS].set(1.0);
+        p
+    };
+    let knobs = |p: &ModuleParams| -> Vec<f32> { (0..20).map(|i| p.get(i)).collect() };
+    let p = fresh();
+    let before = knobs(&p);
+    randomize(&p, 99, false);
+    let after = knobs(&p);
+    assert!(before.iter().zip(&after).filter(|(a, b)| a != b).count() >= 15, "a new sound");
+    assert_eq!((p.get(ROOT), p.get(LEVEL), p.toggled(), p.data[data::KEYS].get()), (50.0, 0.5, false, 1.0), "the player's settings stay");
+    for (i, v) in after.iter().enumerate() {
+        assert!((spec(i).min..=spec(i).max).contains(v), "{} at {v}", spec(i).name);
+    }
+    assert!(p.get(GLITCH) <= 0.4 && p.get(HARM).fract() == 0.0);
+    assert!(p.mode() < FREE, "a chord shape");
+    // The same seed, the same sound.
+    let q = fresh();
+    randomize(&q, 99, false);
+    assert_eq!((knobs(&q), q.mode(), seed(&q)), (after, p.mode(), seed(&p)));
+
+    // FREE stays FREE; the timbre alone keeps the chord, the seed and the
+    // glitches.
+    let glitches = |p: &ModuleParams| -> Vec<f32> { [GLITCH, HARM, REPEAT, SKIP, DECAY, SPARK].iter().map(|&i| p.get(i)).collect() };
+    p.set_mode(FREE);
+    let kept = (glitches(&p), seed(&p), p.data[data::DIV].get());
+    randomize(&p, 7, true);
+    assert_eq!(p.mode(), FREE);
+    assert_eq!((glitches(&p), seed(&p), p.data[data::DIV].get()), kept);
+    randomize(&p, 8, false);
+    assert_eq!(p.mode(), FREE);
+
+    // Whatever comes out stays warm: finite, under full scale, sounding.
+    p.data[data::KEYS].set(0.0);
+    p.set(LEVEL, crate::audio::modules::aether::spec(LEVEL).default);
+    for k in 0..8u32 {
+        randomize(&p, 1000 + k, false);
+        p.set_mode(k as usize % CHORDS.len());
+        let (l, r, _) = run_aether(&p, 1500, true, &[]);
+        let peak = peak_of(&l).max(peak_of(&r));
+        assert!(l.iter().chain(&r).all(|s| s.is_finite()));
+        assert!(peak < 0.9, "seed {k}: peak {peak}");
+        assert!(rms_of(&l[48_000..]) > 0.01, "seed {k} sounds");
+    }
+}
+
+#[test]
+fn aether_sounds_save_as_presets() {
+    use crate::audio::modules::aether::{COLOR, FACTORY, FREE, LEVEL, ROOT, data, load_factory, reseed, seed};
+    use crate::presets::{self, ModulePreset};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Aether));
+    p.set_mode(FREE);
+    p.set_toggle(false);
+    p.set(COLOR, 0.77);
+    p.data[data::DIV].set(5.0);
+    reseed(&p, 2468);
+    let dir = TempDir::new("aether-presets");
+    let mut list = presets::load(&dir.0, ModuleKind::Aether);
+    assert!(list.is_empty());
+    presets::store(&mut list, ModulePreset::capture(&p, "Mine"));
+    presets::save(&dir.0, ModuleKind::Aether, &list).unwrap();
+    let loaded = presets::load(&dir.0, ModuleKind::Aether);
+    assert_eq!(loaded, list);
+    assert_eq!((loaded[0].mode.as_deref(), loaded[0].toggle), (Some("FREE"), Some(false)));
+    // Into a fresh node: the same sound, the chord shape and SYNC included.
+    let q = Arc::new(ModuleParams::new(ModuleKind::Aether));
+    loaded[0].apply(&q);
+    assert_eq!((q.mode(), q.toggled()), (FREE, false));
+    assert_eq!((q.get(COLOR), q.data[data::DIV].get(), seed(&q)), (0.77, 5.0, 2468));
+    // A preset without a mode or toggle (older ones, other kinds) leaves
+    // them be.
+    let old: ModulePreset = serde_json::from_str(r#"{"name":"Old","params":{"COLOR":0.1}}"#).unwrap();
+    old.apply(&q);
+    assert_eq!((q.mode(), q.toggled(), q.get(COLOR)), (FREE, false, 0.1));
+
+    // The built-in sounds keep the player's ROOT, LEVEL, GLIDE and keys, and
+    // all play warm.
+    q.set(ROOT, 52.0);
+    q.set(LEVEL, 0.5);
+    q.data[data::KEYS].set(1.0);
+    q.data[data::GLIDE].set(1.0);
+    load_factory(&q, 1);
+    assert_eq!((q.get(ROOT), q.get(LEVEL), q.data[data::KEYS].get(), q.data[data::GLIDE].get()), (52.0, 0.5, 1.0, 1.0));
+    assert_eq!(q.mode(), FREE, "{}", FACTORY[1].0);
+    q.data[data::KEYS].set(0.0);
+    q.set(LEVEL, crate::audio::modules::aether::spec(LEVEL).default);
+    for (k, (name, ..)) in FACTORY.iter().enumerate() {
+        load_factory(&q, k);
+        let (l, r, _) = run_aether(&q, 1500, true, &[]);
+        let peak = peak_of(&l).max(peak_of(&r));
+        assert!(l.iter().chain(&r).all(|s| s.is_finite()), "{name}");
+        assert!(peak < 0.9, "{name}: peak {peak}");
+        assert!(rms_of(&l[48_000..]) > 0.01, "{name} plays");
     }
 }
 

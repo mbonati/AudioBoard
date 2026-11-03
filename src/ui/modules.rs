@@ -11,7 +11,7 @@ use super::widgets;
 use crate::audio::engine::NodeId;
 use crate::audio::midi::note_hz;
 use crate::audio::modules::{
-    ModuleDef, ModuleKind, ModuleParams, arpeggiator, audio_in, automa, delay, drone, equalizer, filter, frakture, magma, pops, granular, midi_cc, midi_in, midi_note,
+    ModuleDef, ModuleKind, ModuleParams, aether, arpeggiator, audio_in, automa, delay, drone, equalizer, filter, frakture, magma, pops, granular, midi_cc, midi_in, midi_note,
     midicer, nullpunkt, pingpong, random, resonator, reverb, sequencer, steps, tape,
 };
 use crate::audio::params::{
@@ -88,6 +88,9 @@ pub fn size(def: &ModuleDef) -> Vec2 {
     if std::ptr::eq(def, &nullpunkt::DEF) {
         return super::nullpunkt::SIZE;
     }
+    if std::ptr::eq(def, &aether::DEF) {
+        return super::aether::SIZE;
+    }
     if std::ptr::eq(def, &automa::DEF) {
         return super::automa::SIZE;
     }
@@ -156,6 +159,10 @@ pub fn draw(
     }
     if kind == ModuleKind::Nullpunkt {
         super::nullpunkt::draw(v, id, accent, m, outputs.first().copied().unwrap_or(false));
+        return MapButton::default();
+    }
+    if kind == ModuleKind::Aether {
+        super::aether::draw(v, id, accent, m, (midi.0, outputs.first().copied().unwrap_or(false)));
         return MapButton::default();
     }
     if kind == ModuleKind::Automa {
@@ -236,7 +243,7 @@ pub fn draw(
         ModuleKind::AudioIn => audio_in_display(&screen, p),
         ModuleKind::Random | ModuleKind::MidiCc | ModuleKind::MidiNote => trace_display(&screen, m),
         ModuleKind::Granular => granular_display(&screen, p),
-        ModuleKind::Frakture | ModuleKind::Equalizer | ModuleKind::Magma | ModuleKind::Pops | ModuleKind::Tape | ModuleKind::Nullpunkt | ModuleKind::Automa => {}
+        ModuleKind::Frakture | ModuleKind::Equalizer | ModuleKind::Magma | ModuleKind::Pops | ModuleKind::Tape | ModuleKind::Nullpunkt | ModuleKind::Aether | ModuleKind::Automa => {}
         ModuleKind::Resonator => resonator_display(&screen, p),
         ModuleKind::Filter => filter_display(&screen, p),
         ModuleKind::Delay => delay_display(&screen, p, echo_seconds(p, v.tempo)),
@@ -453,6 +460,7 @@ fn readout(kind: ModuleKind, p: &ModuleParams, tempo: f32) -> (String, String) {
         ModuleKind::Pops => super::pops::readout(p),
         ModuleKind::Tape => super::tape::readout(p),
         ModuleKind::Nullpunkt => super::nullpunkt::readout(p),
+        ModuleKind::Aether => super::aether::readout(p),
         ModuleKind::Automa => super::automa::readout(p),
         ModuleKind::Granular => {
             let n = p.viz[granular::viz::COUNT].get() as usize;

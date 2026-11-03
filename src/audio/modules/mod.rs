@@ -3,6 +3,7 @@
 //! ports, optional mode selector and toggle), stores its settings in the
 //! generic [`ModuleParams`] and has a single stereo output.
 
+pub mod aether;
 pub mod arpeggiator;
 pub mod audio_in;
 pub mod automa;
@@ -39,6 +40,7 @@ use super::params::{AtomicF32, ParamSpec};
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum ModuleKind {
     Drone,
+    Aether,
     Random,
     Pops,
     Nullpunkt,
@@ -99,8 +101,9 @@ pub struct ModuleDef {
 }
 
 impl ModuleKind {
-    pub const ALL: [ModuleKind; 22] = [
+    pub const ALL: [ModuleKind; 23] = [
         ModuleKind::Drone,
+        ModuleKind::Aether,
         ModuleKind::Random,
         ModuleKind::Pops,
         ModuleKind::Nullpunkt,
@@ -127,6 +130,7 @@ impl ModuleKind {
     pub fn def(self) -> &'static ModuleDef {
         match self {
             ModuleKind::Drone => &drone::DEF,
+            ModuleKind::Aether => &aether::DEF,
             ModuleKind::Random => &random::DEF,
             ModuleKind::Pops => &pops::DEF,
             ModuleKind::Nullpunkt => &nullpunkt::DEF,
@@ -158,6 +162,7 @@ impl ModuleKind {
         let midi = audio.midi.clone();
         match self {
             ModuleKind::Drone => Box::new(drone::Drone::new(params, sample_rate)),
+            ModuleKind::Aether => Box::new(aether::Aether::new(params, midi.clone(), sample_rate)),
             ModuleKind::Random => Box::new(random::Random::new(params, sample_rate)),
             ModuleKind::Pops => Box::new(pops::Pops::new(params, sample_rate)),
             ModuleKind::Nullpunkt => Box::new(nullpunkt::Nullpunkt::new(params, sample_rate)),

@@ -65,6 +65,7 @@ impl NodeType {
             &[
                 NodeType::Osc,
                 NodeType::Module(ModuleKind::Drone),
+                NodeType::Module(ModuleKind::Aether),
                 NodeType::Module(ModuleKind::Random),
                 NodeType::Module(ModuleKind::Pops),
                 NodeType::Module(ModuleKind::Nullpunkt),

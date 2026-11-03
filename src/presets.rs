@@ -15,6 +15,11 @@ pub struct ModulePreset {
     pub params: BTreeMap<String, f32>,
     #[serde(default)]
     pub data: Vec<f32>,
+    /// The mode by name, and the toggle, for kinds that have them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub toggle: Option<bool>,
 }
 
 impl ModulePreset {
@@ -25,19 +30,28 @@ impl ModulePreset {
             name: name.to_owned(),
             params: def.params.iter().enumerate().map(|(i, s)| (s.name.to_owned(), p.get(i))).collect(),
             data: p.data.iter().map(|d| d.get()).collect(),
+            mode: def.modes.get(p.mode()).map(|m| (*m).to_owned()),
+            toggle: def.toggle.map(|_| p.toggled()),
         }
     }
 
     /// Sets the module to this preset; knobs it doesn't name keep their
     /// value.
     pub fn apply(&self, p: &ModuleParams) {
-        for (i, spec) in p.kind.def().params.iter().enumerate() {
+        let def = p.kind.def();
+        for (i, spec) in def.params.iter().enumerate() {
             if let Some(&v) = self.params.get(spec.name) {
                 p.set(i, v.clamp(spec.min, spec.max));
             }
         }
         for (d, &v) in p.data.iter().zip(&self.data) {
             d.set(v);
+        }
+        if let Some(k) = self.mode.as_ref().and_then(|m| def.modes.iter().position(|n| n == m)) {
+            p.set_mode(k);
+        }
+        if let Some(on) = self.toggle.filter(|_| def.toggle.is_some()) {
+            p.set_toggle(on);
         }
     }
 }

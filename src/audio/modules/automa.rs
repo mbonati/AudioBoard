@@ -150,7 +150,7 @@ pub mod viz {
     /// 1), pitch, velocity, step, length in steps and voice (4: the pad).
     pub const EVENT_SEQ: usize = ORBIT + 2 * ORBIT_LEN;
     pub const EVENTS: usize = EVENT_SEQ + 1;
-    pub const EVENT_CAP: usize = 24;
+    pub const EVENT_CAP: usize = 64;
     pub const EVENT_LEN: usize = 6;
     /// LIFE: each cell's age (0: dead), row by row from the lowest degree.
     /// CASCADE: the generations, newest first, 1 for a living cell.
