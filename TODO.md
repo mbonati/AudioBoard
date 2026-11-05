@@ -1,5 +1,4 @@
 
-- genrative midi basato su Life Game
 - generare lanes che possano essere gestite come bus
 - nodo di tipo Image per aggiungere sticker alla board
 - aggiungere viz dinamca sullo sfondo della board
@@ -10,6 +9,7 @@
 
 
 DONE
+- genrative midi basato su Life Game
 - fissare apertura VST
 - mixer a 16/24 canali verticale/orizzontale
 - tape emulator

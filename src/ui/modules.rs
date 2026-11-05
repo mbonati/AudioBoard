@@ -11,7 +11,7 @@ use super::widgets;
 use crate::audio::engine::NodeId;
 use crate::audio::midi::note_hz;
 use crate::audio::modules::{
-    ModuleDef, ModuleKind, ModuleParams, aether, arpeggiator, larsen, looper, audio_in, automa, delay, drone, equalizer, filter, frakture, magma, pops, granular, midi_cc, midi_in, midi_note,
+    ModuleDef, ModuleKind, ModuleParams, aether, arpeggiator, larsen, looper, vesper, audio_in, automa, delay, drone, equalizer, filter, frakture, magma, pops, granular, midi_cc, midi_in, midi_note,
     midicer, nullpunkt, pingpong, random, resonator, reverb, sequencer, steps, tape,
 };
 use crate::audio::params::{
@@ -93,6 +93,9 @@ pub fn size(def: &ModuleDef) -> Vec2 {
     }
     if std::ptr::eq(def, &larsen::DEF) {
         return super::larsen::SIZE;
+    }
+    if std::ptr::eq(def, &vesper::DEF) {
+        return super::vesper::SIZE;
     }
     if std::ptr::eq(def, &looper::DEF) {
         return super::looper::SIZE;
@@ -179,6 +182,10 @@ pub fn draw(
         super::larsen::draw(v, id, accent, m, (patched(0), midi.0, outputs.first().copied().unwrap_or(false)));
         return MapButton::default();
     }
+    if kind == ModuleKind::Vesper {
+        super::vesper::draw(v, id, accent, m, (midi.0, midi.1, outputs.first().copied().unwrap_or(false)));
+        return MapButton::default();
+    }
     if kind == ModuleKind::Automa {
         super::automa::draw(v, id, accent, m, midi.1);
         return MapButton::default();
@@ -257,7 +264,7 @@ pub fn draw(
         ModuleKind::AudioIn => audio_in_display(&screen, p),
         ModuleKind::Random | ModuleKind::MidiCc | ModuleKind::MidiNote => trace_display(&screen, m),
         ModuleKind::Granular => granular_display(&screen, p),
-        ModuleKind::Frakture | ModuleKind::Equalizer | ModuleKind::Magma | ModuleKind::Pops | ModuleKind::Tape | ModuleKind::Nullpunkt | ModuleKind::Aether | ModuleKind::Larsen | ModuleKind::Automa | ModuleKind::Looper => {}
+        ModuleKind::Frakture | ModuleKind::Equalizer | ModuleKind::Magma | ModuleKind::Pops | ModuleKind::Tape | ModuleKind::Nullpunkt | ModuleKind::Aether | ModuleKind::Larsen | ModuleKind::Vesper | ModuleKind::Automa | ModuleKind::Looper => {}
         ModuleKind::Resonator => resonator_display(&screen, p),
         ModuleKind::Filter => filter_display(&screen, p),
         ModuleKind::Delay => delay_display(&screen, p, echo_seconds(p, v.tempo)),
@@ -476,6 +483,7 @@ fn readout(kind: ModuleKind, p: &ModuleParams, tempo: f32) -> (String, String) {
         ModuleKind::Nullpunkt => super::nullpunkt::readout(p),
         ModuleKind::Aether => super::aether::readout(p),
         ModuleKind::Larsen => super::larsen::readout(p),
+        ModuleKind::Vesper => super::vesper::readout(p),
         ModuleKind::Looper => super::looper::readout(p),
         ModuleKind::Automa => super::automa::readout(p),
         ModuleKind::Granular => {

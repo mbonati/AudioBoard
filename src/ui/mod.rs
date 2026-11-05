@@ -24,4 +24,5 @@ pub mod settings;
 pub mod tape;
 pub mod tempo;
 pub mod theme;
+pub mod vesper;
 pub mod widgets;

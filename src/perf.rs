@@ -44,6 +44,24 @@ fn load(e: &mut Engine, seconds: f32) -> f64 {
         .fold(f64::INFINITY, f64::min)
 }
 
+/// Vesper makes its sounds on a thread of its own: this waits until they have
+/// arrived, so that it's measured playing them.
+fn settle(g: &Graph, node: u32, e: &mut Engine) {
+    use crate::audio::modules::vesper::{SAMPLED, sound, viz};
+    let Some(NodeKind::Module(m)) = g.node(node).map(|n| &n.kind) else { return };
+    if m.params.kind != ModuleKind::Vesper {
+        return;
+    }
+    let mut buf = vec![0.0f32; 512 * 2];
+    for _ in 0..1000 {
+        e.render(&mut buf, 2);
+        if (0..SAMPLED).all(|l| m.params.viz[viz::LOADED + l].get() == sound(&m.params, l) as f32) {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
 fn report(name: &str, share: f64) {
     eprintln!("{name:<28} {:>7.3}% of real time  ({:>6.2} µs per 64-frame block)", share * 100.0, share * 64.0 / SR as f64 * 1e6);
 }
@@ -59,6 +77,7 @@ fn perf_audio_modules() {
         let mix = g.add_mixer(pos2(0.0, 0.0), &a);
         g.connect(port(src, 0), port(m, 0), &a);
         g.connect(port(m, 0), port(mix, 0), &a);
+        settle(&g, m, &mut e);
         report(kind.def().name, load(&mut e, 4.0));
     }
     let (mut g, a, mut e) = setup();
@@ -213,6 +232,7 @@ fn perf_one_module() {
     g.connect(port(src, 0), port(m, 0), &a);
     g.connect(port(m, 0), port(mix, 0), &a);
     let secs = std::env::var("PERF_SECS").ok().and_then(|s| s.parse().ok()).unwrap_or(20.0);
+    settle(&g, m, &mut e);
     report(kind.def().name, load(&mut e, secs));
 }
 
