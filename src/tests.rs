@@ -1637,7 +1637,7 @@ fn palette_categories_fold() {
         texts = run(&mut palette, vec![]);
     }
     assert!(!shows(&texts, "Oscillator") && shows(&texts, "SOURCES"), "folded");
-    assert!(shows(&texts, "8"), "a folded category shows its count");
+    assert!(shows(&texts, "9"), "a folded category shows its count");
     assert!(shows(&texts, "Reverb"), "the others stay open");
 
     // Searching opens what matches; clearing it folds it again.
@@ -4398,6 +4398,628 @@ fn looper_panel_draws_while_it_plays() {
         }
     }
     assert!(p.viz[viz::RUNNING].get() > 0.5, "it ran while drawn");
+}
+
+/// Vesper on a test bench: at 120 BPM (a bar is 96 000 samples), its sounds
+/// already made. MIDI goes in on its cable; what comes out is kept.
+struct VesperRig {
+    proc: crate::audio::modules::vesper::Vesper,
+    ctx: ProcessCtx,
+    inputs: Box<Inputs>,
+    outputs: Vec<crate::audio::engine::Buf>,
+    p: Arc<ModuleParams>,
+    at: usize,
+}
+
+/// What a run gave: left, right, and the MIDI that came out.
+type VesperTake = (Vec<f32>, Vec<f32>, Vec<(usize, [u8; 3])>);
+
+/// Samples in a bar, and blocks in a bar.
+const VESPER_BAR: usize = 96_000;
+const VESPER_BAR_BLOCKS: usize = VESPER_BAR / 64;
+
+impl VesperRig {
+    fn new(p: &Arc<ModuleParams>) -> Self {
+        use crate::audio::modules::vesper::Vesper;
+        let proc = Vesper::new(p.clone(), Arc::new(crate::audio::midi::MidiState::new()), 48_000.0);
+        let ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing: false, restart: false };
+        let inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: true });
+        let mut rig = Self { proc, ctx, inputs, outputs: vec![[[0.0f32; 64]; 2]; 1], p: p.clone(), at: 0 };
+        rig.wait_for_sounds();
+        rig
+    }
+
+    /// The sounds picked have arrived.
+    fn wait_for_sounds(&mut self) {
+        use crate::audio::modules::vesper::{SAMPLED, sound, viz};
+        let playing = self.ctx.playing;
+        self.ctx.playing = false;
+        for _ in 0..4000 {
+            self.proc.process(&self.ctx, &self.inputs, &mut self.outputs, 64);
+            if (0..SAMPLED).all(|l| self.p.viz[viz::LOADED + l].get() == sound(&self.p, l) as f32) {
+                self.ctx.playing = playing;
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        panic!("the sounds never arrived");
+    }
+
+    /// Runs `blocks`; `keys` are MIDI messages to send at a block from now.
+    fn run(&mut self, blocks: usize, playing: bool, keys: &[(usize, [u8; 3])]) -> VesperTake {
+        let (mut l, mut r, mut midi) = (Vec::new(), Vec::new(), Vec::new());
+        for b in 0..blocks {
+            self.ctx.playing = playing;
+            self.inputs.midi.clear();
+            for (_, msg) in keys.iter().filter(|(at, _)| *at == b) {
+                self.inputs.midi.push(0, *msg);
+            }
+            self.proc.process(&self.ctx, &self.inputs, &mut self.outputs, 64);
+            l.extend_from_slice(&self.outputs[0][0]);
+            r.extend_from_slice(&self.outputs[0][1]);
+            for e in self.proc.midi_out().map(|m| m.events()).unwrap_or(&[]) {
+                midi.push((self.at + e.frame as usize, e.data));
+            }
+            if playing {
+                self.ctx.beat += self.ctx.beats_per_sample * 64.0;
+            }
+            self.at += 64;
+            self.ctx.restart = false;
+        }
+        (l, r, midi)
+    }
+}
+
+/// Only `layer` sounds, dry and unmoving.
+fn vesper_solo(p: &ModuleParams, layer: usize) {
+    use crate::audio::modules::vesper::{LAYERS, data, k, knob};
+    for l in 0..LAYERS {
+        p.set(knob(l, k::LEVEL), if l == layer { 0.8 } else { 0.0 });
+        crate::audio::modules::vesper::set_flag(p, data::MUTE + l, l != layer);
+        p.set(knob(l, k::REVERB), 0.0);
+        p.set(knob(l, k::ECHO), 0.0);
+        p.set(knob(l, k::CHORUS), 0.0);
+        p.set(knob(l, k::DRIVE), 0.0);
+        p.set(knob(l, k::MOVE1), 0.0);
+        p.set(knob(l, k::MOVE2), 0.0);
+        p.set(knob(l, k::FREQ1), 20_000.0);
+        p.set(knob(l, k::FREQ2), 20.0);
+    }
+}
+
+/// The notes sounding on a channel, at each bar line, from what came out.
+fn vesper_sounding(midi: &[(usize, [u8; 3])], channel: u8, at: usize) -> Vec<u8> {
+    let mut on = Vec::new();
+    for &(_, msg) in midi.iter().filter(|(when, _)| *when <= at) {
+        if msg[0] & 0x0F != channel {
+            continue;
+        }
+        match msg[0] & 0xF0 {
+            0x90 => on.push(msg[1]),
+            0x80 => on.retain(|&n| n != msg[1]),
+            _ => {}
+        }
+    }
+    on.sort_unstable();
+    on
+}
+
+#[test]
+fn vesper_every_sound_renders() {
+    use crate::audio::modules::vesper::library::{LOOP_RMS, render_table};
+    use crate::audio::modules::vesper::sounds::{PINGS, recipes};
+    use crate::audio::modules::vesper::{SAMPLED, sound_count, sound_name};
+    assert!(PINGS.len() >= 12);
+    for layer in 0..SAMPLED {
+        let list = recipes(layer);
+        assert!(list.len() >= 40, "at least forty sounds a layer: {layer} has {}", list.len());
+        for (k, r) in list.iter().enumerate() {
+            let t = render_table(r, 48.0, 1 << 15, 48_000.0, 77 + k as u32);
+            assert!(t.left.iter().chain(t.right.iter()).all(|x| x.is_finite()), "{}: finite", r.name);
+            let rms = rms_of(&t.left);
+            assert!(rms > 0.3 * LOOP_RMS && rms < 3.0 * LOOP_RMS, "{}: rms {rms}", r.name);
+            assert_ne!(t.left, t.right, "{}: two channels", r.name);
+        }
+        let mut names: Vec<&str> = (0..sound_count(layer)).map(|s| sound_name(layer, s)).collect();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(names.len(), sound_count(layer), "the names of layer {layer} are all different");
+    }
+}
+
+#[test]
+fn vesper_loops_have_no_seam() {
+    use crate::audio::modules::vesper::library::render_table;
+    use crate::audio::modules::vesper::sounds::recipes;
+    use crate::audio::modules::vesper::{NOISE, PAD, find_sound};
+    // A tone, a tone with swells and a sweep, a wind.
+    for (layer, name) in [(PAD, "Slow Silk"), (PAD, "Tidal Sweep"), (NOISE, "Mountain Wind")] {
+        let r = &recipes(layer)[find_sound(layer, name)];
+        let t = render_table(r, 48.0, 1 << 16, 48_000.0, 5);
+        let n = t.left.len();
+        let biggest = t.left.windows(2).map(|w| (w[1] - w[0]).abs()).fold(0.0f32, f32::max);
+        let seam = (t.left[0] - t.left[n - 1]).abs();
+        assert!(seam <= biggest * 1.01, "{name}: the seam jumps {seam}, the loop at most {biggest}");
+    }
+}
+
+#[test]
+fn vesper_chords_follow_the_rules() {
+    use crate::audio::modules::vesper::harmony::{MOODS, Rules, Step, allowed, fold, label, progression, voice};
+    assert_eq!(MOODS.len(), 16, "sixteen moods");
+    for mood in 0..MOODS.len() {
+        for seed in 1..40u32 {
+            for variation in 1..=7 {
+                let rules = Rules { root: (seed % 12) as i32, mood, variation, complexity: 3 };
+                let (degrees, len) = allowed(seed, &rules);
+                assert_eq!(len, variation);
+                assert_eq!(degrees[0], 0, "the tonic is always allowed");
+                let more = Rules { variation: (variation + 1).min(7), ..rules };
+                let (wider, wider_len) = allowed(seed, &more);
+                assert!(degrees[..len].iter().all(|d| wider[..wider_len].contains(d)), "a wider choice keeps the narrower");
+                let prog = progression(seed, 8, &rules);
+                for s in &prog {
+                    assert!(degrees[..len].contains(&s.degree), "mood {mood}, variation {variation}: degree {}", s.degree);
+                }
+                if variation > 1 {
+                    let (a, b) = (prog[0], prog[7]);
+                    assert_ne!(a.degree, b.degree, "the last chord doesn't land on the first");
+                    assert!(prog.windows(2).all(|w| w[0].degree != w[1].degree), "no chord follows itself");
+                }
+            }
+            // Each chord has its notes, in the scale, laid out low to high,
+            // moving little from the one before.
+            for complexity in 2..=4 {
+                let rules = Rules { root: 9, mood, variation: 7, complexity };
+                let mut prev: Vec<i32> = Vec::new();
+                let mut moved = 0;
+                for &step in &progression(seed, 8, &rules) {
+                    let mut notes = [0; 4];
+                    let n = voice(&rules, step, &prev, 60, &mut notes);
+                    assert_eq!(n, complexity);
+                    assert!(notes[..n].windows(2).all(|w| w[0] < w[1]), "{:?}", &notes[..n]);
+                    for &m in &notes[..n] {
+                        assert!(rules.in_scale(m), "mood {mood}: {m} is outside the scale");
+                        assert!((40..=84).contains(&m), "{m} out of register");
+                    }
+                    let (tones, _) = rules.tones(step);
+                    let pcs: Vec<i32> = tones[..n].iter().map(|t| (rules.root + t).rem_euclid(12)).collect();
+                    assert!(notes[..n].iter().all(|m| pcs.contains(&m.rem_euclid(12))), "the chord's own notes");
+                    if !prev.is_empty() {
+                        moved += notes[..n].iter().map(|m| prev.iter().map(|q| (m - q).abs()).min().unwrap()).sum::<i32>();
+                    }
+                    prev = notes[..n].to_vec();
+                    assert!(!label(&rules, step).is_empty());
+                }
+                assert!(moved <= 7 * complexity as i32 * 5, "voices move little: {moved}");
+            }
+        }
+    }
+    // Names, spelled for the key.
+    let am = Rules { root: 9, mood: 4, variation: 7, complexity: 4 };
+    assert_eq!(label(&am, Step { degree: 0, flavor: 0 }), "Am7");
+    assert_eq!(label(&am, Step { degree: 2, flavor: 0 }), "Cmaj7");
+    let triad = Rules { complexity: 3, ..am };
+    assert_eq!(label(&triad, Step { degree: 5, flavor: 0 }), "F");
+    assert_eq!(label(&triad, Step { degree: 0, flavor: 2 }), "Asus4");
+    let open = Rules { complexity: 2, ..am };
+    assert_eq!(label(&open, Step { degree: 0, flavor: 0 }), "A5");
+    assert_eq!(fold(60, 33), 36);
+}
+
+#[test]
+fn vesper_loop_repeats_on_the_bars_and_sends_its_score() {
+    use crate::audio::modules::vesper::{CHORDS, COMPLEXITY, DURATION, MOOD, ROOT, VARIATION, generate, rules};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Vesper));
+    p.set(DURATION, 1.0); // a bar a chord
+    p.set(CHORDS, 3.0);
+    p.set(COMPLEXITY, 4.0);
+    p.set(VARIATION, 6.0);
+    p.set(MOOD, 5.0);
+    p.set(ROOT, 2.0);
+    let mut rig = VesperRig::new(&p);
+    let (_, _, midi) = rig.run(VESPER_BAR_BLOCKS * 9, true, &[]);
+    let rules_now = rules(&p);
+    // Chord on channel 1, four notes in the scale; the same every three bars
+    // (after its first time round, which starts from nothing).
+    let at = |bar: usize| vesper_sounding(&midi, 0, bar * VESPER_BAR + 10);
+    for bar in 0..9 {
+        let notes = at(bar);
+        assert_eq!(notes.len(), 4, "bar {bar}: {notes:?}");
+        assert!(notes.iter().all(|&n| rules_now.in_scale(n as i32)), "bar {bar}: {notes:?}");
+    }
+    assert_eq!(at(3), at(6));
+    assert_eq!(at(4), at(7));
+    assert_eq!(at(5), at(8));
+    assert!(at(3) != at(4) || at(4) != at(5), "the chords change");
+    // They change on the bar lines and only there.
+    for &(when, msg) in midi.iter().filter(|(_, m)| m[0] & 0x0F == 0) {
+        assert_eq!(when % VESPER_BAR, 0, "{msg:?} at {when}");
+    }
+    // The bass, on channel 2, one note at a time, the chord's root.
+    for bar in 0..9 {
+        let bass = vesper_sounding(&midi, 1, bar * VESPER_BAR + 10);
+        assert_eq!(bass.len(), 1, "bar {bar}");
+        assert!(rules_now.in_scale(bass[0] as i32));
+    }
+    // GENERATE writes something else, on the same rules.
+    let before: Vec<Vec<u8>> = (3..6).map(at).collect();
+    generate(&p, 123_456);
+    let (_, _, midi2) = rig.run(VESPER_BAR_BLOCKS * 7, true, &[]);
+    let mut all = midi.clone();
+    all.extend_from_slice(&midi2);
+    let after: Vec<Vec<u8>> = (12..15).map(|bar| vesper_sounding(&all, 0, bar * VESPER_BAR + 10)).collect();
+    assert_ne!(before, after, "GENERATE writes new chords");
+    assert!(after.iter().flatten().all(|&n| rules_now.in_scale(n as i32)));
+}
+
+#[test]
+fn vesper_evolve_keeps_writing_within_the_rules() {
+    use crate::audio::modules::vesper::{DURATION, EVOLVE, VARIATION, rules, viz};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Vesper));
+    p.set_mode(EVOLVE);
+    p.set(DURATION, 0.0); // half a bar a chord
+    p.set(VARIATION, 7.0);
+    let mut rig = VesperRig::new(&p);
+    let bars = 16;
+    let (_, _, midi) = rig.run(VESPER_BAR_BLOCKS * bars, true, &[]);
+    let chords: Vec<Vec<u8>> = (0..bars * 2).map(|c| vesper_sounding(&midi, 0, c * VESPER_BAR / 2 + 10)).collect();
+    let rules_now = rules(&p);
+    assert!(chords.iter().flatten().all(|&n| rules_now.in_scale(n as i32)));
+    assert!(chords.windows(2).filter(|w| w[0] != w[1]).count() >= chords.len() / 2, "it moves on");
+    let mut distinct = chords.clone();
+    distinct.sort();
+    distinct.dedup();
+    assert!(distinct.len() >= 7, "it doesn't just go round: {} different chords", distinct.len());
+    assert_eq!(p.viz[viz::CARDS].get() as usize, 8, "it shows what it has written, and what's next");
+}
+
+#[test]
+fn vesper_each_layer_sounds_and_all_stay_in_range() {
+    use crate::audio::modules::vesper::{LAYERS, MIXTYPE, RATE, data, k, knob, set_flag};
+    for layer in 0..LAYERS {
+        let p = Arc::new(ModuleParams::new(ModuleKind::Vesper));
+        vesper_solo(&p, layer);
+        p.set(RATE, 6.0);
+        let mut rig = VesperRig::new(&p);
+        let (l, r, _) = rig.run(blocks(6.0), true, &[]);
+        assert!(l.iter().chain(&r).all(|x| x.is_finite()), "layer {layer}");
+        let rms = rms_of(&l[144_000..]);
+        assert!(rms > 0.004, "layer {layer} sounds alone: {rms}");
+        assert_ne!(l[200_000..200_500], r[200_000..200_500], "layer {layer} is stereo");
+    }
+    // Everything up, in every MixType.
+    for mix in 0..4 {
+        let p = Arc::new(ModuleParams::new(ModuleKind::Vesper));
+        p.set(MIXTYPE, mix as f32);
+        p.set(RATE, 6.0);
+        for l in 0..LAYERS {
+            p.set(knob(l, k::LEVEL), 1.0);
+            p.set(knob(l, k::DRIVE), 1.0);
+            p.set(knob(l, k::REVERB), 1.0);
+            p.set(knob(l, k::ECHO), 1.0);
+            p.set(knob(l, k::CHORUS), 1.0);
+            set_flag(&p, data::MUTE + l, false);
+        }
+        let mut rig = VesperRig::new(&p);
+        let (l, r, _) = rig.run(blocks(10.0), true, &[]);
+        assert!(l.iter().chain(&r).all(|x| x.is_finite() && x.abs() <= 1.0), "mix {mix}");
+        assert!(rms_of(&l[240_000..]) > 0.05);
+    }
+}
+
+#[test]
+fn vesper_plays_in_tune_from_the_keys() {
+    use crate::audio::modules::vesper::{BASS, PAD, find_sound, set_sound};
+    // The Pad plays the key.
+    let p = Arc::new(ModuleParams::new(ModuleKind::Vesper));
+    p.set_toggle(false);
+    vesper_solo(&p, PAD);
+    set_sound(&p, PAD, find_sound(PAD, "Felt Organ"));
+    let mut rig = VesperRig::new(&p);
+    let (l, _, _) = rig.run(blocks(6.0), false, &[(0, [0x90, 69, 100])]);
+    let hz = strongest_hz(&l[192_000..], 300.0, 600.0);
+    assert!(cents(hz, 440.0).abs() < 12.0, "the Pad on A4: {hz} Hz");
+
+    // The Bass plays the lowest key, folded into its octave: C4 is C2 there.
+    let p = Arc::new(ModuleParams::new(ModuleKind::Vesper));
+    p.set_toggle(false);
+    vesper_solo(&p, BASS);
+    set_sound(&p, BASS, find_sound(BASS, "Pure Sub"));
+    let mut rig = VesperRig::new(&p);
+    let (l, _, _) = rig.run(blocks(6.0), false, &[(0, [0x90, 67, 100]), (0, [0x90, 60, 100])]);
+    let hz = strongest_hz(&l[192_000..], 40.0, 120.0);
+    assert!(cents(hz, 65.406).abs() < 6.0, "the Bass on C2: {hz} Hz");
+
+    // In every register a Pad's loops stay on the note.
+    let p = Arc::new(ModuleParams::new(ModuleKind::Vesper));
+    p.set_toggle(false);
+    vesper_solo(&p, PAD);
+    set_sound(&p, PAD, find_sound(PAD, "Felt Organ"));
+    let mut rig = VesperRig::new(&p);
+    for note in [40u8, 57, 75, 88] {
+        let (l, _, _) = rig.run(blocks(4.0), false, &[(0, [0x90, note, 100])]);
+        let want = crate::audio::midi::note_hz(note as f32);
+        let hz = strongest_hz(&l[120_000..], want * 0.8, want * 1.2);
+        assert!(cents(hz, want).abs() < 12.0, "note {note}: {hz} Hz against {want} Hz");
+        rig.run(blocks(6.0), false, &[(0, [0x80, note, 0])]);
+    }
+}
+
+#[test]
+fn vesper_keys_play_only_with_play_off() {
+    use crate::audio::modules::vesper::{LAYERS, k, knob};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Vesper));
+    for l in 0..LAYERS {
+        p.set(knob(l, k::ATTACK), 0.05);
+        p.set(knob(l, k::RELEASE), 0.1);
+        p.set(knob(l, k::REVERB), 0.0);
+        p.set(knob(l, k::ECHO), 0.0);
+    }
+    let mut rig = VesperRig::new(&p);
+    // PLAY on, transport stopped: keys do nothing.
+    let (l, _, _) = rig.run(blocks(1.0), false, &[(0, [0x90, 60, 100])]);
+    assert!(rms_of(&l) < 1e-6, "with PLAY on the keys are off: {}", rms_of(&l));
+    rig.run(1, false, &[(0, [0x80, 60, 0])]);
+    // PLAY off: they play, and the transport alone does not.
+    p.set_toggle(false);
+    let (l, _, midi) = rig.run(blocks(1.0), true, &[]);
+    assert!(rms_of(&l[24_000..]) < 1e-4, "PLAY off and no key: silence, whatever the transport: {}", rms_of(&l[24_000..]));
+    assert!(midi.iter().all(|(_, m)| m[0] & 0xF0 != 0x90), "and no score");
+    let (l, _, _) = rig.run(blocks(1.0), false, &[(0, [0x90, 60, 100])]);
+    assert!(rms_of(&l[24_000..]) > 0.01, "a key plays it: {}", rms_of(&l[24_000..]));
+    let (l, _, _) = rig.run(blocks(1.5), false, &[(0, [0x80, 60, 0])]);
+    assert!(rms_of(&l[48_000..]) < 1e-3, "and letting go ends it: {}", rms_of(&l[48_000..]));
+}
+
+#[test]
+fn vesper_shuffle_respects_the_locks_and_generate_keeps_the_sounds() {
+    use crate::audio::modules::vesper::{BASS, LAYERS, PAD, data, generate, seed, set_flag, shuffle, sound};
+    let p = ModuleParams::new(ModuleKind::Vesper);
+    set_flag(&p, data::LOCK + PAD, true);
+    set_flag(&p, data::LOCK + BASS, true);
+    let before: Vec<usize> = (0..LAYERS).map(|l| sound(&p, l)).collect();
+    let chords = seed(&p);
+    for s in 1..30 {
+        shuffle(&p, s * 7919);
+        assert_eq!(sound(&p, PAD), before[PAD], "a locked layer stays");
+        assert_eq!(sound(&p, BASS), before[BASS], "a locked layer stays");
+        assert_eq!(seed(&p), chords, "SHUFFLE leaves the chords");
+    }
+    assert!((2..LAYERS).all(|l| sound(&p, l) != before[l] || l == LAYERS), "the others have moved");
+    let sounds: Vec<usize> = (0..LAYERS).map(|l| sound(&p, l)).collect();
+    generate(&p, 4242);
+    assert_ne!(seed(&p), chords);
+    assert_eq!(sounds, (0..LAYERS).map(|l| sound(&p, l)).collect::<Vec<_>>(), "GENERATE leaves the sounds");
+    // SHUFFLE always moves an unlocked layer on.
+    for s in 1..200 {
+        let was = sound(&p, 2);
+        shuffle(&p, s);
+        assert_ne!(sound(&p, 2), was);
+    }
+}
+
+#[test]
+fn vesper_scenes_and_settings_are_saved() {
+    use crate::audio::modules::vesper::{FACTORY, LAYERS, LEVEL, MOOD, ROOT, data, k, knob, load_factory, set_sound, sound, sound_count, sound_name, spec};
+    use crate::presets::ModulePreset;
+    let names: std::collections::HashSet<&str> = ModuleKind::Vesper.def().params.iter().map(|s| s.name).collect();
+    assert_eq!(names.len(), ModuleKind::Vesper.def().params.len(), "knobs are saved by name: no two the same");
+    // Every scene's sounds exist; a scene sets them, and leaves ROOT and LEVEL.
+    let p = ModuleParams::new(ModuleKind::Vesper);
+    p.set(ROOT, 3.0);
+    p.set(LEVEL, 0.5);
+    for (n, scene) in FACTORY.iter().enumerate() {
+        for layer in 0..LAYERS {
+            assert!((0..sound_count(layer)).any(|s| sound_name(layer, s) == scene.sounds[layer]), "{}: no {} on layer {layer}", scene.name, scene.sounds[layer]);
+        }
+        for &(i, v) in scene.knobs {
+            let s = spec(i);
+            assert!(v >= s.min && v <= s.max, "{}: {} is {v}", scene.name, s.name);
+        }
+        load_factory(&p, n);
+        for layer in 0..LAYERS {
+            assert_eq!(sound_name(layer, sound(&p, layer)), scene.sounds[layer]);
+        }
+        assert_eq!(p.get(MOOD), scene.mood as f32);
+        assert_eq!(p.get(ROOT), 3.0);
+        assert_eq!(p.get(LEVEL), 0.5);
+    }
+    // A scene overrides what the one before set.
+    let brass = FACTORY.iter().position(|s| s.name == "Folded City").unwrap();
+    load_factory(&p, brass);
+    assert!(p.get(knob(0, k::HOLD)) < 10.0);
+    load_factory(&p, 0);
+    assert_eq!(p.get(knob(0, k::HOLD)), spec(knob(0, k::HOLD)).default);
+
+    // A preset brings everything back.
+    set_sound(&p, 0, 33);
+    p.set(knob(3, k::REVERB), 0.123);
+    p.data[data::KIND2 + 1].set(3.0);
+    p.set_mode(1);
+    p.set_toggle(false);
+    let preset = ModulePreset::capture(&p, "Mine");
+    let q = ModuleParams::new(ModuleKind::Vesper);
+    preset.apply(&q);
+    assert_eq!(sound(&q, 0), 33);
+    assert_eq!(q.get(knob(3, k::REVERB)), 0.123);
+    assert_eq!(q.data[data::KIND2 + 1].get(), 3.0);
+    assert_eq!(q.mode(), 1);
+    assert!(!q.toggled());
+}
+
+#[test]
+fn vesper_a_new_sound_comes_in_without_a_jump() {
+    use crate::audio::modules::vesper::{PAD, find_sound, set_sound, viz};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Vesper));
+    let mut rig = VesperRig::new(&p);
+    rig.run(blocks(4.0), true, &[]);
+    let wanted = find_sound(PAD, "Bowed Glass");
+    set_sound(&p, PAD, wanted);
+    let mut biggest = 0.0f32;
+    let mut arrived = false;
+    let mut last = 0.0f32;
+    for _ in 0..4000 {
+        let (l, _, _) = rig.run(64, true, &[]);
+        for x in l {
+            biggest = biggest.max((x - last).abs());
+            last = x;
+        }
+        if p.viz[viz::LOADED + PAD].get() == wanted as f32 {
+            arrived = true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(1));
+        if arrived {
+            break;
+        }
+    }
+    assert!(arrived, "the new sound arrived");
+    let (l, _, _) = rig.run(blocks(3.0), true, &[]);
+    for x in &l {
+        biggest = biggest.max((x - last).abs());
+        last = *x;
+    }
+    assert!(biggest < 0.2, "no click on the way: {biggest}");
+    assert!(rms_of(&l) > 0.01, "and it plays");
+}
+
+#[test]
+fn vesper_rests_once_stopped_and_ends_its_notes() {
+    use crate::audio::modules::vesper::{ECHO, LAYERS, REPEATS, SPACE, k, knob};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Vesper));
+    p.set(SPACE, 0.0);
+    p.set(REPEATS, 0.0);
+    p.set(ECHO, 0.0);
+    for l in 0..LAYERS {
+        p.set(knob(l, k::RELEASE), 0.3);
+    }
+    let mut rig = VesperRig::new(&p);
+    let (l, _, midi) = rig.run(blocks(5.0), true, &[]);
+    assert!(rms_of(&l[120_000..]) > 0.01);
+    let ons = midi.iter().filter(|(_, m)| m[0] & 0xF0 == 0x90 && m[0] & 0x0F < 2).count();
+    assert!(ons >= 4, "chord and bass: {ons}");
+    let (l, _, midi) = rig.run(blocks(15.0), false, &[]);
+    let offs = midi.iter().filter(|(_, m)| m[0] & 0xF0 == 0x80 && m[0] & 0x0F < 2).count();
+    assert_eq!(offs, 3 + 1, "the score's notes end when it stops");
+    assert_eq!(peak_of(&l[640_000..]), 0.0, "and it falls silent, doing nothing");
+    // And starts again.
+    let (l, _, _) = rig.run(blocks(4.0), true, &[]);
+    assert!(rms_of(&l[96_000..]) > 0.01);
+}
+
+#[test]
+fn vesper_hold_lets_a_note_go_and_the_next_chord_strikes_again() {
+    use crate::audio::modules::vesper::{DURATION, PAD, VARIATION, k, knob};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Vesper));
+    vesper_solo(&p, PAD);
+    p.set(DURATION, 1.0); // two seconds a chord
+    p.set(VARIATION, 1.0); // always the same chord: no note changes
+    p.set(knob(PAD, k::ATTACK), 0.02);
+    p.set(knob(PAD, k::HOLD), 0.3);
+    p.set(knob(PAD, k::RELEASE), 0.2);
+    let mut rig = VesperRig::new(&p);
+    let (l, _, _) = rig.run(VESPER_BAR_BLOCKS * 3, true, &[]);
+    let bit = |bar: f32, secs: f32| {
+        let at = (bar * VESPER_BAR as f32 + secs * 48_000.0) as usize;
+        rms_of(&l[at..at + 4800])
+    };
+    for bar in [0.0, 1.0, 2.0] {
+        assert!(bit(bar, 0.1) > 0.01, "a stab at the start of bar {bar}: {}", bit(bar, 0.1));
+        assert!(bit(bar, 1.5) < bit(bar, 0.1) * 0.02, "gone before the next: {} after {}", bit(bar, 1.5), bit(bar, 0.1));
+    }
+}
+
+#[test]
+fn vesper_ostinato_plays_the_chord_in_time() {
+    use crate::audio::modules::vesper::{COMPLEXITY, DURATION, PULSE, data, set_flag};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Vesper));
+    set_flag(&p, data::OSTINATO, true);
+    p.set(PULSE, 5.0); // eighths: 12 000 samples at 120 BPM
+    p.set(DURATION, 4.0);
+    p.set(COMPLEXITY, 3.0);
+    let mut rig = VesperRig::new(&p);
+    let (_, _, midi) = rig.run(VESPER_BAR_BLOCKS, true, &[]);
+    let ons: Vec<(usize, u8)> = midi.iter().filter(|(_, m)| m[0] & 0xF0 == 0x90 && m[0] & 0x0F == 2).map(|&(at, m)| (at, m[1])).collect();
+    assert_eq!(ons.len(), 8, "eight eighths in a bar: {ons:?}");
+    for (n, &(at, _)) in ons.iter().enumerate() {
+        assert_eq!(at, n * 12_000, "on the grid: {ons:?}");
+    }
+    // Up over two octaves of the chord, then back down.
+    let notes: Vec<i32> = ons.iter().map(|&(_, m)| m as i32).collect();
+    assert!(notes[..6].windows(2).all(|w| w[0] < w[1]), "up: {notes:?}");
+    assert!(notes[5..8].windows(2).all(|w| w[0] > w[1]), "and down: {notes:?}");
+    assert_eq!(notes[3], notes[0] + 12);
+    assert_eq!(notes[6], notes[4]);
+    // Each has a note-off.
+    let offs = midi.iter().filter(|(_, m)| m[0] & 0xF0 == 0x80 && m[0] & 0x0F == 2).count();
+    assert_eq!(offs, 8);
+}
+
+#[test]
+fn vesper_big_screen_sounds_have_their_shape() {
+    use crate::audio::modules::vesper::library::render_table;
+    use crate::audio::modules::vesper::sounds::recipes;
+    use crate::audio::modules::vesper::{FACTORY, MIXTYPE, PAD, find_sound, load_factory};
+    let amp = |buf: &[f32], hz: f32| tone_amp(buf, hz);
+    // An organ: pure and steady, even and odd harmonics up high, a sub below.
+    let organ = &recipes(PAD)[find_sound(PAD, "Temple Organ")];
+    let t = render_table(organ, 48.0, 1 << 18, 48_000.0, 3);
+    let f0 = crate::audio::midi::note_hz(t.base);
+    let a1 = amp(&t.left, f0);
+    assert!(amp(&t.left, f0 * 2.0) > 0.1 * a1, "the octave stop");
+    assert!(amp(&t.left, f0 * 1.5) > 0.03 * a1, "the quint");
+    assert!(amp(&t.left, f0 * 0.5) > 0.05 * a1, "the sixteen-foot");
+    // Brass: saturated and heavy in the lows, with top end to bite.
+    let brass = &recipes(PAD)[find_sound(PAD, "Low Brass Wall")];
+    let t = render_table(brass, 48.0, 1 << 18, 48_000.0, 3);
+    let crest = peak_of(&t.left) / rms_of(&t.left);
+    assert!(crest < 3.2, "saturated: a crest of {crest}");
+    // The brass and the organ turn slowly through i–VI–III–VII.
+    let folded = FACTORY.iter().find(|s| s.name == "Folded City").unwrap();
+    let rules = crate::audio::modules::vesper::harmony::Rules { root: 9, mood: folded.mood, variation: folded.variation as usize, complexity: folded.complexity as usize };
+    let degrees = crate::audio::modules::vesper::harmony::progression(folded.seed as u32, folded.chords as usize, &rules).map(|s| s.degree);
+    assert_eq!(degrees[..4], [0, 5, 2, 6]);
+    // Each scene plays, loud enough and in range, in every mix it asks for.
+    for (n, scene) in FACTORY.iter().enumerate().skip(20) {
+        let p = Arc::new(ModuleParams::new(ModuleKind::Vesper));
+        load_factory(&p, n);
+        assert!(p.get(MIXTYPE) < 4.0);
+        let mut rig = VesperRig::new(&p);
+        let (l, r, _) = rig.run(blocks(8.0), true, &[]);
+        assert!(l.iter().chain(&r).all(|x| x.is_finite() && x.abs() <= 1.0), "{}", scene.name);
+        let rms = rms_of(&l[96_000..]);
+        assert!(rms > 0.03, "{} is audible: {rms}", scene.name);
+    }
+}
+
+#[test]
+fn vesper_panel_draws_while_it_plays() {
+    use crate::audio::modules::vesper::{EVOLVE, LAYERS, data, viz};
+    let shared = Arc::new(EngineShared::new());
+    shared.tempo.set(120.0);
+    let (a, mut e) = audio::offline(shared, 48_000);
+    let mut g = Graph::default();
+    let id = g.add_module(ModuleKind::Vesper, pos2(0.0, 0.0), &a);
+    let mix = g.add_mixer(pos2(1000.0, 0.0), &a);
+    g.connect(port(id, 0), port(mix, 0), &a);
+    let p = module_params(&g, id);
+    let mut editor = crate::ui::canvas::Editor::new();
+    let ctx = egui::Context::default();
+    let mut time = 0.0;
+    for round in 0..10 {
+        p.data[data::SELECTED].set((round % LAYERS) as f32);
+        p.set_mode(if round % 2 == 1 { EVOLVE } else { 0 });
+        p.set_toggle(round != 7);
+        for _ in 0..3 {
+            std::thread::sleep(std::time::Duration::from_millis(40));
+            render_buf(&mut e, 4_800);
+            time += 0.1;
+            let input = egui::RawInput { time: Some(time), ..Default::default() };
+            let mut out = ctx.run_ui(input, |ui| editor.show(ui, &mut g, &a));
+            out.textures_delta.clear();
+        }
+    }
+    assert!(p.viz[viz::CARDS].get() >= 2.0, "it showed its chords while drawn");
 }
 
 /// Records `seconds` of an oscillator through a mixer with the offline

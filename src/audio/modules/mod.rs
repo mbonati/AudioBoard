@@ -30,6 +30,7 @@ pub mod reverb;
 pub mod sequencer;
 pub mod steps;
 pub mod tape;
+pub mod vesper;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -44,6 +45,7 @@ pub enum ModuleKind {
     Drone,
     Aether,
     Larsen,
+    Vesper,
     Random,
     Pops,
     Nullpunkt,
@@ -105,10 +107,11 @@ pub struct ModuleDef {
 }
 
 impl ModuleKind {
-    pub const ALL: [ModuleKind; 25] = [
+    pub const ALL: [ModuleKind; 26] = [
         ModuleKind::Drone,
         ModuleKind::Aether,
         ModuleKind::Larsen,
+        ModuleKind::Vesper,
         ModuleKind::Random,
         ModuleKind::Pops,
         ModuleKind::Nullpunkt,
@@ -138,6 +141,7 @@ impl ModuleKind {
             ModuleKind::Drone => &drone::DEF,
             ModuleKind::Aether => &aether::DEF,
             ModuleKind::Larsen => &larsen::DEF,
+            ModuleKind::Vesper => &vesper::DEF,
             ModuleKind::Random => &random::DEF,
             ModuleKind::Pops => &pops::DEF,
             ModuleKind::Nullpunkt => &nullpunkt::DEF,
@@ -172,6 +176,7 @@ impl ModuleKind {
             ModuleKind::Drone => Box::new(drone::Drone::new(params, sample_rate)),
             ModuleKind::Aether => Box::new(aether::Aether::new(params, midi.clone(), sample_rate)),
             ModuleKind::Larsen => Box::new(larsen::Larsen::new(params, midi.clone(), sample_rate)),
+            ModuleKind::Vesper => Box::new(vesper::Vesper::new(params, midi.clone(), sample_rate)),
             ModuleKind::Random => Box::new(random::Random::new(params, sample_rate)),
             ModuleKind::Pops => Box::new(pops::Pops::new(params, sample_rate)),
             ModuleKind::Nullpunkt => Box::new(nullpunkt::Nullpunkt::new(params, sample_rate)),
