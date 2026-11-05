@@ -67,6 +67,7 @@ impl NodeType {
                 NodeType::Module(ModuleKind::Drone),
                 NodeType::Module(ModuleKind::Aether),
                 NodeType::Module(ModuleKind::Larsen),
+                NodeType::Module(ModuleKind::Vesper),
                 NodeType::Module(ModuleKind::Random),
                 NodeType::Module(ModuleKind::Pops),
                 NodeType::Module(ModuleKind::Nullpunkt),

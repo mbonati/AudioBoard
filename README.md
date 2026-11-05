@@ -135,6 +135,46 @@ settles where they meet. Each string's note floats over its fundamental, glowing
 inside the loop wear the node's colour, those after it amber. FREQ and BODY show what really plays: the key's
 note (MIDI) and the snapped BODY (SNAP).
 
+**Vesper**: a generative ambient instrument, for soundscapes, cinematic pads and chord progressions. Pick a ROOT
+and a mood, and the engine writes the chords and five layers play them. It works the way generative ambient
+plugins such as Rast Sound's Cinescapes PRO do, with an engine, sounds and names of its own. There are no sample
+files: each sound is a recipe (partials widened into bands, noise, a spectral shape, then swells, sweeps, grit,
+dust and chimes) rendered into a looped stereo sample by a thread of the node's own, so playing costs little.
+
+- **The chords.** Sixteen moods, each a seven-degree scale, from Radiant (major) and Elegy (natural minor) to Temple
+  (double harmonic) and Cosmos (Lydian augmented). **LOOP** repeats a progression of CHORDS chords, **EVOLVE** writes
+  new ones for as long as it plays, and shows what's next. In both, **VARIATION** is how many of the seven degrees
+  chords may stand on, **NOTES** how many notes each has (two, three or four) and **DURATION** how long each lasts,
+  half a bar to sixteen, on the board's bars. Voices move as little as they can from chord to chord, and a note two
+  chords share is held over. The rules can change while it plays: ROOT and mood re-tune the same progression.
+- **The layers.** **PAD** plays the chord, **BASS** its root, **AMBIENCE** an atmosphere (tuned ones follow the root),
+  **NOISE** a texture, some forty sounds each; **SHIMMER** strikes small high pings on the chord's notes, sixteen
+  timbres, at random (PINGS) or as an **OSTINATO**: in time on PULSE's note value, up two octaves of the chord and
+  back. Each layer has its sound, LOCK, MUTE and level, and the knobs of the one selected: OCTAVE, ATTACK, **HOLD**
+  (a note lets go by itself: a stab; at the top it sustains), RELEASE, **BLOOM** (on each new chord the first filter
+  starts below itself and opens as the note comes in, as brass does), WIDTH, two **motion filters** (low, high, band
+  or notch, each with FREQ, MOTION and RATE: they move on their own, a little apart on the two sides), DRIVE, CHORUS
+  and sends to the ECHO and the SPACE all the layers share.
+- **GENERATE** writes new chords on the same sounds. **SHUFFLE** picks new sounds on the layers that aren't locked,
+  and leaves the chords. A new sound takes tenths of a second to make; until it's ready the old one plays on, then
+  they crossfade.
+- **MixType**, over the whole mix: **CLEAN** (neutral), **DREAM** (a slow chorus, softer highs, a longer and brighter
+  tail), **DUST** (worn tape: saturation, wow and flutter) and **EDGE** (driven, lifted presence, a touch of bit grit).
+- **PLAY.** On, it plays with the transport and keys are ignored; off, the keys on the MIDI input play it (a MIDI
+  cable, or else the keyboards): Pad on the keys, Bass and tuned Ambience on the lowest, pings on the keys held.
+- **MIDI output.** With PLAY on it sends its score: the chord on channel 1, the bass on 2, Shimmer on 3. Patch it into
+  a plugin, or into the MIDI Looper to keep it.
+- **PRESETS** saves everything as a scene under a name. Twenty-eight built-in scenes keep your ROOT and LEVEL. The
+  last eight are for large-scale film scoring: walls of low brass struck on each chord (Folded City), strings slowed
+  down on tape (Limbo), a pulsing ostinato over strings and tuba (Dream Stack), a soft piano-like figure (Last
+  Thought), and the pipe organ, huge and steady, with a pulse or a ticking clock over it (Gravity Organ, Full Ascent,
+  Dust Field, Tesseract). They sit best at 60–80 BPM.
+
+The panel is a landscape that plays: the Ambience far off, then the Pad, a bank of Noise as fog, the Bass in front,
+each ridge rising with its layer and rolling with its filters; the chord's notes hang in the sky as beams, pings come
+out as stars, and the moon crosses once for every chord. Under it, the chords by name. Like every source it falls
+silent when the transport stops; its notes ring out on their release, and once quiet it rests and costs nothing.
+
 **Random**: a random modulation source. RATE, CHAOS (irregular timing), SMOOTH (from sample & hold to
 continuous glide), LEVEL. Patch it into any control input (cutoff, pitch, grain position…).
 
@@ -919,6 +959,10 @@ src/
 │   │   │               and COUPLING, the output's limiter, built-in sounds
 │   │   ├── larsen/     parts (string, drive, filters, the loop's reverb), echo (CLASSIC and PONG), keys (the
 │   │   │               strings' notes)
+│   │   ├── vesper.rs   Vesper: knobs and scenes, the score (bars, chords, MIDI), the layers, shared effects
+│   │   ├── vesper/     harmony (moods, progressions, voicing), sounds (the recipes), library (rendering them
+│   │   │               into loops on a thread of its own), layer (playing loops, pings), fx (motion filters,
+│   │   │               strips, the MixTypes)
 │   │   ├── automa.rs   Automa: steps, choosing and fitting notes, voices, pad, FREEZE, what the panel shows
 │   │   ├── automa/     engines (LIFE, CASCADE, TREE, JULIA), harmony (scales, chords, progressions,
 │   │   │               consonance rules, functional substitutions)
@@ -958,7 +1002,8 @@ src/
 │   ├── aether.rs   the Aether panel: the fractal flower, the partials' aurora, the motion strip, knob groups
 │   ├── larsen.rs   the Larsen panel: the loop's field (spectrum, filter band, harmonics, BODY's resonances),
 │   │               switches, knob groups
-│   ├── preset_menu.rs the PRESETS ▾ menu shared by Nullpunkt, Aether and Larsen: save, load, delete
+│   ├── vesper.rs   the Vesper panel: the landscape, moods and root, the chords, a strip per layer, knob groups
+│   ├── preset_menu.rs the PRESETS ▾ menu shared by Nullpunkt, Aether, Larsen and Vesper: save, load, delete
 │   ├── looper.rs   the MIDI Looper panel: transport, scenes and their settings, the editable roll, knobs
 │   ├── automa.rs   the Automa panel: the generator's world (grid, waterfall, tree, Julia set), the roll over
 │   │               the chord lanes, the progression strip, knob groups
@@ -1000,7 +1045,7 @@ sideways drift.
 To add a new module: a file in `audio/modules/` with its `ModuleDef` (knobs, ports, modes, toggle) and a
 `Processor`, an entry in `ModuleKind` and, in `ui/modules.rs`, the readout and the display.
 The panel (ports, selector, knobs) is generated from the definition; Frakture, too large for the generic
-panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`), Magma (`ui/magma.rs`), Tape (`ui/tape.rs`), Nullpunkt (`ui/nullpunkt.rs`), Aether (`ui/aether.rs`), Larsen (`ui/larsen.rs`), the MIDI Looper (`ui/looper.rs`), Automa (`ui/automa.rs`) and Pops 66
+panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`), Magma (`ui/magma.rs`), Tape (`ui/tape.rs`), Nullpunkt (`ui/nullpunkt.rs`), Aether (`ui/aether.rs`), Larsen (`ui/larsen.rs`), Vesper (`ui/vesper.rs`), the MIDI Looper (`ui/looper.rs`), Automa (`ui/automa.rs`) and Pops 66
 (`ui/pops.rs`, whose size follows its detail level through `modules::size_of`). Frakture's hexagon runs on the audio thread, block by block: the panel
 hands it the mouse through the module's display values, so paths keep time even when the window doesn't
 redraw.

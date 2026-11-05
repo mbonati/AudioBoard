@@ -226,6 +226,14 @@ pub struct SpaceSettings {
     wet: f32,
 }
 
+impl SpaceSettings {
+    /// How much of the input [`Space::process`] lets through: what to take
+    /// back off to use it as a send, tail alone.
+    pub fn dry(&self) -> f32 {
+        1.0 - 0.4 * self.wet
+    }
+}
+
 /// Diffusion into a long, slowly moving network, with AIR.
 pub struct Space {
     sr: f32,
