@@ -100,6 +100,7 @@ impl NodeType {
                 NodeType::Module(ModuleKind::Sequencer),
                 NodeType::Module(ModuleKind::Midicer),
                 NodeType::Module(ModuleKind::Automa),
+                NodeType::Module(ModuleKind::Colloid),
                 NodeType::Module(ModuleKind::Looper),
                 NodeType::Module(ModuleKind::Arpeggiator),
                 NodeType::Module(ModuleKind::MidiIn),
