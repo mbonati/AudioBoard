@@ -11,7 +11,7 @@ use super::widgets;
 use crate::audio::engine::NodeId;
 use crate::audio::midi::note_hz;
 use crate::audio::modules::{
-    ModuleDef, ModuleKind, ModuleParams, aether, arpeggiator, larsen, looper, vesper, audio_in, automa, delay, drone, equalizer, filter, frakture, magma, pops, granular, midi_cc, midi_in, midi_note,
+    ModuleDef, ModuleKind, ModuleParams, aether, arpeggiator, larsen, looper, vesper, audio_in, automa, colloid, delay, drone, equalizer, filter, frakture, magma, pops, granular, midi_cc, midi_in, midi_note,
     midicer, nullpunkt, pingpong, random, resonator, reverb, sequencer, steps, tape,
 };
 use crate::audio::params::{
@@ -103,6 +103,9 @@ pub fn size(def: &ModuleDef) -> Vec2 {
     if std::ptr::eq(def, &automa::DEF) {
         return super::automa::SIZE;
     }
+    if std::ptr::eq(def, &colloid::DEF) {
+        return super::colloid::SIZE;
+    }
     let cols = columns(def);
     let rows = def.params.len().div_ceil(cols);
     vec2(
@@ -190,6 +193,10 @@ pub fn draw(
         super::automa::draw(v, id, accent, m, midi.1);
         return MapButton::default();
     }
+    if kind == ModuleKind::Colloid {
+        super::colloid::draw(v, id, accent, m, midi);
+        return MapButton::default();
+    }
     if kind == ModuleKind::Tape {
         super::tape::draw(v, id, accent, m, (patched(0), outputs.first().copied().unwrap_or(false)));
         return MapButton::default();
@@ -264,7 +271,7 @@ pub fn draw(
         ModuleKind::AudioIn => audio_in_display(&screen, p),
         ModuleKind::Random | ModuleKind::MidiCc | ModuleKind::MidiNote => trace_display(&screen, m),
         ModuleKind::Granular => granular_display(&screen, p),
-        ModuleKind::Frakture | ModuleKind::Equalizer | ModuleKind::Magma | ModuleKind::Pops | ModuleKind::Tape | ModuleKind::Nullpunkt | ModuleKind::Aether | ModuleKind::Larsen | ModuleKind::Vesper | ModuleKind::Automa | ModuleKind::Looper => {}
+        ModuleKind::Frakture | ModuleKind::Equalizer | ModuleKind::Magma | ModuleKind::Pops | ModuleKind::Tape | ModuleKind::Nullpunkt | ModuleKind::Aether | ModuleKind::Larsen | ModuleKind::Vesper | ModuleKind::Automa | ModuleKind::Colloid | ModuleKind::Looper => {}
         ModuleKind::Resonator => resonator_display(&screen, p),
         ModuleKind::Filter => filter_display(&screen, p),
         ModuleKind::Delay => delay_display(&screen, p, echo_seconds(p, v.tempo)),
@@ -486,6 +493,7 @@ fn readout(kind: ModuleKind, p: &ModuleParams, tempo: f32) -> (String, String) {
         ModuleKind::Vesper => super::vesper::readout(p),
         ModuleKind::Looper => super::looper::readout(p),
         ModuleKind::Automa => super::automa::readout(p),
+        ModuleKind::Colloid => super::colloid::readout(p),
         ModuleKind::Granular => {
             let n = p.viz[granular::viz::COUNT].get() as usize;
             let state = if p.toggled() { "Frozen" } else { "Recording" };

@@ -7,6 +7,7 @@ pub mod aether;
 pub mod arpeggiator;
 pub mod audio_in;
 pub mod automa;
+pub mod colloid;
 pub mod delay;
 pub mod drone;
 pub mod equalizer;
@@ -67,6 +68,7 @@ pub enum ModuleKind {
     MidiIn,
     Midicer,
     Automa,
+    Colloid,
     Looper,
 }
 
@@ -107,7 +109,7 @@ pub struct ModuleDef {
 }
 
 impl ModuleKind {
-    pub const ALL: [ModuleKind; 26] = [
+    pub const ALL: [ModuleKind; 27] = [
         ModuleKind::Drone,
         ModuleKind::Aether,
         ModuleKind::Larsen,
@@ -133,6 +135,7 @@ impl ModuleKind {
         ModuleKind::MidiIn,
         ModuleKind::Midicer,
         ModuleKind::Automa,
+        ModuleKind::Colloid,
         ModuleKind::Looper,
     ];
 
@@ -163,6 +166,7 @@ impl ModuleKind {
             ModuleKind::MidiIn => &midi_in::DEF,
             ModuleKind::Midicer => &midicer::DEF,
             ModuleKind::Automa => &automa::DEF,
+            ModuleKind::Colloid => &colloid::DEF,
             ModuleKind::Looper => &looper::DEF,
         }
     }
@@ -198,6 +202,7 @@ impl ModuleKind {
             ModuleKind::MidiIn => Box::new(midi_in::MidiIn::new(params, midi)),
             ModuleKind::Midicer => Box::new(midicer::Midicer::new(params, midi)),
             ModuleKind::Automa => Box::new(automa::Automa::new(params)),
+            ModuleKind::Colloid => Box::new(colloid::Colloid::new(params, midi.clone(), sample_rate)),
             ModuleKind::Looper => Box::new(looper::Looper::new(params, midi, sample_rate)),
         }
     }
