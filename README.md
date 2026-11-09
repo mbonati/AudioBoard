@@ -537,14 +537,14 @@ semitone knobs the distance from middle C, and the others the key's position. Th
 messages that arrive after mapping. **UNMAP** removes the mapping. Mappings are saved in the project and in
 library modules.
 
-### MIDI sequences: Step Sequencer, MIDIcer, Automa, MIDI Looper, Arpeggiator, MIDI In
+### MIDI sequences: Step Sequencer, MIDIcer, Automa, Colloid, MIDI Looper, Arpeggiator, MIDI In
 
 Besides audio cables there are **MIDI cables**: square ports (audio ports are round) and dashed cables.
 A MIDI cable only joins a MIDI output to a MIDI input. VST3 plugins that accept MIDI (instruments), the
-Arpeggiator, MIDIcer, the MIDI Looper and MIDI Note have a MIDI input.
+Arpeggiator, MIDIcer, Colloid, the MIDI Looper and MIDI Note have a MIDI input.
 
 **Start / Stop** (toolbar, or Space) drive the transport, not the audio: Stop ends the sound's generation
-but lets it die away. Sequencers, arpeggiators, MIDIcer and Automa stop and end the notes they were holding (VST
+but lets it die away. Sequencers, arpeggiators, MIDIcer, Automa and Colloid stop and end the notes they were holding (VST
 instruments and MIDI Note release them as usual), oscillators and Drones fade out in a few milliseconds,
 while effects (Delay, Ping Pong, Reverb, Granular, Resonator, Filter) and plugins keep running, so their
 tails ring on. Stop also goes back to the start: on the next Start everything begins again from its first
@@ -644,6 +644,65 @@ coloured by function: blue tonic, green subdominant, orange dominant.
   output CHANNEL. Settings, progression, LIFE's start grid and the seed are saved in the project and in
   library modules.
 
+**Colloid**: a generative MIDI node played by physics. A handpan's notes, or a chord's, become molecules floating
+in a liquid; while the transport plays, atoms are let into the tank, fall towards the molecules and strike them, and
+every strike plays the struck molecule's note. The panel is the tank itself, drawn flat and graphic like a diagram
+that moves: the liquid in flat bands of depth, a matrix of dots drawn towards the molecules as far as they pull, a
+dashed ring turning round each molecule for its well. Molecules are line art, coloured outlines only, bonded into a
+shape by their role (the root a tetrahedron, the third a triangle, the fifth a line, the seventh a star, any other
+note a benzene ring), coloured by role (amber, pink, cyan, lavender, mint), tumbling with an electron on its orbit
+and the note written in the core (under the molecule when it is small); a note brightens and thickens its lines; nearby molecules are linked by flowing dashes into clusters that keep shifting. While a molecule rings,
+rings of sound spread from it. Atoms are dots trailing a wake of smaller dots, pale when slow, pink when fast, ringed
+in amber while charged. A strike draws a crisp ring and a burst of ticks; a note flashes its molecule and floats its
+name up in a tag. New notes sweep a line through the tank. **Click** in the tank to push the liquid outwards,
+**drag** to stir it. Under the tank, a cell per molecule, low to high, fills while its note rings.
+- *The notes*: **HANDPAN** or **CHORD** at the top, then the shape. The handpans (the default) are tuned like the
+  instruments: a ding, the low note, under its tone fields, every note in tune with every other, so whatever the
+  atoms strike the line stays a melody: **KURD** (the classic minor, D | A Bb C D E F G A C on D), **CELTIC** (minor
+  without the sixth), **AMARA** (Celtic without the fourth, open), **INTEGRAL** (the first Hang's sound), **HIJAZ**
+  (Middle Eastern, the raised seventh), **PYGMY** (a bright minor pentatonic), **AKEBONO** (Japanese pentatonic),
+  **SABYE** (sunny major without the fourth) and **AEGEAN** (dreamy major, the raised fourth). The root is the row of
+  keys under the selector, C to B (click one; it can be mapped to a MIDI controller like a knob): the ding, with
+  **OCTAVE** its octave; the molecules take the layout's notes from the ding up (with more molecules than notes, the
+  layout again an octave up). The chords are MAJ, MIN, SUS2, SUS4, MAJ7, MIN7, DOM7, MAJ9, MIN9, 6/9, QUART (fourths)
+  and PENTA, on the same root: **COLOR** adds colour tones (9ths, 11ths, 13ths; never a half step above a chord tone),
+  **SPREAD** is how many octaves the molecules cover (both are for chords: dimmed while a handpan plays), the notes
+  evenly spaced from the root up, every tone in turn. Low notes make big, heavy molecules that float low; high ones are
+  small, light and float high. When the notes change, each molecule moves to the nearest new one.
+- *MIDI control*: on its MIDI input (its cable or, with none, the MIDI keyboard) a single key moves the root (the ding;
+  the shape stays; the row of keys rings the root they play), two or more keys played together become the chord
+  itself, whatever it is. The notes from the keys stay until **× KEYS** in the tank, or a click on the row of keys,
+  lets go of them. Program Change 1–21 picks the shape: 1–9 the handpans,
+  10–21 the chords.
+- *PARTICLES*: **MOLECULES** (2–16), **ATOMS** (1–48, let in from the edges on Start), **MASS** (heavier atoms strike
+  harder).
+- *FIELD*: **ATTRACT** (how strongly the molecules pull: low, atoms drift by; high, they orbit and fall in),
+  **RANGE** (how far the pull reaches), **CHARGE** (after a strike the atom is pushed off that molecule for a while,
+  then falls back: bouncing rhythms; at 0 atoms cling to a molecule and rattle it with quick, soft notes) and
+  **BOUNCE** (the speed a strike gives back; past 85% strikes add energy).
+- *LIQUID*: **VISCOSITY** (slows the atoms and damps the rings), **HEAT** (Brownian kicks), **FLOW** (swirling
+  currents) and **DRIFT** (how much the molecules wander and gather).
+- *NOTES*: the physics plays them. The **velocity** follows the strike's force (the atom's speed and mass) as far as
+  **DYNAMICS** says, up to **VELOCITY**. The **length** is how long the molecule rings: the harder the strike the
+  longer, longer in big (low) molecules, shorter in a thick liquid; **LENGTH** is how long the hardest strike rings.
+  A molecule plays at most every 45 ms; a new strike while it rings strikes the note again. **QUANT** holds notes
+  back to the next step of the board's grid (1/4 to 1/32, triplets), or plays them as they strike (FREE).
+  **CHANNEL** is the output channel, for the notes and the CC lanes.
+- *CC EVENTS*: four lanes, each sending a controller with the notes. **ON** switches a lane, the controller menu
+  picks its number (Mod wheel, Breath, Foot, Volume, Pan, Expression, Sustain, Sostenuto, Soft pedal, Resonance,
+  Cutoff, Reverb, Chorus, or any number 0–127), the source menu what drives it, and the two boxes the values it sends
+  for the source's lowest and highest (drag them; the low one above the high one turns it upside down); the bar shows
+  the value going out. Sources: **PEDAL** (a sustain pedal: down while the atoms play, lifted for a moment at each new
+  chord so the old one doesn't blur into it, let go on Stop), **KEYS** (the same controller from the MIDI input,
+  passed through: your sustain pedal, mod wheel or expression pedal), and what the tank is doing: **ENERGY** (how hard
+  the molecules ring), **DENSITY** (how many notes play), **SPEED** (how fast the atoms go), **STRIKE** (each note's
+  force, falling away after it), **SWIRL** (which way and how fast the atoms circle the tank) and **CHARGE** (how
+  charged the atoms are). The tank's sources send while the atoms play, at most every 10 ms and only on a change. The
+  lanes start off, set up as Sustain from PEDAL, Mod wheel from ENERGY, Expression from DENSITY and Cutoff from SPEED.
+- **PLAY** lets the atoms in while the transport plays; stopped or paused, they leave and the molecules keep floating.
+  Start lets them in again from the seed (**RESEED** picks a new one, scattering the molecules too). The settings, the
+  CC lanes and the seed are saved in the project and in library modules.
+
 **Arpeggiator**: plays the held notes one at a time, in time, over 1–4 octaves (OCTAVES), in UP, DOWN,
 U+D (up and down), RAND or ORDER (as played) order. RATE, GATE, SWING, CHANCE, VELOCITY as in the
 sequencer. Notes come from its MIDI cable or, with no cable, straight from the MIDI keyboard.
@@ -688,6 +747,8 @@ Examples:
   from the keyboard too);
 - *MIDI In → Arpeggiator → VST instrument*: arpeggios from what you play;
 - *Automa → VST instrument*: generative lines in key (with **PAD**, the chords as well);
+- *Colloid → VST instrument*: handpan melodies from the atoms (with a Sustain lane from PEDAL for a piano);
+- *MIDI In → Colloid → VST instrument*: play chords on the keyboard, and the atoms play them;
 - *MIDI Looper → VST instrument*: play a phrase, loop it, layer it, and switch between scenes;
 - *Step Sequencer → MIDI Note*, with ENV into an oscillator's AM and MAP on its FREQ: the sequence plays
   the built-in nodes.
@@ -812,7 +873,7 @@ Gain staging follows a DAW's:
 | Connect | drag from a port to the opposite kind (output → input or vice versa) |
 | Reconnect / unplug a cable | drag it away from the input it is plugged into |
 | Delete a cable | double-click the cable, or right-click → Disconnect |
-| Adjust knobs / faders | drag (Shift = fine adjustment), double-click = reset |
+| Adjust knobs / faders | drag (Shift = fine adjustment), double-click = reset. Stepped knobs (notes, whole numbers, divisions) step on smoothly however slowly you drag, and their pointer glides from step to step |
 | Select several nodes | drag a rectangle on empty canvas, or Shift+click (Cmd+A all, Esc none) |
 | Move the view | two-finger scroll, drag with the right or middle button, or Alt+drag |
 | Zoom | pinch or Cmd+scroll; Cmd+= / Cmd+− / Cmd+0 (100%); or click the percentage in the status bar |
@@ -966,6 +1027,10 @@ src/
 │   │   ├── automa.rs   Automa: steps, choosing and fitting notes, voices, pad, FREEZE, what the panel shows
 │   │   ├── automa/     engines (LIFE, CASCADE, TREE, JULIA), harmony (scales, chords, progressions,
 │   │   │               consonance rules, functional substitutions)
+│   │   ├── colloid.rs  Colloid: knobs, the notes (panel or keys), molecules' notes, strikes into notes, QUANT,
+│   │   │               the CC lanes
+│   │   ├── colloid/    physics (the tank: molecules, atoms, gravity, liquid, strikes, stirring), chords
+│   │   │               (handpan layouts, chord shapes, colour tones, roles, spreading notes over the molecules)
 │   │   ├── looper.rs   MIDI Looper: scenes and their notes, transport, recording and overdub, playing
 │   │   │               forward, reversed or by random slices, launching and following scenes, MIDI control
 │   │   ├── looper/     clock (following a MIDI clock: ticks, Start, Stop, Continue, song position)
@@ -1007,6 +1072,8 @@ src/
 │   ├── looper.rs   the MIDI Looper panel: transport, scenes and their settings, the editable roll, knobs
 │   ├── automa.rs   the Automa panel: the generator's world (grid, waterfall, tree, Julia set), the roll over
 │   │               the chord lanes, the progression strip, knob groups
+│   ├── colloid.rs  the Colloid panel, flat and graphic: the tank (bands, dot matrix, wells, molecule icons, wakes,
+│   │               strikes, stirring), HANDPAN / CHORD and the shape, the notes' cells, knob groups, CC lanes
 │   ├── settings.rs the Settings window: output device, channels, rate, buffer; input and its meters
 │   ├── pops.rs     the Pops 66 panel: MACHINE, MIXER and EDITOR detail levels (the node resizes), waveform preview
 │   ├── widgets.rs  hand-drawn knobs, faders, meters, ports and cables
@@ -1045,7 +1112,7 @@ sideways drift.
 To add a new module: a file in `audio/modules/` with its `ModuleDef` (knobs, ports, modes, toggle) and a
 `Processor`, an entry in `ModuleKind` and, in `ui/modules.rs`, the readout and the display.
 The panel (ports, selector, knobs) is generated from the definition; Frakture, too large for the generic
-panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`), Magma (`ui/magma.rs`), Tape (`ui/tape.rs`), Nullpunkt (`ui/nullpunkt.rs`), Aether (`ui/aether.rs`), Larsen (`ui/larsen.rs`), Vesper (`ui/vesper.rs`), the MIDI Looper (`ui/looper.rs`), Automa (`ui/automa.rs`) and Pops 66
+panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`), Magma (`ui/magma.rs`), Tape (`ui/tape.rs`), Nullpunkt (`ui/nullpunkt.rs`), Aether (`ui/aether.rs`), Larsen (`ui/larsen.rs`), Vesper (`ui/vesper.rs`), the MIDI Looper (`ui/looper.rs`), Automa (`ui/automa.rs`), Colloid (`ui/colloid.rs`) and Pops 66
 (`ui/pops.rs`, whose size follows its detail level through `modules::size_of`). Frakture's hexagon runs on the audio thread, block by block: the panel
 hands it the mouse through the module's display values, so paths keep time even when the window doesn't
 redraw.

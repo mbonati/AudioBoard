@@ -5952,3 +5952,353 @@ fn automa_panel_draws_every_generator() {
     }
     assert!(p.viz[crate::audio::modules::automa::viz::EVENT_SEQ].get() > 0.0, "it played while drawn");
 }
+
+// ---------------------------------------------------------------------------
+// Colloid
+// ---------------------------------------------------------------------------
+
+/// Runs Colloid from frame `from` of a 120 BPM grid for `frames`, with
+/// `keys` arriving on its MIDI cable (absolute frames), returning its MIDI.
+fn run_colloid(
+    c: &mut crate::audio::modules::colloid::Colloid,
+    from: usize,
+    frames: usize,
+    playing: bool,
+    restart: bool,
+    keys: &[(usize, [u8; 3])],
+) -> Vec<(usize, [u8; 3])> {
+    use crate::audio::engine::{Inputs, MAX_INPUTS, MidiBuf, ProcessCtx, Processor};
+    const SR: f64 = 48_000.0;
+    let bps = 2.0 / SR;
+    let mut inputs = Box::new(Inputs {
+        bufs: [[[0.0; 64]; 2]; MAX_INPUTS],
+        connected: [false; MAX_INPUTS],
+        midi: MidiBuf::default(),
+        midi_connected: true,
+    });
+    let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
+    let mut events = Vec::new();
+    for done in (0..frames).step_by(64) {
+        let at = from + done;
+        inputs.midi.clear();
+        for (f, m) in keys.iter().filter(|(f, _)| (at..at + 64).contains(f)) {
+            inputs.midi.push(f - at, *m);
+        }
+        let ctx = ProcessCtx {
+            sample_rate: SR as f32,
+            smooth: 0.01,
+            beat: at as f64 * bps,
+            beats_per_sample: bps,
+            playing,
+            restart: restart && done == 0,
+        };
+        c.process(&ctx, &inputs, &mut outputs, 64);
+        for e in c.midi_out().expect("sends MIDI").events() {
+            events.push((at + e.frame as usize, e.data));
+        }
+    }
+    events
+}
+
+fn colloid(p: &Arc<ModuleParams>) -> crate::audio::modules::colloid::Colloid {
+    crate::audio::modules::colloid::Colloid::new(p.clone(), Arc::new(crate::audio::midi::MidiState::new()), 48_000.0)
+}
+
+/// The pitch classes Colloid says it plays.
+fn colloid_pcs(p: &ModuleParams) -> u16 {
+    use crate::audio::modules::colloid::viz;
+    p.viz[viz::MASK].get() as u16 | p.viz[viz::COLOURS].get() as u16
+}
+
+/// Each note's length in frames.
+fn note_lengths(events: &[(usize, [u8; 3])]) -> Vec<usize> {
+    let mut on = std::collections::HashMap::<u8, usize>::new();
+    let mut lengths = Vec::new();
+    for &(f, m) in events {
+        match m[0] & 0xF0 {
+            0x90 if m[2] > 0 => {
+                on.insert(m[1], f);
+            }
+            0x80 | 0x90 => {
+                if let Some(start) = on.remove(&m[1]) {
+                    lengths.push(f - start);
+                }
+            }
+            _ => {}
+        }
+    }
+    lengths
+}
+
+#[test]
+fn colloid_strikes_play_the_chords_notes_and_every_note_ends() {
+    let p = Arc::new(ModuleParams::new(ModuleKind::Colloid));
+    let mut c = colloid(&p);
+    let mut events = run_colloid(&mut c, 0, 20 * 48_000, true, true, &[]);
+    events.extend(run_colloid(&mut c, 20 * 48_000, 4_800, false, false, &[]));
+    let ons = note_ons(&events);
+    eprintln!("default patch: {} notes in 20 s", ons.len());
+    assert!(ons.len() > 20, "the atoms strike: {} notes", ons.len());
+    let pcs = colloid_pcs(&p);
+    assert!(ons.iter().all(|&(_, n)| pcs >> (n % 12) & 1 == 1), "every note is in the chord");
+    assert!(events.iter().all(|(_, m)| m[0] & 0x0F == 0), "on channel 1");
+    assert!(events.iter().filter(|(_, m)| m[0] & 0xF0 == 0x90).all(|(_, m)| (1..=127).contains(&m[2])));
+    assert!(every_note_ends(&events), "stopping ends the notes");
+    // Velocities follow the strikes: not all the same.
+    let vels: std::collections::BTreeSet<u8> = events.iter().filter(|(_, m)| m[0] & 0xF0 == 0x90).map(|(_, m)| m[2]).collect();
+    assert!(vels.len() > 5, "dynamics from the physics: {vels:?}");
+}
+
+#[test]
+fn colloid_is_silent_while_stopped_or_paused() {
+    use crate::audio::modules::colloid::viz;
+    let p = Arc::new(ModuleParams::new(ModuleKind::Colloid));
+    let mut c = colloid(&p);
+    assert!(run_colloid(&mut c, 0, 4 * 48_000, false, false, &[]).is_empty());
+    assert_eq!(p.viz[viz::ATOMS].get(), 0.0, "no atoms while stopped");
+    p.set_toggle(false);
+    assert!(run_colloid(&mut c, 0, 4 * 48_000, true, true, &[]).is_empty());
+    p.set_toggle(true);
+    let events = run_colloid(&mut c, 4 * 48_000, 4 * 48_000, true, false, &[]);
+    assert!(!note_ons(&events).is_empty());
+    assert_eq!(p.viz[viz::ATOMS].get(), 6.0);
+}
+
+#[test]
+fn colloid_takes_the_chord_from_the_keys() {
+    use crate::audio::modules::colloid::chords::FIRST_CHORD;
+    use crate::audio::modules::colloid::{COLOR, MOLECULES, viz};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Colloid));
+    p.set_mode(FIRST_CHORD); // major
+    p.set(COLOR, 0.0);
+    p.set(MOLECULES, 9.0);
+    let mut c = colloid(&p);
+    let c_major = [(100, [0x90, 60, 90]), (300, [0x90, 64, 90]), (400, [0x90, 67, 90]), (9_000, [0x80, 60, 0]), (9_000, [0x80, 64, 0]), (9_000, [0x80, 67, 0])];
+    let events = run_colloid(&mut c, 0, 10 * 48_000, true, true, &c_major);
+    assert_eq!(p.viz[viz::SOURCE].get(), 2.0);
+    assert_eq!(p.viz[viz::MASK].get() as u16, 1 | 1 << 4 | 1 << 7);
+    let late: Vec<_> = note_ons(&events).into_iter().filter(|&(f, _)| f > 4_800).collect();
+    assert!(!late.is_empty());
+    assert!(late.iter().all(|&(_, n)| [0, 4, 7].contains(&(n % 12))), "C E G only: {late:?}");
+    // The molecules hold the chord's notes, each a different one.
+    let notes: Vec<u8> = (0..9).map(|k| p.viz[viz::MOLECULE + k * viz::MOLECULE_LEN + 5].get() as u8).collect();
+    assert!(notes.iter().all(|n| [0, 4, 7].contains(&(n % 12))));
+    assert_eq!(notes.iter().collect::<std::collections::BTreeSet<_>>().len(), 9);
+
+    // One key: a new root for the panel's shape (major): A C# E.
+    let from = 10 * 48_000;
+    let a = [(from + 100, [0x90, 69, 90]), (from + 4_000, [0x80, 69, 0])];
+    let events = run_colloid(&mut c, from, 6 * 48_000, true, false, &a);
+    assert_eq!(p.viz[viz::SOURCE].get(), 1.0);
+    let late: Vec<_> = note_ons(&events).into_iter().filter(|&(f, _)| f > from + 4_800).collect();
+    assert!(late.iter().all(|&(_, n)| [9, 1, 4].contains(&(n % 12))), "A C# E only: {late:?}");
+
+    // Program Change picks the shape; letting go goes back to ROOT (D).
+    run_colloid(&mut c, from, 640, true, false, &[(from + 10, [0xC0, FIRST_CHORD as u8 + 1, 0])]);
+    assert_eq!(p.mode(), FIRST_CHORD + 1);
+    p.viz[viz::UNLATCH].set(1.0);
+    run_colloid(&mut c, from, 640, true, false, &[]);
+    assert_eq!(p.viz[viz::SOURCE].get(), 0.0);
+    assert_eq!(p.viz[viz::MASK].get() as u16, 1 << 2 | 1 << 5 | 1 << 9, "D minor");
+}
+
+#[test]
+fn colloid_quantized_notes_land_on_the_grid() {
+    use crate::audio::modules::colloid::QUANT;
+    let p = Arc::new(ModuleParams::new(ModuleKind::Colloid));
+    p.set(QUANT, 4.0); // 1/16
+    let mut c = colloid(&p);
+    let mut events = run_colloid(&mut c, 0, 10 * 48_000, true, true, &[]);
+    events.extend(run_colloid(&mut c, 10 * 48_000, 4_800, false, false, &[]));
+    let ons = note_ons(&events);
+    assert!(ons.len() > 10);
+    assert!(ons.iter().all(|&(f, _)| f % SIXTEENTH == 0), "on sixteenths: {:?}", &ons[..ons.len().min(12)]);
+    assert!(every_note_ends(&events));
+}
+
+#[test]
+fn colloid_physics_shapes_the_notes() {
+    use crate::audio::modules::colloid::{ATOMS, LENGTH, MOLECULES, VISCOSITY, viz};
+    let take = |set: &dyn Fn(&ModuleParams)| {
+        let p = Arc::new(ModuleParams::new(ModuleKind::Colloid));
+        set(&p);
+        let mut c = colloid(&p);
+        let mut events = run_colloid(&mut c, 0, 20 * 48_000, true, true, &[]);
+        events.extend(run_colloid(&mut c, 20 * 48_000, 9_600, false, false, &[]));
+        (p, events)
+    };
+    let (_, few) = take(&|p| p.set(ATOMS, 3.0));
+    let (_, many) = take(&|p| p.set(ATOMS, 40.0));
+    eprintln!("3 atoms: {} notes, 40 atoms: {} notes", note_ons(&few).len(), note_ons(&many).len());
+    assert!(note_ons(&many).len() > 2 * note_ons(&few).len(), "more atoms, more strikes");
+
+    let mean = |e: &[(usize, [u8; 3])]| {
+        let l = note_lengths(e);
+        l.iter().sum::<usize>() as f32 / l.len().max(1) as f32 / 48_000.0
+    };
+    let (_, thin) = take(&|p| p.set(VISCOSITY, 0.0));
+    let (_, thick) = take(&|p| p.set(VISCOSITY, 1.0));
+    eprintln!("mean note: thin {:.3} s, thick {:.3} s", mean(&thin), mean(&thick));
+    assert!(mean(&thick) < mean(&thin), "a thick liquid damps the rings");
+    let (_, short) = take(&|p| p.set(LENGTH, 0.05));
+    let (_, long) = take(&|p| p.set(LENGTH, 3.0));
+    assert!(mean(&long) > 3.0 * mean(&short));
+
+    let (p, events) = take(&|p| p.set(MOLECULES, 4.0));
+    assert_eq!(p.viz[viz::MOLECULES].get(), 4.0);
+    let distinct: std::collections::BTreeSet<u8> = note_ons(&events).into_iter().map(|(_, n)| n).collect();
+    assert!(distinct.len() <= 4, "one note per molecule: {distinct:?}");
+}
+
+#[test]
+fn colloid_panel_draws() {
+    use crate::audio::modules::colloid::{ATOMS, viz};
+    let shared = Arc::new(EngineShared::new());
+    shared.running.store(true, Ordering::Relaxed);
+    shared.tempo.set(120.0);
+    let (a, mut e) = audio::offline(shared, 48_000);
+    let mut g = Graph::default();
+    let id = g.add_module(ModuleKind::Colloid, pos2(0.0, 0.0), &a);
+    let p = module_params(&g, id);
+    p.set(ATOMS, 30.0);
+    let mut editor = crate::ui::canvas::Editor::new();
+    let ctx = egui::Context::default();
+    let mut time = 0.0;
+    for shape in 0..12 {
+        p.set_mode(shape);
+        for _ in 0..4 {
+            render_buf(&mut e, 4_800);
+            time += 0.1;
+            let input = egui::RawInput { time: Some(time), ..Default::default() };
+            let mut out = ctx.run_ui(input, |ui| editor.show(ui, &mut g, &a));
+            out.textures_delta.clear();
+        }
+    }
+    assert!(p.viz[viz::EVENT_SEQ].get() > 0.0, "the atoms struck while drawn");
+}
+
+/// A stepped knob (ROOT: 12 notes) dragged slowly, a pixel a frame, with the
+/// panel rounding what it sets: it steps on all the same (it used to round
+/// each frame's movement away and stay put), and a slow drag down brings it
+/// back.
+#[test]
+fn stepped_knobs_follow_slow_drags() {
+    use crate::audio::params::{ParamSpec, Unit};
+    use egui::{Event, Modifiers, PointerButton};
+    let spec = ParamSpec::lin("ROOT", 0.0, 11.0, 0.0, Unit::NoteName);
+    let ctx = egui::Context::default();
+    let id = egui::Id::unique("stepped-knob");
+    let c = pos2(100.0, 100.0);
+    let mut value = 0.0f32;
+    let mut seen = Vec::new();
+    let frame = |events: Vec<Event>, t: f64, value: &mut f32| {
+        let input = egui::RawInput { time: Some(t), events, screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(200.0, 200.0))), ..Default::default() };
+        let mut out = ctx.run_ui(input, |ui| {
+            let painter = ui.painter().clone();
+            let mut norm = spec.to_norm(*value);
+            let resp = crate::ui::widgets::knob(ui, &painter, id, c, 10.0, &mut norm, 0.0, false, egui::Color32::WHITE, 1.0);
+            if resp.dragged() {
+                *value = spec.denorm(norm).round();
+            }
+        });
+        out.textures_delta.clear();
+    };
+    let mut t = 0.0;
+    frame(vec![Event::PointerMoved(c)], t, &mut value);
+    t += 1.0 / 60.0;
+    frame(vec![Event::PointerButton { pos: c, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE }], t, &mut value);
+    let mut at = c;
+    for _ in 0..120 {
+        at.y -= 1.0;
+        t += 1.0 / 60.0;
+        frame(vec![Event::PointerMoved(at)], t, &mut value);
+        seen.push(value);
+    }
+    assert!(value >= 5.0, "a slow drag up steps on: {value}");
+    assert!(seen.windows(2).all(|w| w[1] - w[0] <= 1.0), "one step at a time");
+    for _ in 0..60 {
+        at.y += 1.0;
+        t += 1.0 / 60.0;
+        frame(vec![Event::PointerMoved(at)], t, &mut value);
+    }
+    let back = value;
+    assert!(back < seen[seen.len() - 1], "and back down: {back}");
+}
+
+
+#[test]
+fn colloid_plays_handpan_layouts() {
+    use crate::audio::modules::colloid::{MOLECULES, viz};
+    // D Kurd by default: D3 | A3 Bb3 C4 D4 E4 F4 G4 A4 C5.
+    let kurd = [50, 57, 58, 60, 62, 64, 65, 67, 69, 72];
+    let p = Arc::new(ModuleParams::new(ModuleKind::Colloid));
+    p.set(MOLECULES, 10.0);
+    let mut c = colloid(&p);
+    let events = run_colloid(&mut c, 0, 10 * 48_000, true, true, &[]);
+    assert_eq!(p.viz[viz::LAYOUT].get(), 0.0);
+    let notes: Vec<u8> = (0..10).map(|k| p.viz[viz::MOLECULE + k * viz::MOLECULE_LEN + 5].get() as u8).collect();
+    let mut sorted = notes.clone();
+    sorted.sort();
+    assert_eq!(sorted, kurd, "one molecule per note of the layout");
+    assert!(note_ons(&events).iter().all(|(_, n)| kurd.contains(n)));
+    // A key moves the ding: A Kurd.
+    let from = 10 * 48_000;
+    let events = run_colloid(&mut c, from, 6 * 48_000, true, false, &[(from + 100, [0x90, 57, 90]), (from + 2_000, [0x80, 57, 0])]);
+    let a_kurd: Vec<u8> = kurd.iter().map(|n| n + 7 - 12).collect();
+    let late: Vec<_> = note_ons(&events).into_iter().filter(|&(f, _)| f > from + 4_800).collect();
+    assert!(!late.is_empty());
+    assert!(late.iter().all(|(_, n)| a_kurd.iter().any(|k| k % 12 == n % 12)), "A Kurd: {late:?}");
+}
+
+/// The CC events sent on lane `k`'s controller: (frame, value).
+fn ccs(events: &[(usize, [u8; 3])], number: u8) -> Vec<(usize, u8)> {
+    events.iter().filter(|(_, m)| m[0] & 0xF0 == 0xB0 && m[1] == number).map(|(f, m)| (*f, m[2])).collect()
+}
+
+#[test]
+fn colloid_pedal_catches_each_chord_and_lets_go_on_stop() {
+    use crate::audio::modules::colloid::{ROOT, cc};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Colloid));
+    p.data[cc::at(0, cc::ON)].set(1.0); // CC 64 from the pedal
+    let mut c = colloid(&p);
+    let mut events = run_colloid(&mut c, 0, 48_000, true, true, &[]);
+    p.set(ROOT, 7.0); // a new chord a second in
+    events.extend(run_colloid(&mut c, 48_000, 48_000, true, false, &[]));
+    events.extend(run_colloid(&mut c, 96_000, 4_800, false, false, &[]));
+    let pedal = ccs(&events, 64);
+    assert_eq!(pedal.first(), Some(&(0, 127)), "down on Start");
+    let lift = pedal.iter().position(|&(f, v)| f >= 48_000 && v == 0).expect("lifted at the new chord");
+    let (at, _) = pedal[lift];
+    assert!(at < 48_000 + 128);
+    let (back, v) = pedal[lift + 1];
+    assert_eq!(v, 127);
+    assert!((back - at) as f32 / 48_000.0 > 0.06 && (back - at) as f32 / 48_000.0 < 0.15, "down again soon: {}", back - at);
+    assert_eq!(pedal.last().map(|e| e.1), Some(0), "up on Stop");
+    assert!(events.iter().all(|(_, m)| m[0] & 0x0F == 0));
+}
+
+#[test]
+fn colloid_passes_the_keys_controllers_through_and_sends_the_tanks() {
+    use crate::audio::modules::colloid::cc;
+    let p = Arc::new(ModuleParams::new(ModuleKind::Colloid));
+    // Lane 0: the keys' sustain, inverted into 100…20. Lane 1: the energy
+    // on CC 1, into 10…90.
+    for (i, v) in [(cc::ON, 1.0), (cc::SOURCE, cc::KEYS as f32), (cc::LOW, 100.0), (cc::HIGH, 20.0)] {
+        p.data[cc::at(0, i)].set(v);
+    }
+    for (i, v) in [(cc::ON, 1.0), (cc::LOW, 10.0), (cc::HIGH, 90.0)] {
+        p.data[cc::at(1, i)].set(v);
+    }
+    let mut c = colloid(&p);
+    let keys = [(1_000, [0xB0, 64, 127]), (30_000, [0xB0, 64, 0]), (40_000, [0xB0, 7, 99])];
+    let events = run_colloid(&mut c, 0, 6 * 48_000, true, true, &keys);
+    assert_eq!(ccs(&events, 64), vec![(960, 20), (29_952, 100)], "passed through (in the block they came in), mapped");
+    assert!(ccs(&events, 7).is_empty(), "only its own controller");
+    let energy = ccs(&events, 1);
+    assert!(energy.len() > 10, "the energy moves");
+    assert!(energy.iter().all(|&(_, v)| (10..=90).contains(&v)));
+    assert!(energy.windows(2).all(|w| w[1].0 - w[0].0 >= 448), "at most every 10 ms");
+    // Stopped, the tank's lanes are quiet.
+    let stopped = run_colloid(&mut c, 6 * 48_000, 48_000, false, false, &[]);
+    assert!(ccs(&stopped, 1).is_empty());
+}

@@ -98,8 +98,54 @@ pub(super) fn arc(c: Pos2, r: f32, a0: f32, a1: f32) -> Vec<Pos2> {
         .collect()
 }
 
+/// While a control is dragged, its own position (0…1), kept from frame to
+/// frame and moved by `delta`. The value it edits may be stepped (whole
+/// numbers, notes, divisions): adding each frame's small movement to the
+/// stepped value would round it away, so a slow drag would never move it.
+/// Kept apart, the movement adds up and the value steps on as it should.
+fn drag_position(ui: &Ui, id: Id, resp: &Response, current: f32, delta: f32) -> f32 {
+    let key = id.with("drag-position");
+    ui.data_mut(|d| {
+        if resp.drag_started() {
+            d.remove_temp::<f32>(key);
+        }
+        let pos = d.get_temp_mut_or(key, current);
+        *pos = (*pos + delta).clamp(0.0, 1.0);
+        *pos
+    })
+}
+
+/// Where a control is drawn (0…1): at its value, gliding there instead of
+/// jumping when the value leaps (a step of a stepped value, a reset, a
+/// preset, a mapped controller), following it directly as it is dragged.
+fn shown_position(ui: &Ui, id: Id, target: f32) -> f32 {
+    /// Leaps wider than this glide.
+    const LEAP: f32 = 0.03;
+    let key = id.with("shown-position");
+    let dt = ui.input(|i| i.stable_dt).clamp(0.0, 0.1);
+    let (shown, gliding) = ui.data_mut(|d| {
+        let (shown, gliding) = d.get_temp_mut_or(key, (target, false));
+        let gap = target - *shown;
+        if gap.abs() > LEAP {
+            *gliding = true;
+        }
+        if *gliding && gap.abs() > 0.002 {
+            *shown += gap * (1.0 - (-dt / 0.05).exp());
+        } else {
+            *shown = target;
+            *gliding = false;
+        }
+        (*shown, *gliding)
+    });
+    if gliding {
+        ui.ctx().request_repaint();
+    }
+    shown
+}
+
 /// Rotary knob editing a normalized value. Drag vertically (Shift = fine),
-/// double-click to reset.
+/// double-click to reset. Stepped values step smoothly: the drag adds up
+/// apart from the value, and the pointer glides from step to step.
 #[allow(clippy::too_many_arguments)]
 pub fn knob(
     ui: &Ui,
@@ -117,17 +163,18 @@ pub fn knob(
     let resp = ui
         .interact(rect, id, Sense::CLICK | Sense::DRAG)
         .on_hover_cursor(CursorIcon::ResizeVertical);
+    let value = norm.clamp(0.0, 1.0);
     if resp.dragged() {
         let fine = ui.input(|i| i.modifiers.shift);
         let d = resp.drag_delta();
-        *norm = (*norm + (d.x - d.y) * if fine { 0.0012 } else { 0.0055 }).clamp(0.0, 1.0);
+        *norm = drag_position(ui, id, &resp, value, (d.x - d.y) * if fine { 0.0012 } else { 0.0055 });
     }
     if resp.double_clicked() {
         *norm = default;
     }
 
     let active = resp.dragged() || resp.hovered();
-    let a_val = KNOB_START + KNOB_SWEEP * *norm;
+    let a_val = KNOB_START + KNOB_SWEEP * shown_position(ui, id, value);
     let (a0, a1) = if bipolar {
         let mid = KNOB_START + KNOB_SWEEP * 0.5;
         (mid.min(a_val), mid.max(a_val))
@@ -189,10 +236,11 @@ pub fn vfader(ui: &Ui, p: &Painter, id: Id, rect: Rect, pos: &mut f32, accent: C
     let resp = ui
         .interact(rect.expand2(vec2(4.0 * z, 6.0 * z)), id, Sense::CLICK | Sense::DRAG)
         .on_hover_cursor(CursorIcon::ResizeVertical);
+    let value = pos.clamp(0.0, 1.0);
     if resp.dragged() {
         let fine = ui.input(|i| i.modifiers.shift);
         let k = if fine { 0.2 } else { 1.0 };
-        *pos = (*pos - resp.drag_delta().y / rect.height() * k).clamp(0.0, 1.0);
+        *pos = drag_position(ui, id, &resp, value, -resp.drag_delta().y / rect.height() * k);
     }
     if resp.double_clicked() {
         *pos = FADER_UNITY;
@@ -201,7 +249,7 @@ pub fn vfader(ui: &Ui, p: &Painter, id: Id, rect: Rect, pos: &mut f32, accent: C
     let cx = rect.center().x;
     let track = Rect::from_min_max(pos2(cx - 1.5 * z, rect.top()), pos2(cx + 1.5 * z, rect.bottom()));
     p.rect_filled(track, 1.5 * z, theme::CONTROL);
-    let y = emath::lerp(rect.bottom()..=rect.top(), *pos);
+    let y = emath::lerp(rect.bottom()..=rect.top(), shown_position(ui, id, value));
     let fill = if enabled { accent } else { theme::TEXT_FAINT };
     p.rect_filled(Rect::from_min_max(pos2(track.min.x, y), track.max), 1.5 * z, fill);
 
@@ -230,10 +278,11 @@ pub fn hfader(
     let resp = ui
         .interact(rect.expand2(vec2(6.0 * z, 4.0 * z)), id, Sense::CLICK | Sense::DRAG)
         .on_hover_cursor(CursorIcon::ResizeHorizontal);
+    let value = pos.clamp(0.0, 1.0);
     if resp.dragged() {
         let fine = ui.input(|i| i.modifiers.shift);
         let k = if fine { 0.2 } else { 1.0 };
-        *pos = (*pos + resp.drag_delta().x / rect.width() * k).clamp(0.0, 1.0);
+        *pos = drag_position(ui, id, &resp, value, resp.drag_delta().x / rect.width() * k);
     }
     if resp.double_clicked() {
         *pos = FADER_UNITY;
@@ -242,7 +291,7 @@ pub fn hfader(
     let cy = rect.center().y;
     let track = Rect::from_min_max(pos2(rect.left(), cy - 1.5 * z), pos2(rect.right(), cy + 1.5 * z));
     p.rect_filled(track, 1.5 * z, theme::CONTROL);
-    let x = emath::lerp(rect.left()..=rect.right(), *pos);
+    let x = emath::lerp(rect.left()..=rect.right(), shown_position(ui, id, value));
     let fill = if enabled { accent } else { theme::TEXT_FAINT };
     p.rect_filled(Rect::from_min_max(track.min, pos2(x, track.max.y)), 1.5 * z, fill);
 
