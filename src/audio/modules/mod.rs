@@ -12,6 +12,7 @@ pub mod delay;
 pub mod drone;
 pub mod equalizer;
 pub mod filter;
+pub mod fjord;
 pub mod frakture;
 pub mod granular;
 pub mod larsen;
@@ -22,6 +23,7 @@ pub mod midi_in;
 pub mod midicer;
 pub mod pingpong;
 pub mod pops;
+pub mod prism;
 pub mod midi_note;
 pub mod nullpunkt;
 pub mod oversample;
@@ -49,6 +51,7 @@ pub enum ModuleKind {
     Vesper,
     Random,
     Pops,
+    Fjord,
     Nullpunkt,
     AudioIn,
     Granular,
@@ -57,6 +60,7 @@ pub enum ModuleKind {
     Filter,
     Magma,
     Equalizer,
+    Prism,
     Tape,
     Delay,
     PingPong,
@@ -109,13 +113,14 @@ pub struct ModuleDef {
 }
 
 impl ModuleKind {
-    pub const ALL: [ModuleKind; 27] = [
+    pub const ALL: [ModuleKind; 29] = [
         ModuleKind::Drone,
         ModuleKind::Aether,
         ModuleKind::Larsen,
         ModuleKind::Vesper,
         ModuleKind::Random,
         ModuleKind::Pops,
+        ModuleKind::Fjord,
         ModuleKind::Nullpunkt,
         ModuleKind::AudioIn,
         ModuleKind::Granular,
@@ -124,6 +129,7 @@ impl ModuleKind {
         ModuleKind::Filter,
         ModuleKind::Magma,
         ModuleKind::Equalizer,
+        ModuleKind::Prism,
         ModuleKind::Tape,
         ModuleKind::Delay,
         ModuleKind::PingPong,
@@ -147,6 +153,7 @@ impl ModuleKind {
             ModuleKind::Vesper => &vesper::DEF,
             ModuleKind::Random => &random::DEF,
             ModuleKind::Pops => &pops::DEF,
+            ModuleKind::Fjord => &fjord::DEF,
             ModuleKind::Nullpunkt => &nullpunkt::DEF,
             ModuleKind::AudioIn => &audio_in::DEF,
             ModuleKind::Granular => &granular::DEF,
@@ -154,6 +161,7 @@ impl ModuleKind {
             ModuleKind::Resonator => &resonator::DEF,
             ModuleKind::Filter => &filter::DEF,
             ModuleKind::Equalizer => &equalizer::DEF,
+            ModuleKind::Prism => &prism::DEF,
             ModuleKind::Magma => &magma::DEF,
             ModuleKind::Tape => &tape::DEF,
             ModuleKind::Delay => &delay::DEF,
@@ -183,6 +191,7 @@ impl ModuleKind {
             ModuleKind::Vesper => Box::new(vesper::Vesper::new(params, midi.clone(), sample_rate)),
             ModuleKind::Random => Box::new(random::Random::new(params, sample_rate)),
             ModuleKind::Pops => Box::new(pops::Pops::new(params, sample_rate)),
+            ModuleKind::Fjord => Box::new(fjord::Fjord::new(params, sample_rate)),
             ModuleKind::Nullpunkt => Box::new(nullpunkt::Nullpunkt::new(params, sample_rate)),
             ModuleKind::AudioIn => Box::new(audio_in::AudioIn::new(params, audio.shared.clone(), sample_rate)),
             ModuleKind::Granular => Box::new(granular::Granular::new(params, sample_rate)),
@@ -190,6 +199,7 @@ impl ModuleKind {
             ModuleKind::Resonator => Box::new(resonator::Resonator::new(params, sample_rate)),
             ModuleKind::Filter => Box::new(filter::Filter::new(params, sample_rate)),
             ModuleKind::Equalizer => Box::new(equalizer::Equalizer::new(params, sample_rate)),
+            ModuleKind::Prism => Box::new(prism::Prism::new(params, sample_rate)),
             ModuleKind::Magma => Box::new(magma::Magma::new(params, midi.clone(), sample_rate)),
             ModuleKind::Tape => Box::new(tape::Tape::new(params, sample_rate)),
             ModuleKind::Delay => Box::new(delay::Delay::new(params, sample_rate)),
