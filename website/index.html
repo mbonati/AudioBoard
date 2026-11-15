@@ -1,0 +1,641 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AudioBoard · Modular synthesizer</title>
+<meta name="description" content="AudioBoard is a native, node-based modular synthesizer in Rust, in the spirit of Max/MSP and Pure Data: drones, granular textures, drum machines and generative MIDI, patched with virtual cables.">
+<meta name="theme-color" content="#141518">
+<meta property="og:title" content="AudioBoard · Modular synthesizer">
+<meta property="og:description" content="A node-based modular synthesizer in Rust for ambient sounds, drones, organic and granular textures.">
+<meta property="og:image" content="assets/shots/patch-hero-1x.png">
+<script>document.documentElement.classList.add("js")</script>
+<link rel="icon" href="assets/img/logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&family=Unbounded:wght@500;600;700;800&display=swap">
+<link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="index.html" aria-label="AudioBoard home">
+      <img src="assets/img/logo.svg" alt="" width="34" height="34">
+      AudioBoard
+    </a>
+    <button class="nav-toggle" aria-label="Menu" aria-expanded="false">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h14M3 10h14M3 14h14"/></svg>
+    </button>
+    <nav class="nav-links" aria-label="Main">
+      <a href="index.html" aria-current="page">Home</a>
+      <a href="nodes.html">Nodes</a>
+      <a href="guide.html">Guide</a>
+      <a href="architecture.html">Architecture</a>
+      <a class="gh" href="https://github.com/mbonati/AudioBoard">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        Source
+      </a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+<!-- ================================================================ HERO -->
+<section class="hero">
+  <div class="wrap">
+    <span class="eyebrow label"><span class="led"></span>Node-based modular synthesizer · native Rust</span>
+    <h1 class="hero-title"><span>Audio</span><span class="outline">Board</span></h1>
+
+    <div class="hero-grid">
+      <div>
+        <p class="lead">Small blocks joined by virtual cables generate sound in real time, in the spirit of <strong>Max/MSP</strong> and <strong>Pure Data</strong>. Made for <strong>ambient sounds, drones, organic and granular textures</strong>, with drum machines, generative MIDI and your VST3 plugins on the same board.</p>
+        <div class="cta">
+          <a class="btn solid" href="guide.html">Get started
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+          </a>
+          <a class="btn ghost" href="nodes.html">Browse the 31 nodes</a>
+        </div>
+      </div>
+
+      <!-- A tiny playable sketch of the demo patch, drawn like a node. -->
+      <article class="node scope-node" style="--accent: var(--green)" aria-label="Playable drone sketch">
+        <header class="node-head"><span class="led"></span>Drone sketch<span class="x">web audio</span></header>
+        <div class="node-body">
+          <div class="scope"><canvas id="scope" aria-hidden="true"></canvas></div>
+          <div class="scope-controls">
+            <div class="knob" data-knob="tone" data-label="Tone" data-value="0.45" data-color="var(--green)"></div>
+            <div class="knob" data-knob="drift" data-label="Drift" data-value="0.5" data-color="var(--teal)"></div>
+            <div class="knob" data-knob="space" data-label="Space" data-value="0.55" data-color="var(--blue)"></div>
+            <button class="btn start-btn" id="start" aria-pressed="false"><span class="dot"></span><span class="txt">Start</span></button>
+          </div>
+          <p class="scope-hint">A chord of fifths on A1, a drifting filter and a tape echo: a small Web Audio sketch of the demo patch, not the app's engine.</p>
+        </div>
+        <span class="port out on"></span>
+      </article>
+    </div>
+
+    <figure class="window reveal">
+      <div class="window-bar" aria-hidden="true">
+        <span class="lights"><i></i><i></i><i></i></span>
+        <span class="chip">≡ Ambient board ●</span>
+        <span class="chip go">▶ Start</span>
+        <span class="chip">BPM 100</span>
+        <span class="chip hide-sm">TAP</span>
+        <span class="chip rec hide-sm">● REC</span>
+        <span class="grow"></span>
+        <span class="hide-sm">OUT 0.0 dB</span>
+        <span class="chip hide-sm">Built-in Output</span>
+      </div>
+      <div class="window-shot">
+        <img src="assets/shots/patch-hero-1x.png" srcset="assets/shots/patch-hero-1x.png 2400w, assets/shots/patch-hero.png 4800w" sizes="(max-width: 1240px) 100vw, 1240px" width="2400" height="1350" alt="A large AudioBoard patch on the canvas: Colloid driving Aether through Magma and a Reverb, Fjord through Tape, a Drone through Filter, Granular and Delay, Pops 66 through Frakture and the Equalizer, all into a 12-channel Console." data-zoom="assets/shots/patch-hero.png" data-title="A patch of fifteen nodes">
+        <div class="callout down" style="left:25.6%; top:6.2%; --c: var(--violet)"><span>MIDI cable</span></div>
+        <div class="callout" style="left:56.5%; top:10.6%; --c: var(--yellow)"><span>Magma · 4 filters</span></div>
+        <div class="callout" style="left:41.3%; top:35.4%; --c: var(--green)"><span>Stereo cable</span></div>
+        <div class="callout" style="left:15.5%; top:58.6%; --c: var(--orange)"><span>Fjord · drum synth</span></div>
+        <div class="callout" style="left:35.2%; top:56.2%; --c: var(--teal)"><span>Tape deck</span></div>
+        <div class="callout" style="left:85.4%; top:51.2%; --c: var(--amber)"><span>Console · 12 ch</span></div>
+      </div>
+      <figcaption class="window-status" aria-hidden="true">
+        <span>512 smp · 10.7 ms</span>
+        <span class="ok">DSP 14%</span>
+        <span class="hide-sm">peak 21%</span>
+        <span class="hide-sm">MIDI 1</span>
+        <span>15 nodes · rendered from the app</span>
+      </figcaption>
+    </figure>
+  </div>
+
+  <div class="marquee" aria-hidden="true">
+    <div class="marquee-track">
+      <span style="--c:var(--blue)">Drone</span><span class="o" style="--c:var(--rose)">Aether</span><span style="--c:var(--green)">Larsen</span><span class="o" style="--c:var(--violet)">Vesper</span><span style="--c:var(--orange)">Pops 66</span><span class="o" style="--c:var(--teal)">Fjord</span><span style="--c:var(--yellow)">Nullpunkt</span><span class="o" style="--c:var(--blue)">Granular</span><span style="--c:var(--rose)">Frakture</span><span class="o" style="--c:var(--green)">Magma</span><span style="--c:var(--violet)">Equalizer</span><span class="o" style="--c:var(--orange)">Tape</span><span style="--c:var(--teal)">Reverb</span><span class="o" style="--c:var(--yellow)">MIDIcer</span><span style="--c:var(--blue)">Automa</span><span class="o" style="--c:var(--rose)">Colloid</span><span style="--c:var(--green)">MIDI Looper</span><span class="o" style="--c:var(--amber)">Console</span>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================== HOW IT WORKS -->
+<section class="section" id="patch">
+  <div class="wrap">
+    <div class="section-head reveal" style="--accent: var(--blue)">
+      <span class="label">01 · Patching</span>
+      <h2>Drop a node. Pull a cable. <span class="outline">Press Start.</span></h2>
+      <p class="lead">Every node is a small panel on an endless canvas, with its own knobs, displays and ports. Cables carry sound and MIDI between them, and the whole board plays in real time.</p>
+    </div>
+
+    <div class="steps" data-cables>
+      <article class="node reveal" style="--accent: var(--blue)" id="step1">
+        <header class="node-head"><span class="led"></span>Palette<span class="x">×</span></header>
+        <div class="node-body">
+          <div class="art">
+            <svg viewBox="0 0 260 120" fill="none" stroke-width="2" stroke-linecap="round">
+              <rect x="20" y="16" width="96" height="88" rx="6" stroke="#32343a"/>
+              <path d="M32 34h56M32 52h40M32 70h50M32 88h34" stroke="#60646c"/>
+              <circle cx="96" cy="52" r="3" fill="#60a5ee" stroke="none"/>
+              <rect x="150" y="34" width="86" height="54" rx="6" stroke="#60a5ee" stroke-dasharray="5 5"/>
+              <path d="M100 52c22 0 30 8 46 8" stroke="#60a5ee"/>
+              <path d="M140 54l8 6-9 5" stroke="#60a5ee"/>
+            </svg>
+          </div>
+          <span class="num">01</span>
+          <h3>Drop nodes</h3>
+          <p class="dim">Drag a source, an effect or a sequencer from the palette onto the canvas, or right-click anywhere. Thirty-one built-in nodes, your saved modules and every installed VST3 plugin are there.</p>
+        </div>
+        <span class="port out on"></span>
+      </article>
+
+      <article class="node reveal" style="--accent: var(--rose)" id="step2">
+        <header class="node-head"><span class="led"></span>Cables<span class="x">×</span></header>
+        <div class="node-body">
+          <div class="art">
+            <svg viewBox="0 0 260 120" fill="none" stroke-width="2.5" stroke-linecap="round">
+              <circle cx="40" cy="38" r="8" stroke="#e27096"/><circle cx="40" cy="38" r="3.5" fill="#e27096" stroke="none"/>
+              <circle cx="220" cy="38" r="8" stroke="#e27096"/><circle cx="220" cy="38" r="3.5" fill="#e27096" stroke="none"/>
+              <path d="M48 38c70 0 94 0 164 0" stroke="#e27096"/>
+              <rect x="32" y="74" width="16" height="16" rx="3" stroke="#9e8ae6"/><rect x="36" y="78" width="8" height="8" rx="1" fill="#9e8ae6" stroke="none"/>
+              <rect x="212" y="74" width="16" height="16" rx="3" stroke="#9e8ae6"/><rect x="216" y="78" width="8" height="8" rx="1" fill="#9e8ae6" stroke="none"/>
+              <path d="M48 82c70 0 94 0 164 0" stroke="#9e8ae6" stroke-dasharray="7 7"/>
+              <text x="130" y="28" fill="#9498a0" stroke="none" font-size="10" text-anchor="middle" font-family="JetBrains Mono, monospace">STEREO AUDIO</text>
+              <text x="130" y="104" fill="#9498a0" stroke="none" font-size="10" text-anchor="middle" font-family="JetBrains Mono, monospace">MIDI</text>
+            </svg>
+          </div>
+          <span class="num">02</span>
+          <h3>Patch cables</h3>
+          <p class="dim">Drag from a port to another. Round ports carry stereo audio; square ports and dashed cables carry MIDI. Loops that would feed back are refused, and each input takes one cable.</p>
+        </div>
+        <span class="port in on"></span>
+        <span class="port out on"></span>
+      </article>
+
+      <article class="node reveal" style="--accent: var(--green)" id="step3">
+        <header class="node-head"><span class="led"></span>Transport<span class="x">×</span></header>
+        <div class="node-body">
+          <div class="art">
+            <svg viewBox="0 0 260 120" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="24" y="40" width="74" height="40" rx="8" stroke="#84c26c"/>
+              <path d="M46 52l14 8-14 8z" stroke="#84c26c"/>
+              <text x="68" y="64" fill="#84c26c" stroke="none" font-size="11" font-family="JetBrains Mono, monospace">GO</text>
+              <path class="wave" d="M116 60 C126 30 136 30 146 60 S166 90 176 60 S196 30 206 60 S226 90 236 60" stroke="#84c26c"/>
+            </svg>
+          </div>
+          <span class="num">03</span>
+          <h3>Press Start</h3>
+          <p class="dim">Start (or Space) runs the transport: sources sound and sequencers run on one global clock. Stop ends the notes but lets echoes and reverb tails ring out.</p>
+        </div>
+        <span class="port in on"></span>
+      </article>
+      <svg class="cables" aria-hidden="true"></svg>
+    </div>
+  </div>
+</section>
+
+<!-- =========================================================== SPOTLIGHT -->
+<section class="section" id="spotlight" style="padding-top: 0">
+  <div class="wrap">
+    <div class="section-head reveal" style="--accent: var(--rose)">
+      <span class="label">02 · The instruments</span>
+      <h2>Panels you can <span class="outline">get lost in.</span></h2>
+      <p class="lead">Some nodes are a knob or two. Others are whole instruments, each with a panel drawn for it: flat, graphic and alive while the board plays. Every picture on this site is rendered from the app itself.</p>
+    </div>
+
+    <article class="spot reveal" style="--accent: var(--orange)">
+      <div class="spot-shot">
+        <div class="tag-row"><span class="tag">Sources</span><span class="tag" style="--c: var(--dim)">Drum synth</span></div>
+        <img src="assets/shots/fjord.png" width="1976" height="1052" loading="lazy" alt="The Fjord panel: the bank map of 99 programs, four channel keys, ALEA, the strike display and the NOISE, TONE, CLICK and MIXER sections." data-title="Fjord · SOUND page">
+      </div>
+      <div class="spot-text">
+        <h3>Fjord</h3>
+        <div class="after">after the Clavia Nord Drum (2012)</div>
+        <p>A four-channel drum synthesizer with a step sequencer. Each channel blends a <strong>tone</strong>, a <strong>noise</strong> and a <strong>click</strong>, each with its own filter, sweep, decay and gate, then goes beyond the original with ADSRs for the tone.</p>
+        <ul class="specs">
+          <li><b>Tone</b> analog waves, drum bodies built from the modes of membranes and bars, and metal: bells, cowbell, gong.</li>
+          <li><b>Bank</b> 99 programs drawn as a map, 34 factory programs in Real, Retro, Ethno and FX styles; STORE and Memory Protect.</li>
+          <li><b>ALEA</b> throws new sounds and grooves bred from the factory programs, as far as CHANCE says, and BACK takes a throw back.</li>
+          <li><b>Steps</b> four lanes of up to 32 steps, plus Trig audio inputs for drum replacement and MIDI in and out.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="spot flip reveal" style="--accent: var(--rose)">
+      <div class="spot-shot">
+        <div class="tag-row"><span class="tag">MIDI sequences</span><span class="tag" style="--c: var(--dim)">Generative</span></div>
+        <img src="assets/shots/colloid.png" width="1696" height="1282" loading="lazy" alt="The Colloid panel: a tank of liquid with line-art molecules for the notes of a D Kurd handpan, atoms trailing dotted wakes, and knob groups below." data-title="Colloid">
+      </div>
+      <div class="spot-text">
+        <h3>Colloid</h3>
+        <div class="after">a generative MIDI node played by physics</div>
+        <p>A handpan's notes, or a chord's, become molecules floating in a liquid. While the transport plays, atoms fall towards them and strike them, and every strike plays the struck molecule's note, its velocity the force of the hit.</p>
+        <ul class="specs">
+          <li><b>Notes</b> nine handpan tunings (Kurd, Celtic, Amara, Integral, Hijaz, Pygmy, Akebono, Sabye, Aegean) or twelve chord shapes, on a root you pick from a row of keys.</li>
+          <li><b>Field</b> attract, range, charge and bounce; <b>Liquid</b> viscosity, heat, flow and drift.</li>
+          <li><b>Hands on</b> click the tank to push the liquid, drag to stir it, or play chords into it from a keyboard.</li>
+          <li><b>CC lanes</b> four controllers driven by the tank: energy, density, speed, strike, swirl, charge.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="spot reveal" style="--accent: var(--blue)">
+      <div class="spot-shot">
+        <div class="tag-row"><span class="tag">Sources</span><span class="tag" style="--c: var(--dim)">Rhythm box</span></div>
+        <img src="assets/shots/pops.png" width="1664" height="1564" loading="lazy" alt="The Pops 66 panel at its EDITOR detail level: rhythm keys, the main knobs, a mixer strip per instrument, the pattern grid and the sound editor with its waveform preview." data-title="Pops 66 · EDITOR">
+      </div>
+      <div class="spot-text">
+        <h3>Pops 66</h3>
+        <div class="after">in the spirit of the KORG Mini Pops-7 (1966)</div>
+        <p>No samples: its fifteen instruments are synthesized the way the original's circuits made them. Ringing resonators, square waves, filtered and gated noise, and a decaying rattle for the quijada.</p>
+        <ul class="specs">
+          <li><b>Rhythms</b> twenty, from Waltz and Bossanova to Rock 4 and Latin Swing, combined as the original's buttons did.</li>
+          <li><b>Three levels</b> MACHINE, MIXER and EDITOR: the node grows with the detail you ask for.</li>
+          <li><b>Patterns</b> eight user patterns of up to 32 sixteenths or triplets, painted on a grid.</li>
+          <li><b>Waveforms</b> WAVE, BEND and DRIVE reshape every instrument, with a picture of the hit.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="spot flip reveal" style="--accent: var(--yellow)">
+      <div class="spot-shot">
+        <div class="tag-row"><span class="tag">Effects</span><span class="tag" style="--c: var(--dim)">Filters</span></div>
+        <img src="assets/shots/magma.png" width="1816" height="1312" loading="lazy" alt="The Magma panel: four filter curves and a yellow total curve over the output spectrum, filter controls, XLFO, EG, EF, MIDI and XY sources and the modulation slots." data-title="Magma">
+      </div>
+      <div class="spot-text">
+        <h3>Magma</h3>
+        <div class="after">after FabFilter Volcano 3</div>
+        <p>Four hot, analog-flavoured filters with a side chain and a MIDI input. Each drives its input through its own curve and saturates its resonance in its own way; most self-oscillate at the top of PEAK.</p>
+        <ul class="specs">
+          <li><b>Filters</b> eight shapes, 6 to 48 dB/oct, eleven non-linear styles from Classic and Tube to Metal and Extreme.</li>
+          <li><b>Routing</b> six routings, from serial and parallel to pairs of pairs, on both channels, L/R or M/S.</li>
+          <li><b>Modulation</b> XLFO, EG, EF, MIDI and XY sources: drag a handle onto almost any knob, up to sixteen slots.</li>
+          <li><b>Display</b> drag the dots, with the spectrum and a piano along the scale.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="spot reveal" style="--accent: var(--violet)">
+      <div class="spot-shot">
+        <div class="tag-row"><span class="tag">Sources</span><span class="tag" style="--c: var(--dim)">Ambient</span></div>
+        <img src="assets/shots/aether.png" width="1696" height="1016" loading="lazy" alt="The Aether panel: a fractal flower of five voices forking into partials, the aurora of every partial's track, and the voice, motion, warmth and glitch knobs." data-title="Aether">
+      </div>
+      <div class="spot-text">
+        <h3>Aether</h3>
+        <div class="after">warm drones moved by fractal motion</div>
+        <p>Five voices hold a chord; each is two layers of eight partials that move on their own. Everything moves along one kind of curve, six octaves of smooth noise, so slow swells carry faster ripples at every time scale.</p>
+        <ul class="specs">
+          <li><b>Chords</b> 5th, sus, maj9, min9, min11, fourths, lydian or FREE; keys take over the chord.</li>
+          <li><b>Motion</b> synced to 1 to 64 bars of the board's tempo, the same every Start until you RESEED.</li>
+          <li><b>Glitches</b> glassy pings and CD-like skips, tuned to harmonics of the chord, ratcheted in time.</li>
+          <li><b>Warmth</b> drive, chorus, a wide diffuse space and air tuned to the chord.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="spot flip reveal" style="--accent: var(--teal)">
+      <div class="spot-shot">
+        <div class="tag-row"><span class="tag">Effects</span><span class="tag" style="--c: var(--dim)">Tape machine</span></div>
+        <img src="assets/shots/tape.png" width="1336" height="788" loading="lazy" alt="The Tape panel in FULL view: a sketched deck with two reels, the tape line, the head and two VU needles, with the machine switches and knobs below." data-title="Tape · FULL">
+      </div>
+      <div class="spot-text">
+        <h3>Tape</h3>
+        <div class="after">after the classic tape emulation plugins</div>
+        <p>The sound is recorded, carried by a moving tape and played back: a record EQ, a magnetic curve on 2× oversampling, wow, flutter, dropouts, the head bump, gap loss and hiss.</p>
+        <ul class="specs">
+          <li><b>Machines</b> STUDIO, MASTER or CASSETTE, at 7½, 15 or 30 ips, on CLASSIC, MODERN or HOT tape.</li>
+          <li><b>Saturation</b> tape's glue: quiet passages come up, loud ones are rounded, with even-harmonic warmth.</li>
+          <li><b>The deck</b> reels turn at their real ratio, the tape sags with wow, the needles read input and output.</li>
+          <li><b>■ ▶</b> stop the tape and it slows to a halt, pitch falling; start it and it spins back up.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="spot reveal" style="--accent: var(--rose)">
+      <div class="spot-shot">
+        <div class="tag-row"><span class="tag">Texture</span><span class="tag" style="--c: var(--dim)">Granular rhythm</span></div>
+        <div class="quad">
+          <img src="assets/shots/frakture.png" width="1456" height="1224" loading="lazy" alt="Frakture, HEXAGON page: six macro sliders around a breathing pixel blob." data-title="Frakture · HEXAGON">
+          <img src="assets/shots/frakture-effects.png" width="1456" height="1224" loading="lazy" alt="Frakture, EFFECTS page: grains, gate, repeat and space in a chain." data-title="Frakture · EFFECTS">
+          <img src="assets/shots/frakture-mutate.png" width="1456" height="1224" loading="lazy" alt="Frakture, MUTATE page: a live cloud of grains with feedback echoes." data-title="Frakture · MUTATE">
+          <img src="assets/shots/frakture-motion.png" width="1456" height="1224" loading="lazy" alt="Frakture, MOTION page: the magnet's path and its timeline." data-title="Frakture · MOTION">
+        </div>
+      </div>
+      <div class="spot-text">
+        <h3>Frakture</h3>
+        <div class="after">after Excite Audio's Motion: Fractal</div>
+        <p>A granular rhythm effect in four pages. A tempo-locked buffer feeds two grain layers, a trance gate, a stutter and a hall, in an order you drag; a hexagon of six macros moves it all, pushed by your mouse or by a path.</p>
+        <ul class="specs">
+          <li><b>Effects</b> grains with five playhead modes, gate of up to 32 steps, repeat, space.</li>
+          <li><b>Mutate</b> feedback, swarm, glide, shimmer, resonate on a KEY, blur and erode.</li>
+          <li><b>Hexagon</b> map any knob to a slider or to the input level; the mouse is a magnet.</li>
+          <li><b>Motion</b> draw or record a path, and play it on a timeline in time with the board.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="spot flip reveal" style="--accent: var(--violet)">
+      <div class="spot-shot">
+        <div class="tag-row"><span class="tag">Sources</span><span class="tag" style="--c: var(--dim)">Generative</span></div>
+        <img src="assets/shots/vesper.png" width="1896" height="1128" loading="lazy" alt="The Vesper panel: a landscape whose ridges are the layers, the chord progression by name, moods and root, and a strip per layer." data-title="Vesper">
+      </div>
+      <div class="spot-text">
+        <h3>Vesper</h3>
+        <div class="after">soundscapes, cinematic pads, chord progressions</div>
+        <p>Pick a root and a mood, and the engine writes the chords while five layers play them. There are no sample files: each sound is a recipe rendered into a looped sample on a thread of the node's own.</p>
+        <ul class="specs">
+          <li><b>Moods</b> sixteen seven-degree scales, from Radiant and Elegy to Temple and Cosmos; LOOP or EVOLVE.</li>
+          <li><b>Layers</b> pad, bass, ambience, noise and shimmer, some forty sounds each, with motion filters.</li>
+          <li><b>Mix types</b> CLEAN, DREAM, DUST and EDGE over the whole mix; twenty-eight scenes.</li>
+          <li><b>Score out</b> chords, bass and shimmer go out as MIDI on three channels.</li>
+        </ul>
+      </div>
+    </article>
+  </div>
+</section>
+
+<!-- ================================================================ WALL -->
+<section class="section" id="wall" style="padding-top: 0">
+  <div class="wrap">
+    <div class="section-head reveal" style="--accent: var(--green)">
+      <span class="label">03 · The rest of the board</span>
+      <h2>A wall of <span class="outline">working panels.</span></h2>
+      <p class="lead">Feedback drones, cellular-automaton melodies, Alva Noto-style glitches, a dynamic EQ, a MIDI looper with eight scenes. Click any panel to see it at full size.</p>
+    </div>
+    <div class="wall">
+      <figure style="--c: var(--teal)"><img src="assets/shots/automa.png" width="1696" height="1152" loading="lazy" alt="Automa panel" data-title="Automa"><figcaption class="tag" style="--c: var(--rose)">Automa</figcaption></figure>
+      <figure><img src="assets/shots/larsen.png" width="1696" height="912" loading="lazy" alt="Larsen panel" data-title="Larsen"><figcaption class="tag" style="--c: var(--teal)">Larsen</figcaption></figure>
+      <figure><img src="assets/shots/nullpunkt.png" width="1696" height="1004" loading="lazy" alt="Nullpunkt panel" data-title="Nullpunkt"><figcaption class="tag" style="--c: var(--yellow)">Nullpunkt</figcaption></figure>
+      <figure><img src="assets/shots/midicer.png" width="736" height="1012" loading="lazy" alt="MIDIcer panel" data-title="MIDIcer"><figcaption class="tag" style="--c: var(--rose)">MIDIcer</figcaption></figure>
+      <figure><img src="assets/shots/equalizer.png" width="1696" height="980" loading="lazy" alt="Equalizer panel" data-title="Equalizer"><figcaption class="tag" style="--c: var(--orange)">Equalizer</figcaption></figure>
+      <figure><img src="assets/shots/fjord-seq.png" width="1976" height="900" loading="lazy" alt="Fjord, SEQUENCER · MIDI page" data-title="Fjord · SEQUENCER · MIDI"><figcaption class="tag" style="--c: var(--orange)">Fjord · steps</figcaption></figure>
+      <figure><img src="assets/shots/looper.png" width="1696" height="1060" loading="lazy" alt="MIDI Looper panel" data-title="MIDI Looper"><figcaption class="tag" style="--c: var(--rose)">MIDI Looper</figcaption></figure>
+      <figure><img src="assets/shots/granular.png" width="736" height="648" loading="lazy" alt="Granular panel" data-title="Granular"><figcaption class="tag" style="--c: var(--teal)">Granular</figcaption></figure>
+      <figure><img src="assets/shots/console.png" width="1660" height="796" loading="lazy" alt="Console panel" data-title="Console"><figcaption class="tag" style="--c: var(--amber)">Console</figcaption></figure>
+      <figure><img src="assets/shots/drone.png" width="736" height="648" loading="lazy" alt="Drone panel" data-title="Drone"><figcaption class="tag" style="--c: var(--blue)">Drone</figcaption></figure>
+      <figure><img src="assets/shots/pops-machine.png" width="1664" height="524" loading="lazy" alt="Pops 66 at its MACHINE detail level" data-title="Pops 66 · MACHINE"><figcaption class="tag" style="--c: var(--blue)">Pops 66 · machine</figcaption></figure>
+      <figure><img src="assets/shots/sequencer.png" width="736" height="764" loading="lazy" alt="Step Sequencer panel" data-title="Step Sequencer"><figcaption class="tag" style="--c: var(--rose)">Step Sequencer</figcaption></figure>
+      <figure><img src="assets/shots/pingpong.png" width="736" height="648" loading="lazy" alt="Ping Pong panel" data-title="Ping Pong"><figcaption class="tag" style="--c: var(--orange)">Ping Pong</figcaption></figure>
+      <figure><img src="assets/shots/mixer.png" width="936" height="676" loading="lazy" alt="Mixer panel" data-title="Mixer"><figcaption class="tag" style="--c: var(--amber)">Mixer</figcaption></figure>
+      <figure><img src="assets/shots/filter.png" width="736" height="532" loading="lazy" alt="Filter panel" data-title="Filter"><figcaption class="tag" style="--c: var(--orange)">Filter</figcaption></figure>
+      <figure><img src="assets/shots/arpeggiator.png" width="608" height="648" loading="lazy" alt="Arpeggiator panel" data-title="Arpeggiator"><figcaption class="tag" style="--c: var(--rose)">Arpeggiator</figcaption></figure>
+    </div>
+    <p style="margin-top: 28px"><a class="btn ghost" href="nodes.html" style="--c: var(--green)">See every node in the catalogue →</a></p>
+  </div>
+</section>
+
+<!-- ================================================================ MIDI -->
+<section class="section" id="midi" style="padding-top: 0">
+  <div class="wrap">
+    <div class="section-head reveal" style="--accent: var(--violet)">
+      <span class="label">04 · MIDI</span>
+      <h2>Notes travel on <span class="outline">cables too.</span></h2>
+      <p class="lead">Generators write melodies and chords; arpeggiators and loopers reshape them; instruments, Aether, Larsen and your VST3 plugins play them. Every MIDI device is connected automatically, even one plugged in after launch, and any MIDI node can drive a knob directly with <strong>MAP</strong>.</p>
+    </div>
+    <figure class="window reveal" style="margin-top: 0">
+      <div class="window-bar" aria-hidden="true">
+        <span class="lights"><i></i><i></i><i></i></span>
+        <span class="chip">≡ Generative board</span>
+        <span class="chip go">▶ Start</span>
+        <span class="chip">BPM 96</span>
+        <span class="grow"></span>
+        <span class="hide-sm">Automa → Aether · Sequencer → Arpeggiator → Larsen · MIDIcer → Looper</span>
+      </div>
+      <div class="window-shot">
+        <img src="assets/shots/patch-midi-1x.png" srcset="assets/shots/patch-midi-1x.png 2400w, assets/shots/patch-midi.png 4800w" sizes="(max-width: 1240px) 100vw, 1240px" width="2400" height="1350" loading="lazy" alt="A patch with dashed MIDI cables: Automa into Aether, a Step Sequencer into an Arpeggiator into Larsen, MIDIcer into the MIDI Looper, and Nullpunkt into a Delay, all into a Mixer." data-zoom="assets/shots/patch-midi.png" data-title="A generative patch">
+        <div class="callout down" style="left:26.7%; top:6.6%; --c: var(--blue)"><span>Automa → Aether</span></div>
+        <div class="callout" style="left:42.7%; top:29.6%; --c: var(--orange)"><span>Arpeggiator → Larsen</span></div>
+        <div class="callout" style="left:20%; top:51%; --c: var(--rose)"><span>MIDIcer → Looper</span></div>
+      </div>
+    </figure>
+  </div>
+</section>
+
+<!-- ============================================================ FEATURES -->
+<section class="section" id="features" style="padding-top: 0">
+  <div class="wrap">
+    <div class="section-head reveal" style="--accent: var(--orange)">
+      <span class="label">05 · The board</span>
+      <h2>Built like an instrument, <span class="outline">not a toy.</span></h2>
+    </div>
+    <div class="features">
+      <article class="feature reveal" style="--accent: var(--blue)">
+        <svg viewBox="0 0 44 44" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linecap="round"><circle cx="7" cy="14" r="4"/><circle cx="37" cy="30" r="4"/><path d="M11 14c14 0 8 16 22 16"/><path d="M11 18c12 0 6 12 18 12" opacity=".45"/></svg>
+        <h4>Stereo everywhere</h4>
+        <p>Every cable is stereo; mono sources write the same signal to both sides. Effects get the whole picture.</p>
+      </article>
+      <article class="feature reveal" style="--accent: var(--violet)">
+        <svg viewBox="0 0 44 44" fill="none" stroke="var(--violet)" stroke-width="2" stroke-linecap="round"><rect x="3" y="10" width="8" height="8" rx="2"/><rect x="33" y="26" width="8" height="8" rx="2"/><path d="M11 14c14 0 8 16 22 16" stroke-dasharray="4 4"/></svg>
+        <h4>MIDI cables and MAP</h4>
+        <p>Square ports, dashed cables. MIDI CC and MIDI Note nodes can also drive any knob or fader directly.</p>
+      </article>
+      <article class="feature reveal" style="--accent: var(--green)">
+        <svg viewBox="0 0 44 44" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="8" width="32" height="26" rx="3"/><path d="M6 15h32"/><circle cx="10" cy="11.5" r=".6"/><path d="M13 27v-6M19 27v-9M25 27v-4M31 27v-7"/><path d="M18 38h8"/></svg>
+        <h4>VST3 host</h4>
+        <p>Installed plugins appear grouped by maker. Their editors float over the board, and their full state is saved with the project.</p>
+      </article>
+      <article class="feature reveal" style="--accent: var(--yellow)">
+        <svg viewBox="0 0 44 44" fill="none" stroke="var(--yellow)" stroke-width="2" stroke-linecap="round"><circle cx="22" cy="22" r="15"/><path d="M22 7v4M37 22h-4M22 37v-4M7 22h4"/><path d="M22 22l6-8"/><circle cx="22" cy="22" r="2" fill="var(--yellow)"/></svg>
+        <h4>One clock</h4>
+        <p>A global tempo with TAP. Sequencers and arpeggiators share one grid, and the tempo is passed to plugins.</p>
+      </article>
+      <article class="feature reveal" style="--accent: var(--teal)">
+        <svg viewBox="0 0 44 44" fill="none" stroke="var(--teal)" stroke-width="2" stroke-linecap="round"><rect x="4" y="8" width="9" height="8" rx="2"/><rect x="4" y="26" width="9" height="8" rx="2"/><rect x="18" y="17" width="9" height="8" rx="2"/><rect x="32" y="17" width="9" height="8" rx="2"/><path d="M13 12c3 0 2 9 5 9M13 30c3 0 2-9 5-9M27 21h5"/></svg>
+        <h4>Auto layout</h4>
+        <p>Press L and the patch arranges itself along the signal flow, with straight cables and clear corridors. Cmd+Z undoes it.</p>
+      </article>
+      <article class="feature reveal" style="--accent: var(--rose)">
+        <svg viewBox="0 0 44 44" fill="none" stroke="var(--rose)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10" width="34" height="26" rx="3" stroke-dasharray="4 3"/><rect x="10" y="17" width="10" height="7" rx="1.5"/><rect x="24" y="22" width="10" height="7" rx="1.5"/><path d="M5 10l5-5h12l3 5"/></svg>
+        <h4>Modules and library</h4>
+        <p>Group nodes with Cmd+G, collapse them to a card, save them to the library and drop them into any project.</p>
+      </article>
+      <article class="feature reveal" style="--accent: var(--red)">
+        <svg viewBox="0 0 44 44" fill="none" stroke="var(--red)" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="22" r="6"/><circle cx="11" cy="22" r="2" fill="var(--red)"/><path d="M22 22h2l2-7 3 14 3-10 2 5 2-2h4"/></svg>
+        <h4>Record and export</h4>
+        <p>R records exactly what you hear. Export to WAV, AIFF, FLAC, Apple Lossless, AAC or MP3, normalized and trimmed.</p>
+      </article>
+      <article class="feature reveal" style="--accent: var(--amber)">
+        <svg viewBox="0 0 44 44" fill="none" stroke="var(--amber)" stroke-width="2" stroke-linecap="round"><path d="M4 12h36" stroke-dasharray="3 3"/><path d="M4 26c4 0 4-14 8-14s4 14 8 14 4-14 8-14 4 14 8 14 4-8 4-8"/></svg>
+        <h4>Safety limiter</h4>
+        <p>The output passes a lookahead limiter just under full scale, so a loud sum is turned down smoothly instead of crackling.</p>
+      </article>
+      <article class="feature reveal" style="--accent: var(--aux)">
+        <svg viewBox="0 0 44 44" fill="none" stroke="var(--aux)" stroke-width="2" stroke-linecap="round"><path d="M4 30c3-10 6-10 9 0s4 0 6 0h21"/><path d="M30 10h8l-8 8h8"/></svg>
+        <h4>Effects rest when quiet</h4>
+        <p>Once a tail falls under −100 dB an effect skips its work. A stopped patch costs almost nothing.</p>
+      </article>
+      <article class="feature reveal" style="--accent: var(--blue)">
+        <svg viewBox="0 0 44 44" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12h32M6 32h32"/><path d="M14 12v20M30 32V12" stroke-dasharray="3 3"/><path d="M11 28l3 4 3-4M27 16l3-4 3 4"/></svg>
+        <h4>Lock-free audio</h4>
+        <p>Knob values travel through atomics, structural changes as commands. The UI never makes the audio thread wait.</p>
+      </article>
+      <article class="feature reveal" style="--accent: var(--green)">
+        <svg viewBox="0 0 44 44" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round"><path d="M10 8v28M22 8v28M34 8v28"/><rect x="6" y="14" width="8" height="5" rx="1.5" fill="var(--bg)"/><rect x="18" y="24" width="8" height="5" rx="1.5" fill="var(--bg)"/><rect x="30" y="11" width="8" height="5" rx="1.5" fill="var(--bg)"/></svg>
+        <h4>Any interface</h4>
+        <p>Pick the device, the channel pair, the sample rate and the buffer; add an audio input and patch it with Audio In.</p>
+      </article>
+      <article class="feature reveal" style="--accent: var(--violet)">
+        <svg viewBox="0 0 44 44" fill="none" stroke="var(--violet)" stroke-width="2" stroke-linecap="round"><circle cx="19" cy="19" r="11"/><path d="M27 27l10 10"/><path d="M14 19h10M19 14v10"/></svg>
+        <h4>Zoom to anything</h4>
+        <p>F frames the patch, Z zooms one node to fill the view, A keeps everything in sight as the board grows.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- =========================================================== CATALOGUE -->
+<section class="section" id="catalogue" style="padding-top: 0">
+  <div class="wrap">
+    <div class="section-head reveal" style="--accent: var(--teal)">
+      <span class="label">06 · Catalogue</span>
+      <h2>Thirty-one nodes, <span class="outline">seven groups.</span></h2>
+      <p class="lead">Plus every VST3 plugin on your machine. Browse them all with a picture and the details of each.</p>
+    </div>
+    <div class="groups">
+      <a class="group-tile reveal" href="nodes.html#sources" style="--accent: var(--blue)"><span class="arrow">→</span><span class="count">10</span><h4>Sources</h4><span class="dim">Oscillator, Drone, Aether, Larsen, Vesper, Random, Pops 66, Fjord, Audio In, Nullpunkt</span></a>
+      <a class="group-tile reveal" href="nodes.html#texture" style="--accent: var(--teal)"><span class="arrow">→</span><span class="count">3</span><h4>Texture</h4><span class="dim">Granular, Frakture, Resonator</span></a>
+      <a class="group-tile reveal" href="nodes.html#effects" style="--accent: var(--orange)"><span class="arrow">→</span><span class="count">7</span><h4>Effects</h4><span class="dim">Filter, Magma, Equalizer, Tape, Delay, Ping Pong, Reverb</span></a>
+      <a class="group-tile reveal" href="nodes.html#midi" style="--accent: var(--violet)"><span class="arrow">→</span><span class="count">2</span><h4>MIDI</h4><span class="dim">MIDI CC, MIDI Note, and MAP onto any control</span></a>
+      <a class="group-tile reveal" href="nodes.html#sequences" style="--accent: var(--rose)"><span class="arrow">→</span><span class="count">7</span><h4>MIDI sequences</h4><span class="dim">Step Sequencer, MIDIcer, Automa, Colloid, MIDI Looper, Arpeggiator, MIDI In</span></a>
+      <a class="group-tile reveal" href="nodes.html#plugins" style="--accent: var(--green)"><span class="arrow">→</span><span class="count">∞</span><h4>VST3 plugins</h4><span class="dim">Instruments and effects, grouped by maker</span></a>
+      <a class="group-tile reveal" href="nodes.html#output" style="--accent: var(--amber)"><span class="arrow">→</span><span class="count">2</span><h4>Output</h4><span class="dim">Mixer (4 channels), Console (12 or 24)</span></a>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================= GETTING STARTED -->
+<section class="section" id="start" style="padding-top: 0">
+  <div class="wrap">
+    <div class="section-head reveal" style="--accent: var(--green)">
+      <span class="label">07 · Getting started</span>
+      <h2>One command <span class="outline">to the first drone.</span></h2>
+      <p class="lead">AudioBoard is a native Rust app (egui and eframe for the interface, cpal for audio, midir for MIDI). With a Rust toolchain installed, build and run it from the repository:</p>
+    </div>
+    <div class="start-grid">
+      <div class="reveal">
+        <div class="code">
+          <div class="code-head"><span class="label">Run</span><button class="copy" data-copy="cargo run --release">Copy</button></div>
+          <pre><span class="p">$ </span>cargo run --release</pre>
+        </div>
+        <p class="dim">The ambient demo patch opens, stopped. Press <strong>Start</strong> in the toolbar, or <kbd>Space</kbd>, to hear it.</p>
+      </div>
+      <div class="reveal">
+        <div class="code">
+          <div class="code-head"><span class="label">Fastest build, for large patches</span><button class="copy" data-copy="cargo run --profile dist">Copy</button></div>
+          <pre><span class="p">$ </span>cargo run --profile dist</pre>
+        </div>
+        <p class="dim">Whole-program optimization: about 10–15% less audio CPU, for a few minutes more of compiling.</p>
+      </div>
+    </div>
+    <figure class="reveal" style="margin: 40px 0 0">
+      <img class="shot" src="assets/shots/patch-demo-1x.png" srcset="assets/shots/patch-demo-1x.png 1700w, assets/shots/patch-demo.png 3400w" sizes="(max-width: 1240px) 100vw, 1240px" width="1700" height="760" loading="lazy" alt="The demo patch: Random moving a Filter's cutoff, a Drone into the Filter, the Filter into Granular and Reverb, Granular into Delay, and both into the Mixer." data-zoom="assets/shots/patch-demo.png" data-title="The demo patch">
+      <figcaption class="label" style="margin-top: 14px">The demo patch · a Drone (fifths on A1) through a Filter moved by a Random, into a shimmering Reverb and, an octave up, a Granular cloud into a tape Delay</figcaption>
+    </figure>
+    <p style="margin-top: 28px"><a class="btn" href="guide.html" style="--c: var(--green)">Read the guide →</a></p>
+  </div>
+</section>
+
+<!-- ======================================================== ARCHITECTURE -->
+<section class="section" id="architecture" style="padding-top: 0">
+  <div class="wrap">
+    <div class="section-head reveal" style="--accent: var(--blue)">
+      <span class="label">08 · Under the hood</span>
+      <h2>Two threads <span class="outline">that never wait.</span></h2>
+    </div>
+    <div class="arch">
+      <svg class="reveal" viewBox="0 0 560 420" fill="none" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="The UI thread and the audio thread: knob values through atomics, structural changes as commands, removed nodes handed back to be freed.">
+        <rect x="10" y="20" width="220" height="170" rx="10" fill="#1f2024" stroke="#32343a"/>
+        <path d="M10 54h220" stroke="#32343a"/>
+        <circle cx="30" cy="37" r="5" fill="#60a5ee"/>
+        <text x="44" y="42" fill="#e2e4e8" font-size="13" font-weight="600" letter-spacing="1.5">UI THREAD</text>
+        <text x="28" y="84" fill="#9498a0" font-size="12">egui canvas, panels</text>
+        <text x="28" y="108" fill="#9498a0" font-size="12">Graph: nodes, cables</text>
+        <text x="28" y="132" fill="#9498a0" font-size="12">auto layout, palette</text>
+        <text x="28" y="156" fill="#9498a0" font-size="12">projects, library</text>
+
+        <rect x="330" y="20" width="220" height="170" rx="10" fill="#1f2024" stroke="#32343a"/>
+        <path d="M330 54h220" stroke="#32343a"/>
+        <circle cx="350" cy="37" r="5" fill="#e27096"/>
+        <text x="364" y="42" fill="#e2e4e8" font-size="13" font-weight="600" letter-spacing="1.5">AUDIO THREAD</text>
+        <text x="348" y="84" fill="#9498a0" font-size="12">one pass per buffer</text>
+        <text x="348" y="108" fill="#9498a0" font-size="12">64-frame stereo blocks</text>
+        <text x="348" y="132" fill="#9498a0" font-size="12">plugins: one call</text>
+        <text x="348" y="156" fill="#9498a0" font-size="12">lookahead limiter</text>
+
+        <circle cx="230" cy="78" r="6" fill="#141518" stroke="#60a5ee" stroke-width="2"/>
+        <circle cx="330" cy="78" r="6" fill="#141518" stroke="#60a5ee" stroke-width="2"/>
+        <path d="M236 78h88" stroke="#60a5ee" stroke-width="2.5"/>
+        <text x="280" y="70" fill="#60a5ee" font-size="10" text-anchor="middle">ATOMICS</text>
+
+        <rect x="224" y="114" width="12" height="12" rx="2" fill="#141518" stroke="#9e8ae6" stroke-width="2"/>
+        <rect x="324" y="114" width="12" height="12" rx="2" fill="#141518" stroke="#9e8ae6" stroke-width="2"/>
+        <path d="M236 120h88" stroke="#9e8ae6" stroke-width="2.5" stroke-dasharray="6 6"/>
+        <text x="280" y="110" fill="#9e8ae6" font-size="10" text-anchor="middle">COMMANDS</text>
+
+        <circle cx="230" cy="162" r="6" fill="#141518" stroke="#84c26c" stroke-width="2"/>
+        <circle cx="330" cy="162" r="6" fill="#141518" stroke="#84c26c" stroke-width="2"/>
+        <path d="M324 162h-88" stroke="#84c26c" stroke-width="2.5"/>
+        <path d="M244 156l-8 6 8 6" stroke="#84c26c" stroke-width="2.5"/>
+        <text x="280" y="154" fill="#84c26c" font-size="10" text-anchor="middle">TO FREE</text>
+
+        <rect x="372" y="250" width="178" height="62" rx="10" fill="#1f2024" stroke="#32343a"/>
+        <circle cx="390" cy="281" r="5" fill="#9e8ae6"/>
+        <text x="404" y="277" fill="#e2e4e8" font-size="12" font-weight="600" letter-spacing="1.2">MIDI · midir</text>
+        <text x="404" y="295" fill="#9498a0" font-size="11">devices and clock</text>
+        <path d="M461 250v-54" stroke="#9e8ae6" stroke-width="2.5" stroke-dasharray="6 6"/>
+
+        <rect x="10" y="250" width="220" height="62" rx="10" fill="#1f2024" stroke="#32343a"/>
+        <circle cx="30" cy="281" r="5" fill="#84c26c"/>
+        <text x="44" y="277" fill="#e2e4e8" font-size="12" font-weight="600" letter-spacing="1.2">VST3 · vst3-host</text>
+        <text x="44" y="295" fill="#9498a0" font-size="11">called once per buffer</text>
+        <path d="M230 281C300 281 352 246 388 196" stroke="#84c26c" stroke-width="2.5"/>
+
+        <rect x="170" y="352" width="220" height="56" rx="10" fill="#1f2024" stroke="#d6a65c"/>
+        <circle cx="190" cy="380" r="5" fill="#d6a65c"/>
+        <text x="204" y="376" fill="#e2e4e8" font-size="12" font-weight="600" letter-spacing="1.2">OUTPUT · cpal</text>
+        <text x="204" y="394" fill="#9498a0" font-size="11">device, channels, rate</text>
+        <path d="M346 190C346 270 300 300 300 352" stroke="#d6a65c" stroke-width="2.5"/>
+      </svg>
+      <div class="reveal">
+        <p class="lead" style="margin-bottom: 18px">The interface and the sound live on separate threads, and the interface never blocks the audio.</p>
+        <ul class="specs" style="--accent: var(--blue)">
+          <li><b>Atomics</b> knob values travel lock-free from the panels to the engine.</li>
+          <li><b>Commands</b> nodes added or removed and new processing orders reach the engine on a channel, in a precomputed topological order.</li>
+          <li><b>Blocks</b> built-in nodes run in 64-frame stereo blocks, so MIDI timing and modulation stay fine-grained; a plugin gets the whole buffer in one call, its MIDI events at their exact offsets.</li>
+          <li><b>No frees</b> removed nodes and old orders go back to the UI thread to be freed: freeing a delay line inside the callback could click.</li>
+          <li><b>Fast maths</b> denormals flushed to zero; sine, exp2, log2 and tanh approximated within 1e-6.</li>
+        </ul>
+        <p style="margin-top: 26px"><a class="btn ghost" href="architecture.html">The architecture in full →</a></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="closer">
+  <div class="wrap">
+    <span class="label">Ambient · drones · grains · rhythm · generative</span>
+    <h2>Patch something that <span class="outline" style="--accent: var(--rose)">never stands still.</span></h2>
+    <div class="cta">
+      <a class="btn solid" href="guide.html">Get started</a>
+      <a class="btn ghost" href="nodes.html">Browse the nodes</a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div>
+      <a class="brand" href="index.html"><img src="assets/img/logo.svg" alt="" width="30" height="30"> AudioBoard</a>
+      <p class="dim" style="margin-top: 12px">A node-based modular synthesizer in Rust. Built with egui and eframe, cpal, midir and vst3-host. Every panel on this site is rendered from the app.</p>
+    </div>
+    <nav aria-label="Footer">
+      <a href="index.html">Home</a>
+      <a href="nodes.html">Nodes</a>
+      <a href="guide.html">Guide</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="https://github.com/mbonati/AudioBoard">Source</a>
+    </nav>
+  </div>
+</footer>
+
+<script src="assets/js/site.js"></script>
+</body>
+</html>
