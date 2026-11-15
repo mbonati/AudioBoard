@@ -225,6 +225,123 @@ Like any node, it also collapses entirely to its title bar (C).
 
 The preset rhythms are new patterns written in each style, not decoded from the original's diode matrix.
 
+**Fjord**: a four-channel drum synthesizer after the Clavia Nord Drum (the first one, 2012), with a step
+sequencer. Each channel plays one sound at a time, blended from three components, each with its own
+parameters, as on the Nord Drum:
+
+- **Tone**, the body of the sound: a waveform (An1–3 analog: sine, triangle, sawtooth; b1–9 drum-like:
+  kick, tom, snare shell, timpani, tabla, conga, electronic FM tom, steel drum, log drum, made from the modes
+  of membranes and bars; c1–5 percussive: bell, cowbell, six-square metal, FM gong, free bar), at a pitch
+  in half semitones shown as MIDI note numbers (11.0–98.5; 69.0 is A 440 Hz), through a low-pass filter.
+- **Noise**: white noise tilted by COLOR (below 0 more bass, above 0 less), through a low-pass filter of
+  seven types, each more resonant (at 6 and 7 the noise whistles at the cutoff).
+- **Click**: a sharp transient at the very start: n1–n9 noise bursts in nine bands, c1–c9 the same with an
+  added attack, t1–t9 pitched ticks.
+
+| Section | Parameters (red ones are the second function of a button on the Nord Drum) |
+|---------|------------|
+| NOISE   | COLOR −10…10 · FILTER 0–99 / TYPE 1–7 · SWEEP 0–10 / TIME 0–9 · DECAY 0–50 / GATE n, S, G |
+| TONE    | WAVE · FILTER 0–99 / PUNCH 0–9 · SWEEP 0–10 / TIME 0–9 · DECAY 0–50 / GATE · PITCH · BEND −9…30 / BEND TIME 0–9 |
+| CLICK   | TYPE n, c, t 1–9 · DECAY 0–20 / GATE |
+| MIXER   | TONE, NOISE, CLICK 0–10 · LEVEL 0–99 |
+| AMP ENV (Fjord's own) | DECAY or ADSR · A 0–50 · D 0–50 · S 0–99 · R 0–50 |
+| FILTER ENV (Fjord's own) | AMOUNT −10…10 · A 0–50 · D 0–50 · S 0–99 · R 0–50 |
+
+- **Decay and Gate.** DECAY runs from 8 ms to 6 s (the click's from 1 ms to 250 ms), as the time to fall
+  60 dB. GATE shapes it: **n** decays gradually, **S** holds with a soft knee and then falls, **G** is gated:
+  held for a third of the decay, sagging a little, then cut.
+- **Sweep and Time.** SWEEP opens the filter at the strike, up to 7.5 octaves, and falls back over TIME. Each
+  TIME is a share of its decay: 9 lasts as long as the decay, so a sound keeps its shape when the decay
+  changes.
+- **Bend.** The pitch starts away from PITCH and glides to it over BEND TIME (a share of the tone's decay): a
+  positive BEND starts above (a step per semitone, up to 30), a negative one below.
+- **Punch** adds a short, velocity-controlled attack: a boost of a few milliseconds with its peaks rounded.
+- **Velocity** sets the level and how far the sweeps, the bend and the punch go.
+- **FILTER** 99 is fully open; lower settings close it to 20 Hz.
+- **The tone's envelopes** go beyond the Nord Drum, to widen what the tone can be (swells, pads, basses,
+  plucks). **AMP ENV** picks what shapes the tone's level: **DECAY**, the Nord Drum's DECAY and GATE, or an
+  **ADSR** (attack 0.5 ms to 5 s, decay and release 8 ms to 6 s, sustain level). With the ADSR the tone's
+  DECAY and GATE stand aside, and the sweep, bend and partials' times follow the ADSR's decay. **FILTER ENV**
+  is an ADSR on the tone filter, on top of the sweep: AMOUNT moves the cutoff up to 8 octaves up, or down when
+  negative (it can close a fully open filter), scaled by velocity; at 0 it is off. Both are drawn beside their
+  knobs. The sustain lasts as long as the note: a MIDI key until its note-off, a step for its GATE, TRIG
+  while it is held down, a Trig input for 80 ms. The display marks where its strike lets go (0.4 s).
+
+**Programs.** 99 programs hold the four channels. P1–P34 are factory programs (our own sounds, in the Nord
+Drum's styles: Real, Retro, Ethno, FX; and categories: *Drums* for kick, snare and two toms, *Perc* for four
+pads, *Kit* for kick, snare, tom and hihat; the last two, Slow Bloom and Acid Kit, use the tone's
+envelopes); P35–P99 start empty. The knobs are the edit buffer. The programs
+show as a bank map: 99 cells, outlined in their style's colour (white for your own, faint when empty), the
+current one filled. Hovering a cell shows its name, a click loads it, and dragging the program number up or
+down steps through them, like the Nord Drum's dial. A red dot shows when the knobs differ from the stored
+program. **STORE**, then a click on a cell, writes them there (Esc cancels), unless **PROTECT** (Memory
+Protect, on from the factory) is on. Double-clicking a knob gives back its stored value. **COPY** and **PASTE** move a
+channel's sound to another channel, program or Fjord; **INIT** (Sound Init) resets the edited channel. MASTER
+sets the overall level and is not stored. The programs are kept with the node, in the project and in the
+library.
+
+**The panel.** The top is always there: the programs, the channel keys, SOLO EDIT, MASTER and ALEA. Under
+it, two pages, and the node takes the size of the one shown: **SOUND**, the edited channel's sound (the
+display, NOISE, TONE, CLICK, MIXER and the tone's envelopes), and **SEQUENCER · MIDI**, the step lanes and
+the SYSTEM settings below.
+
+**Playing.** The channel keys pick the channel to edit; their lights flash green on a hit and red on a hard
+one (longer for the hardest, as the Nord Drum's input lights do). **TRIG** plays the edited channel at its
+velocity (VEL), and holds its note while it is held down. **SOLO EDIT** lets only the edited channel's tone,
+noise or click be heard. The display draws the edited channel's strike: tone, noise and click as outlines,
+the bend's pitch over them, and a line that runs through on each hit.
+
+**ALEA: throwing the dice.** *Alea* is Latin for the die and for chance and fortune; it gave aleatoric music,
+music left partly to chance, its name. Three throws: **SOUND** (new sounds for the four channels; with Shift,
+for the edited channel only), **STEPS** (new steps) and **ALL** (new sounds, then steps for them). **CHANCE**
+sets how far a throw goes: a little, and it nudges what is there (each amount moves that share of the way
+to the new sound, each choice changes with that chance, each step is redrawn with that chance); at 100% it
+starts afresh. The die shows each throw's face. **BACK** takes back the last throw. Sounds are bred, not drawn
+blind: each section of a channel (noise, tone, click, mixer, the envelopes) comes from the same channel of a
+factory program, so a kit's channel 1 stays a kick, the sections crossed between programs, then jittered,
+some choices (waveform, filter type, click type, gates) thrown anew, and now and then the tone's ADSRs
+switched on. Steps follow what each channel sounds like, shown under its lane: a kick starts every bar and
+lands on some beats and offbeats, a snare takes the backbeats with ghost notes, a hihat runs on eighths,
+sixteenths or the offbeats with accents, a tom or percussion plays a Euclidean rhythm with a fill now and
+then. A throw changes the knobs only: STORE keeps what you like.
+
+**SYSTEM: MIDI and the Trig inputs.**
+
+- **MIDI CH** (1–16, or 0: Off) is the channel received and sent; **LRN** takes it from the next message.
+- **NOTE**: each channel's MIDI note, 36, 38, 50 and 47 to start (General MIDI bass drum, snare, high tom,
+  low-mid tom); **LRN** takes it from the next note. Its note-off ends a held note (for the envelopes).
+- Hits from TRIG, the Trig inputs and the steps go out as notes on the MIDI output, as the pads' hits do on
+  the Nord Drum. **LOCAL OFF** makes them only go out (for a sequencer that echoes them back); MIDI notes in
+  still play.
+- **PROG CHANGE**: OFF, SEND (when a program is picked here), RECV (program changes load programs) or BOTH.
+- **TRIG 1–4** are audio inputs that play the channels: a pad through the audio interface, or any
+  percussive signal (drum replacement: a drum loop into TRIG 1 replays its kicks on channel 1). For the
+  edited channel: **TRIG TYPE** (Pd1 rubber pads, Pd2 plastic heads, Pd3 mesh, Ac1 trigger on a kick or
+  snare, Ac2 on a high or mid tom, Ac3 on a low tom: how long it scans for the peak and how long it ignores the
+  ringing), **DYN** (Dn1 linear, Dn2 hotter; it shapes the MIDI notes' velocity too), **THRES** (hits quieter
+  than this are ignored, up to 48 dB under the hardest) and **SENS** (the input level that plays the hardest
+  hit, 0 to −45 dBFS).
+- **FOLLOW PADS**: MIDI notes and Trig input hits pick the channel to edit, until one is picked on the panel.
+
+**STEPS: the sequencer.** A lane per channel, up to 32 steps of 1/8, 1/16, 1/16T or 1/32 on the board's grid,
+playing with the board's transport while **RUN** is on. Click a step to switch it on or off, right-click (or
+shift-click) to step it through soft, medium and accent, drag to paint. SWING delays every other step, GATE sets
+how long a step's note is held (5–100% of the step: the envelopes' sustain, and the MIDI notes sent), M mutes
+a lane, CLEAR empties the pattern. It starts with a beat for the first program's kit.
+
+**Outputs.** OUT carries the mix (mono, on both sides, as the Nord Drum's single output); CH 1–4 carry each
+channel on its own, after its level, for separate effects.
+
+**What differs from the Nord Drum.** The manual describes the waveforms, the click types and the filter types
+only in words, so these are our own designs, as are the factory programs (34 here, 79 on the Nord Drum). The
+manual lists the third default note as 59, but the General MIDI high tom it names is 50, which Fjord uses. The
+panel shows every parameter at once instead of a grid of buttons, a dial and Shift, and the programs as a map
+instead of a number on a display. The Trig inputs are audio
+inputs, and their types are timings rather than settings for particular pads. Program dumps over SysEx, the
+OS update and the demo are left out: programs are saved with the node (save it to the library to carry its
+bank to other projects), and the sequencer's starting beat plays the part of the demo. Local stays as set
+instead of returning to On; the tone's envelopes, the channel outputs, the steps and ALEA are new.
+
 **Audio In**: the audio interface's inputs on a cable: a microphone, a guitar, a synth, another app through
 a loopback device. **INPUT** picks the channel. **STEREO** takes it and the next as left and right (INPUT 3:
 inputs 3–4); **MONO** puts it on both sides. **GAIN** goes from −24 to +24 dB. The display has a meter per
@@ -450,6 +567,101 @@ chain) and MIDI.
   - RTA on or off.
 
   Hovering the graph shows the frequency, the note with its cents and the analyzer's level there.
+
+**Prism**: a 24-band equalizer after FabFilter Pro-Q 4, with dynamic and spectral bands, three processing
+modes and an interactive display. It is a node of its own: the Equalizer above stays as it is.
+
+- **Bands.** Up to 24, added on the display. Each has a shape, a slope, FREQ (10 Hz–30 kHz), GAIN (±30 dB), Q
+  (0.025–40) and a stereo placement. The shapes:
+  - **Bell**: Q is the width at half the gain;
+  - **Low Shelf**, **High Shelf**: the gain below or above, half of it at FREQ;
+  - **Low Cut**, **High Cut**: Butterworth, 3 dB down at FREQ; Q above 1 adds a resonant peak at the knee;
+  - **Notch**, **Band Pass**: they cut out, or keep, a band Q wide;
+  - **Tilt Shelf**: a shelf centred on 0 dB, −GAIN/2 below FREQ and +GAIN/2 above;
+  - **Flat Tilt**: a straight line across the spectrum through 0 dB at FREQ, GAIN from 20 Hz to 20 kHz;
+  - **All Pass**: changes only the phase, as an alternative to inverting it.
+- **Slopes.** 6, 12, 18, 24, 30, 36, 48, 72 and 96 dB/octave; the cuts also have **BW**, a brickwall (100 dB down
+  within about 0.4 octave). Bells and notches go 12 to 96 in steps of 12: steeper, a bell's top gets flatter and
+  its sides steeper, at the same width. Q does nothing at 6 dB/octave (bells, notches and band passes aside).
+  **GAIN-Q** (bottom bar) makes bells narrow as they gain, and gain a touch when narrow, as analog ones do.
+- **Placement.** **ST** works on both channels, **L** or **R** on one, **M** on the mid (L+R) and **S** on the side
+  (L−R). **SPLIT** turns a band into a left and a right band (or mid and side) to set apart. Curves for one channel
+  only are drawn in its colour: white left, red right, green mid, blue side; yellow is what every channel gets.
+- **Processing modes** (bottom bar):
+  - **ZERO LATENCY**: analog-matched filters. A bell high up keeps its analog shape instead of being squeezed
+    against Nyquist (within half a dB up to 15 kHz at 44.1 kHz, and a little more above, as in Pro-Q).
+  - **NATURAL PHASE**: the same filters at twice the rate, where they match the analog ones in phase too, up to
+    the top of the audible range. Latency: 30.5 samples (0.6 ms), from the oversampling filters.
+  - **LINEAR PHASE**: only the magnitude changes, phase stays untouched (for parallel chains, or bands on mid and
+    side). **RESOLUTION** picks the frame: finer resolves narrow low bands better, at more latency. At 48 kHz
+    (frames scale with the rate, so the times stay): LOW 53 ms, MED 107 ms, HIGH 213 ms, V.HIGH 427 ms, MAX
+    853 ms (where steep low bands can pre-echo). The board doesn't compensate latency, so mixing it with the dry
+    signal elsewhere combs; the latency is shown beside RESOLUTION.
+- **Dynamic EQ.** Bells, shelves and tilts can be dynamic: **RANGE** (±30 dB) is how far the gain may move when
+  the band's trigger crosses **THRESH**. Below 0 it turns loud moments down (compression), above 0 it lifts them
+  (expansion).
+  - **A** (on by default) is the automatic threshold: it rides 3 dB over the trigger's average level, rising in
+    about half a second and falling over two, so the band reacts to what stands out. Off, THRESH sets it
+    (−60…0 dB); the ring round the knob shows the trigger's level.
+  - **ATTACK** and **RELEASE** at 50% are automatic: they follow the band's frequency (slower low down, where a
+    period lasts longer), and the release lengthens as the band works harder. Lower is faster, higher slower,
+    down to a tenth or up to ten times.
+  - The trigger: **INT** (the node's input) or **EXT** (the SC input); **BAND** (the band's own range: a band pass
+    for bells, a low or high pass for shelves; tilts listen to everything) or **FREE**, between **SC LO** and
+    **SC HI**. Hold **AUDITION** to hear it.
+  - On the display, the dashed curve is where RANGE can take the band, the yellow bar from its dot is where the
+    dynamics have it now, and the diamond at the end of the line drags RANGE. The GAIN knob's ring shows the same.
+- **Spectral dynamics.** **SPECTRAL** makes a dynamic band measure each frequency in its range on its own: only the
+  frequencies that cross the threshold move, the rest of the band stays. **DENSITY** sets how many neighbours
+  trigger together (low: wide ranges; high: narrow, single frequencies). **TILT** (on by default) adds 3 dB/octave
+  to the trigger, so highs trigger a little sooner, which suits whole mixes. Spectral bands run in the linear-phase
+  stage at RESOLUTION LOW to HIGH, so they bring its latency in any mode. The dotted line on the display is what
+  they are doing along the spectrum.
+- **The display.**
+  - Hovering shows the band a click would make; its place picks the shape: cuts at the far left and right, shelves
+    just inside them, a notch along the bottom, a bell elsewhere. Click to add it (with bands selected: double-click
+    or Cmd-click). **Alt**-click makes it dynamic, **Alt+Shift**-click spectral. Dragging the yellow curve also makes
+    a band (shelves near the ends).
+  - Drag a dot for frequency and gain (cuts, notches, band and all passes: frequency and Q, whose dots sit at a
+    height for Q). **Shift**: fine. **Alt**: one axis. **Cmd**-drag up and down: Q. With **PIANO** on, frequencies
+    snap to semitones (Shift lets them go).
+  - Click a dot to select it, **Cmd**-click to add or remove one, **Shift**-click for every band between, or drag a
+    rectangle on the background. Dragging moves every selected band; the strip's knobs move them all too. Click the
+    background to deselect.
+  - **Alt**-click a dot: bypass. **Cmd+Alt**-click: next shape. **Alt+Shift**-click: next slope.
+  - A tag by the dot under the pointer gives its shape and values; elsewhere, the frequency and note under the
+    pointer. The EQ scale is ±3, 6, 12 or 30 dB (top right), and grows by itself when a band is dragged past it.
+- **The band strip** (under the display) shows the selected band: bypass, the ten shapes drawn as their curves, the
+  slopes the shape has, placement, SPLIT, previous and next band (by frequency), **S** (hold to solo: you hear what
+  the band works on, the band of a bell, notch or band pass, the side of a shelf, what a cut removes; drag sideways
+  for the frequency, with Cmd for Q) and × (delete).
+- **The analyzer** (top bar): **PRE** and **POST** spectra, and the side chain's (**SC**, red); **RANGE** (60, 90,
+  120 dB), **RES** (1024 to 8192 points: finer lows, slower), **SPEED**, **TILT** (0–6 dB/octave around 1 kHz;
+  4.5 is close to how loud we hear), **FREEZE** (holds the peaks). With **GRAB** on, resting the pointer on the
+  spectrum for a second freezes it and marks its six highest peaks: drag one to make a bell there, its width taken
+  from the peak.
+- **EQ Match** (**MATCH**): bands that make the input sound like a reference, which is the SC input or, with
+  **CAPTURE**, what the input has played so far (then play the part to change). The panel averages both spectra and
+  draws the difference in red; **DETAIL** sets how many bands (2–16); **MATCH** fits them (again as often as you
+  like), **FINISH** keeps them, **CANCEL** puts the bands back as they were.
+- **EQ Sketch** (**SKETCH**): draw a curve across the display in one stroke (moving back redraws), and bands follow it.
+- **Output** (bottom bar): **CHARACTER** (CLEAN; SUBTLE, a mild saturation; WARM, a stronger one with even
+  harmonics), **AUTO GAIN** (makes up the level the curve adds or takes, an estimate from the curve, shown beside
+  it), **Ø** (polarity), **SCALE** (every gain and range, 0–200%), **PAN** (between left and right, or mid and
+  side) and **OUT** (±36 dB). The meter right of the display shows the output and its peak. As on every node, a
+  soft limit keeps the output under full scale (it does nothing below −1 dBFS).
+
+What differs from Pro-Q 4: the slopes are fixed steps, not fractions in between. The board's mouse wheel moves the
+canvas, so Q is Cmd-drag or the knob instead of the wheel; values can't be typed; there's no right-click band menu
+(the strip has it all), no Delete key for bands (Del deletes the node; × in the strip does), no horizontal zoom, no
+undo, A/B or presets of its own (save the node to the library). Pro-Q never clips; Prism's output is soft-limited
+near full scale like the other nodes'. Linear Phase works on overlapping FFT frames, and
+Natural Phase oversamples: our own ways to the same ends. In Linear Phase, dynamic bands hear their trigger ahead of
+the delayed sound, and at V.HIGH and MAX dynamics are off, as in Pro-Q. The automatic threshold, attack, release and
+knee (soft, 6 dB) are our own, as are the spectral detector, the saturation curves and the readings of Tilt Shelf
+and Flat Tilt. EQ Match listens only while its panel is open, and can't take another instance or an audio file as
+reference. The instance list, surround and Atmos, collision detection, MIDI learn (the board's MAP does it) and the
+solo's listening level are left out.
 
 **Tape**: a tape machine, after the classic tape emulation plugins. The sound is recorded, carried by a moving
 tape and played back:
@@ -885,7 +1097,7 @@ Gain staging follows a DAW's:
 | Collapse / expand a node or a module | arrow in the header, double-click the title, the C key, or right-click → Collapse |
 | Collapse / expand everything | Shift+C, the toolbar button, or right-click the canvas |
 | Frame everything / the selection | F / Shift+F |
-| Bypass an effect | the power button in its header, B with the mouse over it (or on the selected effects), or right-click → Bypass on / off: its input goes straight to its output, crossfaded, and the effect keeps running underneath so switching back is seamless. A bypassed effect is dimmed and says BYPASS; it's saved with the project. Every node that processes a signal on its IN can be bypassed (filters, Magma, Equalizer, Tape, delays, Reverb, the texture nodes, plugin effects) |
+| Bypass an effect | the power button in its header, B with the mouse over it (or on the selected effects), or right-click → Bypass on / off: its input goes straight to its output, crossfaded, and the effect keeps running underneath so switching back is seamless. A bypassed effect is dimmed and says BYPASS; it's saved with the project. Every node that processes a signal on its IN can be bypassed (filters, Magma, Equalizer, Prism, Tape, delays, Reverb, the texture nodes, plugin effects) |
 | Zoom in on one node | Z with the mouse over it (or on the selection), or right-click → Zoom to node: it fills the view, in front of the others; Z again or Esc goes back to the view you had |
 | Auto layout | L, the toolbar button or right-click the canvas; Cmd+Z undoes it |
 | Auto-fit (keep the whole patch in view) | A or the toolbar button |
@@ -1006,11 +1218,22 @@ src/
 │   │               meloDICER)
 │   │   ├── magma.rs    Magma (after FabFilter Volcano 3): parameters, routing, oversampling, slots
 │   │   ├── magma/      filter (non-linear SVF styles, responses), modulation (XLFO, EG, EF, MIDI, XY)
+│   │   ├── prism.rs    Prism (after FabFilter Pro-Q 4): the bands' knobs and settings, the minimum-phase cascade
+│   │   │               (at twice the rate for Natural Phase), triggers, solo and audition, character, auto
+│   │   │               gain, output, the analyzer's rings
+│   │   ├── prism/      design (the ten shapes as analog prototypes, their responses, analog-matched digital
+│   │   │               sections), spectral (FFT frames: linear phase, spectral dynamics, placement), fft (sliced
+│   │   │               over a hop), dynamics (triggers, automatic threshold and times), fit (EQ Match, Sketch)
 │   │   ├── frakture.rs Frakture (after Excite Audio's Motion: Fractal): parameters, mappings, the chain
 │   │   ├── frakture/   grains (tempo-locked buffer, two layers, MUTATE), rhythm (gate, repeat), space (hall),
 │   │   │               motion (hexagon sliders, magnet, drawn/recorded paths, timeline)
 │   │   ├── pops.rs     Pops 66 (after the KORG Mini Pops-7): instruments, user patterns, clock, MIDI in/out
 │   │   ├── pops/       voices (the fifteen synthesized instruments), rhythms (the twenty presets, combining)
+│   │   ├── fjord.rs    Fjord (after the Clavia Nord Drum): the channels' knobs, programs (packed three settings
+│   │   │               to a value, store, Memory Protect), MIDI in and out, learning, Local, the step lanes
+│   │   ├── fjord/      voice (tone, noise and click, gates, sweeps, bend, punch, the tone's ADSRs, held notes,
+│   │   │               the channel), bank (the factory programs), trigger (the Trig inputs: scan, mask,
+│   │   │               falling threshold), alea (the dice: sounds bred from the bank, grooves by role)
 │   │   ├── nullpunkt.rs Nullpunkt: step patterns, synced stutter, glitch stage, built-in scenes
 │   │   ├── aether.rs   Aether: chords, FREE and keys, additive voices in vector banks, the motion's targets,
 │   │   │               RANDOM, built-in sounds
@@ -1035,7 +1258,7 @@ src/
 │   │   │               forward, reversed or by random slices, launching and following scenes, MIDI control
 │   │   ├── looper/     clock (following a MIDI clock: ticks, Start, Stop, Continue, song position)
 │   │   ├── tape.rs     Tape: record EQ, magnetic curve, transport (wow, flutter, stop/start), playback head
-│   │   ├── oversample.rs 2× oversampling (half-band FIR) shared by Magma, Tape and Aether
+│   │   ├── oversample.rs 2× oversampling (half-band FIR) shared by Magma, Tape, Aether and Prism
 │   │   ├── steps.rs step grid on the global tempo, outgoing notes, held keys
 │   │   └── mod.rs  module descriptions (ModuleDef), generic parameters and DSP helpers
 │   ├── midi.rs     MIDI inputs (midir) and shared state read by the MIDI nodes (clock and transport too)
@@ -1061,6 +1284,8 @@ src/
 │   ├── modules.rs  common module panel and their displays
 │   ├── frakture.rs the Frakture node's panel: HEXAGON, EFFECTS, MUTATE (the grain cloud) and MOTION pages
 │   ├── equalizer.rs the Equalizer's panel: graph and band markers, analyzer (FFT), band controls
+│   ├── prism.rs    the Prism panel, flat: analyzer bar, the display (spectra, curves as outlines, band dots,
+│   │               dynamics, Spectrum Grab, EQ Match, Sketch, piano), the band strip, the bottom bar
 │   ├── magma.rs    the Magma panel: display and dots, filter controls, sources and slots (drag & drop)
 │   ├── tape.rs     the Tape panel: the sketched deck (reels, tape, head, needles, keys), COMPACT / FULL
 │   ├── nullpunkt.rs the Nullpunkt panel: editable lanes, randomize, presets, knob groups
@@ -1076,6 +1301,9 @@ src/
 │   │               strikes, stirring), HANDPAN / CHORD and the shape, the notes' cells, knob groups, CC lanes
 │   ├── settings.rs the Settings window: output device, channels, rate, buffer; input and its meters
 │   ├── pops.rs     the Pops 66 panel: MACHINE, MIXER and EDITOR detail levels (the node resizes), waveform preview
+│   ├── fjord.rs    the Fjord panel: the bank map of the 99 programs, channel keys and their lights, ALEA and
+│   │               its die; pages SOUND (the strike's outlines, NOISE, TONE, CLICK, MIXER, AMP and FILTER
+│   │               ENV) and SEQUENCER · MIDI (the lanes, SYSTEM); the node resizes with the page
 │   ├── widgets.rs  hand-drawn knobs, faders, meters, ports and cables
 │   ├── monitor.rs  bottom panel: oscilloscope and spectrum (FFT)
 │   ├── tempo.rs    the toolbar's tempo: BPM field (drag or type), beat light, tap tempo
@@ -1112,8 +1340,8 @@ sideways drift.
 To add a new module: a file in `audio/modules/` with its `ModuleDef` (knobs, ports, modes, toggle) and a
 `Processor`, an entry in `ModuleKind` and, in `ui/modules.rs`, the readout and the display.
 The panel (ports, selector, knobs) is generated from the definition; Frakture, too large for the generic
-panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`), Magma (`ui/magma.rs`), Tape (`ui/tape.rs`), Nullpunkt (`ui/nullpunkt.rs`), Aether (`ui/aether.rs`), Larsen (`ui/larsen.rs`), Vesper (`ui/vesper.rs`), the MIDI Looper (`ui/looper.rs`), Automa (`ui/automa.rs`), Colloid (`ui/colloid.rs`) and Pops 66
-(`ui/pops.rs`, whose size follows its detail level through `modules::size_of`). Frakture's hexagon runs on the audio thread, block by block: the panel
+panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`), Prism (`ui/prism.rs`), Magma (`ui/magma.rs`), Tape (`ui/tape.rs`), Nullpunkt (`ui/nullpunkt.rs`), Aether (`ui/aether.rs`), Larsen (`ui/larsen.rs`), Vesper (`ui/vesper.rs`), the MIDI Looper (`ui/looper.rs`), Automa (`ui/automa.rs`), Colloid (`ui/colloid.rs`), Fjord (`ui/fjord.rs`) and Pops 66
+(`ui/pops.rs`; its size, like Fjord's, follows its settings through `modules::size_of`). Frakture's hexagon runs on the audio thread, block by block: the panel
 hands it the mouse through the module's display values, so paths keep time even when the window doesn't
 redraw.
 

@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Node catalogue · AudioBoard</title>
+<meta name="description" content="Every AudioBoard node, with its panel: sources, textures, effects, MIDI, MIDI sequences, VST3 plugins and output.">
+<meta name="theme-color" content="#141518">
+<script>document.documentElement.classList.add("js")</script>
+<link rel="icon" href="assets/img/logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&family=Unbounded:wght@500;600;700;800&display=swap">
+<link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="index.html" aria-label="AudioBoard home"><img src="assets/img/logo.svg" alt="" width="34" height="34">AudioBoard</a>
+    <button class="nav-toggle" aria-label="Menu" aria-expanded="false"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h14M3 10h14M3 14h14"/></svg></button>
+    <nav class="nav-links" aria-label="Main">
+      <a href="index.html">Home</a>
+      <a href="nodes.html" aria-current="page">Nodes</a>
+      <a href="guide.html">Guide</a>
+      <a href="architecture.html">Architecture</a>
+      <a class="gh" href="https://github.com/mbonati/AudioBoard"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>Source</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+<section class="page-hero">
+  <div class="wrap">
+    <span class="label">Catalogue · 31 built-in nodes + VST3</span>
+    <h1>Every node, <span class="outline" style="--accent: var(--teal)">on the board.</span></h1>
+    <p class="lead">Sources make sound, textures and effects shape it, MIDI nodes play and move it, mixers bring it home. Every cable is stereo; mono sources write the same signal to both sides. Click a node for its full description; every picture is its real panel, rendered from the app while the board plays.</p>
+  </div>
+</section>
+
+<div class="filters">
+  <div class="wrap">
+    <button class="chip" data-filter="all" aria-pressed="true" style="--c: var(--text)"><i></i>All <small>32</small></button>
+    <button class="chip" data-filter="sources" aria-pressed="false" style="--c: var(--blue)"><i></i>Sources <small>10</small></button>
+    <button class="chip" data-filter="texture" aria-pressed="false" style="--c: var(--teal)"><i></i>Texture <small>3</small></button>
+    <button class="chip" data-filter="effects" aria-pressed="false" style="--c: var(--orange)"><i></i>Effects <small>7</small></button>
+    <button class="chip" data-filter="midi" aria-pressed="false" style="--c: var(--violet)"><i></i>MIDI <small>2</small></button>
+    <button class="chip" data-filter="sequences" aria-pressed="false" style="--c: var(--rose)"><i></i>MIDI sequences <small>7</small></button>
+    <button class="chip" data-filter="plugins" aria-pressed="false" style="--c: var(--green)"><i></i>VST3 <small>1</small></button>
+    <button class="chip" data-filter="output" aria-pressed="false" style="--c: var(--amber)"><i></i>Output <small>2</small></button>
+    <label class="search">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="7" cy="7" r="5"/><path d="M11 11l3.5 3.5"/></svg>
+      <input id="search" type="search" placeholder="Search nodes, knobs, ideas…" aria-label="Search nodes">
+    </label>
+  </div>
+</div>
+
+<div class="wrap" id="catalogue-list">
+
+<!-- ============================================================ SOURCES -->
+<section class="cat-group" id="sources" style="--accent: var(--blue)">
+  <header>
+    <span class="label">01 · Sources</span>
+    <h2>Sources</h2>
+    <p>Oscillators and drones, generative instruments, drum machines, a feedback loop and the audio interface's own inputs. Like every source, they play while the transport runs (or while keys are held) and rest, costing nothing, once quiet.</p>
+  </header>
+  <div class="cards">
+
+    <article class="card" id="node-oscillator" tabindex="0" role="button" data-group="sources" data-group-label="Sources" data-name="Oscillator" data-shots="assets/shots/osc.png" style="--accent: var(--blue)">
+      <div class="thumb"><img src="assets/shots/osc.png" width="608" height="648" loading="lazy" alt="Oscillator panel"></div>
+      <div class="meta"><div class="row"><h3>Oscillator</h3><span class="label">Waveforms</span></div>
+        <p>Sine, triangle, saw, pulse and noise; saw and pulse are band-limited with PolyBLEP.</p></div>
+      <div class="more">
+        <p>The basic voice of the board, and an LFO below 20 Hz. Its FM and AM inputs take any signal.</p>
+        <table><tr><th>Knob</th><th>Function</th></tr>
+          <tr><td>FREQ</td><td>0.1 Hz – 20 kHz, on a logarithmic scale; below 20 Hz it works as an LFO</td></tr>
+          <tr><td>FINE</td><td>±100 cents</td></tr>
+          <tr><td>LEVEL</td><td>output amplitude</td></tr>
+          <tr><td>SHAPE</td><td>depends on the waveform: Drive (sine, saw), Skew (triangle), Width (pulse), Color (noise)</td></tr>
+          <tr><td>FM</td><td>depth of frequency modulation from the FM input</td></tr>
+          <tr><td>AM</td><td>depth of amplitude modulation from the AM input</td></tr></table>
+      </div>
+    </article>
+
+    <article class="card" id="node-drone" tabindex="0" role="button" data-group="sources" data-group-label="Sources" data-name="Drone" data-shots="assets/shots/drone.png" style="--accent: var(--blue)">
+      <div class="thumb"><img src="assets/shots/drone.png" width="736" height="648" loading="lazy" alt="Drone panel"></div>
+      <div class="meta"><div class="row"><h3>Drone</h3><span class="label">Chord of voices</span></div>
+        <p>Eight detuned voices in a chord, each drifting slowly in pitch and level, so the sound never stands still.</p></div>
+      <div class="more">
+        <p>The chord can be Unison, Fifths, Octaves, Major, Minor or Suspended. The demo patch starts from a Drone on fifths of A1.</p>
+        <ul>
+          <li><b>PITCH</b>, <b>DETUNE</b> (in cents) and <b>DRIFT</b>, how far the voices wander.</li>
+          <li><b>TONE</b> goes from dark sines to bright saws; <b>SPREAD</b> sets the stereo width.</li>
+          <li><b>P.MOD</b> and <b>T.MOD</b> set the depth of the PITCH and TONE inputs; <b>LEVEL</b> the output.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="card" id="node-aether" tabindex="0" role="button" data-group="sources" data-group-label="Sources" data-name="Aether" data-after="warm drones moved by fractal motion" data-shots="assets/shots/aether.png" data-keys="ambient pad fractal glitch" style="--accent: var(--blue)">
+      <div class="thumb"><img src="assets/shots/aether.png" width="1696" height="1016" loading="lazy" alt="Aether panel"></div>
+      <div class="meta"><div class="row"><h3>Aether</h3><span class="label">Ambient pads</span></div>
+        <p>Warm drones and slowly turning pads, moved by fractal motion, with glitches in tune.</p></div>
+      <div class="more">
+        <p>It plays on its own while the transport plays. Five voices hold a chord; each is two layers of eight partials, built one by one and DETUNE apart, so every partial can move on its own.</p>
+        <ul>
+          <li><b>Voices.</b> A chord shape (5TH, SUS, MAJ9, MIN9, MIN11, 4THS, LYD) on ROOT, or FREE for a plain pad. COLOR picks the timbre: WARM, SILK, HOLLOW or CHOIR; TONE goes from dark to bright.</li>
+          <li><b>Fractal motion.</b> Six octaves of smooth noise, each twice as fast as the one below and ROUGH times as large. EVOLVE sets the slowest period: 1 to 64 bars with SYNC, or 4 s to 4 minutes. It morphs the timbre, opens the tone and drifts each voice's pitch, level and place. Every Start plays the same evolution; RESEED picks another.</li>
+          <li><b>Harmonic glitches.</b> On a grid of 1/4 to 1/32, CHANCE decides which steps glitch: glassy <i>pings</i> on a harmonic of a chord tone, or <i>skips</i> that loop a slice like a CD sticking, cut to stay in tune. REPEAT ratchets them.</li>
+          <li><b>Warmth.</b> DRIVE (oversampled when needed), CHORUS, SPACE (2.5 to 12.5 s), AIR, WIDTH and LEVEL.</li>
+          <li><b>MIDI.</b> Keys take over the chord; LATCH keeps it, GATE sounds only while keys are held, GLIDE lets voices slide to their notes.</li>
+          <li><b>RANDOM</b> rolls a new warm sound; <b>PRESETS</b> holds seven built-in sounds, from Plain pad to Night air.</li>
+        </ul>
+        <p>The panel shows the motion: a fractal flower, a branch per voice forking into its sixteen partials, and the aurora, every partial's track over the last 18 seconds.</p>
+      </div>
+    </article>
+
+    <article class="card" id="node-larsen" tabindex="0" role="button" data-group="sources" data-group-label="Sources" data-name="Larsen" data-after="a feedback drone" data-shots="assets/shots/larsen.png" data-keys="feedback string drosera" style="--accent: var(--blue)">
+      <div class="thumb"><img src="assets/shots/larsen.png" width="1696" height="912" loading="lazy" alt="Larsen panel"></div>
+      <div class="meta"><div class="row"><h3>Larsen</h3><span class="label">Feedback drone</span></div>
+        <p>A floor of noise excites two plucked strings inside a saturating loop: it sounds on its own, with no notes and no input.</p></div>
+      <div class="more">
+        <p>An independent take on the circuit of Drosera (codeskine) and the Audrey II firmware it grew from, written anew for the board.</p>
+        <ul>
+          <li><b>The loop.</b> The strings ring, a steep drive bounds them, a LOWPASS, a HIGHPASS and a REVERB shape them, and BODY (1–100 ms) brings it back into the strings. FEEDBACK (−60 to +12 dB) is the gain round it; from about −25 dB it sustains and saturates. The drone settles where the strings' harmonics and BODY's resonances meet.</li>
+          <li><b>ECHO</b> after the loop, with SEND, TIME (50 ms to 5 s, gliding like tape) and REPEATS; WARP shortens the time, PONG bounces the repeats from side to side.</li>
+          <li><b>Keys.</b> PITCH puts the drone on the key, in tune within about 15 cents; GATE opens the loop only while a key is held.</li>
+          <li><b>Three strings.</b> POLY runs three loops on FREQ and two intervals; COUPLING lets each hear the other two, like sympathetic strings.</li>
+          <li><b>PRESETS</b>: sixteen built-in sounds, from Cellar and Nave to Howl, Sympathetic and Embers.</li>
+        </ul>
+        <p>The panel shows the loop's field: the spectrum over the filter band, the strings' harmonics rising from the bottom and BODY's resonances hanging from the top.</p>
+      </div>
+    </article>
+
+    <article class="card" id="node-vesper" tabindex="0" role="button" data-group="sources" data-group-label="Sources" data-name="Vesper" data-after="a generative ambient instrument" data-shots="assets/shots/vesper.png" data-keys="chords cinematic pad score" style="--accent: var(--blue)">
+      <div class="thumb"><img src="assets/shots/vesper.png" width="1896" height="1128" loading="lazy" alt="Vesper panel"></div>
+      <div class="meta"><div class="row"><h3>Vesper</h3><span class="label">Generative</span></div>
+        <p>Pick a root and a mood; the engine writes the chords and five layers play them. Soundscapes, cinematic pads, progressions.</p></div>
+      <div class="more">
+        <p>There are no sample files: each sound is a recipe (partials widened into bands, noise, a spectral shape, swells, sweeps, grit, dust and chimes) rendered into a looped stereo sample on a thread of the node's own, so playing costs little.</p>
+        <ul>
+          <li><b>The chords.</b> Sixteen moods, each a seven-degree scale, from Radiant and Elegy to Temple and Cosmos. LOOP repeats a progression of CHORDS chords; EVOLVE keeps writing new ones and shows what's next. VARIATION, NOTES and DURATION shape them; voices move as little as they can.</li>
+          <li><b>The layers.</b> PAD, BASS, AMBIENCE and NOISE, some forty sounds each, and SHIMMER, high pings at random or as an OSTINATO. Each layer has its sound, LOCK, MUTE and level, and its own envelope, BLOOM, width, two motion filters, drive, chorus and sends.</li>
+          <li><b>GENERATE</b> writes new chords; <b>SHUFFLE</b> picks new sounds for the unlocked layers, crossfading when they're ready.</li>
+          <li><b>MixType</b>: CLEAN, DREAM, DUST or EDGE over the whole mix.</li>
+          <li><b>PLAY</b> on, it plays with the transport and sends its score as MIDI (chord, bass, shimmer on channels 1–3); off, your keys play it.</li>
+          <li><b>PRESETS</b>: twenty-eight scenes, the last eight for large-scale film scoring.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="card" id="node-random" tabindex="0" role="button" data-group="sources" data-group-label="Sources" data-name="Random" data-shots="assets/shots/random.png" data-keys="modulation lfo sample hold" style="--accent: var(--blue)">
+      <div class="thumb"><img src="assets/shots/random.png" width="736" height="484" loading="lazy" alt="Random panel"></div>
+      <div class="meta"><div class="row"><h3>Random</h3><span class="label">Modulation</span></div>
+        <p>A random modulation source, from sample-and-hold steps to a continuous glide.</p></div>
+      <div class="more">
+        <ul>
+          <li><b>RATE</b>, <b>CHAOS</b> (irregular timing), <b>SMOOTH</b> (from sample &amp; hold to continuous glide) and <b>LEVEL</b>.</li>
+          <li>Patch it into any control input: a filter's cutoff, a pitch, a grain position… In the demo patch it moves the Filter's cutoff.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="card" id="node-pops" tabindex="0" role="button" data-group="sources" data-group-label="Sources" data-name="Pops 66" data-after="in the spirit of the KORG Mini Pops-7 (1966)" data-shots="assets/shots/pops.png|EDITOR,assets/shots/pops-machine.png|MACHINE" data-keys="drum machine rhythm box korg" style="--accent: var(--blue)">
+      <div class="thumb"><img src="assets/shots/pops.png" width="1664" height="1564" loading="lazy" alt="Pops 66 panel"></div>
+      <div class="meta"><div class="row"><h3>Pops 66</h3><span class="label">Rhythm box</span></div>
+        <p>Fifteen instruments synthesized the way the original's circuits made them, twenty rhythms and eight user patterns.</p></div>
+      <div class="more">
+        <p>No samples. Ringing resonators make the base drum, bongos, conga, claves and rimshot; square waves the cowbell; filtered noise the snares, hihat, cymbals and tambourine; gated noise bursts the guiro; a decaying rattle the quijada.</p>
+        <ul>
+          <li><b>Rhythms.</b> Twenty in two rows, as on the panel, from Waltz, Samba and Bossanova to Slow Rock, March 6/8 and Latin Swing. Shift-click combines them, merged on the first one's grid as the original's buttons did.</li>
+          <li><b>Tempo.</b> SYNC follows the board's tempo and Start/Stop; without it, PLAY runs it on its own TEMPO (40–240 BPM). SWING delays the off-beats.</li>
+          <li><b>MIDI.</b> General MIDI drum notes play the instruments; the rhythm goes out on channel 10.</li>
+          <li><b>Three detail levels.</b> MACHINE (the keys and main knobs, step lights), MIXER (a strip per instrument) and EDITOR (eight patterns of up to 32 steps, and a sound panel per instrument).</li>
+          <li><b>Waveforms.</b> WAVE morphs from sine to square (noise becomes a metallic cluster), BEND sweeps the pitch, DRIVE saturates, with a picture of the whole hit.</li>
+        </ul>
+        <p>The preset rhythms are new patterns written in each style, not decoded from the original's diode matrix.</p>
+      </div>
+    </article>
+
+    <article class="card" id="node-fjord" tabindex="0" role="button" data-group="sources" data-group-label="Sources" data-name="Fjord" data-after="after the Clavia Nord Drum (2012)" data-shots="assets/shots/fjord.png|SOUND,assets/shots/fjord-seq.png|SEQUENCER · MIDI" data-keys="drum synth nord sequencer alea" style="--accent: var(--blue)">
+      <div class="thumb"><img src="assets/shots/fjord.png" width="1976" height="1052" loading="lazy" alt="Fjord panel"></div>
+      <div class="meta"><div class="row"><h3>Fjord</h3><span class="label">Drum synth</span></div>
+        <p>A four-channel drum synthesizer with a step sequencer, the ALEA randomizer, tone ADSRs and a bank of 99 programs.</p></div>
+      <div class="more">
+        <p>Each channel plays one sound at a time, blended from three components with their own parameters, as on the Nord Drum: a <b>tone</b> (analog waves; drum bodies made from the modes of membranes and bars; bells, cowbell, metal, gong), a <b>noise</b> through seven increasingly resonant filters, and a <b>click</b> (noise bursts, attacks or pitched ticks).</p>
+        <table><tr><th>Section</th><th>Parameters</th></tr>
+          <tr><td>NOISE</td><td>COLOR · FILTER / TYPE · SWEEP / TIME · DECAY / GATE n, S, G</td></tr>
+          <tr><td>TONE</td><td>WAVE · FILTER / PUNCH · SWEEP / TIME · DECAY / GATE · PITCH · BEND / BEND TIME</td></tr>
+          <tr><td>CLICK</td><td>TYPE n, c, t 1–9 · DECAY / GATE</td></tr>
+          <tr><td>MIXER</td><td>TONE, NOISE, CLICK · LEVEL</td></tr>
+          <tr><td>AMP ENV</td><td>DECAY or ADSR (Fjord's own)</td></tr>
+          <tr><td>FILTER ENV</td><td>AMOUNT and an ADSR on the tone filter (Fjord's own)</td></tr></table>
+        <ul>
+          <li><b>Programs.</b> 99, shown as a bank map; P1–P34 are factory programs in the Nord Drum's styles (Real, Retro, Ethno, FX). STORE writes the knobs to a cell unless PROTECT is on; COPY and PASTE move a channel's sound.</li>
+          <li><b>ALEA</b> throws the dice: SOUND, STEPS or ALL, as far as CHANCE says. Sounds are bred from the factory programs, steps follow what each channel sounds like; BACK takes a throw back.</li>
+          <li><b>STEPS.</b> A lane per channel, up to 32 steps of 1/8, 1/16, 1/16T or 1/32, with soft, medium and accent steps, SWING and GATE.</li>
+          <li><b>SYSTEM.</b> MIDI channel and notes with LRN, LOCAL OFF, program change, and four Trig audio inputs that play the channels (a pad, or a drum loop for drum replacement).</li>
+          <li><b>Outputs.</b> OUT carries the mix; CH 1–4 each channel on its own.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="card" id="node-audio-in" tabindex="0" role="button" data-group="sources" data-group-label="Sources" data-name="Audio In" data-shots="assets/shots/audio-in.png" data-keys="input microphone guitar interface" style="--accent: var(--blue)">
+      <div class="thumb"><img src="assets/shots/audio-in.png" width="608" height="532" loading="lazy" alt="Audio In panel"></div>
+      <div class="meta"><div class="row"><h3>Audio In</h3><span class="label">Interface</span></div>
+        <p>The audio interface's inputs on a cable: a microphone, a guitar, a synth, another app through a loopback device.</p></div>
+      <div class="more">
+        <ul>
+          <li><b>INPUT</b> picks the channel; <b>STEREO</b> takes it and the next as left and right, <b>MONO</b> puts it on both sides.</li>
+          <li><b>GAIN</b> from −24 to +24 dB, with a meter per side marked at −18 and −6 dBFS.</li>
+          <li>The input device is chosen in Settings and opens only while an Audio In node is on the board. The first time, macOS asks for permission to use the microphone.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="card" id="node-nullpunkt" tabindex="0" role="button" data-group="sources" data-group-label="Sources" data-name="Nullpunkt" data-after="clicks, pulses and glitches, in the manner of Alva Noto" data-shots="assets/shots/nullpunkt.png" data-keys="glitch euclidean stutter alva noto" style="--accent: var(--blue)">
+      <div class="thumb"><img src="assets/shots/nullpunkt.png" width="1696" height="1004" loading="lazy" alt="Nullpunkt panel"></div>
+      <div class="meta"><div class="row"><h3>Nullpunkt</h3><span class="label">Glitch</span></div>
+        <p>Four micro-voices on Euclidean lanes, a synced stutter and a glitch stage, in the manner of Alva Noto.</p></div>
+      <div class="more">
+        <ul>
+          <li><b>Voices.</b> CLICK (impulses through a short resonance), SINE (high blips), SUB (sub-bass pulses) and DATA (1-bit digital noise). Each has HITS and LEN, PROB, TONE, DECAY, LEVEL and mute; each lane has its own length, so the patterns phase.</li>
+          <li><b>The grid</b> runs on the board's clock, from 1/4 to 1/64, triplets included.</li>
+          <li><b>STUTTER</b> repeats grains of the sound in time: CHANCE, LENGTH, GRAIN (subdivisions of the step) and SCATTER.</li>
+          <li><b>PLAY</b>: MUTATE flips steps and adds ratchets, JITTER varies each hit, WIDTH scatters hits across the stereo field.</li>
+          <li><b>GLITCH</b>: SKIP, REVERSE, WARP, CUT, STATIC, CRUSH (16 to 2 bits) and RATE.</li>
+          <li><b>RANDOMIZE</b> rolls new patterns and sounds; <b>PRESETS</b> starts from Default, Raster, Pulse, Static and Broken.</li>
+        </ul>
+        <p>Glitches light up in the header as they happen, and the output shows as a barcode of recent peaks. A tone to lay under it can come from an Oscillator or a Drone.</p>
+      </div>
+    </article>
+  </div>
+</section>
+
+<!-- ============================================================ TEXTURE -->
+<section class="cat-group" id="texture" style="--accent: var(--teal)">
+  <header>
+    <span class="label">02 · Texture</span>
+    <h2>Texture</h2>
+    <p>Granular clouds, a granular rhythm machine and a bank of tuned resonances: the nodes that turn any sound into something organic.</p>
+  </header>
+  <div class="cards">
+    <article class="card" id="node-granular" tabindex="0" role="button" data-group="texture" data-group-label="Texture" data-name="Granular" data-shots="assets/shots/granular.png" data-keys="grains cloud freeze" style="--accent: var(--teal)">
+      <div class="thumb"><img src="assets/shots/granular.png" width="736" height="648" loading="lazy" alt="Granular panel"></div>
+      <div class="meta"><div class="row"><h3>Granular</h3><span class="label">Grain cloud</span></div>
+        <p>Records its input into an 8-second loop and plays it back as a cloud of grains.</p></div>
+      <div class="more">
+        <ul>
+          <li><b>POS</b> (how far back to read), <b>SIZE</b>, <b>DENSITY</b> (grains per second), <b>PITCH</b> (semitones), <b>JITTER</b> (randomness of position and timing), <b>SPRAY</b> (random pitch), <b>SPREAD</b> (stereo) and <b>MIX</b>.</li>
+          <li>Direction FWD, REV or BOTH.</li>
+          <li><b>FREEZE</b> stops recording: the cloud keeps exploring the captured sound.</li>
+          <li>The POS input moves the read position, from a Random or an LFO. The display shows the loop and the active grains.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="card" id="node-frakture" tabindex="0" role="button" data-group="texture" data-group-label="Texture" data-name="Frakture" data-after="after Excite Audio's Motion: Fractal" data-shots="assets/shots/frakture.png|HEXAGON,assets/shots/frakture-effects.png|EFFECTS,assets/shots/frakture-mutate.png|MUTATE,assets/shots/frakture-motion.png|MOTION" data-keys="granular rhythm hexagon gate repeat" style="--accent: var(--teal)">
+      <div class="thumb"><img src="assets/shots/frakture.png" width="1456" height="1224" loading="lazy" alt="Frakture panel"></div>
+      <div class="meta"><div class="row"><h3>Frakture</h3><span class="label">Granular rhythm</span></div>
+        <p>Grains, a trance gate, a stutter and a hall in a chain, moved by a hexagon of six macros and a path.</p></div>
+      <div class="more">
+        <ul>
+          <li><b>EFFECTS.</b> Four effects in a chain; drag their names to reorder. <b>Grains</b> records into a buffer locked to the tempo (1/4 to 4 bars) and plays two layers with five playhead modes, RANGE, DENSITY, SIZE, CHAOS, DIRECTION, snapped PITCH and SPREAD, WIDTH and SHAPE. <b>Gate</b> is a trance gate of up to 32 steps; <b>Repeat</b> a stutter; <b>Space</b> a hall reverb.</li>
+          <li><b>MUTATE</b> pushes grains past a granular delay: FEEDBACK, SWARM, GLIDE, SHIMMER, RESONATE on a harmonic of KEY, BLUR and ERODE, with SYNC for echoes, rolls and bends in time. A live cloud shows them.</li>
+          <li><b>HEXAGON.</b> Six macro sliders around a centre: right-click any knob to map it to a slider or to the input level, each mapping with its MIN and MAX. The mouse is a magnet that attracts or repels the sliders.</li>
+          <li><b>MOTION.</b> Draw a path with lines and circles, or record the mouse, then play it on a timeline in time with the board.</li>
+        </ul>
+        <p>A new Frakture starts with a circular path and six mappings: press ▶ PATH and it moves on its own.</p>
+      </div>
+    </article>
+
+    <article class="card" id="node-resonator" tabindex="0" role="button" data-group="texture" data-group-label="Texture" data-name="Resonator" data-shots="assets/shots/resonator.png" data-keys="modal string pipe bar bell physical" style="--accent: var(--teal)">
+      <div class="thumb"><img src="assets/shots/resonator.png" width="608" height="648" loading="lazy" alt="Resonator panel"></div>
+      <div class="meta"><div class="row"><h3>Resonator</h3><span class="label">Modal</span></div>
+        <p>A bank of eight tuned resonant modes (String, Pipe, Bar, Bell) excited by its input.</p></div>
+      <div class="more">
+        <p>With noise or grains as input it gives physical, organic timbres.</p>
+        <ul><li><b>PITCH</b>, <b>DECAY</b>, <b>BRIGHT</b>, <b>SPREAD</b>, <b>P.MOD</b> and <b>MIX</b>.</li></ul>
+      </div>
+    </article>
+  </div>
+</section>
+
+<!-- ============================================================ EFFECTS -->
+<section class="cat-group" id="effects" style="--accent: var(--orange)">
+  <header>
+    <span class="label">03 · Effects</span>
+    <h2>Effects</h2>
+    <p>Filters, a dynamic EQ, a tape machine, echoes and a reverb that can freeze. Every effect can be bypassed (crossfaded, while it keeps running underneath), and rests once its tail has gone quiet.</p>
+  </header>
+  <div class="cards">
+    <article class="card" id="node-filter" tabindex="0" role="button" data-group="effects" data-group-label="Effects" data-name="Filter" data-shots="assets/shots/filter.png" data-keys="svf lowpass cutoff resonance" style="--accent: var(--orange)">
+      <div class="thumb"><img src="assets/shots/filter.png" width="736" height="532" loading="lazy" alt="Filter panel"></div>
+      <div class="meta"><div class="row"><h3>Filter</h3><span class="label">State-variable</span></div>
+        <p>A stereo state-variable filter: low-pass, band-pass, high-pass or notch.</p></div>
+      <div class="more">
+        <ul>
+          <li><b>CUTOFF</b>, <b>RESO</b>, <b>DRIVE</b> and <b>MOD</b>, the depth of the CUT input in octaves (negative too).</li>
+          <li>The display shows the frequency response.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="card" id="node-magma" tabindex="0" role="button" data-group="effects" data-group-label="Effects" data-name="Magma" data-after="after FabFilter Volcano 3" data-shots="assets/shots/magma.png" data-keys="filter volcano modulation lfo envelope" style="--accent: var(--orange)">
+      <div class="thumb"><img src="assets/shots/magma.png" width="1816" height="1312" loading="lazy" alt="Magma panel"></div>
+      <div class="meta"><div class="row"><h3>Magma</h3><span class="label">Filters</span></div>
+        <p>Four hot, analog-flavoured filters, eleven non-linear styles, six routings and a modulation matrix.</p></div>
+      <div class="more">
+        <p>Three inputs: IN, SC (side chain) and MIDI.</p>
+        <ul>
+          <li><b>Filters.</b> Low pass, high pass, band pass, bell, shelves, notch or all pass; 6 to 48 dB/octave; eleven styles (Classic, Smooth, Raw, Hard, Hollow, Extreme, Gentle, Tube, Metal, Easy Going, Clean), each with its own drive and saturated resonance. Most self-oscillate at the top of PEAK.</li>
+          <li><b>Per filter.</b> DRIVE, FREQ with F.PAN (left and right cutoffs apart by up to ±2 octaves), PEAK, DELAY (up to 50 ms, for combs and Haas effects), LEVEL and PAN.</li>
+          <li><b>Routing.</b> Serial, parallel, pairs of pairs and the two mixes; ST, L/R or M/S.</li>
+          <li><b>Display.</b> Each curve and the total in yellow, the spectrum and a piano. Drag a dot for frequency and peak; double-click the background for a new filter.</li>
+          <li><b>The bar.</b> HQ (2× oversampling), AUTO MUTE, ANALYZER, PIANO, BYPASS, IN and OUT with pans, and MIX.</li>
+          <li><b>Modulation.</b> Two each of XLFO (up to 16 steps), EG (DAHDSR), EF (envelope follower), MIDI and XY. Drag a source's handle onto almost any knob; up to 16 slots, each a knob that can itself be modulated.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="card" id="node-equalizer" tabindex="0" role="button" data-group="effects" data-group-label="Effects" data-name="Equalizer" data-after="a dynamic EQ after Waves F6" data-shots="assets/shots/equalizer.png" data-keys="eq dynamic analyzer rta" style="--accent: var(--orange)">
+      <div class="thumb"><img src="assets/shots/equalizer.png" width="1696" height="980" loading="lazy" alt="Equalizer panel"></div>
+      <div class="meta"><div class="row"><h3>Equalizer</h3><span class="label">Dynamic EQ</span></div>
+        <p>Six floating bands between a high-pass and a low-pass, each with its own dynamics, and a real-time analyzer. Zero latency.</p></div>
+      <div class="more">
+        <ul>
+          <li><b>Bands.</b> Low shelf, bell or high shelf: FREQ 16 Hz–21 kHz, Q 0.4–60, GAIN ±18 dB, on the stereo signal, the mid or the side. HP and LP slope 6 to 24 dB/octave.</li>
+          <li><b>Dynamics.</b> Above THRESHOLD, a band's gain moves by up to RANGE (negative compresses, positive expands), with ATTACK and RELEASE. The side chain is the node's own input or the SC input, split around the band or wide.</li>
+          <li><b>SOLO</b> plays a band's side chain; GLOBAL RELEASE shortens releases on transients (ARC); the ▲▼ arrows move a control on every band at once.</li>
+          <li><b>Graph.</b> Drag markers for frequency and gain, Alt+drag for Q, right-click and hold to solo; dashed curves show where RANGE can take a band.</li>
+          <li><b>Analyzer.</b> Fill or bars, peak or RMS, pink or white slope, 1/24 octave to 1 octave, moving average and max lines, pre, post or side chain.</li>
+          <li><b>MIX</b> for parallel processing, <b>OUT</b> ±18 dB with a meter.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="card" id="node-tape" tabindex="0" role="button" data-group="effects" data-group-label="Effects" data-name="Tape" data-after="after the classic tape emulation plugins" data-shots="assets/shots/tape.png" data-keys="saturation wow flutter cassette" style="--accent: var(--orange)">
+      <div class="thumb"><img src="assets/shots/tape.png" width="1336" height="788" loading="lazy" alt="Tape panel"></div>
+      <div class="meta"><div class="row"><h3>Tape</h3><span class="label">Tape machine</span></div>
+        <p>Recorded, carried by a moving tape and played back: saturation, wow, flutter, dropouts, head bump and hiss.</p></div>
+      <div class="more">
+        <ul>
+          <li><b>Record.</b> The record EQ lifts the highs into the tape; the magnetic curve runs on 2× oversampling.</li>
+          <li><b>The tape.</b> Wow, flutter (capstan, pinch roller and scrape) and wear's dropouts.</li>
+          <li><b>Playback.</b> The playback EQ, the head bump and its dip, low rolloff, gap loss and hiss.</li>
+          <li><b>Switches.</b> MACHINE (STUDIO, MASTER, CASSETTE), SPEED (7½, 15, 30 ips), TAPE (CLASSIC, MODERN, HOT), EQ (NAB or IEC/CCIR) and AUTO GAIN.</li>
+          <li><b>Knobs.</b> INPUT, SATURATION (tape's glue, even-harmonic warmth), BIAS, WOW, FLUTTER, HISS, AGE, OUTPUT and MIX.</li>
+          <li><b>The deck</b> runs with the sound: reels at their real ratio, the tape sagging with wow, the head glowing with the signal, VU needles for input and output. ■ and ▶ stop the tape with its pitch falling and spin it back up.</li>
+        </ul>
+        <p>COMPACT or FULL in the header picks the view. The dry signal is lined up with the tape's latency, so MIX doesn't comb.</p>
+      </div>
+    </article>
+
+    <article class="card" id="node-delay" tabindex="0" role="button" data-group="effects" data-group-label="Effects" data-name="Delay" data-shots="assets/shots/delay.png" data-keys="echo tape sync" style="--accent: var(--orange)">
+      <div class="thumb"><img src="assets/shots/delay.png" width="736" height="600" loading="lazy" alt="Delay panel"></div>
+      <div class="meta"><div class="row"><h3>Delay</h3><span class="label">Tape echo</span></div>
+        <p>A stereo tape echo up to 2 s, whose time glides like tape when it changes.</p></div>
+      <div class="more">
+        <ul>
+          <li><b>TIME</b>, <b>FEEDBACK</b>, <b>TONE</b> (darkens the repeats), <b>WOW</b> (wow and flutter), <b>PING</b> (ping-pong) and <b>MIX</b>.</li>
+          <li><b>SYNC</b> locks the time to the tempo: DIV picks the note value, 1/32 to 1/1 with dotted and triplet values, up to 4 s, and follows tempo changes. The readout shows both: “1/8D · 375 ms”.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="card" id="node-pingpong" tabindex="0" role="button" data-group="effects" data-group-label="Effects" data-name="Ping Pong" data-shots="assets/shots/pingpong.png" data-keys="echo stereo duck" style="--accent: var(--orange)">
+      <div class="thumb"><img src="assets/shots/pingpong.png" width="736" height="648" loading="lazy" alt="Ping Pong panel"></div>
+      <div class="meta"><div class="row"><h3>Ping Pong</h3><span class="label">Stereo echo</span></div>
+        <p>Echoes that bounce from side to side, blooming in the gaps.</p></div>
+      <div class="more">
+        <ul>
+          <li>The input, summed to mono, enters one side and every repeat crosses to the other; <b>L → R / R → L</b> picks the first side.</li>
+          <li><b>TIME</b> or, with SYNC (on by default), <b>DIV</b>; <b>FEEDBACK</b>; <b>WIDTH</b>; <b>TONE</b>; <b>DUCK</b> lowers the echoes while the input plays; <b>MIX</b>.</li>
+          <li>The display shows the echoes alternating left (up) and right (down).</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="card" id="node-reverb" tabindex="0" role="button" data-group="effects" data-group-label="Effects" data-name="Reverb" data-shots="assets/shots/reverb.png" data-keys="shimmer freeze hall space" style="--accent: var(--orange)">
+      <div class="thumb"><img src="assets/shots/reverb.png" width="608" height="600" loading="lazy" alt="Reverb panel"></div>
+      <div class="meta"><div class="row"><h3>Reverb</h3><span class="label">Shimmer · freeze</span></div>
+        <p>An eight-line delay network with diffusion, modulation and damping, from room to cathedral.</p></div>
+      <div class="more">
+        <ul>
+          <li><b>SIZE</b>, <b>DECAY</b> (0.3 – 60 s), <b>DAMP</b>, <b>MOD</b>, <b>SHIMMER</b> (an octave up, fed back into the tail) and <b>MIX</b>.</li>
+          <li><b>FREEZE</b> holds the tail forever.</li>
+        </ul>
+      </div>
+    </article>
+  </div>
+</section>
+
+<!-- =============================================================== MIDI -->
+<section class="cat-group" id="midi" style="--accent: var(--violet)">
+  <header>
+    <span class="label">04 · MIDI</span>
+    <h2>MIDI</h2>
+    <p>MIDI nodes receive from any connected device: devices connect automatically, even when plugged in after launch, and the MIDI indicator in the status bar lights up as messages arrive. Besides patching their outputs, they can drive any knob or fader directly: press <b>MAP</b>, then click the control.</p>
+  </header>
+  <div class="cards">
+    <article class="card" id="node-midi-cc" tabindex="0" role="button" data-group="midi" data-group-label="MIDI" data-name="MIDI CC" data-shots="assets/shots/midi-cc.png" data-keys="controller learn map" style="--accent: var(--violet)">
+      <div class="thumb"><img src="assets/shots/midi-cc.png" width="608" height="532" loading="lazy" alt="MIDI CC panel"></div>
+      <div class="meta"><div class="row"><h3>MIDI CC</h3><span class="label">Controller</span></div>
+        <p>An external controller (knob, fader, wheel) as a signal.</p></div>
+      <div class="more">
+        <ul>
+          <li><b>CC</b>, <b>CHANNEL</b> (Omni or 1–16), <b>SMOOTH</b> (glide), output 0…1 or ±1.</li>
+          <li><b>LEARN</b> picks up the next controller you move.</li>
+          <li><b>MAP</b> drives a control directly: a dashed line joins the node to it, and the node shows “→ FILTER 1 · CUTOFF”. Mappings are saved in the project and in library modules.</li>
+        </ul>
+      </div>
+    </article>
+    <article class="card" id="node-midi-note" tabindex="0" role="button" data-group="midi" data-group-label="MIDI" data-name="MIDI Note" data-shots="assets/shots/midi-note.png" data-keys="keyboard envelope velocity map" style="--accent: var(--violet)">
+      <div class="thumb"><img src="assets/shots/midi-note.png" width="736" height="532" loading="lazy" alt="MIDI Note panel"></div>
+      <div class="meta"><div class="row"><h3>MIDI Note</h3><span class="label">Keys as envelope</span></div>
+        <p>A keyboard as an envelope: hold a key and ENV rises over ATTACK; let go and it falls over RELEASE.</p></div>
+      <div class="more">
+        <ul>
+          <li><b>ENV</b> and <b>VEL</b> (the same envelope scaled by velocity) both go from −1 to +1, so into an oscillator's AM input they go from silence to full level.</li>
+          <li>Last-note priority; <b>TRANSPOSE</b> in semitones.</li>
+          <li>With <b>MAP</b>, frequency knobs take the note's frequency (the Drone's PITCH, the oscillator's FREQ), semitone knobs the distance from middle C, and others the key's position.</li>
+        </ul>
+      </div>
+    </article>
+  </div>
+</section>
+
+<!-- ========================================================== SEQUENCES -->
+<section class="cat-group" id="sequences" style="--accent: var(--rose)">
+  <header>
+    <span class="label">05 · MIDI sequences</span>
+    <h2>MIDI sequences</h2>
+    <p>Notes travel on MIDI cables: square ports and dashed cables, joining a MIDI output to a MIDI input. Start and Stop drive the transport, and every sequencer and arpeggiator is locked to the board's global tempo, so they always stay in time with each other. Try <i>Automa → VST instrument</i>, <i>MIDI In → Arpeggiator → VST instrument</i>, or <i>MIDI In → Colloid → VST instrument</i> to have the atoms play your chords.</p>
+  </header>
+  <div class="cards">
+    <article class="card" id="node-sequencer" tabindex="0" role="button" data-group="sequences" data-group-label="MIDI sequences" data-name="Step Sequencer" data-shots="assets/shots/sequencer.png" data-keys="steps scale melody" style="--accent: var(--rose)">
+      <div class="thumb"><img src="assets/shots/sequencer.png" width="736" height="764" loading="lazy" alt="Step Sequencer panel"></div>
+      <div class="meta"><div class="row"><h3>Step Sequencer</h3><span class="label">Steps</span></div>
+        <p>Up to 16 steps on a scale: click a cell to move a step there, drag to draw a melody.</p></div>
+      <div class="more">
+        <ul>
+          <li>Each column is a step and the lit cell is its note; click the lit cell to switch the step off or back on. Hovering shows the note.</li>
+          <li><b>RATE</b> (1/4 to 1/32, triplets), <b>STEPS</b>, <b>GATE</b>, <b>SWING</b>, <b>CHANCE</b>, <b>VELOCITY</b>, <b>ROOT</b> and <b>OCTAVE</b>; scale MAJ, MIN, DOR, PENT or CHR.</li>
+          <li><b>PLAY</b> stops and restarts it. Steps are saved in the project and in library modules.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="card" id="node-midicer" tabindex="0" role="button" data-group="sequences" data-group-label="MIDI sequences" data-name="MIDIcer" data-after="a stochastic sequencer after Vermona's meloDICER" data-shots="assets/shots/midicer.png" data-keys="random stochastic dice melodicer" style="--accent: var(--rose)">
+      <div class="thumb"><img src="assets/shots/midicer.png" width="736" height="1012" loading="lazy" alt="MIDIcer panel"></div>
+      <div class="meta"><div class="row"><h3>MIDIcer</h3><span class="label">Stochastic</span></div>
+        <p>Random values turn into notes only through your settings, so it is played like an instrument.</p></div>
+      <div class="more">
+        <ul>
+          <li><b>Rhythm.</b> NOTE (1/1 to 1/32), VARIATION (longer values to the left, shorter to the right), LEGATO and REST.</li>
+          <li><b>Melody.</b> LOW and HIGH set the range; a probability fader for each semitone decides how often it plays.</li>
+          <li><b>DICE R / DICE M</b> keep a set of random values so the pattern repeats; <b>LIVE R / LIVE M</b> draw new ones all the time. Rhythm and melody can repeat or change independently.</li>
+          <li><b>FIRST / LAST</b> set the pattern's length; RESTART, MUTE and LOCK (keep playing while you prepare new settings).</li>
+          <li><b>Modes.</b> SEQ, SEQ+G (each incoming note plays a new note), QUANT1 and QUANT2; SETUP routes the two CV inputs, as on meloDICER.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="card" id="node-automa" tabindex="0" role="button" data-group="sequences" data-group-label="MIDI sequences" data-name="Automa" data-after="a generative melody node" data-shots="assets/shots/automa.png" data-keys="cellular automaton life julia norgard generative harmony" style="--accent: var(--rose)">
+      <div class="thumb"><img src="assets/shots/automa.png" width="1696" height="1152" loading="lazy" alt="Automa panel"></div>
+      <div class="meta"><div class="row"><h3>Automa</h3><span class="label">Generative</span></div>
+        <p>A generator offers notes on every step, and a harmony layer fits each one to the chord under it, so the lines stay consonant.</p></div>
+      <div class="more">
+        <ul>
+          <li><b>LIFE.</b> A cellular automaton on a 16 × 16 torus, read column by column like a sequencer: Conway's Game of Life or a relative (HighLife, Day &amp; Night, Amoeba, Maze, Seeds). Draw cells, KEEP a start, CLEAR.</li>
+          <li><b>CASCADE.</b> Wolfram's elementary rules 90, 30, 110, 150, 45, 73, 105 and 22, pouring down the display; rule 90 draws Sierpiński's triangle.</li>
+          <li><b>TREE.</b> Per Nørgård's infinity series, a melody that holds itself at every scale, drawn as a binary tree.</li>
+          <li><b>JULIA.</b> The orbit of a point under z → z² + c, its angle the pitch; SHAPE and CHAOS place c round the Mandelbrot set's main cardioid.</li>
+          <li><b>Harmony.</b> KEY, SCALE and CHANGE; a progression of up to eight chords (presets from Pop and Canon to Andalusian and Drone), 7THS, PAD and WANDER. TENSION lets colour notes in; LEAP and VOICES shape the lines.</li>
+          <li><b>MUTATE</b>, <b>PHRASE</b>, <b>FREEZE</b> and <b>RESEED</b>; the same settings play the same music again from Start.</li>
+        </ul>
+        <p>The roll on the right shows the melody over lanes for each chord's tones, coloured by function: blue tonic, green subdominant, orange dominant.</p>
+      </div>
+    </article>
+
+    <article class="card" id="node-colloid" tabindex="0" role="button" data-group="sequences" data-group-label="MIDI sequences" data-name="Colloid" data-after="a generative MIDI node played by physics" data-shots="assets/shots/colloid.png" data-keys="handpan physics molecules atoms generative" style="--accent: var(--rose)">
+      <div class="thumb"><img src="assets/shots/colloid.png" width="1696" height="1282" loading="lazy" alt="Colloid panel"></div>
+      <div class="meta"><div class="row"><h3>Colloid</h3><span class="label">Physics</span></div>
+        <p>A handpan's notes become molecules in a liquid; falling atoms strike them, and every strike plays a note.</p></div>
+      <div class="more">
+        <p>The panel is the tank itself, drawn flat and graphic: the liquid in bands of depth, a matrix of dots drawn towards the molecules, molecules as line art bonded into a shape by their role, atoms trailing wakes. Click to push the liquid, drag to stir it.</p>
+        <ul>
+          <li><b>The notes.</b> HANDPAN (Kurd, Celtic, Amara, Integral, Hijaz, Pygmy, Akebono, Sabye, Aegean) or CHORD (twelve shapes with COLOR and SPREAD), on a root picked from a row of keys.</li>
+          <li><b>MIDI control.</b> One key moves the root; two or more become the chord itself. Program Change 1–21 picks the shape.</li>
+          <li><b>Particles</b> (MOLECULES, ATOMS, MASS), <b>field</b> (ATTRACT, RANGE, CHARGE, BOUNCE) and <b>liquid</b> (VISCOSITY, HEAT, FLOW, DRIFT).</li>
+          <li><b>Notes.</b> Velocity follows the strike's force as far as DYNAMICS says; the length is how long the molecule rings. QUANT holds notes to the grid, or FREE.</li>
+          <li><b>CC events.</b> Four lanes sending a controller from PEDAL, KEYS, ENERGY, DENSITY, SPEED, STRIKE, SWIRL or CHARGE.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="card" id="node-looper" tabindex="0" role="button" data-group="sequences" data-group-label="MIDI sequences" data-name="MIDI Looper" data-shots="assets/shots/looper.png" data-keys="loop record overdub scenes clock" style="--accent: var(--rose)">
+      <div class="thumb"><img src="assets/shots/looper.png" width="1696" height="1060" loading="lazy" alt="MIDI Looper panel"></div>
+      <div class="meta"><div class="row"><h3>MIDI Looper</h3><span class="label">Eight scenes</span></div>
+        <p>Records what you play into loops of a given number of bars, in time, and plays them back on its MIDI output.</p></div>
+      <div class="more">
+        <ul>
+          <li><b>Eight scenes</b>, each a loop with BARS (1–16), REPEATS, a direction (FWD, REV, or RANDOM slices) and what follows (NEXT, RANDOM or STOP). Scenes launch on the next beat, bar or loop end.</li>
+          <li><b>REC</b>, <b>DUB</b>, <b>UNDO</b>, <b>CLEAR</b> and <b>THRU</b>; recording starts on the next bar, the first note or a Start, and notes are pulled to the GRID as far as QUANTIZE says.</li>
+          <li><b>Step sequencer.</b> A roll over two octaves: click to add notes, drag to stretch; with STEP, each note or chord you play goes in at the cursor.</li>
+          <li><b>SYNC</b> follows the board, or a MIDI clock on its input (with Start, Stop, Continue and the song position).</li>
+          <li><b>MIDI control.</b> Program Change picks scenes; notes on the CTRL CH channel are commands.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="card" id="node-arpeggiator" tabindex="0" role="button" data-group="sequences" data-group-label="MIDI sequences" data-name="Arpeggiator" data-shots="assets/shots/arpeggiator.png" data-keys="arp latch chords" style="--accent: var(--rose)">
+      <div class="thumb"><img src="assets/shots/arpeggiator.png" width="608" height="648" loading="lazy" alt="Arpeggiator panel"></div>
+      <div class="meta"><div class="row"><h3>Arpeggiator</h3><span class="label">Arp</span></div>
+        <p>Plays the held notes one at a time, in time, over one to four octaves.</p></div>
+      <div class="more">
+        <ul>
+          <li>Orders UP, DOWN, U+D, RAND and ORDER (as played); <b>OCTAVES</b> 1–4.</li>
+          <li><b>RATE</b>, <b>GATE</b>, <b>SWING</b>, <b>CHANCE</b> and <b>VELOCITY</b>, as in the sequencer.</li>
+          <li>Notes come from its MIDI cable or, with no cable, straight from the MIDI keyboard. <b>LATCH</b> keeps the chord going until you play a new one.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="card" id="node-midi-in" tabindex="0" role="button" data-group="sequences" data-group-label="MIDI sequences" data-name="MIDI In" data-shots="assets/shots/midi-in.png" data-keys="keyboard channel transpose" style="--accent: var(--rose)">
+      <div class="thumb"><img src="assets/shots/midi-in.png" width="608" height="484" loading="lazy" alt="MIDI In panel"></div>
+      <div class="meta"><div class="row"><h3>MIDI In</h3><span class="label">Keyboard</span></div>
+        <p>The MIDI keyboard on a cable, to send it into an arpeggiator, a generator or a plugin.</p></div>
+      <div class="more">
+        <ul>
+          <li><b>CHANNEL</b> filters one channel; <b>TRANSPOSE</b> shifts the notes. Controllers and pitch bend pass through unchanged.</li>
+          <li>It passes on a MIDI clock and transport, whatever its channel.</li>
+        </ul>
+      </div>
+    </article>
+  </div>
+</section>
+
+<!-- ============================================================ PLUGINS -->
+<section class="cat-group" id="plugins" style="--accent: var(--green)">
+  <header>
+    <span class="label">06 · VST3 plugins</span>
+    <h2>VST3 plugins</h2>
+    <p>Installed VST3 plugins appear in the Plugins section of the palette and of the right-click menu, grouped by maker, and are added like any other node.</p>
+  </header>
+  <div class="cards">
+    <article class="card" id="node-plugin" tabindex="0" role="button" data-group="plugins" data-group-label="VST3 plugins" data-name="Plugin node" data-keys="vst vst3 instrument effect editor" style="--accent: var(--green)">
+      <div class="thumb">
+        <svg viewBox="0 0 320 200" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-label="A sketch of a plugin node">
+          <rect x="40" y="20" width="240" height="160" rx="10" fill="#1f2024" stroke="#32343a"/>
+          <path d="M40 50h240" stroke="#32343a"/>
+          <circle cx="58" cy="35" r="5" fill="#84c26c"/>
+          <text x="72" y="40" fill="#e2e4e8" font-size="12" font-weight="600" font-family="JetBrains Mono, monospace" letter-spacing="1.2">YOUR SYNTH 1</text>
+          <rect x="58" y="66" width="62" height="22" rx="5" stroke="#84c26c"/><text x="89" y="81" text-anchor="middle" fill="#84c26c" font-size="10" font-family="JetBrains Mono, monospace">EDITOR</text>
+          <rect x="128" y="66" width="62" height="22" rx="5" stroke="#3c3f46"/><text x="159" y="81" text-anchor="middle" fill="#9498a0" font-size="10" font-family="JetBrains Mono, monospace">PARAMS</text>
+          <rect x="198" y="66" width="68" height="22" rx="5" stroke="#3c3f46"/><text x="232" y="81" text-anchor="middle" fill="#9498a0" font-size="10" font-family="JetBrains Mono, monospace">KEYBOARD</text>
+          <g stroke-width="3"><path d="M72 140a14 14 0 1 1 20 0" stroke="#2e3036"/><path d="M72 140a14 14 0 0 1 12-23" stroke="#84c26c"/>
+          <path d="M122 140a14 14 0 1 1 20 0" stroke="#2e3036"/><path d="M122 140a14 14 0 0 1 22-14" stroke="#84c26c"/>
+          <path d="M172 140a14 14 0 1 1 20 0" stroke="#2e3036"/><path d="M172 140a14 14 0 0 1 4-24" stroke="#84c26c"/>
+          <path d="M222 140a14 14 0 1 1 20 0" stroke="#2e3036"/><path d="M222 140a14 14 0 0 1 18-20" stroke="#84c26c"/></g>
+          <rect x="33" y="62" width="14" height="14" rx="3" fill="#141518" stroke="#9e8ae6" stroke-width="2"/>
+          <circle cx="40" cy="98" r="7" fill="#141518" stroke="#84c26c" stroke-width="2"/>
+          <circle cx="280" cy="98" r="7" fill="#141518" stroke="#84c26c" stroke-width="2"/>
+        </svg>
+      </div>
+      <div class="meta"><div class="row"><h3>Plugin node</h3><span class="label">VST3</span></div>
+        <p>Instruments and effects from your VST3 folders, with their own editor, a parameter list and up to eight knobs on the node.</p></div>
+      <div class="more">
+        <p>Plugins are listed from <code>/Library/Audio/Plug-Ins/VST3</code> and <code>~/Library/Audio/Plug-Ins/VST3</code> without loading them: the maker is read from the bundle's files. <b>Rescan plugins</b> refreshes the list.</p>
+        <ul>
+          <li><b>EDITOR</b> opens the plugin's own window; it floats in front of the board while AudioBoard is active.</li>
+          <li><b>PARAMS</b> lists every parameter with search and sliders; the dot pins up to eight as knobs on the node, mappable with a MIDI CC node.</li>
+          <li><b>KEYBOARD</b> plays the plugin from the external MIDI keyboard, along with whatever arrives on the MIDI cable.</li>
+          <li>A stereo input (effects), a stereo output and, for instruments, a MIDI input. The project saves the plugin's path and its complete state.</li>
+          <li>A plugin is called once per audio buffer, as in a DAW; extra outputs are switched off at load, and a plugin with nothing coming in rests after a second of silence.</li>
+          <li>VST3 only (not VST2, AU or CLAP). Plugins run inside AudioBoard: a faulty plugin can make the application quit.</li>
+        </ul>
+      </div>
+    </article>
+  </div>
+</section>
+
+<!-- ============================================================= OUTPUT -->
+<section class="cat-group" id="output" style="--accent: var(--amber)">
+  <header>
+    <span class="label">07 · Output</span>
+    <h2>Output</h2>
+    <p>Every mixer has an OUT and an AUX on its right edge. While OUT is unpatched, the mixer feeds the audio device; patch it into another mixer and it becomes a submix. AUX carries the sum of the channels' sends, taken after fader, pan and mute.</p>
+  </header>
+  <div class="cards">
+    <article class="card" id="node-mixer" tabindex="0" role="button" data-group="output" data-group-label="Output" data-name="Mixer" data-after="4 channels" data-shots="assets/shots/mixer.png" data-keys="fader pan aux send master" style="--accent: var(--amber)">
+      <div class="thumb"><img src="assets/shots/mixer.png" width="936" height="676" loading="lazy" alt="Mixer panel"></div>
+      <div class="meta"><div class="row"><h3>Mixer</h3><span class="label">4 channels</span></div>
+        <p>A volume fader, pan, an AUX send, Mute, Solo and a meter per channel; a master bus and an AUX bus.</p></div>
+      <div class="more">
+        <ul>
+          <li>Pan works as a stereo balance: both sides at unity in the centre, so a centred channel keeps its level.</li>
+          <li>The master bus has MUTE (silencing the main mix only; AUX sends keep playing), L/R meters and a clip indicator.</li>
+          <li>A dry mix plus an effects layer: turn up AUX on the tracks you want effected, patch AUX into a Reverb and the Reverb into a second mixer.</li>
+          <li>A source at −6 dBFS through a fresh mixer reaches the device at −6 dBFS.</li>
+        </ul>
+      </div>
+    </article>
+    <article class="card" id="node-console" tabindex="0" role="button" data-group="output" data-group-label="Output" data-name="Console" data-after="12 or 24 channels" data-shots="assets/shots/console.png" data-keys="mixer desk channels" style="--accent: var(--amber)">
+      <div class="thumb"><img src="assets/shots/console.png" width="1660" height="796" loading="lazy" alt="Console panel"></div>
+      <div class="meta"><div class="row"><h3>Console</h3><span class="label">12 or 24 channels</span></div>
+        <p>The same mixer, larger, in two shapes: strips side by side like a desk, or stacked as rows.</p></div>
+      <div class="more">
+        <ul>
+          <li><b>H</b> lays the strips side by side with vertical faders; the inputs line the node's top edge and their cables drop in from above.</li>
+          <li><b>V</b> stacks the strips as rows, with the inputs down the left edge.</li>
+          <li><b>12 / 24</b> sets the number of channels; going back to 12 asks first if channels 13–24 have cables.</li>
+        </ul>
+      </div>
+    </article>
+  </div>
+</section>
+
+<p class="empty">No node matches that search.</p>
+</div>
+
+<dialog class="inspector" id="inspector" aria-labelledby="in-title">
+  <header class="node-head"><span class="led"></span><span class="in-group"></span><button type="button" class="in-close">Close · Esc</button></header>
+  <div class="in-body">
+    <div class="in-shot"></div>
+    <div class="in-text">
+      <h2 class="in-title" id="in-title"></h2>
+      <div class="after in-after" style="font-family: var(--mono); font-size: 13px; color: var(--accent); margin: -4px 0 14px"></div>
+      <div class="in-text-body"></div>
+    </div>
+  </div>
+</dialog>
+
+<section class="closer" style="padding-top: 72px">
+  <div class="wrap">
+    <span class="label">Next</span>
+    <h2>Now patch <span class="outline" style="--accent: var(--teal)">them together.</span></h2>
+    <div class="cta"><a class="btn solid" href="guide.html">Read the guide</a><a class="btn ghost" href="index.html#spotlight">See the instruments</a></div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div>
+      <a class="brand" href="index.html"><img src="assets/img/logo.svg" alt="" width="30" height="30"> AudioBoard</a>
+      <p class="dim" style="margin-top: 12px">A node-based modular synthesizer in Rust. Built with egui and eframe, cpal, midir and vst3-host. Every panel on this site is rendered from the app.</p>
+    </div>
+    <nav aria-label="Footer">
+      <a href="index.html">Home</a><a href="nodes.html">Nodes</a><a href="guide.html">Guide</a><a href="architecture.html">Architecture</a><a href="https://github.com/mbonati/AudioBoard">Source</a>
+    </nav>
+  </div>
+</footer>
+
+<script src="assets/js/site.js"></script>
+</body>
+</html>

@@ -11,8 +11,8 @@ use super::widgets;
 use crate::audio::engine::NodeId;
 use crate::audio::midi::note_hz;
 use crate::audio::modules::{
-    ModuleDef, ModuleKind, ModuleParams, aether, arpeggiator, larsen, looper, vesper, audio_in, automa, colloid, delay, drone, equalizer, filter, frakture, magma, pops, granular, midi_cc, midi_in, midi_note,
-    midicer, nullpunkt, pingpong, random, resonator, reverb, sequencer, steps, tape,
+    ModuleDef, ModuleKind, ModuleParams, aether, arpeggiator, fjord, larsen, looper, vesper, audio_in, automa, colloid, delay, drone, equalizer, filter, frakture, magma, pops, granular, midi_cc, midi_in, midi_note,
+    midicer, nullpunkt, pingpong, prism, random, resonator, reverb, sequencer, steps, tape,
 };
 use crate::audio::params::{
     DIVISIONS, NOTE_NAMES, NOTE_VALUES, format_hz, format_seconds, note_label, sync_division,
@@ -64,6 +64,7 @@ fn knobs_top(def: &ModuleDef) -> f32 {
 pub fn size_of(p: &ModuleParams) -> Vec2 {
     match p.kind {
         ModuleKind::Pops => super::pops::size(p),
+        ModuleKind::Fjord => super::fjord::size(p),
         ModuleKind::Tape => super::tape::size(p),
         kind => size(kind.def()),
     }
@@ -73,11 +74,17 @@ pub fn size(def: &ModuleDef) -> Vec2 {
     if std::ptr::eq(def, &pops::DEF) {
         return super::pops::SIZE;
     }
+    if std::ptr::eq(def, &fjord::DEF) {
+        return super::fjord::SIZE;
+    }
     if std::ptr::eq(def, &frakture::DEF) {
         return super::frakture::SIZE;
     }
     if std::ptr::eq(def, &equalizer::DEF) {
         return super::equalizer::SIZE;
+    }
+    if std::ptr::eq(def, &prism::DEF) {
+        return super::prism::SIZE;
     }
     if std::ptr::eq(def, &magma::DEF) {
         return super::magma::SIZE;
@@ -164,6 +171,10 @@ pub fn draw(
         super::pops::draw(v, id, accent, m, out, midi);
         return MapButton::default();
     }
+    if kind == ModuleKind::Fjord {
+        super::fjord::draw(v, id, accent, m, (inputs, outputs), midi);
+        return MapButton::default();
+    }
     if kind == ModuleKind::Magma {
         let out = outputs.first().copied().unwrap_or(false);
         super::magma::draw(v, id, accent, m, [patched(0), patched(1), out], midi.0);
@@ -204,6 +215,11 @@ pub fn draw(
     if kind == ModuleKind::Equalizer {
         let out = outputs.first().copied().unwrap_or(false);
         super::equalizer::draw(v, id, accent, m, [patched(0), patched(1), out]);
+        return MapButton::default();
+    }
+    if kind == ModuleKind::Prism {
+        let out = outputs.first().copied().unwrap_or(false);
+        super::prism::draw(v, id, accent, m, [patched(0), patched(1), out]);
         return MapButton::default();
     }
     let label_col = |on: bool| if on { theme::TEXT_DIM } else { theme::TEXT_FAINT };
@@ -271,7 +287,7 @@ pub fn draw(
         ModuleKind::AudioIn => audio_in_display(&screen, p),
         ModuleKind::Random | ModuleKind::MidiCc | ModuleKind::MidiNote => trace_display(&screen, m),
         ModuleKind::Granular => granular_display(&screen, p),
-        ModuleKind::Frakture | ModuleKind::Equalizer | ModuleKind::Magma | ModuleKind::Pops | ModuleKind::Tape | ModuleKind::Nullpunkt | ModuleKind::Aether | ModuleKind::Larsen | ModuleKind::Vesper | ModuleKind::Automa | ModuleKind::Colloid | ModuleKind::Looper => {}
+        ModuleKind::Frakture | ModuleKind::Equalizer | ModuleKind::Prism | ModuleKind::Magma | ModuleKind::Pops | ModuleKind::Fjord | ModuleKind::Tape | ModuleKind::Nullpunkt | ModuleKind::Aether | ModuleKind::Larsen | ModuleKind::Vesper | ModuleKind::Automa | ModuleKind::Colloid | ModuleKind::Looper => {}
         ModuleKind::Resonator => resonator_display(&screen, p),
         ModuleKind::Filter => filter_display(&screen, p),
         ModuleKind::Delay => delay_display(&screen, p, echo_seconds(p, v.tempo)),
@@ -484,8 +500,10 @@ fn readout(kind: ModuleKind, p: &ModuleParams, tempo: f32) -> (String, String) {
         }
         ModuleKind::Frakture => super::frakture::readout(p),
         ModuleKind::Equalizer => super::equalizer::readout(p),
+        ModuleKind::Prism => super::prism::readout(p),
         ModuleKind::Magma => super::magma::readout(p),
         ModuleKind::Pops => super::pops::readout(p),
+        ModuleKind::Fjord => super::fjord::readout(p),
         ModuleKind::Tape => super::tape::readout(p),
         ModuleKind::Nullpunkt => super::nullpunkt::readout(p),
         ModuleKind::Aether => super::aether::readout(p),

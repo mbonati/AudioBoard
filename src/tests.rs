@@ -1637,7 +1637,7 @@ fn palette_categories_fold() {
         texts = run(&mut palette, vec![]);
     }
     assert!(!shows(&texts, "Oscillator") && shows(&texts, "SOURCES"), "folded");
-    assert!(shows(&texts, "9"), "a folded category shows its count");
+    assert!(shows(&texts, "10"), "a folded category shows its count");
     assert!(shows(&texts, "Reverb"), "the others stay open");
 
     // Searching opens what matches; clearing it folds it again.
@@ -6301,4 +6301,928 @@ fn colloid_passes_the_keys_controllers_through_and_sends_the_tanks() {
     // Stopped, the tank's lanes are quiet.
     let stopped = run_colloid(&mut c, 6 * 48_000, 48_000, false, false, &[]);
     assert!(ccs(&stopped, 1).is_empty());
+}
+
+
+// ---------------------------------------------------------------------------
+// Fjord
+// ---------------------------------------------------------------------------
+
+fn fjord_params() -> Arc<ModuleParams> {
+    Arc::new(ModuleParams::new(ModuleKind::Fjord))
+}
+
+/// What a Fjord run produced: the main output (left), each channel's
+/// output, and the MIDI it sent (absolute frames).
+struct FjordRun {
+    out: Vec<f32>,
+    channels: [Vec<f32>; 4],
+    sent: Vec<(usize, [u8; 3])>,
+}
+
+/// Runs Fjord at 120 BPM for `blocks`, with `midi` arriving at (frame,
+/// message) and `trig` (if any) feeding TRIG 1 sample by sample.
+fn run_fjord(p: &Arc<ModuleParams>, blocks: usize, playing: bool, midi: &[(usize, [u8; 3])], trig: Option<&dyn Fn(usize) -> f32>) -> FjordRun {
+    use crate::audio::engine::{Inputs, MAX_INPUTS, MidiBuf, ProcessCtx, Processor};
+    use crate::audio::modules::fjord::Fjord;
+    let mut proc = Fjord::new(p.clone(), 48_000.0);
+    let mut ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing, restart: false };
+    let mut inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: true });
+    inputs.connected[0] = trig.is_some();
+    let mut outputs = vec![[[0.0f32; 64]; 2]; 5];
+    let mut run = FjordRun { out: Vec::new(), channels: Default::default(), sent: Vec::new() };
+    for b in 0..blocks {
+        let at = b * 64;
+        inputs.midi.clear();
+        for (f, m) in midi.iter().filter(|(f, _)| (at..at + 64).contains(f)) {
+            inputs.midi.push(f - at, *m);
+        }
+        if let Some(trig) = trig {
+            for i in 0..64 {
+                let x = trig(at + i);
+                inputs.bufs[0][0][i] = x;
+                inputs.bufs[0][1][i] = x;
+            }
+        }
+        proc.process(&ctx, &inputs, &mut outputs, 64);
+        run.out.extend_from_slice(&outputs[0][0]);
+        for c in 0..4 {
+            run.channels[c].extend_from_slice(&outputs[1 + c][0]);
+        }
+        run.sent.extend(proc.midi_out().unwrap().events().iter().map(|e| (at + e.frame as usize, e.data)));
+        if playing {
+            ctx.beat += ctx.beats_per_sample * 64.0;
+        }
+    }
+    run
+}
+
+/// A Fjord with the sequencer off.
+fn fjord_quiet() -> Arc<ModuleParams> {
+    use crate::audio::modules::fjord::data;
+    let p = fjord_params();
+    p.data[data::RUN].set(0.0);
+    p
+}
+
+/// Rising zero crossings per second over `buf`.
+fn crossings_per_second(buf: &[f32]) -> f32 {
+    buf.windows(2).filter(|w| w[0] < 0.0 && w[1] >= 0.0).count() as f32 * 48_000.0 / buf.len() as f32
+}
+
+/// The last sample louder than `share` of the peak, in ms.
+fn length_ms(buf: &[f32], share: f32) -> f32 {
+    let peak = peak_of(buf);
+    buf.iter().rposition(|y| y.abs() > peak * share).unwrap_or(0) as f32 / 48.0
+}
+
+#[test]
+fn fjord_programs_pack_load_store_and_name() {
+    use crate::audio::modules::fjord::bank::{FACTORY, INIT, PROGRAMS};
+    use crate::audio::modules::fjord::{self as fj, ch, data, knob};
+    let p = fjord_params();
+    // The knobs start as P1, unedited.
+    assert_eq!(fj::program(&p), 0);
+    assert!(!fj::edited(&p));
+    for (k, prog) in FACTORY.iter().enumerate() {
+        fj::load_program(&p, k);
+        for c in 0..4 {
+            assert_eq!(fj::sound(&p, c), prog.channels[c], "P{} {} ch{} survives packing", k + 1, prog.name, c + 1);
+        }
+        assert!(!fj::edited(&p));
+        assert_eq!(fj::program_name(&p, k), prog.name);
+    }
+    assert_eq!(fj::program_name(&p, PROGRAMS - 1), "Empty");
+    fj::load_program(&p, 40);
+    assert_eq!(fj::sound(&p, 2), INIT);
+    // An edit shows; Memory Protect keeps it from being stored.
+    p.set(ch(1, knob::PITCH), 60.5);
+    assert!(fj::edited(&p));
+    assert!(!fj::store_program(&p, 40));
+    p.data[data::PROTECT].set(0.0);
+    assert!(fj::store_program(&p, 60));
+    assert_eq!(fj::program(&p), 60);
+    assert!(!fj::edited(&p));
+    assert_eq!(fj::program_name(&p, 60), "User");
+    assert_eq!(fj::stored(&p, 60)[1][knob::PITCH], 60.5, "half semitones are kept");
+    // Sound Init and the extremes of every range survive packing.
+    fj::init_channel(&p, 0);
+    assert_eq!(fj::sound(&p, 0), INIT);
+    for (k, &(_, lo, hi, _)) in fj::RANGES.iter().enumerate() {
+        for v in [lo, hi] {
+            p.set(ch(3, k), v);
+            fj::store_program(&p, 98);
+            assert_eq!(fj::stored(&p, 98)[3][k], v, "knob {k} at {v}");
+        }
+    }
+}
+
+#[test]
+fn fjord_sequencer_plays_its_lanes_on_the_board_grid() {
+    use crate::audio::modules::fjord::{self as fj, data, viz};
+    let p = fjord_params();
+    // 120 BPM, sixteenths: a step every 6000 frames. The kick lane starts
+    // 3 0 0 0 2 0 0 0 3 0 0 1 2 …, on MIDI channel 10, note 36.
+    let run = run_fjord(&p, 1500, true, &[], None);
+    let kicks: Vec<(usize, u8)> = run.sent.iter().filter(|(_, m)| m[0] == 0x99 && m[1] == 36).map(|(f, m)| (*f, m[2])).collect();
+    assert_eq!(kicks, [(0, 127), (24_000, 91), (48_000, 127), (66_000, 51), (72_000, 91)]);
+    assert!(run.sent.iter().any(|(_, m)| m[0] == 0x89 && m[1] == 36), "notes end");
+    assert!(rms_of(&run.out) > 0.02);
+    assert!(rms_of(&run.channels[0]) > 0.02 && rms_of(&run.channels[1]) > 0.005, "each channel on its own output");
+    assert!(p.viz[viz::STEP].get() >= 0.0);
+    // Stopped: no steps.
+    let run = run_fjord(&p, 400, false, &[], None);
+    assert!(run.sent.is_empty() && peak_of(&run.out) == 0.0);
+    assert_eq!(p.viz[viz::STEP].get(), -1.0);
+    // Eighths, 6 steps, a mute: the kick every 12000 frames on steps 0 and 4.
+    p.data[data::RATE].set(1.0);
+    p.data[data::LENGTH].set(6.0);
+    p.data[data::MUTE + 3].set(1.0);
+    let run = run_fjord(&p, 1500, true, &[], None);
+    let kicks: Vec<usize> = run.sent.iter().filter(|(_, m)| m[0] == 0x99 && m[1] == 36).map(|(f, _)| *f).collect();
+    assert_eq!(kicks, [0, 48_000, 72_000]);
+    assert!(run.sent.iter().all(|(_, m)| m[1] != 47), "lane 4 muted");
+    // Edited steps.
+    fj::set_step(&p, 2, 1, 3);
+    let run = run_fjord(&p, 200, true, &[], None);
+    assert!(run.sent.iter().any(|&(f, m)| f == 12_000 && m == [0x99, 50, 127]));
+    // RUN off: silent.
+    p.data[data::RUN].set(0.0);
+    assert!(run_fjord(&p, 400, true, &[], None).sent.is_empty());
+}
+
+#[test]
+fn fjord_midi_notes_strike_their_channels() {
+    use crate::audio::modules::fjord::{data, viz};
+    let p = fjord_quiet();
+    // Note 38 on channel 10 strikes channel 2 only; played in, not sent out.
+    let run = run_fjord(&p, 300, true, &[(640, [0x99, 38, 110])], None);
+    assert!(run.sent.is_empty());
+    assert!(peak_of(&run.out[..640]) == 0.0 && rms_of(&run.channels[1]) > 0.005);
+    assert!(peak_of(&run.channels[0]) == 0.0);
+    assert_eq!(p.viz[viz::HITS + 1].get(), 1.0);
+    // Another MIDI channel, or Off: ignored.
+    assert!(peak_of(&run_fjord(&p, 100, true, &[(0, [0x90, 38, 110])], None).out) == 0.0);
+    p.data[data::MIDI_CH].set(0.0);
+    assert!(peak_of(&run_fjord(&p, 100, true, &[(0, [0x99, 38, 110])], None).out) == 0.0);
+    // Learn the channel from the next message, then a note for channel 4.
+    p.data[data::LEARN].set(1.0);
+    let run = run_fjord(&p, 100, true, &[(0, [0x92, 36, 100])], None);
+    assert_eq!(p.data[data::MIDI_CH].get(), 3.0);
+    assert!(rms_of(&run.channels[0]) > 0.005);
+    p.data[data::LEARN].set(5.0);
+    let run = run_fjord(&p, 100, true, &[(0, [0x92, 64, 100])], None);
+    assert_eq!(p.data[data::NOTE + 3].get(), 64.0);
+    assert_eq!(p.data[data::LEARN].get(), 0.0);
+    assert!(rms_of(&run.channels[3]) > 0.001);
+    // FOLLOW: the pad played picks the channel to edit.
+    assert_eq!(p.data[data::CHANNEL].get(), 0.0);
+    p.data[data::FOLLOW].set(1.0);
+    run_fjord(&p, 10, true, &[(0, [0x92, 64, 100])], None);
+    assert_eq!(p.data[data::CHANNEL].get(), 3.0);
+    // Velocity: softer is quieter; Dn2 makes it hotter.
+    let loud = rms_of(&run_fjord(&p, 100, true, &[(0, [0x92, 36, 127])], None).channels[0]);
+    let soft = rms_of(&run_fjord(&p, 100, true, &[(0, [0x92, 36, 40])], None).channels[0]);
+    p.data[data::DYN].set(1.0);
+    let hot = rms_of(&run_fjord(&p, 100, true, &[(0, [0x92, 36, 40])], None).channels[0]);
+    assert!(soft < loud * 0.5 && hot > soft * 1.5, "{soft} {loud} {hot}");
+}
+
+#[test]
+fn fjord_program_changes_go_both_ways() {
+    use crate::audio::modules::fjord::bank::FACTORY;
+    use crate::audio::modules::fjord::{self as fj, data};
+    let p = fjord_quiet();
+    // Received (the default): program 7 loads P8.
+    run_fjord(&p, 4, true, &[(0, [0xC9, 7, 0])], None);
+    assert_eq!(fj::program(&p), 7);
+    assert_eq!(fj::sound(&p, 0), FACTORY[7].channels[0]);
+    // Not received when set to Send only; sent when the panel picks one.
+    p.data[data::PROG_CHANGE].set(1.0);
+    run_fjord(&p, 4, true, &[(0, [0xC9, 2, 0])], None);
+    assert_eq!(fj::program(&p), 7);
+    use crate::audio::engine::{Inputs, MAX_INPUTS, MidiBuf, ProcessCtx, Processor};
+    let mut proc = crate::audio::modules::fjord::Fjord::new(p.clone(), 48_000.0);
+    let ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing: true, restart: false };
+    let inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: false });
+    let mut outputs = vec![[[0.0f32; 64]; 2]; 5];
+    proc.process(&ctx, &inputs, &mut outputs, 64);
+    assert!(proc.midi_out().unwrap().events().is_empty());
+    fj::load_program(&p, 11);
+    proc.process(&ctx, &inputs, &mut outputs, 64);
+    assert_eq!(proc.midi_out().unwrap().events()[0].data, [0xC9, 11, 0]);
+}
+
+#[test]
+fn fjord_local_off_sends_without_sounding() {
+    use crate::audio::modules::fjord::data;
+    let p = fjord_params();
+    p.data[data::LOCAL].set(0.0);
+    let run = run_fjord(&p, 800, true, &[], None);
+    assert!(run.sent.iter().any(|(_, m)| m[0] == 0x99 && m[1] == 36), "the pattern still goes out");
+    assert_eq!(peak_of(&run.out), 0.0);
+    // MIDI coming back still plays.
+    let run = run_fjord(&p, 100, false, &[(0, [0x99, 36, 100])], None);
+    assert!(rms_of(&run.out) > 0.01);
+}
+
+#[test]
+fn fjord_panel_trig_plays_the_edited_channel_at_its_velocity() {
+    use crate::audio::modules::fjord::{data, viz};
+    use crate::audio::engine::{Inputs, MAX_INPUTS, MidiBuf, ProcessCtx, Processor};
+    let p = fjord_quiet();
+    p.data[data::CHANNEL].set(2.0);
+    let mut proc = crate::audio::modules::fjord::Fjord::new(p.clone(), 48_000.0);
+    let ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing: false, restart: false };
+    let inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: false });
+    let mut outputs = vec![[[0.0f32; 64]; 2]; 5];
+    // The panel bumps the edited channel's counter.
+    p.viz[viz::AUDITION + 2].set(1.0);
+    let (mut sound, mut sent) = (Vec::new(), Vec::new());
+    for _ in 0..200 {
+        proc.process(&ctx, &inputs, &mut outputs, 64);
+        sound.extend_from_slice(&outputs[3][0]);
+        sent.extend(proc.midi_out().unwrap().events().iter().map(|e| e.data));
+    }
+    assert!(rms_of(&sound) > 0.01);
+    assert!(sent.contains(&[0x99, 50, 100]), "TRIG goes out too, at the TRIG velocity: {sent:?}");
+}
+
+#[test]
+fn fjord_trig_inputs_find_hits_and_skip_the_ringing() {
+    use crate::audio::modules::fjord::{data, trigger, viz};
+    let p = fjord_quiet();
+    // A decaying 200 Hz "drum" every 12000 frames, the second softer.
+    let drum = |f: usize| {
+        let (k, t) = (f / 12_000, (f % 12_000) as f32 / 48_000.0);
+        let amp = if k % 2 == 0 { 0.8 } else { 0.1 };
+        amp * (-t * 30.0).exp() * (std::f32::consts::TAU * 200.0 * t).sin()
+    };
+    let run = run_fjord(&p, 750, false, &[], Some(&drum));
+    let notes: Vec<(usize, u8)> = run.sent.iter().filter(|(_, m)| m[0] == 0x99).map(|(f, m)| (*f, m[2])).collect();
+    assert_eq!(notes.len(), 4, "one note per hit, none from its ringing: {notes:?}");
+    assert!(notes.iter().all(|&(f, _)| f % 12_000 < 300), "{notes:?}");
+    assert!(notes[0].1 == 127 && notes[1].1 < 70, "hard and soft: {notes:?}");
+    assert!(p.viz[viz::STRENGTH].get() > 0.0);
+    assert!(rms_of(&run.channels[0]) > 0.01);
+    // A higher threshold drops the soft hits.
+    p.data[data::THRES].set(85.0);
+    let run = run_fjord(&p, 750, false, &[], Some(&drum));
+    assert_eq!(run.sent.iter().filter(|(_, m)| m[0] == 0x99).count(), 2);
+    // Sens and Thres in dB.
+    assert_eq!(trigger::full_db(0.0), 0.0);
+    assert!(trigger::threshold_db(99.0).abs() < 1e-6);
+}
+
+#[test]
+fn fjord_engine_follows_its_parameters() {
+    use crate::audio::modules::fjord::bank::INIT;
+    use crate::audio::modules::fjord::knob::*;
+    use crate::audio::modules::fjord::voice::{Sound, WAVES, pitch_hz, render};
+    let hit = |s: &Sound, n: usize| {
+        let parts = render(s, 1.0, 0.1, 48_000.0, n);
+        (0..n).map(|i| parts[0][i] + parts[1][i] + parts[2][i]).collect::<Vec<f32>>()
+    };
+    let with = |set: &[(usize, f32)]| {
+        let mut s = INIT;
+        for &(k, v) in set {
+            s[k] = v;
+        }
+        s
+    };
+    // Pitch in MIDI notes: 69 is 440 Hz, 57.5 a semitone and a half under A3.
+    for note in [45.0, 57.5, 69.0] {
+        let s = with(&[(PITCH, note), (T_DECAY, 40.0)]);
+        let f = crossings_per_second(&hit(&s, 24_000)[2400..]);
+        assert!((f / pitch_hz(note) - 1.0).abs() < 0.03, "{note}: {f} vs {}", pitch_hz(note));
+    }
+    // Bend: positive starts above and falls; negative starts below.
+    let plain = with(&[(PITCH, 57.0), (T_DECAY, 40.0)]);
+    let down = with(&[(PITCH, 57.0), (T_DECAY, 40.0), (BEND, 24.0), (BEND_TIME, 4.0)]);
+    let up = with(&[(PITCH, 57.0), (T_DECAY, 40.0), (BEND, -9.0), (BEND_TIME, 4.0)]);
+    let early = |s: &Sound| crossings_per_second(&hit(s, 4800)[..2400]);
+    assert!(early(&down) > early(&plain) * 1.5 && early(&up) < early(&plain) * 0.9, "{} {} {}", early(&down), early(&plain), early(&up));
+    // Decay longer → longer; the gate G holds then cuts, S holds longer
+    // than n.
+    let short = length_ms(&hit(&with(&[(T_DECAY, 20.0)]), 48_000), 0.1);
+    let long = length_ms(&hit(&with(&[(T_DECAY, 35.0)]), 48_000), 0.1);
+    assert!(long > short * 4.0, "{short} {long}");
+    let half = |s: &Sound| length_ms(&hit(s, 96_000), 0.5);
+    let (n, soft, gated) = (half(&with(&[(T_DECAY, 35.0)])), half(&with(&[(T_DECAY, 35.0), (T_GATE, 1.0)])), half(&with(&[(T_DECAY, 35.0), (T_GATE, 2.0)])));
+    assert!(soft > n * 2.0 && gated > n * 1.5, "half level at n {n} S {soft} G {gated}");
+    let g = hit(&with(&[(T_DECAY, 35.0), (T_GATE, 2.0)]), 96_000);
+    let cut = length_ms(&g, 0.4) - length_ms(&g, 0.01);
+    assert!(cut.abs() < 60.0, "G falls fast after the hold: {cut} ms");
+    // The tone filter darkens a sawtooth; its sweep brightens the strike.
+    let saw = |set: &[(usize, f32)]| {
+        let mut all = vec![(T_WAVE, 2.0), (PITCH, 45.0), (T_DECAY, 40.0)];
+        all.extend_from_slice(set);
+        hit(&with(&all), 9600)
+    };
+    let bright = |b: &[f32]| rms_of(&b.windows(2).map(|w| w[1] - w[0]).collect::<Vec<_>>()) / rms_of(b);
+    let open = bright(&saw(&[])[2400..]);
+    let dark = bright(&saw(&[(T_FILTER, 40.0)])[2400..]);
+    let swept = bright(&saw(&[(T_FILTER, 40.0), (T_SWEEP, 10.0), (T_TIME, 9.0)])[..2400]);
+    assert!(dark < open * 0.5 && swept > dark * 1.5, "{open} {dark} {swept}");
+    // Noise: COLOR below 0 darker, above 0 brighter; the filter darker still.
+    let noise = |set: &[(usize, f32)]| {
+        let mut all = vec![(TONE, 0.0), (NOISE, 10.0), (N_FILTER, 99.0), (N_DECAY, 40.0)];
+        all.extend_from_slice(set);
+        crossings_per_second(&hit(&with(&all), 9600))
+    };
+    let (dull, flat, thin) = (noise(&[(N_COLOR, -8.0)]), noise(&[]), noise(&[(N_COLOR, 8.0)]));
+    assert!(dull < flat * 0.5 && thin > flat * 1.1, "{dull} {flat} {thin}");
+    assert!(noise(&[(N_FILTER, 40.0)]) < flat * 0.3);
+    // Every waveform, filter type and click type sounds and stays in range,
+    // with the punch and the sweeps up.
+    for w in 0..WAVES.len() {
+        let b = hit(&with(&[(T_WAVE, w as f32), (T_PUNCH, 9.0), (T_SWEEP, 10.0), (BEND, 30.0), (PITCH, 98.5)]), 9600);
+        assert!(b.iter().all(|y| y.is_finite()) && rms_of(&b) > 0.02 && peak_of(&b) < 3.0, "wave {w}: {} {}", rms_of(&b), peak_of(&b));
+    }
+    for t in 1..=7 {
+        let b = hit(&with(&[(TONE, 0.0), (NOISE, 10.0), (N_TYPE, t as f32), (N_FILTER, 0.0), (N_SWEEP, 10.0), (N_DECAY, 30.0)]), 9600);
+        assert!(b.iter().all(|y| y.is_finite()) && rms_of(&b) > 0.005 && peak_of(&b) < 3.0, "type {t}: {}", rms_of(&b));
+    }
+    for c in 0..27 {
+        let b = hit(&with(&[(TONE, 0.0), (CLICK, 10.0), (C_TYPE, c as f32), (C_DECAY, 6.0)]), 960);
+        assert!(b.iter().all(|y| y.is_finite()) && rms_of(&b) > 0.01 && peak_of(&b) < 3.0, "click {c}: {}", rms_of(&b));
+    }
+}
+
+#[test]
+fn fjord_solo_edit_keeps_one_component_of_the_edited_channel() {
+    use crate::audio::modules::fjord::{ch, data, knob};
+    let p = fjord_quiet();
+    // Channel 2 (the snare) with only its noise soloed: no tone left.
+    p.set(ch(1, knob::NOISE), 0.0);
+    p.data[data::CHANNEL].set(1.0);
+    p.data[data::SOLO].set(2.0);
+    let run = run_fjord(&p, 200, false, &[(0, [0x99, 38, 120])], None);
+    assert!(peak_of(&run.channels[1]) < 1e-4, "{}", peak_of(&run.channels[1]));
+    p.data[data::SOLO].set(1.0);
+    let run = run_fjord(&p, 200, false, &[(0, [0x99, 38, 120])], None);
+    assert!(rms_of(&run.channels[1]) > 0.01);
+}
+
+/// The panel draws through the canvas with each channel edited, each
+/// solo, a few programs, the sequencer playing and the display hovered.
+#[test]
+fn fjord_panel_draws() {
+    use crate::audio::modules::fjord::{self as fj, data};
+    let shared = Arc::new(EngineShared::new());
+    shared.running.store(true, Ordering::Relaxed);
+    shared.tempo.set(120.0);
+    let (a, mut e) = audio::offline(shared, 48_000);
+    let mut g = Graph::default();
+    let id = g.add_module(ModuleKind::Fjord, pos2(0.0, 0.0), &a);
+    let p = module_params(&g, id);
+    let mut editor = crate::ui::canvas::Editor::new();
+    let ctx = egui::Context::default();
+    let mut time = 0.0;
+    for (k, prog) in [0usize, 12, 19, 32, 40, 33].into_iter().enumerate() {
+        fj::load_program(&p, prog);
+        p.data[data::CHANNEL].set((k % 4) as f32);
+        p.data[data::SOLO].set((k % 4) as f32);
+        p.data[data::TAB].set((k % 2) as f32);
+        assert_eq!(g.node(id).unwrap().size().y, crate::ui::fjord::size(&p).y, "the node takes its page's size");
+        for frame in 0..4 {
+            render_buf(&mut e, 4_800);
+            time += 0.1;
+            let pointer = egui::Event::PointerMoved(pos2(200.0 + 120.0 * frame as f32, 120.0 + 60.0 * k as f32));
+            let input = egui::RawInput { time: Some(time), events: vec![pointer], ..Default::default() };
+            let mut out = ctx.run_ui(input, |ui| editor.show(ui, &mut g, &a));
+            out.textures_delta.clear();
+        }
+    }
+    assert!(p.viz[crate::audio::modules::fjord::viz::STEP].get() >= 0.0, "the steps played while drawn");
+}
+
+#[test]
+fn fjord_tone_adsrs_shape_the_level_and_the_filter() {
+    use crate::audio::modules::fjord::bank::INIT;
+    use crate::audio::modules::fjord::knob::*;
+    use crate::audio::modules::fjord::voice::{Sound, render};
+    let with = |set: &[(usize, f32)]| {
+        let mut s = INIT;
+        for &(k, v) in set {
+            s[k] = v;
+        }
+        s
+    };
+    let tone = |s: &Sound, gate: f32, n: usize| render(s, 1.0, gate, 48_000.0, n)[0].clone();
+    let peak_at = |b: &[f32]| b.iter().enumerate().fold((0, 0.0f32), |(at, m), (i, y)| if y.abs() > m { (i, y.abs()) } else { (at, m) }).0;
+    let level = |b: &[f32], ms: usize| peak_of(&b[ms * 48..(ms + 20) * 48]);
+    // A slow attack (30: 126 ms) rises where DECAY strikes at once.
+    let decay = tone(&with(&[(T_DECAY, 40.0)]), 0.5, 48_000);
+    let swell = tone(&with(&[(AMP_ENV, 1.0), (AMP_A, 30.0), (AMP_D, 30.0), (AMP_S, 99.0), (AMP_R, 20.0)]), 0.5, 48_000);
+    assert!(peak_at(&decay) < 480 && peak_at(&swell) > 4_800, "{} {}", peak_at(&decay), peak_at(&swell));
+    // Held at the sustain while the note is, then released.
+    assert!((level(&swell, 300) / level(&swell, 420) - 1.0).abs() < 0.1, "sustains: {} {}", level(&swell, 300), level(&swell, 420));
+    assert!(level(&swell, 700) < level(&swell, 420) * 0.05, "released: {}", level(&swell, 700));
+    // A longer note sustains longer; with no sustain it decays all the same.
+    let long = tone(&with(&[(AMP_ENV, 1.0), (AMP_A, 30.0), (AMP_D, 30.0), (AMP_S, 99.0), (AMP_R, 20.0)]), 0.9, 48_000);
+    assert!(level(&long, 700) > level(&long, 420) * 0.8);
+    let no_sustain = tone(&with(&[(AMP_ENV, 1.0), (AMP_D, 20.0), (AMP_S, 0.0)]), 0.9, 48_000);
+    assert!(level(&no_sustain, 500) < 1e-3, "{}", level(&no_sustain, 500));
+    // The filter's ADSR opens a closed sawtooth at the strike and lets it
+    // close again; a negative AMOUNT closes an open one.
+    let bright = |b: &[f32]| rms_of(&b.windows(2).map(|w| w[1] - w[0]).collect::<Vec<_>>()) / rms_of(b).max(1e-9);
+    let saw = |set: &[(usize, f32)]| {
+        let mut all = vec![(T_WAVE, 2.0), (PITCH, 45.0), (T_DECAY, 45.0), (T_FILTER, 30.0)];
+        all.extend_from_slice(set);
+        tone(&with(&all), 0.5, 24_000)
+    };
+    let plain = saw(&[]);
+    let enveloped = saw(&[(FLT_AMT, 10.0), (FLT_D, 30.0), (FLT_S, 0.0)]);
+    assert!(bright(&enveloped[480..2400]) > bright(&plain[480..2400]) * 2.0, "opens at the strike");
+    assert!(bright(&enveloped[19_200..24_000]) < bright(&enveloped[480..2400]) * 0.5, "and closes again");
+    let open = saw(&[(T_FILTER, 99.0)]);
+    let closing = saw(&[(T_FILTER, 99.0), (FLT_AMT, -10.0), (FLT_A, 0.0), (FLT_D, 40.0), (FLT_S, 99.0)]);
+    assert!(bright(&closing[2400..9600]) < bright(&open[2400..9600]) * 0.5, "{} {}", bright(&closing[2400..9600]), bright(&open[2400..9600]));
+}
+
+#[test]
+fn fjord_notes_are_held_by_keys_trig_and_steps() {
+    use crate::audio::modules::fjord::{ch, data, knob, viz};
+    let p = fjord_quiet();
+    // Channel 1: an organ-like tone, held at full sustain, quick release.
+    for (k, v) in [(knob::AMP_ENV, 1.0), (knob::AMP_A, 5.0), (knob::AMP_D, 20.0), (knob::AMP_S, 99.0), (knob::AMP_R, 10.0), (knob::NOISE, 0.0), (knob::CLICK, 0.0)] {
+        p.set(ch(0, k), v);
+    }
+    // A MIDI key holds it until its note-off.
+    let held = run_fjord(&p, 1000, false, &[(0, [0x99, 36, 120])], None);
+    let released = run_fjord(&p, 1000, false, &[(0, [0x99, 36, 120]), (24_000, [0x89, 36, 0])], None);
+    let window = |b: &[f32], from: usize| rms_of(&b[from..from + 4800]);
+    assert!(window(&held.channels[0], 40_000) > 0.05, "held: {}", window(&held.channels[0], 40_000));
+    assert!(window(&released.channels[0], 19_000) > 0.05 && window(&released.channels[0], 40_000) < 1e-3, "let go");
+    // A note-off for another note leaves it alone.
+    let other = run_fjord(&p, 1000, false, &[(0, [0x99, 36, 120]), (24_000, [0x89, 38, 0])], None);
+    assert!(window(&other.channels[0], 40_000) > 0.05);
+
+    // A step holds it for its GATE: 50% of a sixteenth at 120 BPM, 3000
+    // frames, and the MIDI note sent lasts as long.
+    p.data[data::RUN].set(1.0);
+    let run = run_fjord(&p, 400, true, &[], None);
+    let on = run.sent.iter().find(|(_, m)| m[0] == 0x99 && m[1] == 36).unwrap().0;
+    let off = run.sent.iter().find(|(_, m)| m[0] == 0x89 && m[1] == 36).unwrap().0;
+    assert_eq!(off - on, 3000);
+    assert!(rms_of(&run.channels[0][1000..2800]) > 0.05 && rms_of(&run.channels[0][5000..5900]) < 1e-3, "released after the gate");
+    p.data[data::RUN].set(0.0);
+
+    // TRIG held down holds it; let go, it is released.
+    use crate::audio::engine::{Inputs, MAX_INPUTS, MidiBuf, ProcessCtx, Processor};
+    let mut proc = crate::audio::modules::fjord::Fjord::new(p.clone(), 48_000.0);
+    let ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing: false, restart: false };
+    let inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: false });
+    let mut outputs = vec![[[0.0f32; 64]; 2]; 5];
+    p.viz[viz::AUDITION].set(p.viz[viz::AUDITION].get() + 1.0);
+    p.viz[viz::HOLD].set(1.0);
+    let mut sound = Vec::new();
+    for b in 0..1000 {
+        if b == 500 {
+            p.viz[viz::HOLD].set(0.0);
+        }
+        proc.process(&ctx, &inputs, &mut outputs, 64);
+        sound.extend_from_slice(&outputs[1][0]);
+    }
+    assert!(window(&sound, 20_000) > 0.05, "held while TRIG is down");
+    assert!(window(&sound, 40_000) < 1e-3, "released when it is let go");
+}
+
+#[test]
+fn fjord_alea_throws_breed_sounds_and_grooves_and_take_them_back() {
+    use crate::audio::modules::fjord::alea::{self, Before, Role};
+    use crate::audio::modules::fjord::voice::render;
+    use crate::audio::modules::fjord::{self as fj, CHANNELS, MAX_LEN, RANGES, data, knob};
+    let p = fjord_quiet();
+    // A full throw of the sounds: every channel changes, every knob stays
+    // on its grid and in its range, and every channel is heard.
+    for seed in 1..=12u32 {
+        fj::load_program(&p, 0);
+        let before: Vec<_> = (0..CHANNELS).map(|c| fj::sound(&p, c)).collect();
+        alea::throw_sound(&p, seed, 1.0, &[0, 1, 2, 3]);
+        for (c, was) in before.iter().enumerate() {
+            let s = fj::sound(&p, c);
+            assert_ne!(&s, was, "seed {seed} ch {c} changed");
+            for (k, &(_, lo, hi, _)) in RANGES.iter().enumerate() {
+                assert!(s[k] >= lo && s[k] <= hi && fj::snap(k, s[k]) == s[k], "seed {seed} ch {c} knob {k}: {}", s[k]);
+            }
+            let parts = render(&s, 0.8, 0.2, 48_000.0, 24_000);
+            let mix: Vec<f32> = (0..24_000).map(|i| parts[0][i] + parts[1][i] + parts[2][i]).collect();
+            assert!(mix.iter().all(|y| y.is_finite()) && peak_of(&mix) > 0.02, "seed {seed} ch {c} is heard: {}", peak_of(&mix));
+        }
+    }
+    // A small CHANCE nudges: no knob goes more than a tenth of the way.
+    fj::load_program(&p, 0);
+    let before = fj::sound(&p, 1);
+    alea::throw_sound(&p, 7, 0.05, &[1]);
+    let after = fj::sound(&p, 1);
+    let moved = (0..knob::COUNT).filter(|&k| after[k] != before[k]).count();
+    assert!(moved > 0 && (0..knob::COUNT).all(|k| (after[k] - before[k]).abs() <= (RANGES[k].2 - RANGES[k].1) * 0.15 + 1.0), "{before:?} → {after:?}");
+    // Only the channels asked for.
+    assert_eq!(fj::sound(&p, 0), fj::stored(&p, 0)[0]);
+
+    // Grooves: whatever the role, length and grid, in range; a kick always
+    // on the bar's first step, a snare always on the backbeats.
+    let mut rng = crate::audio::modules::Rng::new(3);
+    for role in [Role::Kick, Role::Snare, Role::Hat, Role::Tom] {
+        for len in 1..=MAX_LEN {
+            for per_beat in [1, 2, 4, 6, 8] {
+                let g = alea::groove(&mut rng, role, len, per_beat);
+                assert!(g.iter().all(|&v| v <= 3) && g[len..].iter().all(|&v| v == 0));
+            }
+        }
+        let g = alea::groove(&mut rng, role, 16, 4);
+        match role {
+            Role::Kick => assert_eq!(g[0], 3),
+            Role::Snare => assert!(g[4] >= 2 && g[12] >= 2, "{g:?}"),
+            _ => {}
+        }
+    }
+    // First Light's channels are taken for kick, snare, tom, hihat.
+    fj::load_program(&p, 0);
+    let roles: Vec<Role> = (0..CHANNELS).map(|c| alea::role(&fj::sound(&p, c))).collect();
+    assert_eq!(roles, [Role::Kick, Role::Snare, Role::Tom, Role::Hat]);
+
+    // A throw of the steps, all the way: the kick lane starts its bars.
+    let steps = |p: &ModuleParams| (0..CHANNELS * MAX_LEN).map(|i| p.data[data::STEPS + i].get()).collect::<Vec<_>>();
+    let original = steps(&p);
+    alea::throw_steps(&p, 99, 1.0);
+    assert_eq!(fj::step(&p, 0, 0), 3);
+    assert_ne!(steps(&p), original);
+    // BACK: everything as it was before the throw.
+    let sounds = |p: &ModuleParams| (0..CHANNELS).map(|c| fj::sound(p, c)).collect::<Vec<_>>();
+    let (s0, st0) = (sounds(&p), steps(&p));
+    let before = Before::take(&p);
+    alea::throw_sound(&p, 5, 1.0, &[0, 1, 2, 3]);
+    alea::throw_steps(&p, 5, 1.0);
+    assert!(sounds(&p) != s0 || steps(&p) != st0);
+    before.restore(&p);
+    assert_eq!((sounds(&p), steps(&p)), (s0, st0));
+}
+
+// ---------------------------------------------------------------------------
+// Prism (after Pro-Q 4)
+// ---------------------------------------------------------------------------
+
+fn prism_params() -> Arc<ModuleParams> {
+    Arc::new(ModuleParams::new(ModuleKind::Prism))
+}
+
+fn prism() -> fn(&Arc<ModuleParams>) -> crate::audio::modules::prism::Prism {
+    |p| crate::audio::modules::prism::Prism::new(p.clone(), 48_000.0)
+}
+
+/// A tone's level in the second half of `x` (dB relative to `amp`) and
+/// its phase (radians), by correlation over whole cycles.
+fn tone(x: &[f32], hz: f32, amp: f32) -> (f32, f32) {
+    let start = x.len() / 2;
+    let period = 48_000.0 / hz;
+    let cycles = ((x.len() - start) as f32 / period).floor();
+    let len = (cycles * period).round() as usize;
+    let (mut re, mut im) = (0.0f64, 0.0f64);
+    for (i, &v) in x[start..start + len].iter().enumerate() {
+        let a = std::f64::consts::TAU * hz as f64 * (start + i) as f64 / 48_000.0;
+        re += v as f64 * a.sin();
+        im += v as f64 * a.cos();
+    }
+    let mag = 2.0 * (re * re + im * im).sqrt() / len as f64;
+    (20.0 * (mag / amp as f64).log10() as f32, im.atan2(re) as f32)
+}
+
+fn two_tones(a: (f32, f32), b: (f32, f32)) -> impl Fn(usize) -> (f32, f32) {
+    move |n| {
+        let t = n as f32 / 48_000.0;
+        let v = a.1 * (std::f32::consts::TAU * a.0 * t).sin() + b.1 * (std::f32::consts::TAU * b.0 * t).sin();
+        (v, v)
+    }
+}
+
+#[test]
+fn prism_bands_shape_the_sound_in_every_mode() {
+    use crate::audio::modules::prism::{self as pq, data, design::*};
+    let p = prism_params();
+    pq::create_band(&p, 0, BELL, 1000.0, 6.0, 1.0);
+    pq::create_band(&p, 1, LOW_CUT, 60.0, 0.0, 1.0);
+    // Linear phase at HIGH: steep low curves need fine frames.
+    p.data[data::RESOLUTION].set(2.0);
+    for mode in [pq::ZERO_LATENCY, pq::NATURAL_PHASE, pq::LINEAR_PHASE] {
+        p.data[data::MODE].set(mode as f32);
+        let (l, _) = drive_stereo(&mut prism()(&p), 48_000, sine(1000.0, 0.2), None);
+        assert!((tone(&l, 1000.0, 0.2).0 - 6.0).abs() < 0.3, "mode {mode}: bell {}", tone(&l, 1000.0, 0.2).0);
+        let (l, _) = drive_stereo(&mut prism()(&p), 48_000, sine(250.0, 0.2), None);
+        let mid = Analog::design(&Shape { shape: BELL, slope: 1, freq: 1000.0, gain: 6.0, q: 1.0 }).db(250.0) as f32;
+        assert!((tone(&l, 250.0, 0.2).0 - mid).abs() < 0.3, "mode {mode}: skirt");
+        let (l, _) = drive_stereo(&mut prism()(&p), 48_000, sine(30.0, 0.2), None);
+        let cut = Analog::design(&Shape { shape: LOW_CUT, slope: 3, freq: 60.0, gain: 0.0, q: 1.0 }).db(30.0) as f32;
+        assert!((tone(&l, 30.0, 0.2).0 - cut).abs() < 1.5, "mode {mode}: cut {} vs {cut}", tone(&l, 30.0, 0.2).0);
+    }
+    // A bypassed band does nothing; an empty Prism passes the input.
+    p.data[data::MODE].set(0.0);
+    p.data[data::ON].set(0.0);
+    p.data[data::USED + 1].set(0.0);
+    let (l, _) = drive_stereo(&mut prism()(&p), 9600, sine(1000.0, 0.2), None);
+    assert!(tone(&l, 1000.0, 0.2).0.abs() < 0.05);
+}
+
+#[test]
+fn prism_slopes_and_the_brickwall_cut_as_set() {
+    use crate::audio::modules::prism::{self as pq, data, design::*};
+    let p = prism_params();
+    pq::create_band(&p, 0, HIGH_CUT, 1000.0, 0.0, 1.0);
+    for (slope, f, want) in [(1usize, 4000.0, -24.1), (3, 2000.0, -24.1), (8, 1414.0, -48.0)] {
+        p.data[data::SLOPE].set(slope as f32);
+        let (l, _) = drive_stereo(&mut prism()(&p), 24_000, sine(f, 0.5), None);
+        assert!((tone(&l, f, 0.5).0 - want).abs() < 1.0, "slope {slope}: {}", tone(&l, f, 0.5).0);
+    }
+    p.data[data::SLOPE].set(BRICKWALL as f32);
+    let (l, _) = drive_stereo(&mut prism()(&p), 24_000, sine(1500.0, 0.5), None);
+    assert!(tone(&l, 1500.0, 0.5).0 < -80.0, "brickwall stop band: {}", tone(&l, 1500.0, 0.5).0);
+    let (l, _) = drive_stereo(&mut prism()(&p), 24_000, sine(600.0, 0.5), None);
+    assert!(tone(&l, 600.0, 0.5).0.abs() < 0.1, "brickwall pass band");
+}
+
+#[test]
+fn prism_places_bands_on_stereo_left_right_mid_or_side() {
+    use crate::audio::modules::prism::{self as pq, data, design::*};
+    let p = prism_params();
+    pq::create_band(&p, 0, BELL, 1000.0, -12.0, 1.0);
+    for mode in [pq::ZERO_LATENCY, pq::LINEAR_PHASE] {
+        p.data[data::MODE].set(mode as f32);
+        p.data[data::PLACE].set(pq::LEFT as f32);
+        let (l, r) = drive_stereo(&mut prism()(&p), 48_000, sine(1000.0, 0.2), None);
+        assert!((tone(&l, 1000.0, 0.2).0 + 12.0).abs() < 0.3 && tone(&r, 1000.0, 0.2).0.abs() < 0.2, "mode {mode}: left only");
+        p.data[data::PLACE].set(pq::SIDE as f32);
+        // A mono signal has no side: untouched.
+        let (l, r) = drive_stereo(&mut prism()(&p), 48_000, sine(1000.0, 0.2), None);
+        assert!(tone(&l, 1000.0, 0.2).0.abs() < 0.2 && tone(&r, 1000.0, 0.2).0.abs() < 0.2, "mode {mode}: side leaves mono");
+        p.data[data::PLACE].set(pq::MID as f32);
+        let (l, _) = drive_stereo(&mut prism()(&p), 48_000, sine(1000.0, 0.2), None);
+        assert!((tone(&l, 1000.0, 0.2).0 + 12.0).abs() < 0.3, "mode {mode}: mid");
+        // Opposite signals are all side: the mid band leaves them.
+        let anti = |n: usize| {
+            let v = 0.2 * (std::f32::consts::TAU * 1000.0 * n as f32 / 48_000.0).sin();
+            (v, -v)
+        };
+        let (l, _) = drive_stereo(&mut prism()(&p), 48_000, anti, None);
+        assert!(tone(&l, 1000.0, 0.2).0.abs() < 0.2, "mode {mode}: mid leaves side");
+    }
+}
+
+#[test]
+fn prism_dynamic_bands_act_above_the_threshold() {
+    use crate::audio::modules::prism::{self as pq, band, bp, data, design::*};
+    let p = prism_params();
+    pq::create_band(&p, 0, BELL, 1000.0, 0.0, 1.0);
+    p.set(bp(0, band::RANGE), -9.0);
+    p.data[data::AUTO].set(0.0);
+    p.set(bp(0, band::THRESHOLD), -40.0);
+    for mode in [pq::ZERO_LATENCY, pq::NATURAL_PHASE, pq::LINEAR_PHASE] {
+        p.data[data::MODE].set(mode as f32);
+        let (l, _) = drive_stereo(&mut prism()(&p), 48_000, sine(1000.0, 0.5), None);
+        assert!((tone(&l, 1000.0, 0.5).0 + 9.0).abs() < 0.6, "mode {mode}: loud is turned down: {}", tone(&l, 1000.0, 0.5).0);
+        let (l, _) = drive_stereo(&mut prism()(&p), 48_000, sine(1000.0, 0.002), None);
+        assert!(tone(&l, 1000.0, 0.002).0.abs() < 0.3, "mode {mode}: quiet passes");
+    }
+    // Expansion lifts what crosses.
+    p.data[data::MODE].set(0.0);
+    p.set(bp(0, band::RANGE), 6.0);
+    let (l, _) = drive_stereo(&mut prism()(&p), 48_000, sine(1000.0, 0.2), None);
+    assert!((tone(&l, 1000.0, 0.2).0 - 6.0).abs() < 0.6);
+    // A tone outside the band's range doesn't trigger it.
+    p.set(bp(0, band::RANGE), -9.0);
+    let (l, _) = drive_stereo(&mut prism()(&p), 48_000, two_tones((100.0, 0.5), (1000.0, 0.002)), None);
+    assert!(tone(&l, 1000.0, 0.002).0.abs() < 1.0, "the band listens to its own range");
+    // Automatic threshold: a steady tone settles, a burst over it is caught.
+    p.data[data::AUTO].set(1.0);
+    let burst = |n: usize| {
+        let amp = if n < 72_000 { 0.05 } else { 0.4 };
+        let v = amp * (std::f32::consts::TAU * 1000.0 * n as f32 / 48_000.0).sin();
+        (v, v)
+    };
+    let mut pr = prism()(&p);
+    let (l, _) = drive_stereo(&mut pr, 81_600, burst, None);
+    let steady = tone(&l[48_000..72_000], 1000.0, 0.05).0;
+    assert!(steady > -2.5, "a steady tone is mostly left alone: {steady}");
+    let caught = tone(&l[72_000..81_600], 1000.0, 0.4).0;
+    assert!(caught < -4.0, "the burst is turned down: {caught}");
+    assert!(p.viz[pq::viz::DYN].get() < -4.0);
+}
+
+#[test]
+fn prism_external_side_chain_triggers_the_band() {
+    use crate::audio::modules::prism::{self as pq, band, bp, data, design::*};
+    let p = prism_params();
+    pq::create_band(&p, 0, LOW_SHELF, 200.0, 0.0, 1.0);
+    p.set(bp(0, band::RANGE), -10.0);
+    p.data[data::AUTO].set(0.0);
+    p.set(bp(0, band::THRESHOLD), -30.0);
+    p.data[data::SC_EXT].set(1.0);
+    let key = sine(80.0, 0.5);
+    let (l, _) = drive_stereo(&mut prism()(&p), 48_000, sine(60.0, 0.01), Some(&key));
+    assert!(tone(&l, 60.0, 0.01).0 < -7.0, "ducked by the key: {}", tone(&l, 60.0, 0.01).0);
+    let silent = |_: usize| (0.0, 0.0);
+    let (l, _) = drive_stereo(&mut prism()(&p), 48_000, sine(60.0, 0.01), Some(&silent));
+    assert!(tone(&l, 60.0, 0.01).0 > -0.5);
+    // Free range: a trigger range that misses the key leaves the band.
+    p.data[data::SC_FREE].set(1.0);
+    p.set(bp(0, band::SC_LO), 2000.0);
+    p.set(bp(0, band::SC_HI), 8000.0);
+    let (l, _) = drive_stereo(&mut prism()(&p), 48_000, sine(60.0, 0.01), Some(&key));
+    assert!(tone(&l, 60.0, 0.01).0 > -0.5, "free range ignores the key");
+}
+
+#[test]
+fn prism_spectral_bands_turn_down_only_what_crosses() {
+    use crate::audio::modules::prism::{self as pq, band, bp, data, design::*};
+    let p = prism_params();
+    pq::create_band(&p, 0, BELL, 3500.0, 0.0, 0.5);
+    p.set(bp(0, band::RANGE), -12.0);
+    p.data[data::AUTO].set(0.0);
+    p.set(bp(0, band::THRESHOLD), -30.0);
+    p.data[data::SPEC_TILT].set(0.0);
+    p.set(bp(0, band::DENSITY), 1.0);
+    let input = two_tones((3000.0, 0.5), (4200.0, 0.003));
+    // An ordinary dynamic band turns the whole band down.
+    let (l, _) = drive_stereo(&mut prism()(&p), 72_000, &input, None);
+    let (loud, quiet) = (tone(&l, 3000.0, 0.5).0, tone(&l, 4200.0, 0.003).0);
+    assert!(loud < -8.0 && quiet < -8.0, "dynamic: {loud} {quiet}");
+    // A spectral one only the loud tone.
+    p.data[data::SPECTRAL].set(1.0);
+    let mut pr = prism()(&p);
+    let (l, _) = drive_stereo(&mut pr, 72_000, &input, None);
+    let (loud, quiet) = (tone(&l, 3000.0, 0.5).0, tone(&l, 4200.0, 0.003).0);
+    assert!(loud < -8.0, "spectral turns the loud tone down: {loud}");
+    assert!(quiet.abs() < 1.5, "and leaves the quiet one: {quiet}");
+    assert!(p.viz[pq::viz::LATENCY].get() > 1000.0, "spectral bands bring the stage's latency");
+    // Its threshold moves live: above the tone, it lets go.
+    p.set(bp(0, band::THRESHOLD), 0.0);
+    let (l, _) = drive_stereo(&mut pr, 72_000, &input, None);
+    assert!(tone(&l, 3000.0, 0.5).0 > -1.5, "threshold raised: {}", tone(&l, 3000.0, 0.5).0);
+}
+
+#[test]
+fn prism_linear_phase_is_symmetric_and_natural_phase_is_close_to_analog() {
+    use crate::audio::modules::prism::{self as pq, data, design::*};
+    let p = prism_params();
+    pq::create_band(&p, 0, BELL, 2000.0, 9.0, 2.0);
+    p.data[data::MODE].set(pq::LINEAR_PHASE as f32);
+    p.data[data::RESOLUTION].set(0.0);
+    let mut pr = prism()(&p);
+    let (l, _) = drive_stereo(&mut pr, 19_200, |n| if n == 4800 { (1.0, 1.0) } else { (0.0, 0.0) }, None);
+    let lat = p.viz[pq::viz::LATENCY].get() as usize;
+    let c = 4800 + lat;
+    let peak = l.iter().enumerate().max_by(|a, b| a.1.abs().total_cmp(&b.1.abs())).unwrap().0;
+    assert_eq!(peak, c, "the impulse lands after the stated latency");
+    let asym = (1..1500).map(|k| (l[c + k] - l[c - k]).abs()).fold(0.0f32, f32::max);
+    assert!(asym < 2e-3 * l[c].abs(), "linear phase: a symmetric response ({asym})");
+
+    // Phase near the top: Natural Phase follows the analog curve closer
+    // than Zero Latency, where the bell's skirt runs past Nyquist.
+    p.data[data::USED].set(0.0);
+    pq::create_band(&p, 1, BELL, 15_000.0, 12.0, 1.0);
+    let analog = Analog::design(&Shape { shape: BELL, slope: 1, freq: 15_000.0, gain: 12.0, q: 1.0 });
+    let f = 19_000.0;
+    let want = analog.phase(f as f64) as f32;
+    let wrap = |x: f32| (x + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI;
+    let mut err = [0.0f32; 2];
+    for (k, mode) in [pq::ZERO_LATENCY, pq::NATURAL_PHASE].into_iter().enumerate() {
+        p.data[data::MODE].set(mode as f32);
+        let (l, _) = drive_stereo(&mut prism()(&p), 24_000, sine(f, 0.1), None);
+        let (gain, ph) = tone(&l, f, 0.1);
+        let (_, ph_in) = tone(&(0..24_000).map(|n| sine(f, 0.1)(n).0).collect::<Vec<_>>(), f, 0.1);
+        let delay = if mode == pq::NATURAL_PHASE { pq::NATURAL_LATENCY } else { 0.0 };
+        let measured = wrap(ph - ph_in + std::f32::consts::TAU * f * delay / 48_000.0);
+        err[k] = wrap(measured - want).abs();
+        assert!((gain - analog.db(f as f64) as f32).abs() < 1.0, "mode {mode}: magnitude {gain}");
+    }
+    assert!(err[1] < 0.15, "natural phase: {:.3} rad off (zero latency {:.3})", err[1], err[0]);
+    assert!(err[1] < err[0], "natural phase is closer than zero latency ({:.3} vs {:.3})", err[1], err[0]);
+}
+
+#[test]
+fn prism_output_auto_gain_scale_pan_and_polarity() {
+    use crate::audio::modules::prism::{self as pq, data, design::*};
+    let p = prism_params();
+    pq::create_band(&p, 0, BELL, 1000.0, 6.0, 1.0);
+    p.set(pq::SCALE, 0.5);
+    let (l, _) = drive_stereo(&mut prism()(&p), 24_000, sine(1000.0, 0.2), None);
+    assert!((tone(&l, 1000.0, 0.2).0 - 3.0).abs() < 0.3, "gain scale halves the gain");
+    p.set(pq::SCALE, 1.0);
+    p.set(pq::OUTPUT, -6.0);
+    p.data[data::INVERT].set(1.0);
+    let (l, _) = drive_stereo(&mut prism()(&p), 24_000, sine(1000.0, 0.2), None);
+    let (db, ph) = tone(&l, 1000.0, 0.2);
+    assert!(db.abs() < 0.3, "+6 band, −6 out: {db}");
+    let (_, ph_in) = tone(&(0..24_000).map(|n| sine(1000.0, 0.2)(n).0).collect::<Vec<_>>(), 1000.0, 0.2);
+    let bell_phase = Analog::design(&Shape { shape: BELL, slope: 1, freq: 1000.0, gain: 6.0, q: 1.0 }).phase(1000.0) as f32;
+    let d = (ph - ph_in - bell_phase).rem_euclid(std::f32::consts::TAU);
+    assert!((d - std::f32::consts::PI).abs() < 0.1, "inverted: {d}");
+    p.set(pq::OUTPUT, 0.0);
+    p.data[data::INVERT].set(0.0);
+    // Auto gain takes back what a broad boost adds.
+    p.data[data::USED].set(0.0);
+    pq::create_band(&p, 1, HIGH_SHELF, 100.0, 6.0, 1.0);
+    p.data[data::AUTO_GAIN].set(1.0);
+    let (l, _) = drive_stereo(&mut prism()(&p), 48_000, sine(1000.0, 0.2), None);
+    let ag = p.viz[pq::viz::AUTO_GAIN].get();
+    assert!(ag < -4.0 && ag > -6.5, "auto gain: {ag}");
+    assert!((tone(&l, 1000.0, 0.2).0 - (6.0 + ag)).abs() < 0.4);
+    // Pan: right, left/right.
+    p.data[data::AUTO_GAIN].set(0.0);
+    p.set(pq::PAN, 1.0);
+    let (l, r) = drive_stereo(&mut prism()(&p), 24_000, sine(1000.0, 0.2), None);
+    assert!(tone(&l, 1000.0, 0.2).0 < -60.0 && (tone(&r, 1000.0, 0.2).0 - 6.0).abs() < 0.3);
+}
+
+#[test]
+fn prism_solo_plays_what_a_band_works_on() {
+    use crate::audio::modules::prism::{self as pq, data, design::*};
+    let p = prism_params();
+    pq::create_band(&p, 0, BELL, 1000.0, 6.0, 4.0);
+    p.data[data::SOLO].set(0.0);
+    let (l, _) = drive_stereo(&mut prism()(&p), 24_000, two_tones((1000.0, 0.2), (150.0, 0.2)), None);
+    assert!(tone(&l, 1000.0, 0.2).0.abs() < 0.5, "the band's frequency passes");
+    assert!(tone(&l, 150.0, 0.2).0 < -25.0, "the rest is gone: {}", tone(&l, 150.0, 0.2).0);
+    // A low cut's solo plays what it removes.
+    p.data[data::USED].set(0.0);
+    pq::create_band(&p, 1, LOW_CUT, 500.0, 0.0, 1.0);
+    p.data[data::SOLO].set(1.0);
+    let (l, _) = drive_stereo(&mut prism()(&p), 24_000, two_tones((5000.0, 0.2), (100.0, 0.2)), None);
+    assert!(tone(&l, 100.0, 0.2).0.abs() < 0.5 && tone(&l, 5000.0, 0.2).0 < -30.0);
+}
+
+#[test]
+fn prism_character_adds_harmonics_only_when_asked() {
+    use crate::audio::modules::prism::{self as pq, data, design::*};
+    let p = prism_params();
+    pq::create_band(&p, 0, BELL, 1000.0, 3.0, 1.0);
+    let (l, _) = drive_stereo(&mut prism()(&p), 24_000, sine(500.0, 0.5), None);
+    assert!(tone(&l, 1000.0, 0.5).0 < -100.0, "clean");
+    p.data[data::CHARACTER].set(2.0);
+    for mode in [pq::ZERO_LATENCY, pq::NATURAL_PHASE] {
+        p.data[data::MODE].set(mode as f32);
+        let (l, _) = drive_stereo(&mut prism()(&p), 24_000, sine(500.0, 0.5), None);
+        let h2 = tone(&l, 1000.0, 0.5).0;
+        assert!(h2 > -60.0 && h2 < -15.0, "mode {mode}: warm: second harmonic at {h2} dB");
+        let bell = Analog::design(&Shape { shape: BELL, slope: 1, freq: 1000.0, gain: 3.0, q: 1.0 }).db(500.0) as f32;
+        // Warm rounds the peaks: a dB or so of compression at −5 dBFS.
+        assert!((tone(&l, 500.0, 0.5).0 - bell).abs() < 1.5, "the level stays: {} vs {bell}", tone(&l, 500.0, 0.5).0);
+        let tail = &l[12_000..];
+        let dc = tail.iter().sum::<f32>() / tail.len() as f32;
+        assert!(dc.abs() < 1e-3, "mode {mode}: no offset ({dc})");
+    }
+}
+
+#[test]
+fn prism_every_shape_slope_and_mode_stays_finite() {
+    use crate::audio::modules::prism::{self as pq, band, bp, data, design::*};
+    let p = prism_params();
+    let noise = |n: usize| {
+        let x = ((n as u32).wrapping_mul(2_654_435_761) >> 8) as f32 / (1u32 << 24) as f32 * 2.0 - 1.0;
+        (x * 0.5, -x * 0.3)
+    };
+    for mode in [pq::ZERO_LATENCY, pq::NATURAL_PHASE, pq::LINEAR_PHASE] {
+        p.data[data::MODE].set(mode as f32);
+        for sh in 0..SHAPES {
+            for slope in (0..=BRICKWALL).filter(|&s| slope_ok(sh, s)) {
+                for (i, f) in [12.0, 900.0, 29_000.0].into_iter().enumerate() {
+                    pq::create_band(&p, i, sh, f, 18.0, 30.0);
+                    p.data[data::SLOPE + i].set(slope as f32);
+                    p.data[data::PLACE + i].set((i * 2 % 5) as f32);
+                }
+                p.set(bp(0, band::RANGE), -20.0);
+                let (l, r) = drive_stereo(&mut prism()(&p), 6_400, noise, None);
+                assert!(l.iter().chain(&r).all(|v| v.is_finite() && v.abs() < 100.0), "mode {mode} shape {sh} slope {slope}");
+            }
+        }
+    }
+}
+
+#[test]
+fn prism_draws_with_every_kind_of_band() {
+    use crate::audio::modules::prism::{self as pq, band, bp, data, design::*};
+    use crate::graph::NodeType;
+    let (mut g, a, mut e) = setup();
+    let id = g.add(NodeType::Module(ModuleKind::Prism), pos2(0.0, 0.0), &a);
+    let p = module_params(&g, id);
+    for sh in 0..SHAPES {
+        pq::create_band(&p, sh, sh, 50.0 * (sh + 1) as f32, 4.0, 1.0);
+    }
+    p.set(bp(0, band::RANGE), -6.0);
+    p.set(bp(1, band::RANGE), 6.0);
+    p.data[data::SPECTRAL + 1].set(1.0);
+    p.data[data::PLACE + 2].set(pq::SIDE as f32);
+    p.data[data::SELECTED].set(3.0);
+    p.data[data::PIANO].set(1.0);
+    render_buf(&mut e, 4800);
+    let mut editor = crate::ui::canvas::Editor::new();
+    let ctx = egui::Context::default();
+    for _ in 0..3 {
+        let mut out = ctx.run_ui(egui::RawInput::default(), |ui| editor.show(ui, &mut g, &a));
+        out.textures_delta.clear();
+    }
+    let (main, sub) = crate::ui::prism::readout(&p);
+    assert_eq!(main, "10 bands");
+    assert!(sub.contains("1 dynamic") && sub.contains("1 spectral"), "{sub}");
 }

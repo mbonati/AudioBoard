@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guide · AudioBoard</title>
+<meta name="description" content="Build and run AudioBoard, patch your first sounds, and learn the controls, audio settings, recording, projects and library.">
+<meta name="theme-color" content="#141518">
+<script>document.documentElement.classList.add("js")</script>
+<link rel="icon" href="assets/img/logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&family=Unbounded:wght@500;600;700;800&display=swap">
+<link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="index.html" aria-label="AudioBoard home"><img src="assets/img/logo.svg" alt="" width="34" height="34">AudioBoard</a>
+    <button class="nav-toggle" aria-label="Menu" aria-expanded="false"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h14M3 10h14M3 14h14"/></svg></button>
+    <nav class="nav-links" aria-label="Main">
+      <a href="index.html">Home</a>
+      <a href="nodes.html">Nodes</a>
+      <a href="guide.html" aria-current="page">Guide</a>
+      <a href="architecture.html">Architecture</a>
+      <a class="gh" href="https://github.com/mbonati/AudioBoard"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>Source</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+<section class="page-hero">
+  <div class="wrap">
+    <span class="label">Guide</span>
+    <h1>From <span class="outline" style="--accent: var(--green)">cargo run</span> to a living patch.</h1>
+    <p class="lead">Build the app, hear the demo, then learn the board: patching, the transport, every gesture, audio devices, recording and the module library.</p>
+  </div>
+</section>
+
+<div class="wrap doc" style="--accent: var(--green)">
+  <nav class="toc" aria-label="On this page">
+    <span class="label">On this page</span>
+    <a href="#run">Build and run</a>
+    <a href="#demo">The demo patch</a>
+    <a href="#patching">Patching</a>
+    <a href="#transport">Transport and tempo</a>
+    <a href="#controls">Controls</a>
+    <a href="#modules">Modules</a>
+    <a href="#layout">Auto layout and zoom</a>
+    <a href="#palette">Palette</a>
+    <a href="#audio">Audio settings</a>
+    <a href="#load">Buffer, load, limiter</a>
+    <a href="#record">Recording and export</a>
+    <a href="#projects">Projects and library</a>
+    <a href="#tests">Tests</a>
+  </nav>
+
+  <article class="prose">
+    <section id="run">
+      <h2><span class="n">01</span>Build and run</h2>
+      <p>AudioBoard is a native Rust application: egui and eframe for the interface, cpal for audio, midir for MIDI and vst3-host for plugins. With a Rust toolchain installed, run it from the repository:</p>
+      <div class="code"><div class="code-head"><span class="label">Run</span><button class="copy" data-copy="cargo run --release">Copy</button></div><pre><span class="p">$ </span>cargo run --release</pre></div>
+      <p>For playing large patches, use the most optimized build: whole-program optimization gives about 10–15% less audio CPU, for a few minutes of compiling.</p>
+      <div class="code"><div class="code-head"><span class="label">Fastest build</span><button class="copy" data-copy="cargo run --profile dist">Copy</button></div><pre><span class="p">$ </span>cargo run --profile dist</pre></div>
+      <div class="note"><p>On launch, an ambient demo patch opens, <strong>stopped</strong>. Press <strong>Start</strong> in the toolbar, or <kbd>Space</kbd>, to hear it.</p></div>
+    </section>
+
+    <section id="demo">
+      <h2><span class="n">02</span>The demo patch</h2>
+      <figure>
+        <img src="assets/shots/patch-demo-1x.png" srcset="assets/shots/patch-demo-1x.png 1700w, assets/shots/patch-demo.png 3400w" sizes="(max-width: 900px) 100vw, 820px" width="1700" height="760" alt="The demo patch on the canvas." data-zoom="assets/shots/patch-demo.png" data-title="The demo patch">
+        <figcaption>Random → Filter cutoff · Drone → Filter → Reverb and Granular → Delay → Mixer</figcaption>
+      </figure>
+      <p>A <strong>Drone</strong> (a chord of fifths on A1) goes into a <strong>Filter</strong> whose cutoff is slowly moved by a <strong>Random</strong>. The filter feeds a <strong>Reverb</strong> with a touch of shimmer and, an octave up, a <strong>Granular</strong> cloud that ends in a tape <strong>Delay</strong>. Everything flows into the <strong>Mixer</strong>.</p>
+      <p>Every cable is stereo; mono sources write the same signal to both channels.</p>
+    </section>
+
+    <section id="patching">
+      <h2><span class="n">03</span>Patching</h2>
+      <ul>
+        <li><strong>Add a node</strong>: drag it from the palette onto the canvas, click it to drop it in the middle of the view, or right-click the canvas.</li>
+        <li><strong>Connect</strong>: drag from a port to one of the opposite kind, output to input or the other way round. Each input takes a single cable.</li>
+        <li><strong>Reconnect or unplug</strong>: drag a cable away from the input it is plugged into. Double-click a cable (or right-click → Disconnect) to delete it.</li>
+        <li><strong>MIDI cables</strong> have square ports and are dashed; they only join a MIDI output to a MIDI input. Audio ports are round.</li>
+        <li>Connections that would create a feedback loop are refused. Feedback lives inside nodes (Delay, Reverb, Larsen).</li>
+        <li>Unplugging a MIDI cable, or deleting the node feeding it, sends note-offs for the notes still sounding, so no notes hang.</li>
+      </ul>
+      <p>Resting the pointer on a node for a moment shows a small label with its type (“Reverb · hall · shimmer · freeze”), since titles can be renamed. Right-click (or Ctrl+click) opens the menu for whatever is under the pointer: canvas, node, module or cable.</p>
+    </section>
+
+    <section id="transport">
+      <h2><span class="n">04</span>Transport and tempo</h2>
+      <p><strong>Start / Stop</strong> (the toolbar, or <kbd>Space</kbd>) drive the transport, not the audio. Stop ends the sound's generation but lets it die away: sequencers, arpeggiators, MIDIcer, Automa and Colloid end the notes they were holding, oscillators and Drones fade out in a few milliseconds, while effects and plugins keep running so their tails ring on. Stop also goes back to the start: the next Start begins every node from its first step. The MIDI keyboard keeps playing plugins while stopped.</p>
+      <p>The <strong>tempo</strong> is global: the <strong>BPM</strong> field in the toolbar. Drag it (Shift for fine steps), click it to type a value (“97,5” works too), Alt+click to go back to 90. <strong>TAP</strong> (or <kbd>T</kbd>) sets it from your taps; a pause of two seconds starts a new count. Sequencers and arpeggiators are locked to the same grid, and the tempo is passed to plugins for their synced LFOs and delays.</p>
+    </section>
+
+    <section id="controls">
+      <h2><span class="n">05</span>Controls</h2>
+      <div class="table-wrap">
+        <table class="keys">
+          <thead><tr><th>Action</th><th>Gesture</th></tr></thead>
+          <tbody>
+            <tr><td>Add a node or a library module</td><td>Drag it from the palette onto the canvas (or click it), or right-click the canvas</td></tr>
+            <tr><td>Connect</td><td>Drag from a port to the opposite kind</td></tr>
+            <tr><td>Reconnect / unplug a cable</td><td>Drag it away from the input it is plugged into</td></tr>
+            <tr><td>Delete a cable</td><td>Double-click it, or right-click → Disconnect</td></tr>
+            <tr><td>Adjust knobs and faders</td><td>Drag (<kbd>Shift</kbd> for fine), double-click to reset. Stepped knobs step on smoothly however slowly you drag</td></tr>
+            <tr><td>Select several nodes</td><td>Drag a rectangle on empty canvas, or <kbd>Shift</kbd>+click (<kbd>Cmd</kbd>+<kbd>A</kbd> all, <kbd>Esc</kbd> none)</td></tr>
+            <tr><td>Move the view</td><td>Two-finger scroll, drag with the right or middle button, or <kbd>Alt</kbd>+drag</td></tr>
+            <tr><td>Zoom</td><td>Pinch or <kbd>Cmd</kbd>+scroll; <kbd>Cmd</kbd>+<kbd>=</kbd> / <kbd>Cmd</kbd>+<kbd>−</kbd> / <kbd>Cmd</kbd>+<kbd>0</kbd>; or click the percentage in the status bar</td></tr>
+            <tr><td>Move / delete / duplicate the selection</td><td>Drag a selected node / <kbd>Del</kbd> / <kbd>Cmd</kbd>+<kbd>D</kbd> (inner cables are copied)</td></tr>
+            <tr><td>Delete a node</td><td>The × in its header, <kbd>Del</kbd>, or right-click → Delete; AudioBoard asks first, since deleting can't be undone</td></tr>
+            <tr><td>Make a module from the selection</td><td><kbd>Cmd</kbd>+<kbd>G</kbd>, or right-click → Make module</td></tr>
+            <tr><td>Rename a module</td><td><kbd>Enter</kbd> or <kbd>F2</kbd> with it selected, or right-click → Rename…</td></tr>
+            <tr><td>Dissolve a module</td><td><kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd>, the × in its header, or right-click → Ungroup</td></tr>
+            <tr><td>Collapse / expand a node or module</td><td>The arrow in the header, double-click the title, <kbd>C</kbd>, or right-click → Collapse</td></tr>
+            <tr><td>Collapse / expand everything</td><td><kbd>Shift</kbd>+<kbd>C</kbd>, the toolbar button, or right-click the canvas</td></tr>
+            <tr><td>Frame everything / the selection</td><td><kbd>F</kbd> / <kbd>Shift</kbd>+<kbd>F</kbd></td></tr>
+            <tr><td>Bypass an effect</td><td>The power button in its header, <kbd>B</kbd> over it, or right-click → Bypass; crossfaded, and saved with the project</td></tr>
+            <tr><td>Zoom in on one node</td><td><kbd>Z</kbd> over it, or right-click → Zoom to node; <kbd>Z</kbd> or <kbd>Esc</kbd> goes back</td></tr>
+            <tr><td>Auto layout</td><td><kbd>L</kbd>, the toolbar button or right-click the canvas; <kbd>Cmd</kbd>+<kbd>Z</kbd> undoes it</td></tr>
+            <tr><td>Auto-fit (keep the whole patch in view)</td><td><kbd>A</kbd> or the toolbar button</td></tr>
+            <tr><td>New / open project</td><td><kbd>Cmd</kbd>+<kbd>N</kbd> / <kbd>Cmd</kbd>+<kbd>O</kbd>, or the project name in the toolbar</td></tr>
+            <tr><td>Save / save as</td><td><kbd>Cmd</kbd>+<kbd>S</kbd> / <kbd>Shift</kbd>+<kbd>Cmd</kbd>+<kbd>S</kbd></td></tr>
+            <tr><td>Start / stop</td><td>The toolbar button, or <kbd>Space</kbd></td></tr>
+            <tr><td>Audio settings</td><td><kbd>Cmd</kbd>+<kbd>,</kbd>, the sliders button in the toolbar, or the device name</td></tr>
+            <tr><td>Record / stop recording</td><td>REC in the toolbar, or <kbd>R</kbd>; stopping opens the export</td></tr>
+            <tr><td>Tempo</td><td>Drag the BPM field, click it to type, TAP or <kbd>T</kbd></td></tr>
+            <tr><td>Oscilloscope and spectrum</td><td>The panel button in the toolbar</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The full list of shortcuts appears when hovering the <strong>?</strong> button in the toolbar. A collapsed node takes up only a strip with its title, ports and main value; cables and audio keep working normally.</p>
+    </section>
+
+    <section id="modules">
+      <h2><span class="n">06</span>Modules</h2>
+      <p>A <strong>module</strong> groups several nodes into one, to move, collapse and duplicate them together. Select nodes and press <kbd>Cmd</kbd>+<kbd>G</kbd>; rename it right in the header with <kbd>Enter</kbd>.</p>
+      <ul>
+        <li><strong>Expanded</strong>: a frame around the nodes, which stay editable in place. Dragging the header moves the whole module.</li>
+        <li><strong>Collapsed</strong>: a single card showing only the boundary ports, such as <code>DRONE 1 · PITCH</code> or <code>FILTER 1 · OUT</code>. External cables attach to the card.</li>
+        <li><strong>Duplicating</strong> copies the nodes, the cables between them and the module itself. <kbd>Del</kbd> deletes the module with its nodes; Ungroup dissolves it and keeps them.</li>
+      </ul>
+      <p>Grouping is only visual: the sound does not change.</p>
+    </section>
+
+    <section id="layout">
+      <h2><span class="n">07</span>Auto layout and zoom</h2>
+      <p><strong>Auto layout</strong> (<kbd>L</kbd>) arranges the patch along the signal flow: columns from left to right, from the sources to the mixer. In each column, blocks line up with the ports they are connected to, so cables run as straight as possible; modulators end up right before what they modulate, and cables that skip a column get a clear corridor. With two or more nodes selected, only the selection is arranged. Nodes glide to their places; <kbd>Cmd</kbd>+<kbd>Z</kbd> restores the previous arrangement.</p>
+      <p><kbd>F</kbd> fits the view to the whole patch, <kbd>Shift</kbd>+<kbd>F</kbd> to the selection. <strong>Auto-fit</strong> (<kbd>A</kbd>) keeps the whole patch in view while you add, remove, collapse or move nodes, until you zoom or pan by hand.</p>
+    </section>
+
+    <section id="palette">
+      <h2><span class="n">08</span>Palette</h2>
+      <p>The panel on the left lists all nodes by category and the library modules, with a search field. Click a category's heading to fold it; while searching, every category with matches opens. Drag an entry onto the canvas (an outline shows where it lands), or click it to add it in the middle of the view. Installed VST3 plugins are grouped by maker, and the search matches makers too.</p>
+    </section>
+
+    <section id="audio">
+      <h2><span class="n">09</span>Audio settings</h2>
+      <p><strong>Settings</strong> (<kbd>Cmd</kbd>+<kbd>,</kbd>) chooses the sound card. Every change applies at once and is kept between launches.</p>
+      <ul>
+        <li><strong>Output device</strong>: the system default (following the Mac's choice) or a specific interface; a device missing at launch falls back to the default.</li>
+        <li><strong>Channels</strong>: the pair the board plays on (1–2, 3–4…), for interfaces with more outputs.</li>
+        <li><strong>Sample rate</strong>: the device's own, or 44.1 to 192 kHz. A new rate builds every node again; the patch, its settings and cables stay.</li>
+        <li><strong>Input</strong>: off, the system default, or a specific device, running at the output's rate. Input and output can be different devices, kept in step by a buffer of cushion; the same interface for both avoids tiny gaps when their clocks drift.</li>
+        <li><strong>Audio system</strong>: shown when the platform has more than one (CoreAudio, JACK…). <strong>Refresh devices</strong> reads the list again.</li>
+      </ul>
+    </section>
+
+    <section id="load">
+      <h2><span class="n">10</span>Buffer, load and limiter</h2>
+      <p>The status bar shows the audio buffer in samples and its latency (“512 smp · 10.7 ms”): click it to choose another size, as in a DAW. Larger buffers give heavy patches and plugins more headroom; smaller ones respond faster. Changing it keeps the patch playing.</p>
+      <p><strong>DSP</strong> is the average load and <strong>peak</strong> the heaviest callback of the last seconds. Near 100% the audio can't keep up, and a red <strong>dropouts</strong> counter appears: try a larger buffer.</p>
+      <p>The output goes through a safety <strong>limiter</strong> just under full scale (−0.3 dBFS) with 1.3 ms of lookahead: a loud sum is turned down smoothly instead of clipping into crackles, and the status bar shows “limit −x dB”. <strong>OUT</strong> in the toolbar sets the overall level from −24 to +12 dB, before the limiter.</p>
+      <p>Gain staging follows a DAW's: a new mixer's MASTER starts at 0 dB, pan is a stereo balance, and a source at −6 dBFS through a fresh mixer reaches the device at −6 dBFS.</p>
+    </section>
+
+    <section id="record">
+      <h2><span class="n">11</span>Recording and export</h2>
+      <p><strong>REC</strong> in the toolbar (or <kbd>R</kbd>) records what the board plays: the device's output after the limiter, exactly what you hear. The take goes straight to a temporary file, so it can be as long as you like. <kbd>R</kbd> again stops and opens <strong>Export recording</strong>, with the take's length, rate and peak.</p>
+      <div class="formats">
+        <div><b>WAV</b><span>24-bit · 16-bit (TPDF dither) · 32-bit float</span></div>
+        <div><b>AIFF</b><span>24-bit · 16-bit</span></div>
+        <div><b>FLAC</b><span>via macOS afconvert</span></div>
+        <div><b>Apple Lossless</b><span>.m4a · afconvert</span></div>
+        <div><b>AAC</b><span>256 kbps .m4a</span></div>
+        <div><b>MP3</b><span>320 kbps · with ffmpeg or lame</span></div>
+      </div>
+      <p>Options: normalize the peak to −1 dBFS, and trim the silence at both ends (10 ms kept around the sound). The export runs in the background, and the take stays available from <strong>EXPORT</strong> in the toolbar until the next recording, Discard take, or quitting. For MP3, install lame or ffmpeg:</p>
+      <div class="code"><div class="code-head"><span class="label">Optional</span><button class="copy" data-copy="brew install lame">Copy</button></div><pre><span class="p">$ </span>brew install lame</pre></div>
+    </section>
+
+    <section id="projects">
+      <h2><span class="n">12</span>Projects and library</h2>
+      <p>The project name in the toolbar opens the File menu. A dot next to the name, and “(edited)” in the window title, flag unsaved changes; AudioBoard asks before discarding them. A project (<code>.audioboard</code>) is a JSON file with nodes and parameters, positions, colours, collapsed nodes, cables and modules; parameters are saved by name.</p>
+      <p><strong>Module library.</strong> Right-click a module's header → <strong>Save to library</strong>. Saved modules appear in the Library section of the palette and of the right-click menu: inserting one adds the nodes, their cables and settings as a new module, already collapsed to a card. <strong>Open library folder</strong> opens the folder of <code>.abmodule</code> files (<code>~/Library/Application Support/AudioBoard/Library</code> on macOS), handy for sharing them.</p>
+      <p>Named presets of Nullpunkt, Aether, Larsen and Vesper are kept in the app's data folder too, so every project sees them.</p>
+    </section>
+
+    <section id="tests">
+      <h2><span class="n">13</span>Tests</h2>
+      <div class="code"><div class="code-head"><span class="label">Tests</span><button class="copy" data-copy="cargo test">Copy</button></div><pre><span class="p">$ </span>cargo test</pre></div>
+      <p>Benchmarks (audio per module, large patches, UI frames, auto layout) don't run with the normal tests:</p>
+      <div class="code"><div class="code-head"><span class="label">Benchmarks</span><button class="copy" data-copy="cargo test --release perf -- --ignored --nocapture --test-threads=1">Copy</button></div><pre><span class="p">$ </span>cargo test --release perf -- --ignored --nocapture --test-threads=1</pre></div>
+      <p style="margin-top: 28px"><a class="btn ghost" href="architecture.html" style="--c: var(--blue)">How it works inside →</a></p>
+    </section>
+  </article>
+</div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div>
+      <a class="brand" href="index.html"><img src="assets/img/logo.svg" alt="" width="30" height="30"> AudioBoard</a>
+      <p class="dim" style="margin-top: 12px">A node-based modular synthesizer in Rust. Built with egui and eframe, cpal, midir and vst3-host. Every panel on this site is rendered from the app.</p>
+    </div>
+    <nav aria-label="Footer">
+      <a href="index.html">Home</a><a href="nodes.html">Nodes</a><a href="guide.html">Guide</a><a href="architecture.html">Architecture</a><a href="https://github.com/mbonati/AudioBoard">Source</a>
+    </nav>
+  </div>
+</footer>
+
+<script src="assets/js/site.js"></script>
+</body>
+</html>
