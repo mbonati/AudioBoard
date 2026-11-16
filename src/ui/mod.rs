@@ -9,6 +9,7 @@ pub mod equalizer;
 pub mod fjord;
 pub mod frakture;
 pub mod groups;
+pub mod iris;
 pub mod larsen;
 pub mod layout;
 pub mod looper;

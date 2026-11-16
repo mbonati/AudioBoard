@@ -1060,6 +1060,54 @@ AUX on the tracks you want effected, patch Mixer 1's AUX into a Reverb (or a cha
 Reverb into a second mixer. That mixer also plays on the device, so you hear the clean tracks plus the
 effected layer, each with its own level. MUTE on Mixer 1 leaves only the effected layer.
 
+### Visual: Iris
+
+**Iris** is a video node: a screen on the board where visuals react to the sound, drawn in the board's flat,
+graphic style (line art, dot matrices, coloured outlines; no glows). It is in the **Visual** group of the
+palette and of the right-click menu.
+
+- **What it listens to**: the **main mix** (what the board plays, with nothing patched) or its **IN**, so it
+  can follow one node: a drum machine, a bass line, a reverb's tail. **THRU** passes IN on unchanged, so Iris
+  can sit inside a chain; it is never an effect (no bypass), and it keeps running, with the nodes feeding it,
+  even when THRU goes nowhere.
+- **Fourteen scenes**:
+  - geometric: **Mandala** (rings of petals with 5- to 16-fold symmetry, each ring a band), **Tunnel**
+    (polygons flying out of a vanishing point, twisting with the mids, new sides on onsets), **Truchet**
+    (quarter-circle tiles joining into endless paths; onsets send a wave of flips across the grid), **Moiré**
+    (overprinted sets of rings whose centres orbit, the bass pulling them apart), **Dots** (a dot-matrix
+    spectrum with falling peaks), **Orbits** (planets on dashed orbits in a polyrhythm, one orbit a band;
+    onsets draw the constellation);
+  - mathematical: **Harmonograph** (a damped pendulum drawing in small ratios, which jump on onsets),
+    **Spiro** (nested hypotrochoids), **Attractor** (a Clifford attractor's cloud of points, its constants
+    drifting with the sound), **Phase** (the sound against itself a quarter period later: a tone draws a
+    circle, a chord a knot, with echoes of past frames spiralling out), **Ridges** (pulsar lines, the
+    spectrum scrolling up the screen, each line hiding the ones behind);
+  - generative: **Flow** (particles on a flow field; onsets burst them outwards), **Life** (Conway's Game of
+    Life on a dot matrix: onsets drop gliders and R-pentominoes where the spectrum peaks, the highs spark
+    cells, and it never dies out), **Automaton** (an elementary cellular automaton scrolling up, the spectrum
+    writing into its newest row, onsets changing the rule and the ink).
+- **The analysis**, on the UI thread (the audio thread only copies the samples): a 2048-point spectrum in 32
+  bands from 30 Hz to 16 kHz (tilted +3 dB an octave, as music has less energy up high), the level, bass, mids
+  and highs, the strongest pitch, and onsets (spectral flux over its own running average).
+- **The screen** fills the node. Drag the picture to move the node. While the pointer is over it, the
+  scene's name and what it listens to show at the top left, a **gear** at the top right and a **grip** at the
+  bottom right: drag the grip to resize the node (Shift keeps its shape), from 240 × 170 to 2400 × 1600.
+  When a scene changes by itself, its name shows for a moment.
+- **The gear** opens the settings in a popup beside the node, so the picture stays in view: the scene;
+  **Main mix** or **IN**; the **palette** (Board, Mono in the node's colour, Paper and Riso on light paper,
+  Ember, Ice, Acid); **React** (how strongly it follows the sound), **Speed**, **Detail** (lines, particles,
+  cells, symmetry), **Smooth** (how slowly the analysis lets go) and **Trail** (trails, echoes, histories);
+  **Next scene every** 1 to 16 bars at the board's tempo (or never); the screen's shape (16:9, 4:3, 1:1,
+  9:16, Reset); **New seed** for the generative scenes.
+- **Open in a window**: the picture in a window of its own (its own generative state, the same sound),
+  for a second display or a projector. Double-click it for full screen (the pointer hides while it rests),
+  Esc leaves full screen, then closes the window. It keeps playing when the node is off the view or
+  collapsed.
+
+The scene, the knobs, the size and the look are saved with the project (the scene by name); the window is
+not. A scene costs the UI about 0.1 to 2.4 ms a frame at full detail; the board redraws at full rate while an
+Iris is in view.
+
 ### Settings
 
 **Settings** (Cmd+,, the sliders button in the toolbar, or click the device name next to it) has four tabs
@@ -1107,7 +1155,18 @@ uses the sound card's own size. Changing it keeps the patch playing.
 
 Next to it, **DSP** is the average load and **peak** the heaviest callback of the last seconds: near 100%
 the audio can't keep up. If that happens, a red **dropouts** counter appears for a while (it also counts
-the gaps the sound card reports): try a larger buffer.
+the gaps the sound card reports): try a larger buffer. The load also counts the time the processor takes to
+wake up for each buffer, which on a laptop can be a good part of it (on an Intel MacBook Pro at 512 samples,
+about a third: callbacks cost 32% of real time sleeping in between, 18% kept awake); a larger buffer wakes it
+less often.
+
+**Nodes nobody hears rest.** A node whose sound doesn't reach the device (nothing patched from it leads to a
+mixer that plays) stops working 2 seconds after it was last heard, and costs nothing until it is patched in
+again, so chains left unplugged don't weigh on the DSP load. Its panel stands still meanwhile (meters,
+displays, step lights). Patched in again, it carries on from where it stopped, fading in over a few
+milliseconds; a delay, reverb or grain cloud may first replay a moment of what it held, and a frozen one
+keeps its sound. A cable moved from one input to another within 2 seconds changes nothing. The MIDI Looper
+(which records), MIDI CC and MIDI Note (which can drive mapped controls) and Iris always run.
 
 The output goes through a safety **limiter** just under full scale (−0.3 dBFS) with 1.3 ms of lookahead:
 when the sum gets too loud (several plugins, high faders) it turns the level down smoothly instead of
@@ -1149,10 +1208,11 @@ Gain staging follows a DAW's:
 | Zoom in on one node | Z with the mouse over it (or on the selection), or right-click → Zoom to node: it fills the view, in front of the others; Z again or Esc goes back to the view you had |
 | Auto layout | L, the toolbar button or right-click the canvas; Cmd+Z undoes it |
 | Auto-fit (keep the whole patch in view) | A or the toolbar button |
-| New / open project | Cmd+N / Cmd+O, or the project name in the toolbar |
+| Add a sticker / change the background | right-click empty canvas → Stickers ▸ / Background ▸, or drag image files onto the canvas (see Stickers and background) |
+| New / open project | Cmd+N / Cmd+O, or the project name in the toolbar (Open Recent lists the last ten) |
 | Save / save as | Cmd+S / Shift+Cmd+S |
 | Start / stop | the Start / Stop button in the toolbar, or Space |
-| Audio settings (devices, rate, buffer, input) | Cmd+, the sliders button in the toolbar, or the device name |
+| Settings (audio, MIDI, sync, plugins) | Cmd+, the sliders button in the toolbar, or the device name |
 | Record / stop recording | REC in the toolbar, or R; stopping opens the export (see Recording and export) |
 | Tempo | drag the BPM field, click it to type, TAP or T to tap it |
 | Show / hide the oscilloscope and spectrum | panel button in the toolbar |
@@ -1316,7 +1376,7 @@ src/
 │   ├── dsp.rs      Oscillator and Mixer (any number of channels, main and AUX outputs)
 │   ├── modules/    audio_in, drone, random, granular, resonator, filter, equalizer (after Waves F6), delay, pingpong,
 │   │               reverb, midi_cc, midi_note, sequencer, arpeggiator, midi_in, midicer (after Vermona's
-│   │               meloDICER)
+│   │               meloDICER), iris (passes IN through, hands the panel the sound it listens to)
 │   │   ├── magma.rs    Magma (after FabFilter Volcano 3): parameters, routing, oversampling, slots
 │   │   ├── magma/      filter (non-linear SVF styles, responses), modulation (XLFO, EG, EF, MIDI, XY)
 │   │   ├── prism.rs    Prism (after FabFilter Pro-Q 4): the bands' knobs and settings, the minimum-phase cascade
@@ -1410,6 +1470,8 @@ src/
 │   │               strikes, stirring), HANDPAN / CHORD and the shape, the notes' cells, knob groups, CC lanes
 │   ├── settings.rs the Settings window: tabs Audio (output, input and its meters), MIDI (inputs and their
 │   │               lights), Sync (clock source, clock out), Plugins (VST3 folders, Audio Units)
+│   ├── iris.rs     the Iris panel: the analysis (spectrum, bands, onsets), the fourteen scenes, palettes, the
+│   │               scene's name, gear and grip, the settings popup, the window of its own
 │   ├── recent.rs   Open Recent: the list of recent projects and its submenu
 │   ├── board.rs    background presets and image, stickers on the canvas (drawing, moving, handles, menu,
 │   │               dropped files, textures), the built-in designs, the Stickers and Background submenus
@@ -1448,7 +1510,16 @@ inside the audio callback could stall it into a click.
 **Performance.** Effects rest when they have gone quiet: with a silent input, once their own signal (echoes,
 tails) has stayed below −100 dB for as long as they can remember sound, they skip their work and output
 silence until input returns; a frozen reverb or an endless delay never rests. Stopped sources rest too, so a
-stopped patch costs almost nothing once its tails are gone. Denormal numbers are flushed to zero, and the
+stopped patch costs almost nothing once its tails are gone. Nodes nobody hears rest as well: `Graph::sync`
+marks in the processing order which nodes reach the device (a mixer whose OUT is unpatched, and everything
+with a path of cables, audio or MIDI, into one), plus those that work for their own sake (`runs_unheard`:
+the MIDI Looper, MIDI CC and MIDI Note, which can drive mapped controls, Iris, nodes with no outputs). The
+engine runs any other node for 2 more seconds, so a cable moved to another input comes back seamlessly, then
+skips it: whatever reads its outputs isn't heard either, so it rests too. Heard again, it carries on from
+the state it stopped in, its outputs faded in over 20 ms. What is heard doesn't change, bit for bit; in a
+project with almost half its nodes unpatched (Fjord, below; on an Intel MacBook Pro) the audio load fell from
+about 18% to 11% of real time offline, and in real time at 512 samples the heaviest callbacks from about
+41% to 28%. Denormal numbers are flushed to zero, and the
 per-sample maths uses fast approximations of sine, exp2 and tanh. The UI redraws at full rate only during interaction and animations; meters, analyzers and
 step lights update at 30 fps (not at all while the window is minimized). Zoom uses font sizes rounded to
 half a point, so animations don't re-create glyphs every frame; from far away, unreadable text is not drawn
@@ -1459,8 +1530,8 @@ sideways drift.
 To add a new module: a file in `audio/modules/` with its `ModuleDef` (knobs, ports, modes, toggle) and a
 `Processor`, an entry in `ModuleKind` and, in `ui/modules.rs`, the readout and the display.
 The panel (ports, selector, knobs) is generated from the definition; Frakture, too large for the generic
-panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`), Prism (`ui/prism.rs`), Magma (`ui/magma.rs`), Tape (`ui/tape.rs`), Nullpunkt (`ui/nullpunkt.rs`), Aether (`ui/aether.rs`), Larsen (`ui/larsen.rs`), Vesper (`ui/vesper.rs`), the MIDI Looper (`ui/looper.rs`), Automa (`ui/automa.rs`), Colloid (`ui/colloid.rs`), Fjord (`ui/fjord.rs`) and Pops 66
-(`ui/pops.rs`; its size, like Fjord's, follows its settings through `modules::size_of`). Frakture's hexagon runs on the audio thread, block by block: the panel
+panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`), Prism (`ui/prism.rs`), Magma (`ui/magma.rs`), Tape (`ui/tape.rs`), Nullpunkt (`ui/nullpunkt.rs`), Aether (`ui/aether.rs`), Larsen (`ui/larsen.rs`), Vesper (`ui/vesper.rs`), the MIDI Looper (`ui/looper.rs`), Automa (`ui/automa.rs`), Colloid (`ui/colloid.rs`), Fjord (`ui/fjord.rs`), Iris (`ui/iris.rs`, sized by the user) and Pops 66
+(`ui/pops.rs`; its size, like Fjord's and Iris's, follows its settings through `modules::size_of`). Frakture's hexagon runs on the audio thread, block by block: the panel
 hands it the mouse through the module's display values, so paths keep time even when the window doesn't
 redraw.
 
@@ -1477,8 +1548,28 @@ test of its own, not run by default:
 cargo test -- --ignored audio_units_load_and_play --nocapture
 ```
 
+What each Iris scene costs the UI per frame, at full detail, at the node's size and at 1920 × 1080:
+
+```bash
+cargo test --release iris_frame_cost -- --ignored --nocapture
+```
+
 Benchmarks don't run with the normal tests:
 
 ```bash
 cargo test --release perf -- --ignored --nocapture --test-threads=1
 ```
+
+`perf_project` measures a saved project: its load offline, its callbacks made in real time at a 512-frame
+buffer (mean, 99th percentile, worst) and what each node costs, in rounds that alternate every node running
+and unheard nodes resting (a laptop's thermal drift then shows in both). `PERF_PROJECT` picks the project
+(by default `~/Documents/AudioBoard/Fjord.audioboard`); `PERF_SPIN=1` waits busy between callbacks instead
+of sleeping, to leave the CPU's idle states out:
+
+```bash
+PERF_PROJECT=path/to/project.audioboard cargo test --release perf_project -- --ignored --nocapture --exact perf::perf_project
+```
+
+`perf_project_render` renders a project offline into a raw file (`PERF_RENDER_OUT`, `PERF_SECONDS`), to
+check that an optimization leaves what is heard as it was: the render is deterministic, plugins included, so
+two renders compare equal byte for byte.

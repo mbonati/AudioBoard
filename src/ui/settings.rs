@@ -156,12 +156,6 @@ pub struct SettingsWindow {
 }
 
 impl SettingsWindow {
-    /// The window with a device list given rather than read (tests).
-    #[cfg(test)]
-    pub fn with_devices(list: DeviceList, outputs: Vec<String>) -> Self {
-        Self { open: true, list: Some(list), listed_at: f64::INFINITY, outputs: Some(outputs), outputs_at: f64::INFINITY, ..Default::default() }
-    }
-
     /// Draws the window; returns what the user changed.
     pub fn show(&mut self, ctx: &egui::Context, cx: &SettingsContext, now: f64, dt: f32) -> Vec<SettingsChange> {
         let mut changes = Vec::new();

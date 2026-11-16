@@ -823,6 +823,12 @@ impl Editor {
         let mut map_button = None;
         let tempo = graph.tempo;
         for (idx, node) in graph.nodes.iter_mut().enumerate() {
+            // Iris runs its scene changes and its window even when not drawn.
+            if let NodeKind::Module(m) = &node.kind
+                && m.params.kind == crate::audio::modules::ModuleKind::Iris
+            {
+                super::iris::tick(ui.ctx(), node.id, &node.title, node.accent, &m.params, tempo);
+            }
             let Some(rect_s) = node_rects[idx] else {
                 continue;
             };

@@ -162,10 +162,22 @@ pub struct Slot {
     bypass: Arc<AtomicBool>,
     /// How far output 0 has crossfaded to the input (0: the node's own).
     dry: f32,
+    /// Frames since the node stopped being heard (see [`TopoEntry::heard`]).
+    unheard: usize,
+    /// The outputs' gain while fading back in after a rest unheard (1: none).
+    fade: f32,
 }
 
 /// Bypass crossfades take this long.
 const BYPASS_SECONDS: f32 = 0.015;
+
+/// A node nobody hears keeps running this long (a cable dragged to another
+/// input comes back seamlessly), then rests until it is heard again.
+const UNHEARD_SECONDS: f32 = 2.0;
+
+/// Coming back from a rest unheard, a node's outputs fade in over this long:
+/// its state is as it was when it stopped, so it may not join on smoothly.
+const RESUME_SECONDS: f32 = 0.02;
 
 impl Slot {
     pub fn new(proc: Box<dyn Processor>, outputs: usize) -> Box<Self> {
@@ -177,7 +189,26 @@ impl Slot {
             midi: vec![MidiBuf::default(); midi].into_boxed_slice(),
             bypass: Arc::new(AtomicBool::new(false)),
             dry: 0.0,
+            unheard: 0,
+            fade: 1.0,
         })
+    }
+
+    /// Fades block `k`'s outputs in, after a rest unheard.
+    fn fade_in(&mut self, k: usize, n: usize, step: f32) {
+        if self.fade >= 1.0 {
+            return;
+        }
+        let start = self.fade;
+        for port in self.outputs[k].iter_mut() {
+            let mut g = start;
+            for i in 0..n {
+                g = (g + step).min(1.0);
+                port[0][i] *= g;
+                port[1][i] *= g;
+            }
+        }
+        self.fade = (start + step * n as f32).min(1.0);
     }
 
     /// The switch the UI flips to bypass this node.
@@ -212,6 +243,10 @@ pub struct TopoEntry {
     /// Feeds the audio device: its first output is summed into the mix (a
     /// mixer whose main output isn't patched elsewhere).
     pub sink: bool,
+    /// What it makes reaches the device (or it must run anyway, see
+    /// `Graph::sync`). A node that isn't heard rests after
+    /// [`UNHEARD_SECONDS`]: nothing that is heard depends on it.
+    pub heard: bool,
 }
 
 /// Nodes in processing order (every node comes after its sources).
@@ -447,6 +482,8 @@ impl Engine {
             *buf = [[0.0; BLOCK]; 2];
         }
         let bypass_step = 1.0 / (BYPASS_SECONDS * ctx.sample_rate);
+        let resume_step = 1.0 / (RESUME_SECONDS * ctx.sample_rate);
+        let unheard_limit = (UNHEARD_SECONDS * ctx.sample_rate) as usize;
         let pass = *ctx;
         // The context of block `k`: its beat, and the rewind only at the start.
         let block_ctx = |k: usize| ProcessCtx {
@@ -456,10 +493,25 @@ impl Engine {
         };
 
         for entry in &topo.order {
-            let Some(slot) = nodes.get(&entry.id) else {
+            let Some(slot) = nodes.get_mut(&entry.id) else {
                 continue;
             };
-            if slot.proc.wants_pass() {
+            if entry.heard {
+                if slot.unheard >= unheard_limit {
+                    slot.fade = 0.0;
+                }
+                slot.unheard = 0;
+            } else if slot.unheard >= unheard_limit && rests_unheard() {
+                // Resting: what reads its outputs isn't heard either, so
+                // it rests too (it stopped being heard no later than this).
+                continue;
+            } else {
+                slot.unheard += frames;
+            }
+            let wants_pass = slot.proc.wants_pass();
+            #[cfg(test)]
+            let _timing = profile::Timing::start(entry.id);
+            if wants_pass {
                 // Input 0 and the MIDI input for the whole pass, then one call.
                 let audio = entry.inputs[0].and_then(|(sid, port)| nodes.get(&sid).map(|s| (s, port)));
                 if let Some((src, port)) = audio {
@@ -484,6 +536,7 @@ impl Engine {
                 slot.proc.process_pass(&pass, &pass_inputs, &mut slot.outputs[..blocks], frames);
                 for k in 0..blocks {
                     slot.blend_bypass(k, connected.then(|| &pass_audio[k]), len(k), bypass_step);
+                    slot.fade_in(k, len(k), resume_step);
                 }
             } else {
                 for k in 0..blocks {
@@ -508,6 +561,7 @@ impl Engine {
                     let Some(slot) = nodes.get_mut(&entry.id) else { break };
                     slot.proc.process(&block_ctx(k), inputs, &mut slot.outputs[k], n);
                     slot.blend_bypass(k, inputs.get(0), n, bypass_step);
+                    slot.fade_in(k, n, resume_step);
                     if !slot.midi.is_empty() {
                         match slot.proc.midi_out() {
                             Some(events) => slot.midi[k].copy_from(events),
@@ -644,6 +698,67 @@ impl Engine {
             }
             self.shared.frames.store(frames as u32, Ordering::Relaxed);
             clock::end(std::time::Duration::from_secs_f32(available));
+        }
+    }
+}
+
+/// Nodes nobody hears rest (always, but in benchmarks comparing with
+/// [`profile::KEEP_ALL`]).
+#[inline]
+fn rests_unheard() -> bool {
+    #[cfg(test)]
+    return !profile::KEEP_ALL.load(Ordering::Relaxed);
+    #[cfg(not(test))]
+    true
+}
+
+/// Time spent in each node, for the benchmarks: off until `enable`, per
+/// thread.
+#[cfg(test)]
+pub mod profile {
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+    use std::sync::atomic::AtomicBool;
+    use std::time::Instant;
+
+    use super::NodeId;
+
+    /// Every node runs, heard or not (as before nodes rested unheard).
+    pub static KEEP_ALL: AtomicBool = AtomicBool::new(false);
+
+    thread_local! {
+        static TIMES: RefCell<Option<HashMap<NodeId, f64>>> = const { RefCell::new(None) };
+    }
+
+    pub fn enable() {
+        TIMES.with(|t| *t.borrow_mut() = Some(HashMap::new()));
+    }
+
+    /// The seconds spent in each node since `enable`, and stops counting.
+    pub fn take() -> HashMap<NodeId, f64> {
+        TIMES.with(|t| t.borrow_mut().take()).unwrap_or_default()
+    }
+
+    /// Adds the time until it is dropped to its node.
+    pub struct Timing(Option<(NodeId, Instant)>);
+
+    impl Timing {
+        pub fn start(id: NodeId) -> Self {
+            let on = TIMES.with(|t| t.borrow().is_some());
+            Self(on.then(|| (id, Instant::now())))
+        }
+    }
+
+    impl Drop for Timing {
+        fn drop(&mut self) {
+            if let Some((id, start)) = self.0 {
+                let s = start.elapsed().as_secs_f64();
+                TIMES.with(|t| {
+                    if let Some(m) = t.borrow_mut().as_mut() {
+                        *m.entry(id).or_default() += s;
+                    }
+                });
+            }
         }
     }
 }

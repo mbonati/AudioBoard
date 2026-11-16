@@ -4,10 +4,10 @@ A static site: plain HTML, one stylesheet and one small script, no build step.
 
 | Page | What it holds |
 |------|---------------|
-| `index.html` | The landing page: the hero patch, a playable Web Audio drone sketch, the spotlight instruments, a wall of panels, features, the catalogue by group, getting started, the architecture in brief |
-| `nodes.html` | The catalogue: every node with its panel, filter by group, search, and an inspector with the full description (`nodes.html#node-fjord` opens one directly) |
-| `guide.html` | Build and run, patching, transport and tempo, controls, modules, auto layout, palette, audio settings, recording and export, projects and library |
-| `architecture.html` | The two threads, the engine, plugins and MIDI, performance, the source tree, adding a module |
+| `index.html` | The landing page: the hero patch, a playable Web Audio drone sketch, the spotlight instruments, a wall of panels, features, the catalogue by group (VST3 and Audio Unit plugins included), getting started, the architecture in brief |
+| `nodes.html` | The catalogue: every node with its panel, filter by group, search, and an inspector with the full description (`nodes.html#node-fjord` opens one directly); a node with many pictures (Iris's fourteen scenes) shows them as captioned thumbnails |
+| `guide.html` | Build and run, patching and the selection bar, transport and tempo (with external MIDI sync), controls, modules, auto layout, palette, stickers and background, the Iris visuals, the Settings tabs (Audio, MIDI, Sync, Plugins), buffer and limiter, recording and export, projects (Open Recent) and library |
+| `architecture.html` | The two threads, the engine, plugins (VST3 and the Audio Unit host) and MIDI (clock sync), performance, the source tree, adding a module |
 
 ## Viewing it
 
@@ -21,7 +21,7 @@ It serves on http://localhost:8000 (or the next free port); `website/serve.sh 90
 
 The main font is [Chillax](https://www.fontshare.com/fonts/chillax) (Indian Type Foundry, free for personal and commercial use), loaded from Fontshare's CDN by `assets/css/fonts.css`; labels and code use JetBrains Mono from Google Fonts. Offline, the pages fall back to the system fonts.
 
-The text follows the main `README.md`, which stays the source of truth: when a node changes there, change its card in `nodes.html` (and its spotlight in `index.html`, if it has one).
+The text follows the main `README.md`, which stays the source of truth: when a node changes there, change its card in `nodes.html` (and its spotlight in `index.html`, if it has one); when a node is added, also update the counts (the filter chips in `nodes.html`, the catalogue tiles and "Thirty-three nodes" in `index.html`).
 
 ## The screenshots
 
@@ -43,4 +43,4 @@ cargo test site_snapshots -- --ignored --nocapture
 SNAP=equalizer,patch-hero cargo test site_snapshots -- --ignored --nocapture
 ```
 
-and remove the line again. `patch-*-1x.png` are half-size copies for the page (`sips -Z 2400 patch-hero.png --out patch-hero-1x.png`).
+and remove the line again. `patch-*-1x.png` are half-size copies for the page (`sips -Z 2400 patch-hero.png --out patch-hero-1x.png`). `patch-board` is the demo patch dressed with stickers on the Blueprint background, for the guide's Stickers and background section. `iris-<scene>` are Iris's fourteen scenes, each on a palette of its own (`SNAP_IRIS_PALETTE=2` puts them all on one), following a Drone and Pops 66; `iris-ui` shows its scene's name, gear and grip with the settings open, cropped to the nodes and the popup (`sips -c 1260 2760 --cropOffset 520 640 iris-ui.png`, then `sips -Z 1380 iris-ui.png --out iris-ui-1x.png`). `SNAP_DIR` writes the pictures somewhere else, to look at them without touching the site's.

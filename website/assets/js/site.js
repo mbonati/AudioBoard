@@ -441,8 +441,20 @@
         if (i === 0) shot.appendChild(im);
         else {
           var extra = $(".extra", shot);
-          if (!extra) { extra = document.createElement("div"); extra.className = "extra"; shot.appendChild(extra); }
-          extra.appendChild(im);
+          if (!extra) {
+            extra = document.createElement("div");
+            // Many pictures (Iris's scenes): a grid of captioned thumbnails.
+            extra.className = imgs.length > 4 ? "extra many" : "extra";
+            shot.appendChild(extra);
+          }
+          if (imgs.length > 4) {
+            var fig = document.createElement("figure");
+            var cap = document.createElement("figcaption");
+            cap.textContent = parts[1] || "";
+            fig.appendChild(im);
+            fig.appendChild(cap);
+            extra.appendChild(fig);
+          } else extra.appendChild(im);
         }
       });
       if (typeof dlg.showModal === "function") dlg.showModal(); else dlg.setAttribute("open", "");

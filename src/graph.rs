@@ -59,7 +59,7 @@ pub enum NodeType {
 
 impl NodeType {
     /// The "add node" menu, in groups.
-    pub const MENU: [(&'static str, &'static [NodeType]); 5] = [
+    pub const MENU: [(&'static str, &'static [NodeType]); 6] = [
         (
             "Sources",
             &[
@@ -111,6 +111,7 @@ impl NodeType {
             ],
         ),
         ("Output", &[NodeType::Mixer, NodeType::Console]),
+        ("Visual", &[NodeType::Module(ModuleKind::Iris)]),
     ];
 
     pub fn name(self) -> &'static str {
@@ -533,7 +534,8 @@ impl Node {
         match &self.kind {
             NodeKind::Module(m) => {
                 let def = m.params.kind.def();
-                def.inputs.first() == Some(&"IN") && !def.outputs.is_empty()
+                // Iris only listens: its THRU is the input itself.
+                def.inputs.first() == Some(&"IN") && !def.outputs.is_empty() && m.params.kind != ModuleKind::Iris
             }
             NodeKind::Plugin(p) => p.meta.inputs > 0,
             _ => false,
@@ -542,6 +544,19 @@ impl Node {
 
     pub fn bypassed(&self) -> bool {
         self.bypass.load(Ordering::Relaxed)
+    }
+
+    /// Keeps running even when nothing it makes is heard: it records what
+    /// is played (the MIDI Looper's takes, from the keyboard too), can drive
+    /// a mapped control (MIDI CC, MIDI Note), shows what it gets (Iris), or
+    /// has no outputs at all. (Granular's loop is only recent sound, like a
+    /// delay line's: it rests with the others and keeps what it held.)
+    pub fn runs_unheard(&self) -> bool {
+        let NodeKind::Module(m) = &self.kind else { return false };
+        let def = m.params.kind.def();
+        def.map
+            || (def.outputs.is_empty() && !def.midi_out)
+            || matches!(m.params.kind, ModuleKind::Looper | ModuleKind::Iris)
     }
 
     /// Bypasses an effect (other nodes ignore it).
@@ -1431,8 +1446,33 @@ impl Graph {
         }
     }
 
+    /// The nodes whose work counts: mixers that feed the device (OUT
+    /// unpatched), nodes that work for their own sake (see
+    /// [`Node::runs_unheard`]), and every node with a path of cables, audio
+    /// or MIDI, into one of them. The engine lets the others rest.
+    pub fn heard(&self) -> HashSet<NodeId> {
+        let mut stack: Vec<NodeId> = self
+            .nodes
+            .iter()
+            .filter(|n| {
+                let sink = matches!(n.kind, NodeKind::Mixer(_))
+                    && !self.cables.iter().any(|c| c.from == PortRef { node: n.id, port: 0 });
+                sink || n.runs_unheard()
+            })
+            .map(|n| n.id)
+            .collect();
+        let mut seen = HashSet::with_capacity(self.nodes.len());
+        while let Some(id) = stack.pop() {
+            if seen.insert(id) {
+                stack.extend(self.cables.iter().filter(|c| c.to.node == id).map(|c| c.from.node));
+            }
+        }
+        seen
+    }
+
     /// Sends a topologically sorted processing order to the engine (Kahn).
     fn sync(&self, audio: &AudioHandle) {
+        let heard = self.heard();
         let mut indegree: HashMap<NodeId, usize> = self.nodes.iter().map(|n| (n.id, 0)).collect();
         for c in &self.cables {
             *indegree.entry(c.to.node).or_default() += 1;
@@ -1459,7 +1499,7 @@ impl Graph {
             // A mixer feeds the device unless its main output is patched.
             let mixer = self.node(id).is_some_and(|n| matches!(n.kind, NodeKind::Mixer(_)));
             let sink = mixer && !self.cables.iter().any(|c| c.from == PortRef { node: id, port: 0 });
-            order.push(TopoEntry { id, inputs, midi_input, sink });
+            order.push(TopoEntry { id, inputs, midi_input, sink, heard: heard.contains(&id) });
             for c in self.cables.iter().filter(|c| c.from.node == id) {
                 let d = indegree.get_mut(&c.to.node).expect("cable to unknown node");
                 *d -= 1;

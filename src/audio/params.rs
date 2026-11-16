@@ -489,6 +489,21 @@ impl Scope {
         self.pos.store(p, Ordering::Release);
     }
 
+    /// How many samples have been written so far (wrapping): with
+    /// [`Self::sample`], a reader can follow the new ones.
+    pub fn written(&self) -> usize {
+        self.pos.load(Ordering::Acquire)
+    }
+
+    /// The sample written at count `i` (see [`Self::written`]); only the
+    /// last [`SCOPE_LEN`] are kept.
+    pub fn sample(&self, i: usize) -> f32 {
+        self.buf[i & (SCOPE_LEN - 1)].get()
+    }
+
+    /// Samples the scope keeps.
+    pub const LEN: usize = SCOPE_LEN;
+
     /// Copies the most recent `len` samples (oldest first) into `out`.
     pub fn snapshot(&self, out: &mut Vec<f32>, len: usize) {
         let len = len.min(SCOPE_LEN);

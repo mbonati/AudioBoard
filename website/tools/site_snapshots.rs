@@ -189,9 +189,11 @@ mod site_snap {
                 bmp.push(0);
             }
         }
-        std::fs::create_dir_all(DIR).unwrap();
-        let tmp = format!("{DIR}/{name}.bmp");
-        let png = format!("{DIR}/{name}.png");
+        // SNAP_DIR: somewhere else than the site's pictures.
+        let dir = std::env::var("SNAP_DIR").unwrap_or_else(|_| DIR.to_owned());
+        std::fs::create_dir_all(&dir).unwrap();
+        let tmp = format!("{dir}/{name}.bmp");
+        let png = format!("{dir}/{name}.png");
         std::fs::write(&tmp, bmp).unwrap();
         let ok = std::process::Command::new("sips")
             .args(["-s", "format", "png", &tmp, "--out", &png])
@@ -442,6 +444,36 @@ mod site_snap {
             link(&mut s, r, 0, id, 1);
             node_shot("filter", FRAMES, &mut s, id);
         }
+        if want("prism") {
+            // A few bands of every kind: a cut, shelves, a dynamic bell on
+            // the mid, a spectral one, with the dynamic bell selected.
+            use md::prism::{self as pq, band, bp, data, design::*};
+            let mut s = scene(110.0);
+            let id = add(&mut s, ModuleKind::Prism, 0.0, 0.0);
+            let p = module_params(&s.g, id);
+            for (b, (sh, freq, gain, q)) in [
+                (LOW_CUT, 32.0, 0.0, 0.9),
+                (LOW_SHELF, 120.0, 3.0, 0.7),
+                (BELL, 420.0, -4.5, 1.4),
+                (BELL, 2600.0, 3.5, 0.9),
+                (NOTCH, 5200.0, 0.0, 6.0),
+                (HIGH_SHELF, 11_000.0, 2.5, 0.7),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                pq::create_band(&p, b, sh, freq, gain, q);
+            }
+            p.set(bp(2, band::RANGE), -6.0);
+            p.data[data::PLACE + 3].set(pq::MID as f32);
+            p.set(bp(3, band::RANGE), 4.0);
+            p.data[data::SPECTRAL + 3].set(1.0);
+            // A bit mask: the dynamic bell, the third band.
+            p.data[data::SELECTED].set((1 << 2) as f32);
+            let f = feeder(&mut s, ModuleKind::Pops, 0.0);
+            link(&mut s, f, 0, id, 0);
+            node_shot("prism", FRAMES, &mut s, id);
+        }
         if want("tape") {
             let mut s = scene(110.0);
             let id = add(&mut s, ModuleKind::Tape, 0.0, 0.0);
@@ -490,11 +522,76 @@ mod site_snap {
             node_shot("console", 120, &mut s, id);
         }
 
+        // --- Iris: every scene, listening to a drone and a rhythm --------
+        for (k, title) in md::iris::SCENES.iter().enumerate() {
+            let name = format!("iris-{}", title.to_lowercase());
+            if !want(&name) {
+                continue;
+            }
+            let mut s = scene(118.0);
+            let id = add(&mut s, ModuleKind::Iris, 0.0, 0.0);
+            let p = module_params(&s.g, id);
+            p.set_mode(k);
+            // A palette for each scene, to show them all (SNAP_IRIS_PALETTE
+            // picks one for every scene): Board, Mono, Paper, Riso, Ember,
+            // Ice, Acid.
+            const LOOKS: [f32; 14] = [0.0, 0.0, 5.0, 3.0, 4.0, 6.0, 0.0, 2.0, 2.0, 3.0, 4.0, 1.0, 5.0, 0.0];
+            let look = std::env::var("SNAP_IRIS_PALETTE").ok().and_then(|v| v.parse().ok()).unwrap_or(LOOKS[k]);
+            p.data[md::iris::data::PALETTE].set(look);
+            let mix = s.g.add_mixer(pos2(0.0, 520.0), &s.a);
+            let drone = add(&mut s, ModuleKind::Drone, -420.0, 420.0);
+            let pops = add(&mut s, ModuleKind::Pops, -420.0, 760.0);
+            link(&mut s, drone, 0, mix, 0);
+            link(&mut s, pops, 0, mix, 1);
+            node_shot(&name, FRAMES, &mut s, id);
+        }
+
+        if want("iris-ui") {
+            // The scene's name, the gear and the grip, with the settings open.
+            let mut s = scene(118.0);
+            let id = add(&mut s, ModuleKind::Iris, 0.0, 0.0);
+            module_params(&s.g, id).set_mode(1);
+            module_params(&s.g, id).data[md::iris::data::SOURCE].set(1.0);
+            let f = feeder(&mut s, ModuleKind::Drone, 0.0);
+            link(&mut s, f, 0, id, 0);
+            crate::ui::iris::SHOW_CONTROLS.store(true, Ordering::Relaxed);
+            full_shot("iris-ui", FRAMES, &mut s, vec2(1700.0, 900.0), PPP);
+            crate::ui::iris::SHOW_CONTROLS.store(false, Ordering::Relaxed);
+        }
+
         // --- Whole patches ------------------------------------------------
         if want("patch-demo") {
             let mut s = scene(90.0);
             crate::ui::app::demo_patch(&mut s.g, &s.a);
             full_shot("patch-demo", FRAMES, &mut s, vec2(1700.0, 760.0), PPP);
+        }
+        if want("patch-board") {
+            // The demo patch on the Blueprint background, with built-in
+            // stickers and two of the example SVGs around it.
+            use crate::board::{Art, STICKER_MAX_PX};
+            use crate::ui::board::EXAMPLES;
+            let mut s = scene(90.0);
+            crate::ui::app::demo_patch(&mut s.g, &s.a);
+            let b = bounds(&s.g);
+            eprintln!("patch-board: nodes span {:?}", b);
+            let board = &mut s.g.board;
+            board.background.preset = "blueprint".to_owned();
+            let vinyl = board.import_image(EXAMPLES[0].1, STICKER_MAX_PX, false).unwrap();
+            let cloud = board.import_image(EXAMPLES[2].1, STICKER_MAX_PX, false).unwrap();
+            let builtin = |n: &str| Art::Builtin(n.to_owned());
+            for (art, x, y, w, rot) in [
+                (builtin("tag-ambient"), b.min.x + 90.0, b.min.y - 70.0, 200.0, -6.0),
+                (Art::Image(cloud), b.center().x + 40.0, b.min.y - 90.0, 170.0, 0.0),
+                (builtin("moon"), b.max.x - 40.0, b.min.y - 80.0, 120.0, 12.0),
+                (Art::Image(vinyl), b.min.x - 40.0, b.max.y + 110.0, 180.0, -10.0),
+                (builtin("sparkle"), b.min.x + 140.0, b.max.y + 80.0, 70.0, 0.0),
+                (builtin("cassette"), b.max.x - 60.0, b.max.y + 60.0, 170.0, 8.0),
+                (builtin("tag-drone"), b.center().x - 80.0, b.max.y + 80.0, 180.0, 4.0),
+            ] {
+                let id = board.add(art, [x, y], w);
+                board.sticker_mut(id).unwrap().rotation = rot;
+            }
+            full_shot("patch-board", FRAMES, &mut s, vec2(2000.0, 1000.0), PPP);
         }
         if want("patch-hero") {
             let mut s = scene(100.0);

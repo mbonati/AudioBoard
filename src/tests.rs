@@ -7510,3 +7510,218 @@ fn prism_draws_with_every_kind_of_band() {
     assert_eq!(main, "10 bands");
     assert!(sub.contains("1 dynamic") && sub.contains("1 spectral"), "{sub}");
 }
+
+// ---------------------------------------------------------------------------
+// Nodes nobody hears rest
+// ---------------------------------------------------------------------------
+
+#[test]
+fn heard_follows_cables_to_the_device_and_keeps_what_works_unheard() {
+    use crate::graph::{Cable, MIDI_PORT};
+    let (mut g, a, _e) = setup();
+    let drone = g.add_module(ModuleKind::Drone, pos2(0.0, 0.0), &a);
+    let filter = g.add_module(ModuleKind::Filter, pos2(300.0, 0.0), &a);
+    let mixer = g.add_mixer(pos2(600.0, 0.0), &a);
+    let random = g.add_module(ModuleKind::Random, pos2(0.0, 300.0), &a);
+    let delay = g.add_module(ModuleKind::Delay, pos2(300.0, 300.0), &a);
+    let seq = g.add_module(ModuleKind::Sequencer, pos2(0.0, 600.0), &a);
+    let note = g.add_module(ModuleKind::MidiNote, pos2(300.0, 600.0), &a);
+    let looper = g.add_module(ModuleKind::Looper, pos2(0.0, 900.0), &a);
+    g.connect(port(drone, 0), port(filter, 0), &a);
+    g.connect(port(random, 0), port(filter, 1), &a);
+    g.connect(port(filter, 0), port(mixer, 0), &a);
+    g.connect(port(filter, 0), port(delay, 0), &a);
+    g.connect(port(seq, MIDI_PORT), port(note, MIDI_PORT), &a);
+    let heard = g.heard();
+    // Into the mixer, by audio and CV cables.
+    for id in [drone, filter, mixer, random] {
+        assert!(heard.contains(&id), "node {id} feeds the mixer");
+    }
+    // Fed by a heard node, but feeding nothing: not heard.
+    assert!(!heard.contains(&delay));
+    // MIDI Note can drive a mapped control, so it runs, and so does the
+    // sequencer playing it; the Looper records what is played.
+    assert!(heard.contains(&note) && heard.contains(&seq) && heard.contains(&looper));
+    // A mixer patched into nothing heard is not heard either.
+    let sub = g.add_mixer(pos2(900.0, 300.0), &a);
+    g.connect(port(delay, 0), port(sub, 0), &a);
+    let fx = g.add_module(ModuleKind::Reverb, pos2(1200.0, 300.0), &a);
+    g.connect(port(sub, 0), port(fx, 0), &a);
+    let heard = g.heard();
+    assert!(!heard.contains(&sub) && !heard.contains(&fx) && !heard.contains(&delay));
+    // Unpatching the mixer's OUT makes it play, and the chain is heard.
+    g.disconnect(Cable { from: port(sub, 0), to: port(fx, 0) }, &a);
+    let heard = g.heard();
+    assert!(heard.contains(&sub) && heard.contains(&delay));
+}
+
+#[test]
+fn unheard_nodes_rest_after_two_seconds_and_come_back_faded_in() {
+    use crate::audio::modules::drone;
+    use crate::graph::Cable;
+    let (mut g, a, mut e) = setup();
+    let heard = g.add_module(ModuleKind::Drone, pos2(0.0, 0.0), &a);
+    let mixer = g.add_mixer(pos2(400.0, 0.0), &a);
+    g.connect(port(heard, 0), port(mixer, 0), &a);
+    let lone = g.add_module(ModuleKind::Drone, pos2(0.0, 300.0), &a);
+    let (hp, lp) = (module_params(&g, heard), module_params(&g, lone));
+    let working = |e: &mut Engine| {
+        hp.meter.set(0.0);
+        lp.meter.set(0.0);
+        render_buf(e, 4_800);
+        (hp.meter.get() > 0.0, lp.meter.get() > 0.0)
+    };
+    // For 2 s, a node nobody hears still runs.
+    render_buf(&mut e, 48_000);
+    assert_eq!(working(&mut e), (true, true));
+    // Then it rests; the heard one plays on.
+    render_buf(&mut e, 48_000);
+    assert_eq!(working(&mut e), (true, false));
+    // Patched in instead of the other: it plays again, faded in (read past
+    // the output limiter's 64 frames of lookahead).
+    hp.set(drone::LEVEL, 0.0);
+    g.disconnect(Cable { from: port(heard, 0), to: port(mixer, 0) }, &a);
+    render_buf(&mut e, 4_800);
+    g.connect(port(lone, 0), port(mixer, 1), &a);
+    let out = render_buf(&mut e, 4_800);
+    let start = peak_of(&out[2 * 64..2 * 112]);
+    let later = peak_of(&out[2 * 2_400..]);
+    assert!(later > 0.01, "it plays: {later}");
+    assert!(start < 0.2 * later, "it fades in: {start} then {later}");
+    assert!(lp.meter.get() > 0.0);
+}
+
+
+// ---------------------------------------------------------------------------
+// Iris (video)
+// ---------------------------------------------------------------------------
+
+/// The samples Iris handed to its panel, oldest first.
+fn iris_ring(p: &ModuleParams) -> Vec<f32> {
+    use crate::audio::modules::iris::{RING, viz};
+    let w = p.viz[viz::WRITTEN].get() as usize;
+    (0..RING).map(|i| p.viz[viz::RING + (w + i) % RING].get()).collect()
+}
+
+#[test]
+fn iris_passes_its_input_through_and_hands_the_panel_its_sound() {
+    use crate::audio::modules::iris::{data, viz};
+    let (mut g, a, mut e) = setup();
+    let osc = g.add_osc(pos2(0.0, 0.0), &a);
+    let iris = g.add_module(ModuleKind::Iris, pos2(300.0, 0.0), &a);
+    let mix = g.add_mixer(pos2(900.0, 0.0), &a);
+    g.connect(port(osc, 0), port(iris, 0), &a);
+    g.connect(port(iris, 0), port(mix, 0), &a);
+    let p = module_params(&g, iris);
+    p.data[data::SOURCE].set(1.0);
+    render_buf(&mut e, 4800);
+    let through = peak_of(&render_buf(&mut e, 4800));
+
+    // The same oscillator straight into the mixer sounds the same.
+    let (mut g2, a2, mut e2) = setup();
+    let osc2 = g2.add_osc(pos2(0.0, 0.0), &a2);
+    let mix2 = g2.add_mixer(pos2(900.0, 0.0), &a2);
+    g2.connect(port(osc2, 0), port(mix2, 0), &a2);
+    render_buf(&mut e2, 4800);
+    let direct = peak_of(&render_buf(&mut e2, 4800));
+    assert!((through - direct).abs() < 1e-4, "THRU changes the sound: {through} vs {direct}");
+
+    assert_eq!(p.viz[viz::LIVE].get(), 1.0);
+    let ring = iris_ring(&p);
+    let peak = ring.iter().fold(0.0f32, |m, s| m.max(s.abs()));
+    assert!(peak > 0.1, "the panel gets the input: {peak}");
+
+    // Unpatched, listening to IN: nothing to show.
+    g.disconnect(crate::graph::Cable { from: port(osc, 0), to: port(iris, 0) }, &a);
+    render_buf(&mut e, 4800);
+    assert_eq!(p.viz[viz::LIVE].get(), 0.0);
+}
+
+#[test]
+fn iris_listens_to_the_main_mix() {
+    use crate::audio::modules::iris::viz;
+    let (mut g, a, mut e) = setup();
+    let osc = g.add_osc(pos2(0.0, 0.0), &a);
+    let mix = g.add_mixer(pos2(600.0, 0.0), &a);
+    g.connect(port(osc, 0), port(mix, 0), &a);
+    // Nothing patched into it: it hears what the board plays.
+    let iris = g.add_module(ModuleKind::Iris, pos2(0.0, 400.0), &a);
+    let p = module_params(&g, iris);
+    for _ in 0..4 {
+        render_buf(&mut e, 2400);
+    }
+    assert_eq!(p.viz[viz::LIVE].get(), 1.0);
+    let ring = iris_ring(&p);
+    let peak = ring.iter().fold(0.0f32, |m, s| m.max(s.abs()));
+    assert!(peak > 0.1, "the panel gets the main mix: {peak}");
+    // Its THRU is silent and it is not an effect (no bypass).
+    assert!(!g.node(iris).unwrap().is_effect());
+}
+
+#[test]
+fn iris_draws_every_scene_and_resizes() {
+    use crate::audio::modules::iris::{SCENES, data};
+    let (mut g, a, mut e) = setup();
+    let pops = g.add_module(ModuleKind::Pops, pos2(-900.0, 0.0), &a);
+    let iris = g.add_module(ModuleKind::Iris, pos2(0.0, 0.0), &a);
+    g.connect(port(pops, 0), port(iris, 0), &a);
+    let p = module_params(&g, iris);
+    p.data[data::SOURCE].set(1.0);
+    let mut editor = crate::ui::canvas::Editor::new();
+    let ctx = egui::Context::default();
+    crate::ui::theme::apply(&ctx);
+    let mut frame = 0;
+    for scene in 0..SCENES.len() {
+        p.set_mode(scene);
+        p.data[data::PALETTE].set((scene % crate::ui::iris::PALETTES.len()) as f32);
+        p.set(crate::audio::modules::iris::DETAIL, (scene % 3) as f32 * 0.5);
+        for _ in 0..8 {
+            render_buf(&mut e, 800);
+            let input = egui::RawInput { time: Some(frame as f64 / 60.0), ..Default::default() };
+            let mut out = ctx.run_ui(input, |ui| editor.show(ui, &mut g, &a));
+            out.textures_delta.clear();
+            frame += 1;
+        }
+    }
+    // Its size follows its settings, and THRU stays on its right edge.
+    let before = g.node(iris).unwrap().output_pos(0).x;
+    p.data[data::W].set(900.0);
+    p.data[data::H].set(560.0);
+    let node = g.node(iris).unwrap();
+    assert_eq!(node.size(), egui::vec2(900.0, 560.0));
+    assert!((node.output_pos(0).x - before - (900.0 - crate::audio::modules::iris::DEFAULT_SIZE[0])).abs() < 1e-3);
+    // Out of range sizes are clamped.
+    p.data[data::W].set(5.0);
+    p.data[data::H].set(f32::NAN);
+    let s = g.node(iris).unwrap().size();
+    assert_eq!(s.x, crate::audio::modules::iris::MIN_SIZE[0]);
+    assert_eq!(s.y, crate::audio::modules::iris::DEFAULT_SIZE[1]);
+}
+
+#[test]
+fn iris_is_saved_with_its_scene_size_and_look() {
+    use crate::audio::modules::iris::{SPEED, data};
+    let (mut g, a, _e) = setup();
+    let iris = g.add_module(ModuleKind::Iris, pos2(0.0, 0.0), &a);
+    let p = module_params(&g, iris);
+    p.set_mode(10);
+    p.set(SPEED, 1.5);
+    p.data[data::W].set(800.0);
+    p.data[data::H].set(470.0);
+    p.data[data::SOURCE].set(1.0);
+    p.data[data::PALETTE].set(3.0);
+    p.data[data::CYCLE].set(4.0);
+    let json = serde_json::to_string(&crate::project::snapshot(&g)).unwrap();
+    assert!(json.contains("ATTRACTOR"), "the scene is saved by name");
+    let project: crate::project::Project = serde_json::from_str(&json).unwrap();
+    let (mut g2, a2, _e2) = setup();
+    crate::project::restore(&mut g2, &project, &a2);
+    let id = g2.nodes.iter().find(|n| matches!(&n.kind, NodeKind::Module(m) if m.params.kind == ModuleKind::Iris)).unwrap().id;
+    let q = module_params(&g2, id);
+    assert_eq!(q.mode(), 10);
+    assert_eq!(q.get(SPEED), 1.5);
+    assert_eq!(g2.node(id).unwrap().size(), egui::vec2(800.0, 470.0));
+    for i in [data::SOURCE, data::PALETTE, data::CYCLE] {
+        assert_eq!(q.data[i].get(), p.data[i].get());
+    }
+}
