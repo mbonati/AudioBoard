@@ -19,7 +19,7 @@ use crate::audio::modules::{ModuleKind, ModuleParams, midi_cc, midi_note, random
 use crate::audio::params::{
     AtomicF32, CONSOLE_CHANNELS, DEFAULT_TEMPO, MIXER_CHANNELS, MixerParams, OSC_PARAMS, OscParams, ParamSpec, Unit, osc,
 };
-use crate::audio::plugin::{self, Control, Loaded, PluginMeta, PluginParam, PluginProcessor, PluginShared};
+use crate::audio::plugin::{self, Control, Format, Instance, LoadedAny, PluginMeta, PluginParam, PluginProcessor, PluginShared};
 use crate::ui::nodes;
 use crate::ui::theme;
 use crate::ui::widgets::MeterState;
@@ -59,7 +59,7 @@ pub enum NodeType {
 
 impl NodeType {
     /// The "add node" menu, in groups.
-    pub const MENU: [(&'static str, &'static [NodeType]); 5] = [
+    pub const MENU: [(&'static str, &'static [NodeType]); 6] = [
         (
             "Sources",
             &[
@@ -111,6 +111,7 @@ impl NodeType {
             ],
         ),
         ("Output", &[NodeType::Mixer, NodeType::Console]),
+        ("Visual", &[NodeType::Module(ModuleKind::Iris)]),
     ];
 
     pub fn name(self) -> &'static str {
@@ -235,7 +236,14 @@ pub struct PluginNode {
     pub control: Sender<Control>,
     pub meter: MeterState,
     /// The plugin's own editor, while open.
-    pub window: Option<vst3_host::PluginWindow>,
+    pub window: Option<EditorWindow>,
+    /// Why the editor didn't open, once it is known (an Audio Unit's view
+    /// arrives later): the canvas shows it.
+    pub editor_error: Option<String>,
+    /// An Audio Unit's parameters, set from here directly (they are
+    /// thread-safe) rather than through the audio thread.
+    #[cfg(target_os = "macos")]
+    au_params: Option<crate::audio::au::ParamHandle>,
     /// Filter for the parameter list.
     pub query: String,
     /// Until when a parameter the user just moved ignores the plugin's
@@ -256,6 +264,24 @@ pub struct PluginNode {
 /// How often the UI reads plugin parameters (seconds).
 const PLUGIN_SYNC_EVERY: f64 = 0.1;
 
+/// A plugin's own editor window, while open. Dropping it closes it.
+pub enum EditorWindow {
+    Vst3(vst3_host::PluginWindow),
+    /// An Audio Unit's: the unit opens and owns the window (see `au`).
+    #[cfg(target_os = "macos")]
+    Au(Arc<Mutex<crate::audio::au::AudioUnit>>),
+}
+
+impl Drop for EditorWindow {
+    fn drop(&mut self) {
+        #[cfg(target_os = "macos")]
+        if let EditorWindow::Au(unit) = self {
+            wait_audio_idle(Duration::from_millis(50));
+            unit.lock().unwrap_or_else(|e| e.into_inner()).close_editor();
+        }
+    }
+}
+
 impl PluginNode {
     fn new(meta: PluginMeta, params: Vec<PluginParam>, shared: Arc<PluginShared>, control: Sender<Control>) -> Self {
         let n = params.len();
@@ -274,8 +300,22 @@ impl PluginNode {
             control,
             meter: MeterState::default(),
             window: None,
+            editor_error: None,
+            #[cfg(target_os = "macos")]
+            au_params: None,
             query: String::new(),
         }
+    }
+
+    /// Sends a parameter value on its way: an Audio Unit takes it at once,
+    /// a VST3 plugin on the audio thread.
+    fn send_value(&self, id: u32, value: f64) {
+        #[cfg(target_os = "macos")]
+        if let Some(h) = &self.au_params {
+            h.set(id, value);
+            return;
+        }
+        let _ = self.control.send(Control::Param(id, value));
     }
 
     /// Sets a parameter from the UI (applied on the audio thread).
@@ -285,13 +325,14 @@ impl PluginNode {
         self.values[index] = value;
         self.held_until[index] = now + 0.3;
         self.state_stale.set(true);
-        let _ = self.control.send(Control::Param(p.id, value));
+        let id = p.id;
+        self.send_value(id, value);
     }
 
     /// Sends a parameter change from a MIDI mapping.
     pub fn send_param(&self, id: u32, value: f64) {
         self.state_stale.set(true);
-        let _ = self.control.send(Control::Param(id, value));
+        self.send_value(id, value);
     }
 
     /// Keeps the knobs in step with the plugin (including edits made in its
@@ -299,7 +340,26 @@ impl PluginNode {
     /// taken for one call at a time and never waited for, so the audio
     /// thread is held up as little as possible.
     pub fn sync(&mut self, now: f64) {
-        if self.window.as_ref().is_some_and(|w| w.closed_by_user() || !w.is_open()) {
+        let gone = match &self.window {
+            Some(EditorWindow::Vst3(w)) => w.closed_by_user() || !w.is_open(),
+            // Its state is read under the plugin's lock: between callbacks.
+            #[cfg(target_os = "macos")]
+            Some(EditorWindow::Au(_)) if !audio_idle() => false,
+            #[cfg(target_os = "macos")]
+            Some(EditorWindow::Au(_)) => match self.shared.plugin.try_lock() {
+                Ok(plugin::Guard::Au(unit)) => match unit.editor_state() {
+                    crate::audio::au::EditorState::Closed => true,
+                    crate::audio::au::EditorState::NoView => {
+                        self.editor_error = Some("this Audio Unit has no editor".to_owned());
+                        true
+                    }
+                    _ => false,
+                },
+                _ => false,
+            },
+            None => false,
+        };
+        if gone {
             self.window = None;
         }
         self.shared.editor_open.store(self.window.is_some(), Ordering::Relaxed);
@@ -309,7 +369,9 @@ impl PluginNode {
             return;
         }
         if let Some(w) = &self.window {
-            let _ = w.service_platform_events();
+            if let EditorWindow::Vst3(w) = w {
+                let _ = w.service_platform_events();
+            }
             // Its editor can change anything, presets included.
             self.state_stale.set(true);
         }
@@ -318,9 +380,7 @@ impl PluginNode {
         }
         self.synced_at = now;
         match self.shared.plugin.try_lock() {
-            Ok(mut plugin) => {
-                let _ = plugin.service_host_requests();
-            }
+            Ok(mut plugin) => plugin.service_host_requests(),
             Err(_) => return,
         }
         for k in 0..self.pinned.len() {
@@ -381,10 +441,22 @@ impl PluginNode {
         if self.window.take().is_some() {
             return Ok(());
         }
-        let mut window = vst3_host::PluginWindow::new(self.shared.plugin.clone());
-        wait_audio_idle(Duration::from_millis(50));
-        window.open().map_err(|e| e.to_string())?;
-        self.window = Some(window);
+        self.editor_error = None;
+        match &self.shared.plugin {
+            Instance::Vst3(p) => {
+                let mut window = vst3_host::PluginWindow::new(p.clone());
+                wait_audio_idle(Duration::from_millis(50));
+                window.open().map_err(|e| e.to_string())?;
+                self.window = Some(EditorWindow::Vst3(window));
+            }
+            #[cfg(target_os = "macos")]
+            Instance::Au(unit) => {
+                wait_audio_idle(Duration::from_millis(50));
+                let title = format!("{} - {}", self.meta.name, self.meta.format.label());
+                unit.lock().unwrap_or_else(|e| e.into_inner()).open_editor(&title);
+                self.window = Some(EditorWindow::Au(unit.clone()));
+            }
+        }
         Ok(())
     }
 
@@ -462,7 +534,8 @@ impl Node {
         match &self.kind {
             NodeKind::Module(m) => {
                 let def = m.params.kind.def();
-                def.inputs.first() == Some(&"IN") && !def.outputs.is_empty()
+                // Iris only listens: its THRU is the input itself.
+                def.inputs.first() == Some(&"IN") && !def.outputs.is_empty() && m.params.kind != ModuleKind::Iris
             }
             NodeKind::Plugin(p) => p.meta.inputs > 0,
             _ => false,
@@ -471,6 +544,19 @@ impl Node {
 
     pub fn bypassed(&self) -> bool {
         self.bypass.load(Ordering::Relaxed)
+    }
+
+    /// Keeps running even when nothing it makes is heard: it records what
+    /// is played (the MIDI Looper's takes, from the keyboard too), can drive
+    /// a mapped control (MIDI CC, MIDI Note), shows what it gets (Iris), or
+    /// has no outputs at all. (Granular's loop is only recent sound, like a
+    /// delay line's: it rests with the others and keeps what it held.)
+    pub fn runs_unheard(&self) -> bool {
+        let NodeKind::Module(m) = &self.kind else { return false };
+        let def = m.params.kind.def();
+        def.map
+            || (def.outputs.is_empty() && !def.midi_out)
+            || matches!(m.params.kind, ModuleKind::Looper | ModuleKind::Iris)
     }
 
     /// Bypasses an effect (other nodes ignore it).
@@ -718,6 +804,8 @@ pub struct Graph {
     /// Removed plugins, kept until the audio thread lets go of them so they
     /// are destroyed here, never on the audio thread.
     graveyard: Vec<Arc<PluginShared>>,
+    /// The board's stickers and background.
+    pub board: crate::board::Board,
 }
 
 impl Default for Graph {
@@ -732,6 +820,7 @@ impl Default for Graph {
             accent_count: 0,
             plugin_host: None,
             graveyard: Vec::new(),
+            board: crate::board::Board::default(),
         }
     }
 }
@@ -755,7 +844,8 @@ impl Graph {
         }
     }
 
-    /// Removes every node, cable and module.
+    /// Removes every node, cable and module, and the board's stickers and
+    /// background.
     pub fn clear(&mut self, audio: &AudioHandle) {
         let ids: Vec<NodeId> = self.nodes.iter().map(|n| n.id).collect();
         for id in ids {
@@ -764,6 +854,7 @@ impl Graph {
         self.groups.clear();
         self.accent_count = 0;
         self.tempo = DEFAULT_TEMPO;
+        self.board = crate::board::Board::default();
     }
 
     fn alloc_id(&mut self) -> NodeId {
@@ -887,24 +978,30 @@ impl Graph {
         id
     }
 
-    /// Loads a VST3 plugin as a node. Runs plugin code (UI thread).
+    /// Loads a plugin (a VST3 bundle, or an Audio Unit by its pseudo-path)
+    /// as a node. Runs plugin code (UI thread).
     pub fn add_plugin(&mut self, path: &Path, pos: Pos2, audio: &AudioHandle) -> Result<NodeId, String> {
-        let host = match &mut self.plugin_host {
-            Some(h) => h,
-            None => self.plugin_host.insert(plugin::new_host(audio.info.sample_rate as f32)?),
+        let loaded = match Format::of(path) {
+            Format::Vst3 => {
+                let host = match &mut self.plugin_host {
+                    Some(h) => h,
+                    None => self.plugin_host.insert(plugin::new_host(audio.info.sample_rate as f32)?),
+                };
+                plugin::load(host, path)?.into()
+            }
+            Format::AudioUnit { .. } => plugin::load_au(path, audio.info.sample_rate as f32)?,
         };
-        let loaded = plugin::load(host, path)?;
         Ok(self.add_plugin_loaded(loaded, pos, audio))
     }
 
-    fn add_plugin_loaded(&mut self, loaded: Loaded, pos: Pos2, audio: &AudioHandle) -> NodeId {
-        let Loaded { plugin, meta, params } = loaded;
+    fn add_plugin_loaded(&mut self, loaded: LoadedAny, pos: Pos2, audio: &AudioHandle) -> NodeId {
+        let LoadedAny { instance, meta, params } = loaded;
         let id = self.alloc_id();
         let accent = self.next_accent();
         let title = self.next_title(&plugin_prefix(&meta.name));
         let instrument = meta.instrument;
         let shared = Arc::new(PluginShared {
-            plugin: Arc::new(Mutex::new(plugin)),
+            plugin: instance,
             meter: AtomicF32::new(0.0),
             midi_in: AtomicBool::new(instrument),
             editor_open: AtomicBool::new(false),
@@ -914,6 +1011,12 @@ impl Graph {
         let sample_rate = audio.info.sample_rate as f32;
         let proc = PluginProcessor::new(shared.clone(), rx, audio.midi.clone(), &meta, sample_rate);
         let bypass = spawn(id, Slot::new(Box::new(proc), 1), audio);
+        #[allow(unused_mut)]
+        let mut node = PluginNode::new(meta, params, shared, tx);
+        #[cfg(target_os = "macos")]
+        if let Instance::Au(unit) = &node.shared.plugin {
+            node.au_params = unit.lock().unwrap_or_else(|e| e.into_inner()).param_handle();
+        }
         self.nodes.push(Node {
             id,
             pos,
@@ -921,7 +1024,7 @@ impl Graph {
             accent,
             collapsed: false,
             bypass,
-            kind: NodeKind::Plugin(Box::new(PluginNode::new(meta, params, shared, tx))),
+            kind: NodeKind::Plugin(Box::new(node)),
         });
         self.sync(audio);
         id
@@ -1343,8 +1446,33 @@ impl Graph {
         }
     }
 
+    /// The nodes whose work counts: mixers that feed the device (OUT
+    /// unpatched), nodes that work for their own sake (see
+    /// [`Node::runs_unheard`]), and every node with a path of cables, audio
+    /// or MIDI, into one of them. The engine lets the others rest.
+    pub fn heard(&self) -> HashSet<NodeId> {
+        let mut stack: Vec<NodeId> = self
+            .nodes
+            .iter()
+            .filter(|n| {
+                let sink = matches!(n.kind, NodeKind::Mixer(_))
+                    && !self.cables.iter().any(|c| c.from == PortRef { node: n.id, port: 0 });
+                sink || n.runs_unheard()
+            })
+            .map(|n| n.id)
+            .collect();
+        let mut seen = HashSet::with_capacity(self.nodes.len());
+        while let Some(id) = stack.pop() {
+            if seen.insert(id) {
+                stack.extend(self.cables.iter().filter(|c| c.to.node == id).map(|c| c.from.node));
+            }
+        }
+        seen
+    }
+
     /// Sends a topologically sorted processing order to the engine (Kahn).
     fn sync(&self, audio: &AudioHandle) {
+        let heard = self.heard();
         let mut indegree: HashMap<NodeId, usize> = self.nodes.iter().map(|n| (n.id, 0)).collect();
         for c in &self.cables {
             *indegree.entry(c.to.node).or_default() += 1;
@@ -1371,7 +1499,7 @@ impl Graph {
             // A mixer feeds the device unless its main output is patched.
             let mixer = self.node(id).is_some_and(|n| matches!(n.kind, NodeKind::Mixer(_)));
             let sink = mixer && !self.cables.iter().any(|c| c.from == PortRef { node: id, port: 0 });
-            order.push(TopoEntry { id, inputs, midi_input, sink });
+            order.push(TopoEntry { id, inputs, midi_input, sink, heard: heard.contains(&id) });
             for c in self.cables.iter().filter(|c| c.from.node == id) {
                 let d = indegree.get_mut(&c.to.node).expect("cable to unknown node");
                 *d -= 1;

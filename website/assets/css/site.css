@@ -555,6 +555,9 @@ dialog.inspector::backdrop { background: color-mix(in srgb, var(--bg) 88%, trans
 .inspector .in-body.noshot { grid-template-columns: 1fr; }
 .inspector .in-shot img { width: 100%; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); cursor: zoom-in; }
 .inspector .in-shot .extra { display: grid; gap: 12px; margin-top: 12px; }
+.inspector .in-shot .extra.many { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.inspector .in-shot .extra.many figure { margin: 0; }
+.inspector .in-shot .extra.many figcaption { font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; color: var(--dim); margin-top: 4px; }
 .inspector h2 { font-size: clamp(30px, 4vw, 48px); font-weight: 800; letter-spacing: -0.035em; margin: 6px 0 12px; }
 .inspector .in-text > p { color: var(--dim); }
 .inspector .in-text ul { padding-left: 0; list-style: none; display: grid; gap: 10px; margin: 16px 0 0; }

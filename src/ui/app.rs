@@ -12,7 +12,8 @@ use super::canvas::{Editor, Request, menu_item};
 use super::monitor::Monitor;
 use super::palette::{self, Palette, PluginEntry, Spawn};
 use super::plugin_node;
-use super::settings::SettingsWindow;
+use super::recent;
+use super::settings::{PluginCounts, PluginSettings, SettingsChange, SettingsContext, SettingsWindow, SyncSettings};
 use super::tempo::TempoControl;
 use super::theme::{self, alpha};
 use crate::audio::engine::NodeId;
@@ -21,6 +22,8 @@ use crate::audio::export::{self, FORMATS};
 use crate::audio::params::{EngineShared, Waveform};
 use crate::audio::record::Recorder;
 use crate::audio::midi::MidiInputs;
+use crate::audio::plugin::Format;
+use crate::audio::sync::ClockOut;
 use crate::audio::device::{AudioConfig, BUFFER_SIZES};
 use crate::audio::{self, AudioHandle};
 use crate::graph::{Graph, NodeKind, PortRef};
@@ -98,6 +101,9 @@ struct Toast {
 enum FileCommand {
     New,
     Open,
+    /// A project from Open Recent.
+    OpenRecent(PathBuf),
+    ClearRecent,
     Save,
     SaveAs,
 }
@@ -125,10 +131,16 @@ pub struct AudioBoardApp {
     library: Library,
     /// Category and maker of plugins loaded before, by bundle path.
     plugin_catalog: BTreeMap<String, PluginInfo>,
+    /// Audio Units installed, as last listed, and the first listing while
+    /// it runs in the background (it takes a while).
+    audio_units: Vec<crate::audio::au::Listed>,
+    au_scan: Option<std::sync::mpsc::Receiver<Vec<crate::audio::au::Listed>>>,
     toast: Option<Toast>,
     window_title: String,
     midi: MidiInputs,
     midi_scanned: f64,
+    /// Sends the board's clock to the MIDI outputs chosen in Settings → Sync.
+    clock_out: ClockOut,
     /// MIDI messages seen so far, and when the count last moved.
     midi_events: (u32, f64),
     tempo: TempoControl,
@@ -168,7 +180,15 @@ impl AudioBoardApp {
         let mut editor = Editor::new();
         editor.library = library.presets.clone();
         let plugin_catalog = load_catalog();
-        editor.plugins = plugin_entries(&plugin_catalog);
+        editor.plugins = plugin_entries(&plugin_catalog, &settings.plugins, &[]);
+        let (au_tx, au_scan) = std::sync::mpsc::channel();
+        let _ = std::thread::Builder::new().name("au-scan".into()).spawn(move || {
+            let _ = au_tx.send(crate::audio::plugin::scan_au());
+        });
+        let mut midi = MidiInputs::new();
+        midi.set_sync_source(settings.sync.source.clone(), &shared.sync);
+        let clock_out = ClockOut::start(shared.clone());
+        clock_out.set_outputs(clock_outputs(&settings.sync));
         Self {
             recorder: Recorder::new(shared.clone()),
             export: ExportWindow::default(),
@@ -185,9 +205,12 @@ impl AudioBoardApp {
             show_palette: true,
             library,
             plugin_catalog,
+            audio_units: Vec::new(),
+            au_scan: Some(au_scan),
             toast: None,
             window_title: String::new(),
-            midi: MidiInputs::new(),
+            midi,
+            clock_out,
             midi_scanned: f64::NEG_INFINITY,
             midi_events: (0, f64::NEG_INFINITY),
             tempo: TempoControl::default(),
@@ -202,6 +225,20 @@ impl AudioBoardApp {
 
     fn running(&self) -> bool {
         self.shared.running.load(Ordering::Relaxed)
+    }
+
+    /// The MIDI input whose clock the transport follows, if any.
+    fn following(&self) -> Option<&str> {
+        self.settings.sync.source.as_deref()
+    }
+
+    /// Start / Stop from the toolbar or Space: the board's own transport,
+    /// unless it follows a MIDI clock (then that clock's Start and Stop).
+    fn transport_pressed(&mut self, now: f64) {
+        match self.following().map(str::to_owned) {
+            Some(source) => self.notify(now, format!("The transport follows the MIDI clock from {source} (Settings → Sync)"), false),
+            None => self.toggle_running(),
+        }
     }
 
     /// Start plays from the top; Stop silences everything and rewinds the
@@ -413,11 +450,31 @@ impl AudioBoardApp {
         else {
             return;
         };
+        self.open_path(path, now);
+    }
+
+    /// Open Recent: the project at `path`, after offering to save changes.
+    fn open_recent(&mut self, path: PathBuf, now: f64) {
+        if !path.exists() {
+            let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+            self.notify(now, format!("{name} is no longer there"), true);
+            recent::forget(&mut self.settings.recent, &path);
+            save_settings(&self.settings);
+            return;
+        }
+        if self.confirm_discard(now) {
+            self.open_path(path, now);
+        }
+    }
+
+    /// Replaces the board with the project at `path`.
+    fn open_path(&mut self, path: PathBuf, now: f64) {
         let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
         match project::load_project(&path) {
             Ok(p) => {
                 let skipped = project::restore(&mut self.graph, &p, &self.audio);
                 self.editor.reset();
+                self.remember_recent(&path);
                 self.doc = Document::new(Some(path), project::snapshot(&self.graph));
                 if skipped > 0 {
                     self.notify(now, format!("Opened {name}: {skipped} unknown node(s) skipped"), true);
@@ -427,6 +484,12 @@ impl AudioBoardApp {
             }
             Err(e) => self.notify(now, format!("Could not open {name}: {e}"), true),
         }
+    }
+
+    /// Puts a project opened or saved at the top of Open Recent.
+    fn remember_recent(&mut self, path: &std::path::Path) {
+        recent::remember(&mut self.settings.recent, path);
+        save_settings(&self.settings);
     }
 
     /// Saves to the current file (asking for one the first time).
@@ -457,6 +520,7 @@ impl AudioBoardApp {
         let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
         match project::save_project(&path, &snapshot) {
             Ok(()) => {
+                self.remember_recent(&path);
                 self.doc = Document::new(Some(path), snapshot);
                 self.notify(now, format!("Saved {name}"), false);
                 true
@@ -472,6 +536,11 @@ impl AudioBoardApp {
         match cmd {
             FileCommand::New => self.new_project(now),
             FileCommand::Open => self.open_project(now),
+            FileCommand::OpenRecent(path) => self.open_recent(path, now),
+            FileCommand::ClearRecent => {
+                self.settings.recent.clear();
+                save_settings(&self.settings);
+            }
             FileCommand::Save => {
                 self.save(now);
             }
@@ -509,9 +578,12 @@ impl AudioBoardApp {
                 }
             }
             Request::RescanPlugins => {
-                self.editor.plugins = plugin_entries(&self.plugin_catalog);
-                let n = self.editor.plugins.len();
-                self.notify(now, format!("{n} VST3 plugin(s) found"), false);
+                self.audio_units = crate::audio::plugin::scan_au();
+                self.au_scan = None;
+                self.refresh_plugins();
+                let counts = plugin_counts(&self.editor.plugins);
+                let au = if counts.au > 0 { format!(", {} Audio Unit(s)", counts.au) } else { String::new() };
+                self.notify(now, format!("{} VST3 plugin(s){au} found", counts.vst3), false);
             }
             Request::RevealLibrary => {
                 let dir = &self.library.dir;
@@ -539,7 +611,7 @@ impl AudioBoardApp {
         if now - self.midi_scanned > 3.0 {
             self.midi_scanned = now;
             let ctx = ui.ctx().clone();
-            self.midi.rescan(&self.audio.midi, move || ctx.request_repaint());
+            self.midi.rescan(&self.audio.midi, &self.shared, move || ctx.request_repaint());
         }
         self.graph.update_midi(&self.audio.midi);
         let events = self.audio.midi.events();
@@ -618,6 +690,20 @@ impl AudioBoardApp {
         }
     }
 
+    /// The palette's plugin list, from what is known now.
+    fn refresh_plugins(&mut self) {
+        self.editor.plugins = plugin_entries(&self.plugin_catalog, &self.settings.plugins, &self.audio_units);
+    }
+
+    /// The Audio Units listed in the background at launch, once there.
+    fn take_au_scan(&mut self) {
+        if let Some(units) = self.au_scan.as_ref().and_then(|rx| rx.try_recv().ok()) {
+            self.au_scan = None;
+            self.audio_units = units;
+            self.refresh_plugins();
+        }
+    }
+
     /// Notes the category and maker of every plugin that has been loaded,
     /// so the palette can show them without loading plugins to list them.
     fn remember_plugins(&mut self) {
@@ -636,7 +722,7 @@ impl AudioBoardApp {
         }
         if changed {
             save_catalog(&self.plugin_catalog);
-            self.editor.plugins = plugin_entries(&self.plugin_catalog);
+            self.refresh_plugins();
         }
     }
 
@@ -668,14 +754,16 @@ impl AudioBoardApp {
             }
             ui.add_space(4.0);
             let doc = doc_button(ui, &self.doc.name(), self.doc.dirty);
-            if let Some(cmd) = egui::Popup::menu(&doc).show(file_menu).and_then(|r| r.inner) {
+            let recent = &self.settings.recent;
+            if let Some(cmd) = egui::Popup::menu(&doc).show(|ui| file_menu(ui, recent)).and_then(|r| r.inner) {
                 self.run_file_command(cmd, now);
             }
 
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
-                if transport_button(ui, self.running()).clicked() {
-                    self.toggle_running();
+                let following = self.following().is_some();
+                if transport_button(ui, self.running(), following).clicked() {
+                    self.transport_pressed(now);
                 }
                 ui.add_space(4.0);
                 let recording = self.recorder.recording();
@@ -695,7 +783,19 @@ impl AudioBoardApp {
                 let on_output = self.output_control(ui);
                 ui.add_space(6.0);
                 let beat = self.running().then(|| self.shared.beat.get());
-                let on_tempo = self.tempo.show(ui, &mut self.graph.tempo, beat, now) || on_output;
+                let on_tempo = match self.settings.sync.source.clone() {
+                    Some(source) => {
+                        let t = crate::audio::sync::now_ns();
+                        let clock = self.shared.sync.clock();
+                        let bpm = clock.alive(t).then(|| clock.bpm() as f32);
+                        if self.tempo.show_external(ui, bpm, beat, &source, now) {
+                            self.settings_window.open = true;
+                            self.settings_window.tab = super::settings::Tab::Sync;
+                        }
+                        on_output
+                    }
+                    None => self.tempo.show(ui, &mut self.graph.tempo, beat, now) || on_output,
+                };
                 // Dragging the BPM or the output (or selecting typed text)
                 // must not drag the window: the toolbar is also the title bar.
                 #[cfg(target_os = "macos")]
@@ -944,9 +1044,9 @@ impl eframe::App for AudioBoardApp {
         }
         if ui.memory(|m| m.focused().is_none()) {
             if ui.input(|i| i.key_pressed(Key::Space)) {
-                self.toggle_running();
+                self.transport_pressed(now);
             }
-            if ui.input(|i| i.key_pressed(Key::T) && !i.modifiers.any()) {
+            if ui.input(|i| i.key_pressed(Key::T) && !i.modifiers.any()) && self.following().is_none() {
                 self.tempo.tap(&mut self.graph.tempo, now);
             }
             if ui.input(|i| i.key_pressed(Key::R) && !i.modifiers.any()) {
@@ -991,8 +1091,28 @@ impl eframe::App for AudioBoardApp {
             self.notify(now, notice, false);
         }
         self.export_window(ui.ctx(), now);
-        if let Some(config) = self.settings_window.show(ui.ctx(), &self.audio, now, dt) {
-            self.apply_audio(config, now);
+        let cx = SettingsContext {
+            audio: &self.audio,
+            shared: &self.shared,
+            midi_inputs: self.midi.activity(),
+            midi_error: self.midi.error.as_deref(),
+            sync: &self.settings.sync,
+            clock_out: self.clock_out.connected(),
+            plugins: &self.settings.plugins,
+            plugin_counts: plugin_counts(&self.editor.plugins),
+        };
+        let changes = self.settings_window.show(ui.ctx(), &cx, now, dt);
+        for change in changes {
+            match change {
+                SettingsChange::Audio(config) => self.apply_audio(config, now),
+                SettingsChange::Sync(sync) => self.apply_sync(sync),
+                SettingsChange::Plugins(plugins) => {
+                    self.settings.plugins = plugins;
+                    save_settings(&self.settings);
+                    self.refresh_plugins();
+                }
+                SettingsChange::RescanPlugins => self.handle_request(super::canvas::Request::RescanPlugins, now),
+            }
         }
         self.keep_audio_in_step();
         if self.recorder.recording() {
@@ -1003,6 +1123,7 @@ impl eframe::App for AudioBoardApp {
         }
         self.graph.service_plugins(now);
         self.audio.collect_garbage();
+        self.take_au_scan();
         self.remember_plugins();
         self.track_document(ui, now);
 
@@ -1025,6 +1146,20 @@ impl AudioBoardApp {
         self.settings.audio = self.audio.config.clone();
         save_settings(&self.settings);
         self.keep_audio_in_step();
+    }
+
+    /// Follows the clock chosen in Settings → Sync and sends the board's to
+    /// the outputs chosen there; keeps the choice for the next launch.
+    fn apply_sync(&mut self, sync: SyncSettings) {
+        let was_following = self.settings.sync.source.is_some();
+        self.midi.set_sync_source(sync.source.clone(), &self.shared.sync);
+        self.clock_out.set_outputs(clock_outputs(&sync));
+        // Back to the board's own clock: stopped, at the start.
+        if was_following && sync.source.is_none() && self.running() {
+            self.toggle_running();
+        }
+        self.settings.sync = sync;
+        save_settings(&self.settings);
     }
 
     /// Every frame: the input open while an Audio In node (or the settings
@@ -1178,19 +1313,24 @@ fn doc_button(ui: &mut Ui, name: &str, dirty: bool) -> Response {
         .on_hover_text(if dirty { "Project · unsaved changes" } else { "Project" })
 }
 
-fn file_menu(ui: &mut Ui) -> Option<FileCommand> {
-    let mut picked = None;
-    let mut item = |label: &str, hint: &str, cmd: FileCommand| {
-        if menu_item(ui, label, hint) {
-            picked = Some(cmd);
+fn file_menu(ui: &mut Ui, recent: &[PathBuf]) -> Option<FileCommand> {
+    let item = |ui: &mut Ui, label: &str, hint: &str, cmd: FileCommand| {
+        menu_item(ui, label, hint).then(|| {
             ui.close();
-        }
+            cmd
+        })
     };
-    item("New project", "Cmd+N", FileCommand::New);
-    item("Open…", "Cmd+O", FileCommand::Open);
-    item("Save", "Cmd+S", FileCommand::Save);
-    item("Save as…", "Shift+Cmd+S", FileCommand::SaveAs);
-    picked
+    let mut picked = item(ui, "New project", "Cmd+N", FileCommand::New);
+    picked = picked.or(item(ui, "Open…", "Cmd+O", FileCommand::Open));
+    let submenu = ui.menu_button(RichText::new("Open Recent").color(theme::TEXT).size(12.5), |ui| recent::menu(ui, recent));
+    picked = picked.or(match submenu.inner.flatten() {
+        Some(recent::RecentPick::Open(path)) => Some(FileCommand::OpenRecent(path)),
+        Some(recent::RecentPick::Clear) => Some(FileCommand::ClearRecent),
+        None => None,
+    });
+    ui.separator();
+    picked = picked.or(item(ui, "Save", "Cmd+S", FileCommand::Save));
+    picked.or(item(ui, "Save as…", "Shift+Cmd+S", FileCommand::SaveAs))
 }
 
 fn logo(ui: &mut Ui) {
@@ -1338,8 +1478,9 @@ fn record_button(ui: &mut Ui, recording: bool, seconds: f64, now: f64) -> Respon
 }
 
 /// Start / Stop: a play triangle while stopped; while playing, a stop
-/// square on green.
-fn transport_button(ui: &mut Ui, playing: bool) -> Response {
+/// square on green. Following a MIDI clock it shows that clock's state,
+/// marked EXT.
+fn transport_button(ui: &mut Ui, playing: bool, external: bool) -> Response {
     let (rect, resp) = ui.allocate_exact_size(vec2(74.0, 24.0), Sense::CLICK);
     let p = ui.painter();
     let hot = resp.hovered();
@@ -1350,6 +1491,9 @@ fn transport_button(ui: &mut Ui, playing: bool) -> Response {
     };
     p.rect(rect, 12.0, fill, Stroke::new(1.0, border), StrokeKind::Inside);
     let c = pos2(rect.left() + 15.0, rect.center().y);
+    if external {
+        p.text(pos2(rect.right() - 10.0, rect.center().y), Align2::RIGHT_CENTER, "EXT", FontId::proportional(8.5), theme::ACCENT);
+    }
     if playing {
         p.rect_filled(Rect::from_center_size(c, vec2(7.0, 7.0)), 1.5, theme::METER_GREEN);
     } else {
@@ -1363,7 +1507,9 @@ fn transport_button(ui: &mut Ui, playing: bool) -> Response {
         FontId::proportional(11.5),
         theme::TEXT,
     );
-    resp.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(if playing {
+    resp.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(if external {
+        "The transport follows a MIDI clock: its Start and Stop (Settings → Sync)"
+    } else if playing {
         "Stop, and go back to the start (Space)"
     } else {
         "Play from the start (Space)"
@@ -1413,6 +1559,15 @@ pub(crate) struct AppSettings {
     /// The board's output level, dB.
     #[serde(default)]
     pub(crate) output_db: f32,
+    /// Open Recent: projects opened or saved, newest first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) recent: Vec<PathBuf>,
+    /// MIDI sync: the clock followed and the outputs the clock goes to.
+    #[serde(default)]
+    pub(crate) sync: SyncSettings,
+    /// Which plugins are listed (Audio Units, Apple's own).
+    #[serde(default)]
+    pub(crate) plugins: PluginSettings,
     /// Before the audio settings: the buffer size alone (read, then moved
     /// into `audio`).
     #[serde(default, skip_serializing)]
@@ -1489,11 +1644,32 @@ fn save_catalog(catalog: &BTreeMap<String, PluginInfo>) {
     }
 }
 
-/// Installed plugins, with what is known about each: what their first
-/// load told, else the maker named in the bundle's files.
-fn plugin_entries(catalog: &BTreeMap<String, PluginInfo>) -> Vec<PluginEntry> {
+/// The clock-out outputs: those chosen, but not the clock source itself
+/// (a device that sends clock and hears it back would loop).
+fn clock_outputs(sync: &SyncSettings) -> Vec<String> {
+    sync.clock_out.iter().filter(|o| sync.source.as_ref() != Some(*o)).cloned().collect()
+}
+
+fn plugin_counts(plugins: &[PluginEntry]) -> PluginCounts {
+    let mut c = PluginCounts::default();
+    for p in plugins {
+        match p.format {
+            Format::Vst3 => c.vst3 += 1,
+            Format::AudioUnit { v3 } => {
+                c.au += 1;
+                c.auv3 += v3 as usize;
+            }
+        }
+    }
+    c
+}
+
+/// Installed plugins, with what is known about each: for VST3, what their
+/// first load told, else the maker named in the bundle's files; Audio
+/// Units (if listed) as the system lists them. By name, VST3 first.
+fn plugin_entries(catalog: &BTreeMap<String, PluginInfo>, settings: &PluginSettings, audio_units: &[crate::audio::au::Listed]) -> Vec<PluginEntry> {
     use crate::audio::plugin::{bundle_name, bundle_vendor, clean_vendor};
-    crate::audio::plugin::scan()
+    let mut entries: Vec<PluginEntry> = crate::audio::plugin::scan()
         .into_iter()
         .map(|path| {
             let known = catalog.get(path.to_string_lossy().as_ref());
@@ -1507,9 +1683,28 @@ fn plugin_entries(catalog: &BTreeMap<String, PluginInfo>) -> Vec<PluginEntry> {
                 hint: known.map_or_else(|| "VST3".to_owned(), |k| k.category.clone()),
                 vendor,
                 path,
+                format: Format::Vst3,
             }
         })
-        .collect()
+        .collect();
+    if settings.audio_units {
+        let apple = u32::from_be_bytes(*b"appl");
+        for unit in audio_units {
+            if !settings.apple_units && unit.component.manufacturer == apple {
+                continue;
+            }
+            let format = Format::AudioUnit { v3: unit.v3 };
+            entries.push(PluginEntry {
+                path: unit.component.path(),
+                hint: format!("{} · {}", format.label(), plugin_node::category_label(unit.component.category())),
+                vendor: clean_vendor(&unit.vendor),
+                name: unit.name.clone(),
+                format,
+            });
+        }
+    }
+    entries.sort_by_key(|e| (e.name.to_lowercase(), e.format != Format::Vst3));
+    entries
 }
 
 #[cfg(test)]

@@ -37,6 +37,9 @@ pub struct Project {
     /// Beats per minute.
     #[serde(default = "default_tempo")]
     tempo: f32,
+    /// Stickers and background (with their images).
+    #[serde(default, skip_serializing_if = "crate::board::Board::is_default")]
+    board: crate::board::Board,
 }
 
 fn fader_unity() -> f32 {
@@ -117,7 +120,8 @@ enum KindData {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         target: Option<TargetData>,
     },
-    /// A VST3 plugin: where it lives and its complete state.
+    /// A plugin: where it lives (a VST3 bundle, or an Audio Unit's
+    /// pseudo-path) and its complete state.
     Plugin {
         path: String,
         /// The plugin's own state, base64.
@@ -295,6 +299,7 @@ fn snapshot_with(graph: &Graph, fresh: bool) -> Project {
         cables,
         modules,
         tempo: graph.tempo,
+        board: graph.board.clone(),
     }
 }
 
@@ -433,6 +438,7 @@ fn instantiate(
 pub fn restore(graph: &mut Graph, project: &Project, audio: &AudioHandle) -> usize {
     graph.clear(audio);
     graph.tempo = project.tempo.clamp(TEMPO_RANGE.0, TEMPO_RANGE.1);
+    graph.board = project.board.clone();
     let ids = instantiate(graph, &project.nodes, &project.cables, Vec2::ZERO, audio);
     for m in &project.modules {
         let members: Vec<NodeId> = m.members.iter().filter_map(|id| ids.get(id).copied()).collect();
@@ -558,10 +564,11 @@ impl Library {
 }
 
 /// A saved plugin path, or the plugin with the same bundle name in this
-/// machine's plugin folders.
+/// machine's plugin folders. Audio Units are kept as they are.
 fn locate_plugin(saved: &str) -> PathBuf {
     let path = PathBuf::from(saved);
-    if path.exists() {
+    // An Audio Unit is found by its component description, wherever it is.
+    if path.exists() || crate::audio::au::is_au_path(&path) {
         return path;
     }
     crate::audio::plugin::scan()

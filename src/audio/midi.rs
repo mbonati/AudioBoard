@@ -5,6 +5,9 @@
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering::Acquire, Ordering::Relaxed, Ordering::Release};
 use std::sync::{Arc, Mutex};
 
+use super::params::EngineShared;
+use super::sync::{ClockFollower, SyncShared, now_ns};
+
 /// Channel slots: 1..=16, plus 0 for "omni" (the latest event on any channel).
 pub const CHANNELS: usize = 17;
 
@@ -204,14 +207,38 @@ impl MidiState {
 }
 
 /// The clock and transport: timing clock, Start, Continue, Stop and the
-/// song position. Only the MIDI Looper follows them.
+/// song position. The MIDI Looper follows them from the stream; the board's
+/// transport follows them from one chosen input (see `sync`).
 pub fn is_clock(status: u8) -> bool {
     matches!(status, 0xF2 | 0xF8 | 0xFA | 0xFB | 0xFC)
 }
 
+/// One connected MIDI input.
+struct Input {
+    name: String,
+    /// Unique while the app runs: the sync source is picked by it.
+    id: u32,
+    _conn: midir::MidiInputConnection<()>,
+    /// Messages received: notes and controllers, and clock and transport.
+    events: Arc<AtomicU32>,
+    clock: Arc<AtomicU32>,
+}
+
+/// A MIDI input as the settings window shows it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct InputActivity {
+    pub name: String,
+    /// Messages so far (notes, controllers…), and clock messages so far.
+    pub events: u32,
+    pub clock: u32,
+}
+
 /// Open connections to every MIDI input on the system.
 pub struct MidiInputs {
-    connections: Vec<(String, midir::MidiInputConnection<()>)>,
+    connections: Vec<Input>,
+    next_id: u32,
+    /// The input followed as the transport's clock (by name), if any.
+    sync_source: Option<String>,
     pub error: Option<String>,
 }
 
@@ -219,17 +246,40 @@ impl MidiInputs {
     pub fn new() -> Self {
         Self {
             connections: Vec::new(),
+            next_id: 1,
+            sync_source: None,
             error: None,
         }
     }
 
     pub fn names(&self) -> impl Iterator<Item = &str> {
-        self.connections.iter().map(|(n, _)| n.as_str())
+        self.connections.iter().map(|c| c.name.as_str())
+    }
+
+    /// Every connected input with its message counts.
+    pub fn activity(&self) -> Vec<InputActivity> {
+        self.connections
+            .iter()
+            .map(|c| InputActivity { name: c.name.clone(), events: c.events.load(Relaxed), clock: c.clock.load(Relaxed) })
+            .collect()
+    }
+
+    /// Follows the clock of the input named `source` (None: the board's
+    /// own transport). An input that isn't connected is followed once it is.
+    pub fn set_sync_source(&mut self, source: Option<String>, sync: &SyncShared) {
+        self.sync_source = source;
+        self.update_source(sync);
+    }
+
+    fn update_source(&self, sync: &SyncShared) {
+        let id = self.sync_source.as_ref().and_then(|s| self.connections.iter().find(|c| c.name == *s)).map_or(0, |c| c.id);
+        sync.source.store(id, Relaxed);
+        sync.follow.store(self.sync_source.is_some(), Relaxed);
     }
 
     /// Connects to inputs that appeared and drops those that went away.
-    /// `wake` runs on the MIDI thread after each message.
-    pub fn rescan(&mut self, state: &Arc<MidiState>, wake: impl Fn() + Send + Clone + 'static) {
+    /// `wake` runs on the MIDI thread after each message (not the clock).
+    pub fn rescan(&mut self, state: &Arc<MidiState>, shared: &Arc<EngineShared>, wake: impl Fn() + Send + Clone + 'static) {
         let probe = match midir::MidiInput::new("AudioBoard") {
             Ok(m) => m,
             Err(e) => {
@@ -239,32 +289,44 @@ impl MidiInputs {
         };
         self.error = None;
         let present: Vec<String> = probe.ports().iter().filter_map(|p| probe.port_name(p).ok()).collect();
-        self.connections.retain(|(name, _)| present.contains(name));
+        self.connections.retain(|c| present.contains(&c.name));
 
         for name in present {
-            if self.connections.iter().any(|(n, _)| *n == name) {
+            if self.connections.iter().any(|c| c.name == name) {
                 continue;
             }
             let Ok(mut input) = midir::MidiInput::new("AudioBoard") else {
                 continue;
             };
-            // The clock and transport come through (for the looper).
+            // The clock and transport come through (for the looper and sync).
             input.ignore(midir::Ignore::SysexAndActiveSense);
             let Some(port) = input.ports().into_iter().find(|p| input.port_name(p).ok().as_ref() == Some(&name)) else {
                 continue;
             };
-            let (state, wake) = (state.clone(), wake.clone());
+            let id = self.next_id;
+            let (events, clock) = (Arc::new(AtomicU32::new(0)), Arc::new(AtomicU32::new(0)));
+            let (state, shared, wake) = (state.clone(), shared.clone(), wake.clone());
+            let (events_in, clock_in) = (events.clone(), clock.clone());
+            let mut follower = ClockFollower::new();
             let callback = move |_: u64, msg: &[u8], _: &mut ()| {
                 state.handle(msg);
-                // A clock ticks 48 times a second at 120 BPM: no reason to
-                // redraw.
-                if !msg.first().is_some_and(|&s| is_clock(s)) {
+                if msg.first().is_some_and(|&s| is_clock(s)) {
+                    clock_in.fetch_add(1, Relaxed);
+                    if shared.sync.source.load(Relaxed) == id {
+                        follower.handle(msg, now_ns(), &shared.sync);
+                    }
+                    // A clock ticks 48 times a second at 120 BPM: no reason
+                    // to redraw.
+                } else {
+                    events_in.fetch_add(1, Relaxed);
                     wake();
                 }
             };
             if let Ok(conn) = input.connect(&port, "AudioBoard in", callback, ()) {
-                self.connections.push((name, conn));
+                self.next_id += 1;
+                self.connections.push(Input { name, id, _conn: conn, events, clock });
             }
         }
+        self.update_source(&shared.sync);
     }
 }

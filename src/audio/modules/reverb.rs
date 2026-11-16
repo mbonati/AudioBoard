@@ -224,11 +224,19 @@ impl Processor for Reverb {
         let mut peak = 0.0f32;
         // The effect's own signal, for resting.
         let mut inner = 0.0f32;
+        // The lines' lengths and the dry/wet gains, worked out again only
+        // when SIZE or MIX move.
+        let (mut lens_scale, mut lens) = (f32::NAN, [0.0f32; LINES]);
+        let (mut gains_mix, mut dry_g, mut wet_g) = (f32::NAN, 0.0, 0.0);
         for i in 0..n {
             approach(&mut self.size, size_t, self.size_glide);
             approach(&mut self.mix, mix_t, ctx.smooth);
             approach(&mut self.feed, feed_t, ctx.smooth);
             let scale = size_scale(self.size);
+            if scale != lens_scale {
+                lens_scale = scale;
+                lens = std::array::from_fn(|k| LINE_MS[k] * scale * ms);
+            }
 
             let (dry_l, dry_r) = match input {
                 Some(b) => (b[0][i], b[1][i]),
@@ -251,8 +259,7 @@ impl Processor for Reverb {
                 let (c, s) = self.lfo[k];
                 let (rc, rs) = self.lfo_rot[k];
                 self.lfo[k] = (c * rc - s * rs, s * rc + c * rs);
-                let len = LINE_MS[k] * scale * ms;
-                taps[k] = self.lines[k].tap(len + mod_depth * s - 1.0);
+                taps[k] = self.lines[k].tap(lens[k] + mod_depth * s - 1.0);
                 self.damp[k] += damp_a * (taps[k] - self.damp[k]);
                 v[k] = self.damp[k] * gains[k];
             }
@@ -277,10 +284,13 @@ impl Processor for Reverb {
                 self.shifter.line.push(0.5 * (wet_l + wet_r));
             }
 
-            let (dry_g, wet_g) = mix_gains(self.mix);
-            let wet_g = wet_g * wet_trim;
-            let yl = soft_limit(dry_l * dry_g + wet_l * wet_g);
-            let yr = soft_limit(dry_r * dry_g + wet_r * wet_g);
+            if self.mix != gains_mix {
+                gains_mix = self.mix;
+                (dry_g, wet_g) = mix_gains(self.mix);
+            }
+            let wet = wet_g * wet_trim;
+            let yl = soft_limit(dry_l * dry_g + wet_l * wet);
+            let yr = soft_limit(dry_r * dry_g + wet_r * wet);
             outputs[0][0][i] = yl;
             outputs[0][1][i] = yr;
             peak = peak.max(yl.abs()).max(yr.abs());
