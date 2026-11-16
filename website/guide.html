@@ -4,13 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Guide · AudioBoard</title>
-<meta name="description" content="Build and run AudioBoard, patch your first sounds, and learn the controls, audio settings, recording, projects and library.">
+<meta name="description" content="Build and run AudioBoard, patch your first sounds, and learn the controls, MIDI sync, settings, stickers and backgrounds, the Iris visuals, recording, projects and library.">
 <meta name="theme-color" content="#141518">
 <script>document.documentElement.classList.add("js")</script>
 <link rel="icon" href="assets/img/logo.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&family=Unbounded:wght@500;600;700;800&display=swap">
+<link rel="preconnect" href="https://cdn.fontshare.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="assets/css/fonts.css">
 <link rel="stylesheet" href="assets/css/site.css">
 </head>
 <body>
@@ -35,7 +37,7 @@
   <div class="wrap">
     <span class="label">Guide</span>
     <h1>From <span class="outline" style="--accent: var(--green)">cargo run</span> to a living patch.</h1>
-    <p class="lead">Build the app, hear the demo, then learn the board: patching, the transport, every gesture, audio devices, recording and the module library.</p>
+    <p class="lead">Build the app, hear the demo, then learn the board: patching, the transport and MIDI sync, every gesture, the settings, stickers and backgrounds, the Iris visuals, recording and the module library.</p>
   </div>
 </section>
 
@@ -50,7 +52,9 @@
     <a href="#modules">Modules</a>
     <a href="#layout">Auto layout and zoom</a>
     <a href="#palette">Palette</a>
-    <a href="#audio">Audio settings</a>
+    <a href="#board">Stickers and background</a>
+    <a href="#iris">Visuals: Iris</a>
+    <a href="#settings">Settings</a>
     <a href="#load">Buffer, load, limiter</a>
     <a href="#record">Recording and export</a>
     <a href="#projects">Projects and library</a>
@@ -60,7 +64,7 @@
   <article class="prose">
     <section id="run">
       <h2><span class="n">01</span>Build and run</h2>
-      <p>AudioBoard is a native Rust application: egui and eframe for the interface, cpal for audio, midir for MIDI and vst3-host for plugins. With a Rust toolchain installed, run it from the repository:</p>
+      <p>AudioBoard is a native Rust application: egui and eframe for the interface, cpal for audio, midir for MIDI, vst3-host for VST3 plugins and a small Objective-C host for Audio Units (built on macOS by <code>build.rs</code>). With a Rust toolchain installed, run it from the repository:</p>
       <div class="code"><div class="code-head"><span class="label">Run</span><button class="copy" data-copy="cargo run --release">Copy</button></div><pre><span class="p">$ </span>cargo run --release</pre></div>
       <p>For playing large patches, use the most optimized build: whole-program optimization gives about 10–15% less audio CPU, for a few minutes of compiling.</p>
       <div class="code"><div class="code-head"><span class="label">Fastest build</span><button class="copy" data-copy="cargo run --profile dist">Copy</button></div><pre><span class="p">$ </span>cargo run --profile dist</pre></div>
@@ -87,13 +91,26 @@
         <li>Connections that would create a feedback loop are refused. Feedback lives inside nodes (Delay, Reverb, Larsen).</li>
         <li>Unplugging a MIDI cable, or deleting the node feeding it, sends note-offs for the notes still sounding, so no notes hang.</li>
       </ul>
-      <p>Resting the pointer on a node for a moment shows a small label with its type (“Reverb · hall · shimmer · freeze”), since titles can be renamed. Right-click (or Ctrl+click) opens the menu for whatever is under the pointer: canvas, node, module or cable.</p>
+      <p>Resting the pointer on a node for a moment shows a small label with its type (“Reverb · hall · shimmer · freeze”, “AUv3 instrument” for an Audio Unit), since titles can be renamed. Right-click (or Ctrl+click) opens the menu for whatever is under the pointer: canvas, node, module or cable. Its first line says what it acts on: “4 nodes selected”, or the node's or module's name.</p>
+      <ul>
+        <li>Right-clicking something already selected keeps the whole selection, and the menu acts on all of it. Right-clicking something not selected selects it alone; with <kbd>Shift</kbd> (or <kbd>Cmd</kbd>) held, it joins the selection.</li>
+        <li>Menus never lose the selection by themselves: the click (or <kbd>Esc</kbd>) that closes a menu does only that, and a right drag only moves the view.</li>
+        <li>With a selection, the canvas menu starts with <strong>Make module from selection</strong> and <strong>Deselect</strong>.</li>
+      </ul>
+      <p><strong>Selection bar.</strong> While two or more nodes are selected, a small bar floats above them with the count and <strong>Make module</strong>, <strong>Collapse</strong> (or Expand), <strong>Duplicate</strong> and <strong>Delete</strong>, so a module can be made without any menu. It keeps its size at any zoom and hides while you drag, draw a selection rectangle or rename.</p>
     </section>
 
     <section id="transport">
       <h2><span class="n">04</span>Transport and tempo</h2>
       <p><strong>Start / Stop</strong> (the toolbar, or <kbd>Space</kbd>) drive the transport, not the audio. Stop ends the sound's generation but lets it die away: sequencers, arpeggiators, MIDIcer, Automa and Colloid end the notes they were holding, oscillators and Drones fade out in a few milliseconds, while effects and plugins keep running so their tails ring on. Stop also goes back to the start: the next Start begins every node from its first step. The MIDI keyboard keeps playing plugins while stopped.</p>
       <p>The <strong>tempo</strong> is global: the <strong>BPM</strong> field in the toolbar. Drag it (Shift for fine steps), click it to type a value (“97,5” works too), Alt+click to go back to 90. <strong>TAP</strong> (or <kbd>T</kbd>) sets it from your taps; a pause of two seconds starts a new count. Sequencers and arpeggiators are locked to the same grid, and the tempo is passed to plugins for their synced LFOs and delays.</p>
+      <p><strong>External MIDI sync.</strong> In <strong>Settings → Sync</strong> the transport can follow a <strong>MIDI clock</strong> from one of the MIDI inputs (a drum machine, a DAW, a hardware sequencer) instead of keeping its own time:</p>
+      <ul>
+        <li>The tempo follows the clock's 24 ticks a beat, smoothed over the last beat of ticks, and a jump to a new tempo is caught within two ticks.</li>
+        <li><strong>Start</strong> plays from the top, <strong>Stop</strong> holds the position, <strong>Continue</strong> plays on, and the <strong>song position</strong> moves the board to the clock's place. The board's beat is steered onto the clock's, one audio buffer ahead, so what you hear lands on its beat.</li>
+        <li>While it follows, the toolbar shows the clock's tempo next to <strong>SYNC</strong>, the BPM field and TAP are locked, and the transport button shows <strong>EXT</strong>. If the clock stops ticking, the transport stops; the project's own tempo is never changed.</li>
+      </ul>
+      <p>The board can also <strong>send its clock</strong> to MIDI outputs (Settings → Sync → Send clock, one switch per output): 24 ticks a beat at the board's tempo, Start, Stop, and the song position with Continue. Ticks leave when their beat is heard. Following a clock and sending one relays it, skipping the source's own output so the clock can't loop.</p>
     </section>
 
     <section id="controls">
@@ -107,12 +124,12 @@
             <tr><td>Reconnect / unplug a cable</td><td>Drag it away from the input it is plugged into</td></tr>
             <tr><td>Delete a cable</td><td>Double-click it, or right-click → Disconnect</td></tr>
             <tr><td>Adjust knobs and faders</td><td>Drag (<kbd>Shift</kbd> for fine), double-click to reset. Stepped knobs step on smoothly however slowly you drag</td></tr>
-            <tr><td>Select several nodes</td><td>Drag a rectangle on empty canvas, or <kbd>Shift</kbd>+click (<kbd>Cmd</kbd>+<kbd>A</kbd> all, <kbd>Esc</kbd> none)</td></tr>
-            <tr><td>Move the view</td><td>Two-finger scroll, drag with the right or middle button, or <kbd>Alt</kbd>+drag</td></tr>
+            <tr><td>Select several nodes</td><td>Drag a rectangle on empty canvas, or <kbd>Shift</kbd>+click (<kbd>Cmd</kbd>+<kbd>A</kbd> all, <kbd>Esc</kbd> none); <kbd>Shift</kbd>+click a module's header or card adds or removes the whole module; <kbd>Shift</kbd>+right-click adds what is under the pointer and opens its menu</td></tr>
+            <tr><td>Move the view</td><td>Two-finger scroll, drag with the right or middle button (also starting on a node or a module), or <kbd>Alt</kbd>+drag</td></tr>
             <tr><td>Zoom</td><td>Pinch or <kbd>Cmd</kbd>+scroll; <kbd>Cmd</kbd>+<kbd>=</kbd> / <kbd>Cmd</kbd>+<kbd>−</kbd> / <kbd>Cmd</kbd>+<kbd>0</kbd>; or click the percentage in the status bar</td></tr>
             <tr><td>Move / delete / duplicate the selection</td><td>Drag a selected node / <kbd>Del</kbd> / <kbd>Cmd</kbd>+<kbd>D</kbd> (inner cables are copied)</td></tr>
             <tr><td>Delete a node</td><td>The × in its header, <kbd>Del</kbd>, or right-click → Delete; AudioBoard asks first, since deleting can't be undone</td></tr>
-            <tr><td>Make a module from the selection</td><td><kbd>Cmd</kbd>+<kbd>G</kbd>, or right-click → Make module</td></tr>
+            <tr><td>Make a module from the selection</td><td><strong>Make module</strong> on the selection bar, <kbd>Cmd</kbd>+<kbd>G</kbd>, or right-click → Make module</td></tr>
             <tr><td>Rename a module</td><td><kbd>Enter</kbd> or <kbd>F2</kbd> with it selected, or right-click → Rename…</td></tr>
             <tr><td>Dissolve a module</td><td><kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd>, the × in its header, or right-click → Ungroup</td></tr>
             <tr><td>Collapse / expand a node or module</td><td>The arrow in the header, double-click the title, <kbd>C</kbd>, or right-click → Collapse</td></tr>
@@ -122,10 +139,12 @@
             <tr><td>Zoom in on one node</td><td><kbd>Z</kbd> over it, or right-click → Zoom to node; <kbd>Z</kbd> or <kbd>Esc</kbd> goes back</td></tr>
             <tr><td>Auto layout</td><td><kbd>L</kbd>, the toolbar button or right-click the canvas; <kbd>Cmd</kbd>+<kbd>Z</kbd> undoes it</td></tr>
             <tr><td>Auto-fit (keep the whole patch in view)</td><td><kbd>A</kbd> or the toolbar button</td></tr>
-            <tr><td>New / open project</td><td><kbd>Cmd</kbd>+<kbd>N</kbd> / <kbd>Cmd</kbd>+<kbd>O</kbd>, or the project name in the toolbar</td></tr>
+            <tr><td>Resize an Iris</td><td>Drag the grip in its bottom right corner (<kbd>Shift</kbd> keeps the shape); the gear opens its settings</td></tr>
+            <tr><td>Add a sticker / change the background</td><td>Right-click empty canvas → Stickers ▸ / Background ▸, or drag image files onto the canvas</td></tr>
+            <tr><td>New / open project</td><td><kbd>Cmd</kbd>+<kbd>N</kbd> / <kbd>Cmd</kbd>+<kbd>O</kbd>, or the project name in the toolbar (Open Recent lists the last ten)</td></tr>
             <tr><td>Save / save as</td><td><kbd>Cmd</kbd>+<kbd>S</kbd> / <kbd>Shift</kbd>+<kbd>Cmd</kbd>+<kbd>S</kbd></td></tr>
             <tr><td>Start / stop</td><td>The toolbar button, or <kbd>Space</kbd></td></tr>
-            <tr><td>Audio settings</td><td><kbd>Cmd</kbd>+<kbd>,</kbd>, the sliders button in the toolbar, or the device name</td></tr>
+            <tr><td>Settings (audio, MIDI, sync, plugins)</td><td><kbd>Cmd</kbd>+<kbd>,</kbd>, the sliders button in the toolbar, or the device name</td></tr>
             <tr><td>Record / stop recording</td><td>REC in the toolbar, or <kbd>R</kbd>; stopping opens the export</td></tr>
             <tr><td>Tempo</td><td>Drag the BPM field, click it to type, TAP or <kbd>T</kbd></td></tr>
             <tr><td>Oscilloscope and spectrum</td><td>The panel button in the toolbar</td></tr>
@@ -137,7 +156,8 @@
 
     <section id="modules">
       <h2><span class="n">06</span>Modules</h2>
-      <p>A <strong>module</strong> groups several nodes into one, to move, collapse and duplicate them together. Select nodes and press <kbd>Cmd</kbd>+<kbd>G</kbd>; rename it right in the header with <kbd>Enter</kbd>.</p>
+      <p>A <strong>module</strong> groups several nodes into one, to move, collapse and duplicate them together. Select nodes and click <strong>Make module</strong> on the selection bar (or press <kbd>Cmd</kbd>+<kbd>G</kbd>); rename it right in the header with <kbd>Enter</kbd>.</p>
+      <p>Modules grow by merging: select a module (click its header or card), <kbd>Shift</kbd>+click more nodes or other modules, then Make module. The new module holds them all, and the modules it took in dissolve into it, since a node belongs to one module only.</p>
       <ul>
         <li><strong>Expanded</strong>: a frame around the nodes, which stay editable in place. Dragging the header moves the whole module.</li>
         <li><strong>Collapsed</strong>: a single card showing only the boundary ports, such as <code>DRONE 1 · PITCH</code> or <code>FILTER 1 · OUT</code>. External cables attach to the card.</li>
@@ -154,23 +174,58 @@
 
     <section id="palette">
       <h2><span class="n">08</span>Palette</h2>
-      <p>The panel on the left lists all nodes by category and the library modules, with a search field. Click a category's heading to fold it; while searching, every category with matches opens. Drag an entry onto the canvas (an outline shows where it lands), or click it to add it in the middle of the view. Installed VST3 plugins are grouped by maker, and the search matches makers too.</p>
+      <p>The panel on the left lists all nodes by category and the library modules, with a search field. Click a category's heading to fold it; while searching, every category with matches opens. Drag an entry onto the canvas (an outline shows where it lands), or click it to add it in the middle of the view. Installed plugins, VST3 and Audio Units (AUv3 and AU), are grouped by maker, and the search matches makers too.</p>
     </section>
 
-    <section id="audio">
-      <h2><span class="n">09</span>Audio settings</h2>
-      <p><strong>Settings</strong> (<kbd>Cmd</kbd>+<kbd>,</kbd>) chooses the sound card. Every change applies at once and is kept between launches.</p>
+    <section id="board">
+      <h2><span class="n">09</span>Stickers and background</h2>
+      <figure>
+        <img src="assets/shots/patch-board-1x.png" srcset="assets/shots/patch-board-1x.png 2000w, assets/shots/patch-board.png 4000w" sizes="(max-width: 900px) 100vw, 820px" width="2000" height="1000" loading="lazy" alt="The demo patch on the Blueprint background, with stickers around it: AMBIENT and DRONE tags, a rain cloud, a moon, a vinyl record, a sparkle and a cassette." data-zoom="assets/shots/patch-board.png" data-title="Stickers and background">
+        <figcaption>The demo patch on Blueprint, with built-in stickers and two of the example SVGs</figcaption>
+      </figure>
+      <p>Make the board your own with <strong>stickers</strong> and a different <strong>background</strong>, both from the right-click menu on empty canvas (<strong>Stickers ▸</strong> and <strong>Background ▸</strong>). They are saved with the project, images included, so it opens looking the same on another computer.</p>
+      <ul>
+        <li><strong>Built-in stickers</strong>: fourteen designs (wave, moon, cassette, knob, bolt, mushroom, planet, heart, sparkle, headphones, speaker, leaf, sun, eye) and six tags (AMBIENT, DRONE, LOOP, LIVE, WIP, NO INPUT), flat line art in the board's colours, sharp at any zoom.</li>
+        <li><strong>Image stickers</strong>: <strong>PNG</strong> with its transparent background, <strong>JPG</strong>, <strong>SVG</strong> (and WebP). Add them with <strong>Image file…</strong>, or drag files from the Finder onto the canvas. An SVG stays a vector, drawn again at the size it is shown; PNG and JPG are shrunk to 1024 pixels if larger. Images in the stickers folder (<code>~/Library/Application Support/AudioBoard/Stickers</code>) are listed in the menu, and <strong>Example files</strong> adds the four SVGs in <code>assets/stickers</code>.</li>
+        <li><strong>Moving and shaping</strong>: drag a sticker to move it; click it to select it, then drag the square handle to resize it or the round one to rotate it (<kbd>Shift</kbd>: 15° steps). <kbd>Del</kbd> deletes it, <kbd>Esc</kbd> lets it go.</li>
+        <li><strong>Its menu</strong> (right-click a sticker): Bring to front, Send to back, Rotate, Straighten, Duplicate, <strong>Lock</strong> and Delete. A locked sticker lets clicks through, so selecting and panning work over it.</li>
+      </ul>
+      <p>Stickers sit behind modules, cables and nodes, so they never get in the way of patching. The <strong>background</strong> has eight presets, each a colour and a grid: Graphite (the usual), Dots, Blueprint, Night, Moss, Ember, Plum and Plain. <strong>Image…</strong> puts a picture (PNG, JPG, SVG) behind the board, filling the view without stretching; <strong>Veil</strong> sets how much the preset's colour covers it, so nodes stay readable, and <strong>Grid</strong> shows or hides the grid.</p>
+    </section>
+
+    <section id="iris">
+      <h2><span class="n">10</span>Visuals: Iris</h2>
+      <figure>
+        <img src="assets/shots/iris-ui-1x.png" srcset="assets/shots/iris-ui-1x.png 1380w, assets/shots/iris-ui.png 2760w" sizes="(max-width: 900px) 100vw, 820px" width="1380" height="650" loading="lazy" alt="A Drone patched into Iris, which shows its Mandala scene; the settings popup is open beside the node, with the scenes, the source, the palettes and the motion sliders." data-zoom="assets/shots/iris-ui.png" data-title="Iris and its settings">
+        <figcaption>Iris following a Drone on its IN, with its settings open beside it</figcaption>
+      </figure>
+      <p><strong>Iris</strong> (in the <strong>Visual</strong> group) is a screen on the board where visuals react to the sound. Patch a node into its <strong>IN</strong> and it follows that node only; with IN free it follows the <strong>main mix</strong>, everything the board plays. The settings can force either one (<strong>Auto</strong>, <strong>IN</strong>, <strong>Main mix</strong>). <strong>THRU</strong> passes the sound on unchanged, so Iris can sit inside a chain.</p>
+      <ul>
+        <li><strong>Move and resize</strong>: drag the picture to move the node; while the pointer is over it, a grip appears in the bottom right corner: drag it to resize the screen (<kbd>Shift</kbd> keeps its shape). The scene's name shows at the top left.</li>
+        <li><strong>Settings</strong>: the gear at the top right opens them in a popup <em>beside</em> the node, so the picture stays in view: the scene (fourteen: geometric, mathematical, generative), Auto, IN or Main mix, seven palettes, React, Speed, Detail, Smooth, Trail, a new scene every 1 to 16 bars, the screen's shape and a new seed.</li>
+        <li><strong>Open in a window</strong>: the picture in a window of its own, for a second display or a projector. Double-click it for full screen; <kbd>Esc</kbd> leaves full screen, then closes it. It keeps playing when the node is off the view.</li>
+      </ul>
+      <p>Every scene is in the <a href="nodes.html#node-iris">catalogue</a>, with a picture of each.</p>
+    </section>
+
+    <section id="settings">
+      <h2><span class="n">11</span>Settings</h2>
+      <p><strong>Settings</strong> (<kbd>Cmd</kbd>+<kbd>,</kbd>, the sliders button in the toolbar, or the device name) has four tabs down its left side: <strong>Audio</strong>, <strong>MIDI</strong>, <strong>Sync</strong> and <strong>Plugins</strong>. Each is made of titled cards of rows, with a status line under them, green when all is well. Every change applies at once and is kept between launches.</p>
+      <p><strong>Audio</strong> chooses the sound card:</p>
       <ul>
         <li><strong>Output device</strong>: the system default (following the Mac's choice) or a specific interface; a device missing at launch falls back to the default.</li>
         <li><strong>Channels</strong>: the pair the board plays on (1–2, 3–4…), for interfaces with more outputs.</li>
-        <li><strong>Sample rate</strong>: the device's own, or 44.1 to 192 kHz. A new rate builds every node again; the patch, its settings and cables stay.</li>
-        <li><strong>Input</strong>: off, the system default, or a specific device, running at the output's rate. Input and output can be different devices, kept in step by a buffer of cushion; the same interface for both avoids tiny gaps when their clocks drift.</li>
-        <li><strong>Audio system</strong>: shown when the platform has more than one (CoreAudio, JACK…). <strong>Refresh devices</strong> reads the list again.</li>
+        <li><strong>Sample rate</strong>: the device's own, or 44.1 to 192 kHz. A new rate builds every node again; the patch, its settings and cables stay. <strong>Buffer size</strong>: see below.</li>
+        <li><strong>Input</strong>: off, the system default, or a specific device, running at the output's rate, with a meter per channel while the window is open. Input and output can be different devices, kept in step by a buffer of cushion; the same interface for both avoids tiny gaps when their clocks drift.</li>
+        <li><strong>Audio system</strong>: shown when the platform has more than one (CoreAudio, JACK…). <strong>Refresh devices</strong> reads the list again; it also refreshes itself every few seconds while the window is open.</li>
       </ul>
+      <p><strong>MIDI</strong> lists the inputs connected (all are used, and one plugged in is picked up within seconds), each with a <strong>notes</strong> light and a <strong>clock</strong> light; the one followed as the clock is marked SYNC SOURCE.</p>
+      <p><strong>Sync</strong> chooses the transport's clock, <strong>Internal</strong> or <strong>MIDI clock</strong> from one of the inputs, with a status line for the tempo received and where it plays; <strong>Send clock</strong> has a switch for each MIDI output (see <a href="#transport">Transport and tempo</a>).</p>
+      <p><strong>Plugins</strong> shows the VST3 folders and how many plugins they hold, switches for listing Audio Units and Apple's own, and <strong>Rescan plugins</strong>.</p>
     </section>
 
     <section id="load">
-      <h2><span class="n">10</span>Buffer, load and limiter</h2>
+      <h2><span class="n">12</span>Buffer, load and limiter</h2>
       <p>The status bar shows the audio buffer in samples and its latency (“512 smp · 10.7 ms”): click it to choose another size, as in a DAW. Larger buffers give heavy patches and plugins more headroom; smaller ones respond faster. Changing it keeps the patch playing.</p>
       <p><strong>DSP</strong> is the average load and <strong>peak</strong> the heaviest callback of the last seconds. Near 100% the audio can't keep up, and a red <strong>dropouts</strong> counter appears: try a larger buffer.</p>
       <p>The output goes through a safety <strong>limiter</strong> just under full scale (−0.3 dBFS) with 1.3 ms of lookahead: a loud sum is turned down smoothly instead of clipping into crackles, and the status bar shows “limit −x dB”. <strong>OUT</strong> in the toolbar sets the overall level from −24 to +12 dB, before the limiter.</p>
@@ -178,7 +233,7 @@
     </section>
 
     <section id="record">
-      <h2><span class="n">11</span>Recording and export</h2>
+      <h2><span class="n">13</span>Recording and export</h2>
       <p><strong>REC</strong> in the toolbar (or <kbd>R</kbd>) records what the board plays: the device's output after the limiter, exactly what you hear. The take goes straight to a temporary file, so it can be as long as you like. <kbd>R</kbd> again stops and opens <strong>Export recording</strong>, with the take's length, rate and peak.</p>
       <div class="formats">
         <div><b>WAV</b><span>24-bit · 16-bit (TPDF dither) · 32-bit float</span></div>
@@ -193,15 +248,18 @@
     </section>
 
     <section id="projects">
-      <h2><span class="n">12</span>Projects and library</h2>
-      <p>The project name in the toolbar opens the File menu. A dot next to the name, and “(edited)” in the window title, flag unsaved changes; AudioBoard asks before discarding them. A project (<code>.audioboard</code>) is a JSON file with nodes and parameters, positions, colours, collapsed nodes, cables and modules; parameters are saved by name.</p>
+      <h2><span class="n">14</span>Projects and library</h2>
+      <p>The project name in the toolbar opens the File menu: New project, Open…, <strong>Open Recent</strong>, Save, Save as…. Open Recent lists the last ten projects opened or saved, newest first, with their folder, and is kept between launches; a project that is no longer there is greyed out, and <strong>Clear menu</strong> empties the list.</p>
+      <p>A dot next to the name, and “(edited)” in the window title, flag unsaved changes; AudioBoard asks before discarding them. A project (<code>.audioboard</code>) is a JSON file with nodes and parameters, positions, colours, collapsed nodes, cables and modules, and the board's stickers and background (images inside, base64); parameters are saved by name.</p>
       <p><strong>Module library.</strong> Right-click a module's header → <strong>Save to library</strong>. Saved modules appear in the Library section of the palette and of the right-click menu: inserting one adds the nodes, their cables and settings as a new module, already collapsed to a card. <strong>Open library folder</strong> opens the folder of <code>.abmodule</code> files (<code>~/Library/Application Support/AudioBoard/Library</code> on macOS), handy for sharing them.</p>
       <p>Named presets of Nullpunkt, Aether, Larsen and Vesper are kept in the app's data folder too, so every project sees them.</p>
     </section>
 
     <section id="tests">
-      <h2><span class="n">13</span>Tests</h2>
+      <h2><span class="n">15</span>Tests</h2>
       <div class="code"><div class="code-head"><span class="label">Tests</span><button class="copy" data-copy="cargo test">Copy</button></div><pre><span class="p">$ </span>cargo test</pre></div>
+      <p>Loading and playing real Audio Units (Apple's, always installed, and a few others found on the Mac) is a test of its own, not run by default:</p>
+      <div class="code"><div class="code-head"><span class="label">Audio Units</span><button class="copy" data-copy="cargo test -- --ignored audio_units_load_and_play --nocapture">Copy</button></div><pre><span class="p">$ </span>cargo test -- --ignored audio_units_load_and_play --nocapture</pre></div>
       <p>Benchmarks (audio per module, large patches, UI frames, auto layout) don't run with the normal tests:</p>
       <div class="code"><div class="code-head"><span class="label">Benchmarks</span><button class="copy" data-copy="cargo test --release perf -- --ignored --nocapture --test-threads=1">Copy</button></div><pre><span class="p">$ </span>cargo test --release perf -- --ignored --nocapture --test-threads=1</pre></div>
       <p style="margin-top: 28px"><a class="btn ghost" href="architecture.html" style="--c: var(--blue)">How it works inside →</a></p>

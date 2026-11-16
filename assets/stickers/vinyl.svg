@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <!-- A record: line art on a transparent background. -->
+  <circle cx="100" cy="100" r="88" fill="#1d1e23" stroke="#9e8ae6" stroke-width="6"/>
+  <circle cx="100" cy="100" r="70" fill="none" stroke="#9e8ae6" stroke-opacity="0.45" stroke-width="3"/>
+  <circle cx="100" cy="100" r="56" fill="none" stroke="#9e8ae6" stroke-opacity="0.45" stroke-width="3"/>
+  <path d="M 58 62 A 56 56 0 0 1 100 44" fill="none" stroke="#e2e4e8" stroke-opacity="0.6" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="100" cy="100" r="30" fill="#e48e58"/>
+  <circle cx="100" cy="100" r="6" fill="#1d1e23"/>
+</svg>

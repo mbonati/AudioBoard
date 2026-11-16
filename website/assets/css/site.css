@@ -30,8 +30,8 @@
 
   --accent: var(--blue);
 
-  --display: "Unbounded", "SF Pro Display", system-ui, sans-serif;
-  --body: "Space Grotesk", "SF Pro Text", system-ui, sans-serif;
+  --display: "Chillax", "SF Pro Display", system-ui, sans-serif;
+  --body: "Chillax", "SF Pro Text", system-ui, sans-serif;
   --mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
 
   --radius: 8px;
@@ -555,6 +555,9 @@ dialog.inspector::backdrop { background: color-mix(in srgb, var(--bg) 88%, trans
 .inspector .in-body.noshot { grid-template-columns: 1fr; }
 .inspector .in-shot img { width: 100%; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); cursor: zoom-in; }
 .inspector .in-shot .extra { display: grid; gap: 12px; margin-top: 12px; }
+.inspector .in-shot .extra.many { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.inspector .in-shot .extra.many figure { margin: 0; }
+.inspector .in-shot .extra.many figcaption { font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; color: var(--dim); margin-top: 4px; }
 .inspector h2 { font-size: clamp(30px, 4vw, 48px); font-weight: 800; letter-spacing: -0.035em; margin: 6px 0 12px; }
 .inspector .in-text > p { color: var(--dim); }
 .inspector .in-text ul { padding-left: 0; list-style: none; display: grid; gap: 10px; margin: 16px 0 0; }
@@ -650,3 +653,13 @@ figure.window { margin-left: 0; margin-right: 0; margin-bottom: 0; }
 .card .thumb img { width: 100%; height: 100%; min-height: 0; }
 .toc .label { grid-column: 1 / -1; }
 @media (min-width: 861px) { .inspector .in-shot { position: sticky; top: 64px; align-self: start; } }
+
+/* Chillax: narrower than a wide display face, and light at Regular on a
+   dark background, so text sits at Medium and the hero title grows. */
+body { font-weight: 500; }
+strong, b { font-weight: 600; }
+.lead strong, .dim strong { font-weight: 600; }
+.hero h1.hero-title { font-size: clamp(64px, 14.2vw, 204px); letter-spacing: -0.035em; }
+.hero h1 .outline { letter-spacing: -0.01em; }
+@media (max-width: 560px) { .hero h1.hero-title { font-size: 30vw; } }
+.marquee span { font-weight: 600; }

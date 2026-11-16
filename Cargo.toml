@@ -7,11 +7,19 @@ edition = "2024"
 cpal = "0.18.2"
 eframe = "0.37.0"
 egui = "0.37.0"
+# Stickers and background images (see board.rs).
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+# SVG stickers, drawn at the size they are shown.
+resvg = "0.48"
 midir = "0.11.1"
 rfd = "0.17.2"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 vst3-host = { version = "0.10.0", default-features = false }
+
+# Compiles the Audio Unit host on macOS (build.rs, src/audio/au_host.m).
+[build-dependencies]
+cc = "1.2"
 
 # The native window, for what winit doesn't expose (see ui/macos.rs).
 [target.'cfg(target_os = "macos")'.dependencies]

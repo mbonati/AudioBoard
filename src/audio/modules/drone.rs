@@ -142,6 +142,7 @@ impl Processor for Drone {
             return;
         }
         let mut peak = 0.0f32;
+        let (mut lp_tone, mut a) = (f32::NAN, 0.0);
         for i in 0..n {
             approach(&mut self.pitch, pitch_t, ctx.smooth);
             approach(&mut self.tone, tone_t, ctx.smooth);
@@ -157,28 +158,37 @@ impl Processor for Drone {
             };
             let saw_mix = tone * tone;
 
-            let (mut l, mut r) = (0.0, 0.0);
             let step = f * inv_sr;
+            // The voices side by side (so the loop vectorizes), then summed
+            // in order.
+            let mut s = [0.0f32; VOICES];
             for v in 0..VOICES {
                 let dt = (step * ratio[v]).min(0.45);
                 let t = self.phase[v];
                 let sine = fastmath::sin_turns(t);
                 // Pure sine at TONE 0: skip the saw (and its anti-aliasing).
-                let s = if saw_mix > 0.0 {
+                s[v] = if saw_mix > 0.0 {
                     let saw = 2.0 * t - 1.0 - poly_blep(t, dt);
                     sine + (saw - sine) * saw_mix
                 } else {
                     sine
                 };
-                l += s * gl[v];
-                r += s * gr[v];
                 let next = t + dt;
                 self.phase[v] = if next >= 1.0 { next - 1.0 } else { next };
             }
+            let (mut l, mut r) = (0.0, 0.0);
+            for v in 0..VOICES {
+                l += s[v] * gl[v];
+                r += s[v] * gr[v];
+            }
 
-            // Warmth: a gentle low-pass that opens with TONE.
-            let fc = 150.0 * fastmath::exp2(tone * 7.0);
-            let a = (TAU * fc * inv_sr).min(1.0);
+            // Warmth: a gentle low-pass that opens with TONE (its
+            // coefficient worked out again only when TONE moves).
+            if tone != lp_tone {
+                lp_tone = tone;
+                let fc = 150.0 * fastmath::exp2(tone * 7.0);
+                a = (TAU * fc * inv_sr).min(1.0);
+            }
             self.lp[0] += a * (l - self.lp[0]);
             self.lp[1] += a * (r - self.lp[1]);
 

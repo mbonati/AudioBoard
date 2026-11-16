@@ -15,6 +15,7 @@ pub mod filter;
 pub mod fjord;
 pub mod frakture;
 pub mod granular;
+pub mod iris;
 pub mod larsen;
 pub mod looper;
 pub mod magma;
@@ -74,6 +75,7 @@ pub enum ModuleKind {
     Automa,
     Colloid,
     Looper,
+    Iris,
 }
 
 /// Static description of a module's panel and ports.
@@ -113,7 +115,7 @@ pub struct ModuleDef {
 }
 
 impl ModuleKind {
-    pub const ALL: [ModuleKind; 29] = [
+    pub const ALL: [ModuleKind; 30] = [
         ModuleKind::Drone,
         ModuleKind::Aether,
         ModuleKind::Larsen,
@@ -143,6 +145,7 @@ impl ModuleKind {
         ModuleKind::Automa,
         ModuleKind::Colloid,
         ModuleKind::Looper,
+        ModuleKind::Iris,
     ];
 
     pub fn def(self) -> &'static ModuleDef {
@@ -176,6 +179,7 @@ impl ModuleKind {
             ModuleKind::Automa => &automa::DEF,
             ModuleKind::Colloid => &colloid::DEF,
             ModuleKind::Looper => &looper::DEF,
+            ModuleKind::Iris => &iris::DEF,
         }
     }
 
@@ -214,6 +218,7 @@ impl ModuleKind {
             ModuleKind::Automa => Box::new(automa::Automa::new(params)),
             ModuleKind::Colloid => Box::new(colloid::Colloid::new(params, midi.clone(), sample_rate)),
             ModuleKind::Looper => Box::new(looper::Looper::new(params, midi, sample_rate)),
+            ModuleKind::Iris => Box::new(iris::Iris::new(params, audio.shared.clone(), sample_rate)),
         }
     }
 }

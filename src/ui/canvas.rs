@@ -4,7 +4,6 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
-use egui::epaint::Mesh;
 use egui::{
     Align2, Color32, CursorIcon, FontId, Id, Key, Painter, PointerButton, Pos2, Rect, Response,
     Sense, Shape, Stroke, StrokeKind, Ui, Vec2, pos2, vec2,
@@ -23,7 +22,6 @@ use crate::audio::engine::NodeId;
 use crate::graph::{Cable, Console, Graph, Group, GroupId, MIDI_PORT, NodeKind, NodeType, PortRef, Target, is_midi};
 use crate::project::{self, Preset};
 
-const GRID: f32 = 24.0;
 const MIN_ZOOM: f32 = 0.3;
 const MAX_ZOOM: f32 = 2.0;
 /// Length of layout glides and view animations.
@@ -228,6 +226,15 @@ pub struct Editor {
     pub notices: Vec<String>,
     /// Time of the current frame.
     now: f64,
+    /// A menu (or another popup) was open when the pointer last went down:
+    /// that click only closes it, and leaves the selection alone.
+    menu_at_press: bool,
+    /// The board's stickers and background on screen (see `ui::board`).
+    pub board_ui: super::board::BoardUi,
+    /// Where the selection bar was drawn last frame (screen), if it was,
+    /// and its buttons.
+    bar: Option<Rect>,
+    bar_buttons: Vec<(BarItem, Rect)>,
 }
 
 impl Editor {
@@ -254,6 +261,10 @@ impl Editor {
             focus: None,
             notices: Vec::new(),
             now: 0.0,
+            menu_at_press: false,
+            board_ui: super::board::BoardUi::default(),
+            bar: None,
+            bar_buttons: Vec::new(),
         }
     }
 
@@ -282,6 +293,19 @@ impl Editor {
         graph.groups.iter().find(|g| {
             g.members.len() == self.selected.len() && g.members.iter().all(|m| self.selected.contains(m))
         })
+    }
+
+    /// The selection bar as last drawn (screen), and the centre of each of
+    /// its buttons by label ("Make module", "Delete"…), for tests.
+    #[cfg(test)]
+    pub fn selection_bar_layout(&self) -> Option<(Rect, Vec<(&'static str, Pos2)>)> {
+        let names = |i: BarItem| match i {
+            BarItem::Module => "Make module",
+            BarItem::Collapse => "Collapse",
+            BarItem::Duplicate => "Duplicate",
+            BarItem::Delete => "Delete",
+        };
+        self.bar.map(|b| (b, self.bar_buttons.iter().map(|&(i, r)| (names(i), r.center())).collect()))
     }
 
     /// Selected nodes, left to right (the order modules list their ports in).
@@ -535,6 +559,15 @@ impl Editor {
         let bg = ui.interact(rect, Id::unique("canvas_bg"), Sense::CLICK | Sense::DRAG);
         let (pointer, mods) = ui.input(|i| (i.pointer.hover_pos(), i.modifiers));
         let additive = mods.shift || mods.command;
+        // Clicks that only pick: not one that closes a menu (it was open
+        // when the pointer went down), and not a macOS Ctrl+click, which is
+        // a right-click.
+        let menu_open = egui::Popup::is_any_open(ui.ctx());
+        if ui.input(|i| i.pointer.any_pressed()) {
+            self.menu_at_press = menu_open;
+        }
+        let ctrl_click = cfg!(target_os = "macos") && mods.ctrl;
+        let picks = !ctrl_click && !self.menu_at_press;
         let mut actions = Vec::new();
 
         // --- Navigation: scroll, middle/right drag or Alt+drag pan ----------
@@ -562,8 +595,12 @@ impl Editor {
         }
         let z = self.zoom;
 
-        painter.rect_filled(rect, 0.0, theme::BG);
-        self.draw_grid(&painter, rect);
+        // The board's background, then its stickers: under everything
+        // else, and under the nodes for the pointer too.
+        let board_view = super::board::View { origin: rect.min + self.pan, zoom: z };
+        self.board_ui.draw_background(ui, &painter, rect, board_view, &graph.board);
+        let stickers = self.board_ui.show(ui, &painter, rect, board_view, &mut graph.board, &bg, &mut self.selected, &mut self.notices);
+        self.pan += stickers.pan;
 
         // A plain drag on empty canvas draws a selection rectangle.
         if bg.drag_started_by(PointerButton::Primary) && !mods.alt {
@@ -693,7 +730,11 @@ impl Editor {
         // One menu for the whole canvas, aimed at whatever is on top under
         // the pointer, so right-clicking a knob or display still reaches its
         // node. Ctrl+click works too on macOS.
+        // Not on the selection bar (as last drawn), which is for left clicks.
+        let on_bar = pointer.is_some_and(|p| self.bar.is_some_and(|b| b.contains(p)));
         let open_menu = ui.rect_contains_pointer(rect)
+            && !on_bar
+            && !stickers.hovered
             && ui.input(|i| {
                 i.pointer.secondary_clicked()
                     || (cfg!(target_os = "macos") && i.modifiers.ctrl && i.pointer.primary_clicked())
@@ -712,16 +753,19 @@ impl Editor {
                 .rev()
                 .find(|(_, f)| p.y < f.top() + nodes::HEADER_H * z && f.contains(p))
                 .map(|(gid, _)| *gid);
+            // What is right-clicked joins the menu's subject: the selection
+            // stays if it holds it, else it is replaced, or (Shift or Cmd
+            // held) grows to take it in.
             self.menu = if let Some(gid) = card.or(if node.is_none() { frame } else { None }) {
                 if let Some(g) = graph.group(gid)
                     && !g.members.iter().all(|m| self.selected.contains(m))
                 {
-                    actions.push(Action::Select(g.members.clone(), false));
+                    actions.push(Action::Select(g.members.clone(), additive));
                 }
                 MenuTarget::Group(gid)
             } else if let Some(id) = node {
                 if !self.selected.contains(&id) {
-                    actions.push(Action::Select(vec![id], false));
+                    actions.push(Action::Select(vec![id], additive));
                 }
                 MenuTarget::Node(id)
             } else if let Some(c) = hovered_cable {
@@ -734,9 +778,13 @@ impl Editor {
             && let Some(c) = hovered_cable
         {
             actions.push(Action::Disconnect(c));
-        } else if bg.clicked() && !additive {
+        } else if bg.clicked() && !additive && picks {
             actions.push(Action::Deselect);
         }
+
+        // A right or middle drag that starts on a node or a module pans the
+        // view, as on empty canvas (and never selects).
+        let mut item_pan = Vec2::ZERO;
 
         // --- Expanded modules: frames behind everything else ---------------
         for &(gid, frame) in &frames {
@@ -747,7 +795,7 @@ impl Editor {
             let selected = g.members.iter().all(|m| self.selected.contains(m));
             let head = Rect::from_min_size(frame.min, vec2(frame.width(), nodes::HEADER_H * z));
             let resp = ui.interact(head, Id::unique(("group", gid)), Sense::CLICK | Sense::DRAG);
-            module_pointer(ui, &resp, g, selected, additive, z, &mut actions);
+            item_pan += module_pointer(ui, &resp, g, selected, (additive, picks), z, &mut actions);
             let renaming = self.renaming.as_ref().is_some_and(|r| r.gid == gid);
             let h = groups::draw_frame(ui, &painter, g, frame, selected, renaming, z);
             self.title_editor(ui, gid, h.title_rect, &mut actions);
@@ -775,6 +823,12 @@ impl Editor {
         let mut map_button = None;
         let tempo = graph.tempo;
         for (idx, node) in graph.nodes.iter_mut().enumerate() {
+            // Iris runs its scene changes and its window even when not drawn.
+            if let NodeKind::Module(m) = &node.kind
+                && m.params.kind == crate::audio::modules::ModuleKind::Iris
+            {
+                super::iris::tick(ui.ctx(), node.id, &node.title, node.accent, &m.params, tempo);
+            }
             let Some(rect_s) = node_rects[idx] else {
                 continue;
             };
@@ -784,14 +838,18 @@ impl Editor {
             let id = node.id;
             let selected = self.selected.contains(&id);
             let body = ui.interact(rect_s, Id::unique(("node", id)), Sense::CLICK | Sense::DRAG);
-            if body.clicked() {
+            if body.clicked() && picks {
                 actions.push(if additive { Action::ToggleSelect(id) } else { Action::Select(vec![id], false) });
-            } else if body.drag_started() && !selected {
+            } else if body.drag_started_by(PointerButton::Primary) && !selected {
+                // Only a left drag moves (a right drag pans the view).
                 actions.push(Action::Select(vec![id], additive));
             }
             if body.dragged_by(PointerButton::Primary) {
                 actions.push(Action::MoveSelection(body.drag_delta() / z));
                 ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
+            }
+            if body.dragged_by(PointerButton::Secondary) || body.dragged_by(PointerButton::Middle) {
+                item_pan += body.drag_delta();
             }
             let collapsed = node.collapsed;
 
@@ -848,6 +906,9 @@ impl Editor {
                     NodeKind::Plugin(p) => {
                         let input = connected.first().copied().unwrap_or(false);
                         let events = plugin_node::draw(&view, id, accent, p, (input, midi_in), out, now);
+                        if let Some(e) = p.editor_error.take() {
+                            self.notices.push(format!("Could not open the editor: {e}"));
+                        }
                         if events.toggle_editor {
                             #[cfg(target_os = "macos")]
                             let before = super::macos::windows();
@@ -911,7 +972,7 @@ impl Editor {
             let g = graph.group(card.gid).expect("card of an existing module");
             let selected = g.members.iter().all(|m| self.selected.contains(m));
             let resp = ui.interact(card.rect, Id::unique(("card", card.gid)), Sense::CLICK | Sense::DRAG);
-            module_pointer(ui, &resp, g, selected, additive, z, &mut actions);
+            item_pan += module_pointer(ui, &resp, g, selected, (additive, picks), z, &mut actions);
             let gid = g.id;
             let connected = |pr: PortRef, input: bool| {
                 if input { inputs.contains_key(&pr) } else { outputs.contains(&pr) }
@@ -932,6 +993,13 @@ impl Editor {
         }
 
         self.midi_mapping(ui, &painter, graph, &node_rects, hits.into_inner(), map_button, pointer, &mut actions);
+        if item_pan != Vec2::ZERO {
+            self.take_over_view();
+            self.pan += item_pan;
+            ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
+        }
+        // After the nodes and cards, so its buttons win the clicks.
+        self.selection_bar(ui, &painter, graph, rect, &mut actions);
 
         // --- Cable being dragged -----------------------------------------
         if let Some(d) = self.drag {
@@ -1026,7 +1094,7 @@ impl Editor {
         // --- Type label --------------------------------------------------
         // The topmost node or module under the pointer (a module's frame
         // only by its header), as for the context menu.
-        let hovered = pointer.filter(|_| ui.rect_contains_pointer(rect)).and_then(|p| {
+        let hovered = pointer.filter(|_| ui.rect_contains_pointer(rect) && !on_bar).and_then(|p| {
             if let Some(c) = cards.iter().rev().find(|c| c.rect.contains(p)) {
                 return Some((TipTarget::Group(c.gid), c.rect));
             }
@@ -1047,14 +1115,20 @@ impl Editor {
         self.type_tip(ui, graph, rect, hovered, now);
 
         // --- Context menu -------------------------------------------------
+        // Each menu says first what it acts on, so it is clear what Make
+        // module (and the rest) will take.
         let menu = self.menu;
         let has_selection = !self.selected.is_empty();
+        let subject = menu_subject(graph, &self.selected, menu);
         egui::Popup::menu(&bg)
             .open_memory(open_menu.then_some(egui::SetOpenCommand::Bool(true)))
             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
             .at_pointer_fixed()
             .show(|ui| match menu {
-                MenuTarget::Canvas(pos) => canvas_menu(ui, pos, has_selection, &self.library, &self.plugins, &mut actions),
+                MenuTarget::Canvas(pos) => {
+                    canvas_menu(ui, pos, subject.as_deref().filter(|_| has_selection), &self.library, &self.plugins, &mut actions);
+                    self.board_ui.canvas_menu(ui, pos, &graph.board);
+                }
                 MenuTarget::Cable(cable) => {
                     if menu_item(ui, "Disconnect", "Double-click") {
                         actions.push(Action::Disconnect(cable));
@@ -1062,11 +1136,19 @@ impl Editor {
                     }
                 }
                 MenuTarget::Node(id) => match graph.node(id) {
-                    Some(n) => node_menu(ui, n.collapsed, n.is_effect(), graph.group_of(id).is_some(), &mut actions),
+                    Some(n) => {
+                        subject_heading(ui, subject.as_deref().unwrap_or(&n.title));
+                        node_menu(ui, n.collapsed, n.is_effect(), graph.group_of(id).is_some(), &mut actions)
+                    }
                     None => ui.close(),
                 },
                 MenuTarget::Group(gid) => match graph.group(gid) {
-                    Some(g) => group_menu(ui, gid, g.collapsed, &mut actions),
+                    Some(g) => {
+                        subject_heading(ui, subject.as_deref().unwrap_or(&g.title));
+                        // More than this module selected: Make module takes it all.
+                        let more = self.selected.iter().any(|id| !g.members.contains(id));
+                        group_menu(ui, gid, g.collapsed, more, &mut actions)
+                    }
                     None => ui.close(),
                 },
             });
@@ -1085,7 +1167,7 @@ impl Editor {
 
         // --- Keyboard (not while typing, e.g. a module name) --------------
         if ui.memory(|m| m.focused().is_none()) {
-            self.keyboard(ui, graph, &mut actions);
+            self.keyboard(ui, graph, menu_open, &mut actions);
         }
 
         self.apply(actions, graph, audio);
@@ -1229,7 +1311,9 @@ impl Editor {
         }
     }
 
-    fn keyboard(&mut self, ui: &Ui, graph: &Graph, actions: &mut Vec<Action>) {
+    /// `menu_open`: a menu was open as the frame began (then Esc only
+    /// closes it).
+    fn keyboard(&mut self, ui: &Ui, graph: &Graph, menu_open: bool, actions: &mut Vec<Action>) {
         let (cmd, shift) = ui.input(|i| (i.modifiers.command, i.modifiers.shift));
         let pressed = |k: Key| ui.input(|i| i.key_pressed(k));
         let has_selection = !self.selected.is_empty();
@@ -1243,7 +1327,8 @@ impl Editor {
         if cmd && pressed(Key::A) {
             actions.push(Action::SelectAll);
         }
-        if pressed(Key::Escape) {
+        // Esc that closes a menu does only that.
+        if pressed(Key::Escape) && !menu_open {
             actions.push(if self.mapping.is_some() {
                 Action::CancelMapping
             } else if self.focus.is_some() {
@@ -1528,6 +1613,125 @@ impl Editor {
 
     /// C: when the selection is made of whole modules, fold those modules;
     /// otherwise fold the selected nodes themselves.
+    /// While two or more nodes are selected, a bar with what to do with
+    /// them: Make module, Collapse (or Expand), Duplicate, Delete. No menu
+    /// is needed, so no stray click can lose the selection on the way. At a
+    /// fixed size whatever the zoom, centred above the selection (below it
+    /// when there is no room), inside the canvas; hidden while nodes are
+    /// dragged, a rectangle drawn, a module renamed or a control mapped.
+    fn selection_bar(&mut self, ui: &mut Ui, painter: &Painter, graph: &Graph, canvas: Rect, actions: &mut Vec<Action>) {
+        self.bar = None;
+        self.bar_buttons.clear();
+        let count = self.selected.iter().filter(|id| graph.node(**id).is_some()).count();
+        let busy = self.marquee.is_some()
+            || self.drag.is_some()
+            || self.renaming.is_some()
+            || self.mapping.is_some()
+            || egui::DragAndDrop::has_any_payload(ui.ctx())
+            || actions.iter().any(|a| matches!(a, Action::MoveSelection(_)));
+        if count < 2 || busy {
+            return;
+        }
+        // The selection, and the frames of open modules it reaches into, so
+        // the bar never covers a module's header.
+        let frames = graph
+            .groups
+            .iter()
+            .filter(|g| !g.collapsed && g.members.iter().any(|m| self.selected.contains(m)))
+            .filter_map(|g| groups::frame_rect(graph, g));
+        let Some(bounds) = selection_bounds(graph, &self.selected).into_iter().chain(frames).reduce(|a, b| a.union(b)) else {
+            return;
+        };
+        let bounds = self.to_screen_rect(bounds);
+        if !bounds.intersects(canvas) {
+            return;
+        }
+
+        // Make module only when it would make something new.
+        let one_module = self.selected_group(graph).is_some();
+        let open = self.selected.iter().any(|id| {
+            graph.node(*id).is_some_and(|n| !n.collapsed) && !graph.group_of(*id).is_some_and(|g| g.collapsed)
+        });
+        let items: Vec<BarItem> = [BarItem::Module, BarItem::Collapse, BarItem::Duplicate, BarItem::Delete]
+            .into_iter()
+            .filter(|i| *i != BarItem::Module || !one_module)
+            .collect();
+        let label = |i: BarItem| match i {
+            BarItem::Module => "Make module",
+            BarItem::Collapse if open => "Collapse",
+            BarItem::Collapse => "Expand",
+            BarItem::Duplicate => "Duplicate",
+            BarItem::Delete => "Delete",
+        };
+
+        // Layout: the count, a rule, then the buttons.
+        const H: f32 = 34.0;
+        const BUTTON_H: f32 = 26.0;
+        let font = FontId::proportional(11.5);
+        let count_text = format!("{count} nodes");
+        let count_w = painter.layout_no_wrap(count_text.clone(), font.clone(), theme::TEXT_DIM).size().x;
+        let widths: Vec<f32> = items
+            .iter()
+            .map(|&i| 10.0 + 14.0 + 6.0 + painter.layout_no_wrap(label(i).to_owned(), font.clone(), theme::TEXT).size().x + 10.0)
+            .collect();
+        let w = 14.0 + count_w + 12.0 + 1.0 + 6.0 + widths.iter().sum::<f32>() + 2.0 * (items.len() - 1) as f32 + 4.0;
+        let x = (bounds.center().x - w * 0.5).clamp(canvas.left() + 8.0, (canvas.right() - 8.0 - w).max(canvas.left() + 8.0));
+        let above = bounds.top() - 10.0 - H;
+        let below = bounds.bottom() + 10.0;
+        let y = if above >= canvas.top() + 8.0 {
+            above
+        } else if below + H <= canvas.bottom() - 8.0 {
+            below
+        } else {
+            canvas.top() + 8.0
+        };
+        let bar = Rect::from_min_size(pos2(x, y), vec2(w, H));
+        // The bar itself takes clicks and drags, so a near miss of a button
+        // doesn't reach the canvas (and deselect, or move nodes).
+        ui.interact(bar, Id::unique("selection_bar"), Sense::CLICK | Sense::DRAG);
+        self.bar = Some(bar);
+        painter.rect(bar, H * 0.5, theme::PANEL, Stroke::new(1.0, theme::NODE_BORDER), StrokeKind::Inside);
+        painter.text(pos2(bar.left() + 14.0, bar.center().y), Align2::LEFT_CENTER, count_text, font.clone(), theme::TEXT_DIM);
+        let rule_x = bar.left() + 14.0 + count_w + 12.0;
+        painter.vline(rule_x, (bar.top() + 8.0)..=(bar.bottom() - 8.0), Stroke::new(1.0, theme::PANEL_BORDER));
+
+        let mut bx = rule_x + 6.0;
+        for (&item, &bw) in items.iter().zip(&widths) {
+            let r = Rect::from_min_size(pos2(bx, bar.center().y - BUTTON_H * 0.5), vec2(bw, BUTTON_H));
+            bx += bw + 2.0;
+            self.bar_buttons.push((item, r));
+            let resp = ui
+                .interact(r, Id::unique(("selection_bar", item as u8)), Sense::CLICK)
+                .on_hover_cursor(CursorIcon::PointingHand)
+                .on_hover_text(match item {
+                    BarItem::Module => "Gather the selected nodes into one module (Cmd+G); modules among them join it",
+                    BarItem::Collapse => "Collapse or expand the selection (C)",
+                    BarItem::Duplicate => "Duplicate the selection, with the cables between its nodes (Cmd+D)",
+                    BarItem::Delete => "Delete the selection (Del)",
+                });
+            let hot = resp.hovered();
+            if hot {
+                painter.rect_filled(r, BUTTON_H * 0.5, theme::CONTROL);
+            }
+            let ink = match item {
+                BarItem::Delete if hot => theme::MUTE,
+                BarItem::Module => theme::ACCENT,
+                _ if hot => theme::TEXT,
+                _ => theme::TEXT_DIM,
+            };
+            bar_icon(painter, pos2(r.left() + 10.0 + 7.0, r.center().y), item, ink);
+            painter.text(pos2(r.left() + 10.0 + 14.0 + 6.0, r.center().y), Align2::LEFT_CENTER, label(item), font.clone(), theme::TEXT);
+            if resp.clicked() {
+                actions.push(match item {
+                    BarItem::Module => Action::GroupSelection,
+                    BarItem::Collapse => Action::CollapseSelection,
+                    BarItem::Duplicate => Action::DuplicateSelection,
+                    BarItem::Delete => Action::RemoveSelection,
+                });
+            }
+        }
+    }
+
     fn collapse_selection(&self, graph: &mut Graph) {
         let whole: Vec<(GroupId, bool)> = graph
             .groups
@@ -1550,45 +1754,6 @@ impl Editor {
                 graph.set_collapsed(*id, collapse);
             }
         }
-    }
-
-    /// The background grid, as one mesh of pixel-aligned quads: a few
-    /// hundred lines cost one shape and four vertices each.
-    fn draw_grid(&self, p: &Painter, rect: Rect) {
-        let z = self.zoom;
-        let mut step = GRID * z;
-        let mut major_every = 5;
-        if step < 10.0 {
-            // Zoomed out: majors only.
-            step *= 5.0;
-            major_every = 1;
-        }
-        let ppp = p.ctx().pixels_per_point();
-        let snap = |v: f32| (v * ppp).round() / ppp;
-        let origin = rect.min + self.pan;
-        let first = |o: f32, lo: f32| lo + (o - lo).rem_euclid(step);
-        let color = |v: f32, o: f32| {
-            if ((v - o) / step).round() as i64 % major_every == 0 {
-                theme::GRID_MAJOR
-            } else {
-                theme::GRID_MINOR
-            }
-        };
-
-        let mut mesh = Mesh::default();
-        let mut x = first(origin.x, rect.left());
-        while x < rect.right() {
-            let x0 = snap(x);
-            mesh.add_colored_rect(Rect::from_x_y_ranges(x0..=x0 + 1.0, rect.y_range()), color(x, origin.x));
-            x += step;
-        }
-        let mut y = first(origin.y, rect.top());
-        while y < rect.bottom() {
-            let y0 = snap(y);
-            mesh.add_colored_rect(Rect::from_x_y_ranges(rect.x_range(), y0..=y0 + 1.0), color(y, origin.y));
-            y += step;
-        }
-        p.add(Shape::mesh(mesh));
     }
 }
 
@@ -1616,9 +1781,13 @@ fn content_bounds(graph: &Graph) -> Option<Rect> {
 }
 
 /// Clicking or dragging a module's header (or card) selects and moves all
-/// of its nodes; double-clicking folds it.
-fn module_pointer(ui: &Ui, resp: &Response, g: &Group, selected: bool, additive: bool, z: f32, actions: &mut Vec<Action>) {
-    if resp.clicked() || (resp.drag_started() && !selected) {
+/// of its nodes (Shift or Cmd+click adds it to the selection, or takes it
+/// out); double-clicking folds it. `picks`: see `Editor::show`. Returns how
+/// far a right or middle drag on it pans the view.
+fn module_pointer(ui: &Ui, resp: &Response, g: &Group, selected: bool, (additive, picks): (bool, bool), z: f32, actions: &mut Vec<Action>) -> Vec2 {
+    if resp.clicked() && picks && additive && selected {
+        actions.extend(g.members.iter().map(|&m| Action::ToggleSelect(m)));
+    } else if (resp.clicked() && picks) || (resp.drag_started_by(PointerButton::Primary) && !selected) {
         actions.push(Action::Select(g.members.clone(), additive));
     }
     if resp.dragged_by(PointerButton::Primary) {
@@ -1628,6 +1797,7 @@ fn module_pointer(ui: &Ui, resp: &Response, g: &Group, selected: bool, additive:
     if resp.double_clicked() {
         actions.push(Action::ToggleGroup(g.id));
     }
+    if resp.dragged_by(PointerButton::Secondary) || resp.dragged_by(PointerButton::Middle) { resp.drag_delta() } else { Vec2::ZERO }
 }
 
 fn push_header(h: groups::HeaderActions, gid: GroupId, actions: &mut Vec<Action>) {
@@ -1651,6 +1821,34 @@ pub(super) fn menu_item(ui: &mut Ui, label: &str, hint: &str) -> bool {
 fn menu_heading(ui: &mut Ui, text: &str) {
     ui.add_space(4.0);
     ui.label(egui::RichText::new(text).size(9.5).color(theme::TEXT_FAINT));
+}
+
+/// What a menu acts on, at its top: "4 nodes selected", a node's or a
+/// module's title.
+fn subject_heading(ui: &mut Ui, text: &str) {
+    ui.add_space(2.0);
+    ui.horizontal(|ui| {
+        ui.add_space(6.0);
+        ui.label(egui::RichText::new(text).size(10.5).color(theme::ACCENT));
+    });
+    ui.separator();
+}
+
+/// The subject of the menu on `target`, when it is more than its own title
+/// would say: the whole selection when the target is in it with others.
+/// None: the target alone (its title says it), or nothing selected.
+fn menu_subject(graph: &Graph, selected: &HashSet<NodeId>, target: MenuTarget) -> Option<String> {
+    let count = selected.iter().filter(|id| graph.node(**id).is_some()).count();
+    let many = |n: usize| if n == 1 { "1 node selected".to_owned() } else { format!("{n} nodes selected") };
+    match target {
+        MenuTarget::Canvas(_) | MenuTarget::Cable(_) => (count > 0).then(|| many(count)),
+        MenuTarget::Node(id) => (count > 1 && selected.contains(&id)).then(|| many(count)),
+        MenuTarget::Group(gid) => {
+            let g = graph.group(gid)?;
+            let more = selected.iter().any(|id| !g.members.contains(id));
+            Some(if more { many(count) } else { format!("{} · {}", g.title, many(g.members.len()).replace(" selected", "")) })
+        }
+    }
 }
 
 /// Node types in groups, then the module library; returns the pick (and closes).
@@ -1714,14 +1912,28 @@ pub fn add_menu(ui: &mut Ui, library: &[Preset], plugins: &[PluginEntry]) -> Opt
     picked
 }
 
+/// The canvas menu: with a selection, first what to do with it; then what
+/// to add; then the view.
 fn canvas_menu(
     ui: &mut Ui,
     pos: Pos2,
-    has_selection: bool,
+    selection: Option<&str>,
     library: &[Preset],
     plugins: &[PluginEntry],
     actions: &mut Vec<Action>,
 ) {
+    if let Some(subject) = selection {
+        subject_heading(ui, subject);
+        if menu_item(ui, "Make module from selection", "Cmd+G") {
+            actions.push(Action::GroupSelection);
+            ui.close();
+        }
+        if menu_item(ui, "Deselect", "Esc") {
+            actions.push(Action::Deselect);
+            ui.close();
+        }
+        ui.separator();
+    }
     match add_menu(ui, library, plugins) {
         Some(AddChoice::Node(ty)) => actions.push(Action::Add(ty, pos)),
         Some(AddChoice::Preset(i)) => actions.push(Action::AddPreset(i, pos)),
@@ -1730,10 +1942,6 @@ fn canvas_menu(
         None => {}
     }
     ui.separator();
-    if has_selection && menu_item(ui, "Make module from selection", "Cmd+G") {
-        actions.push(Action::GroupSelection);
-        ui.close();
-    }
     if menu_item(ui, "Auto layout", "L") {
         actions.push(Action::AutoLayout);
         ui.close();
@@ -1828,7 +2036,16 @@ fn node_menu(ui: &mut Ui, collapsed: bool, effect: bool, in_group: bool, actions
     }
 }
 
-fn group_menu(ui: &mut Ui, gid: GroupId, collapsed: bool, actions: &mut Vec<Action>) {
+/// `more`: other nodes are selected besides this module; Make module then
+/// gathers them all into one module (this one dissolves into it).
+fn group_menu(ui: &mut Ui, gid: GroupId, collapsed: bool, more: bool, actions: &mut Vec<Action>) {
+    if more {
+        if menu_item(ui, "Make module from selection", "Cmd+G") {
+            actions.push(Action::GroupSelection);
+            ui.close();
+        }
+        ui.separator();
+    }
     if menu_item(ui, "Rename…", "Enter") {
         actions.push(Action::StartRename(gid));
         ui.close();
@@ -1841,7 +2058,8 @@ fn group_menu(ui: &mut Ui, gid: GroupId, collapsed: bool, actions: &mut Vec<Acti
         actions.push(Action::Request(Request::SaveToLibrary(gid)));
         ui.close();
     }
-    if menu_item(ui, "Duplicate module", "Cmd+D") {
+    // These act on the whole selection: say so when it is more than this.
+    if menu_item(ui, if more { "Duplicate selection" } else { "Duplicate module" }, "Cmd+D") {
         actions.push(Action::DuplicateSelection);
         ui.close();
     }
@@ -1849,9 +2067,65 @@ fn group_menu(ui: &mut Ui, gid: GroupId, collapsed: bool, actions: &mut Vec<Acti
         actions.push(Action::Ungroup(gid));
         ui.close();
     }
-    if menu_item(ui, "Delete module and its nodes", "Del") {
+    if menu_item(ui, if more { "Delete selection" } else { "Delete module and its nodes" }, "Del") {
         actions.push(Action::RemoveSelection);
         ui.close();
+    }
+}
+
+/// A button of the selection bar (see `Editor::selection_bar`).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum BarItem {
+    Module,
+    Collapse,
+    Duplicate,
+    Delete,
+}
+
+/// The selection bar's line-art icons, 14 points across.
+fn bar_icon(p: &Painter, c: Pos2, item: BarItem, col: Color32) {
+    let s = Stroke::new(1.2, col);
+    match item {
+        BarItem::Module => {
+            // Two blocks joined, inside a frame drawn by its corners.
+            let r = Rect::from_center_size(c, vec2(14.0, 12.0));
+            for (corner, dx, dy) in [
+                (r.left_top(), 1.0, 1.0),
+                (r.right_top(), -1.0, 1.0),
+                (r.left_bottom(), 1.0, -1.0),
+                (r.right_bottom(), -1.0, -1.0),
+            ] {
+                p.line_segment([corner, corner + vec2(3.5 * dx, 0.0)], s);
+                p.line_segment([corner, corner + vec2(0.0, 3.0 * dy)], s);
+            }
+            let (a, b) = (Rect::from_center_size(c + vec2(-2.8, 0.0), vec2(3.6, 3.6)), Rect::from_center_size(c + vec2(2.8, 0.0), vec2(3.6, 3.6)));
+            p.rect_stroke(a, 0.5, s, StrokeKind::Inside);
+            p.rect_stroke(b, 0.5, s, StrokeKind::Inside);
+            p.line_segment([a.right_center(), b.left_center()], s);
+        }
+        BarItem::Collapse => {
+            // Two slim cards: nodes folded to their headers.
+            for dy in [-3.0, 3.0] {
+                p.rect_stroke(Rect::from_center_size(c + vec2(0.0, dy), vec2(13.0, 4.0)), 1.5, s, StrokeKind::Inside);
+            }
+        }
+        BarItem::Duplicate => {
+            // Two overlapping cards.
+            p.rect_stroke(Rect::from_min_size(c + vec2(-6.0, -6.0), vec2(8.5, 8.5)), 1.5, s, StrokeKind::Inside);
+            let front = Rect::from_min_size(c + vec2(-2.5, -2.5), vec2(8.5, 8.5));
+            p.rect_filled(front, 1.5, theme::PANEL);
+            p.rect_stroke(front, 1.5, s, StrokeKind::Inside);
+        }
+        BarItem::Delete => {
+            // A bin: its lid and handle, its body with two ribs.
+            p.line_segment([c + vec2(-6.0, -4.0), c + vec2(6.0, -4.0)], s);
+            p.line_segment([c + vec2(-2.0, -6.0), c + vec2(2.0, -6.0)], s);
+            let body = vec![c + vec2(-4.5, -4.0), c + vec2(-3.5, 6.0), c + vec2(3.5, 6.0), c + vec2(4.5, -4.0)];
+            p.add(Shape::line(body, s));
+            for x in [-1.2, 1.2] {
+                p.line_segment([c + vec2(x, -1.5), c + vec2(x, 3.5)], s);
+            }
+        }
     }
 }
 
@@ -1889,8 +2163,9 @@ fn type_label(graph: &Graph, target: TipTarget) -> Option<(String, String)> {
             let n = graph.node(id)?;
             Some(match &n.kind {
                 NodeKind::Plugin(p) => {
-                    let what = if p.meta.instrument { "VST3 instrument" } else { "VST3 effect" };
-                    let detail = if p.meta.vendor.is_empty() { what.to_owned() } else { format!("{what} · {}", p.meta.vendor) };
+                    let kind = if p.meta.instrument { "instrument" } else { "effect" };
+                    let what = format!("{} {kind}", p.meta.format.label());
+                    let detail = if p.meta.vendor.is_empty() { what } else { format!("{what} · {}", p.meta.vendor) };
                     (p.meta.name.clone(), detail)
                 }
                 k => (k.node_type().name().to_owned(), k.node_type().hint().to_owned()),

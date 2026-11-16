@@ -4,13 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Node catalogue · AudioBoard</title>
-<meta name="description" content="Every AudioBoard node, with its panel: sources, textures, effects, MIDI, MIDI sequences, VST3 plugins and output.">
+<meta name="description" content="Every AudioBoard node, with its panel: sources, textures, effects, MIDI, MIDI sequences, VST3 and Audio Unit plugins, output and visuals.">
 <meta name="theme-color" content="#141518">
 <script>document.documentElement.classList.add("js")</script>
 <link rel="icon" href="assets/img/logo.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&family=Unbounded:wght@500;600;700;800&display=swap">
+<link rel="preconnect" href="https://cdn.fontshare.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="assets/css/fonts.css">
 <link rel="stylesheet" href="assets/css/site.css">
 </head>
 <body>
@@ -33,22 +35,23 @@
 <main id="main">
 <section class="page-hero">
   <div class="wrap">
-    <span class="label">Catalogue · 31 built-in nodes + VST3</span>
+    <span class="label">Catalogue · 33 built-in nodes + plugins</span>
     <h1>Every node, <span class="outline" style="--accent: var(--teal)">on the board.</span></h1>
-    <p class="lead">Sources make sound, textures and effects shape it, MIDI nodes play and move it, mixers bring it home. Every cable is stereo; mono sources write the same signal to both sides. Click a node for its full description; every picture is its real panel, rendered from the app while the board plays.</p>
+    <p class="lead">Sources make sound, textures and effects shape it, MIDI nodes play and move it, mixers bring it home, and Iris turns it into pictures. Every cable is stereo; mono sources write the same signal to both sides. Click a node for its full description; every picture is its real panel, rendered from the app while the board plays.</p>
   </div>
 </section>
 
 <div class="filters">
   <div class="wrap">
-    <button class="chip" data-filter="all" aria-pressed="true" style="--c: var(--text)"><i></i>All <small>32</small></button>
+    <button class="chip" data-filter="all" aria-pressed="true" style="--c: var(--text)"><i></i>All <small>34</small></button>
     <button class="chip" data-filter="sources" aria-pressed="false" style="--c: var(--blue)"><i></i>Sources <small>10</small></button>
     <button class="chip" data-filter="texture" aria-pressed="false" style="--c: var(--teal)"><i></i>Texture <small>3</small></button>
-    <button class="chip" data-filter="effects" aria-pressed="false" style="--c: var(--orange)"><i></i>Effects <small>7</small></button>
+    <button class="chip" data-filter="effects" aria-pressed="false" style="--c: var(--orange)"><i></i>Effects <small>8</small></button>
     <button class="chip" data-filter="midi" aria-pressed="false" style="--c: var(--violet)"><i></i>MIDI <small>2</small></button>
     <button class="chip" data-filter="sequences" aria-pressed="false" style="--c: var(--rose)"><i></i>MIDI sequences <small>7</small></button>
-    <button class="chip" data-filter="plugins" aria-pressed="false" style="--c: var(--green)"><i></i>VST3 <small>1</small></button>
+    <button class="chip" data-filter="plugins" aria-pressed="false" style="--c: var(--green)"><i></i>Plugins <small>1</small></button>
     <button class="chip" data-filter="output" aria-pressed="false" style="--c: var(--amber)"><i></i>Output <small>2</small></button>
+    <button class="chip" data-filter="visual" aria-pressed="false" style="--c: var(--yellow)"><i></i>Visual <small>1</small></button>
     <label class="search">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="7" cy="7" r="5"/><path d="M11 11l3.5 3.5"/></svg>
       <input id="search" type="search" placeholder="Search nodes, knobs, ideas…" aria-label="Search nodes">
@@ -287,7 +290,7 @@
   <header>
     <span class="label">03 · Effects</span>
     <h2>Effects</h2>
-    <p>Filters, a dynamic EQ, a tape machine, echoes and a reverb that can freeze. Every effect can be bypassed (crossfaded, while it keeps running underneath), and rests once its tail has gone quiet.</p>
+    <p>Filters, a dynamic EQ and a 24-band one, a tape machine, echoes and a reverb that can freeze. Every effect can be bypassed (crossfaded, while it keeps running underneath), and rests once its tail has gone quiet.</p>
   </header>
   <div class="cards">
     <article class="card" id="node-filter" tabindex="0" role="button" data-group="effects" data-group-label="Effects" data-name="Filter" data-shots="assets/shots/filter.png" data-keys="svf lowpass cutoff resonance" style="--accent: var(--orange)">
@@ -335,6 +338,21 @@
       </div>
     </article>
 
+    <article class="card" id="node-prism" tabindex="0" role="button" data-group="effects" data-group-label="Effects" data-name="Prism" data-after="a 24-band EQ after FabFilter Pro-Q 4" data-shots="assets/shots/prism.png" data-keys="eq equalizer pro-q dynamic spectral linear phase match sketch analyzer" style="--accent: var(--orange)">
+      <div class="thumb"><img src="assets/shots/prism.png" width="2016" height="1224" loading="lazy" alt="Prism panel"></div>
+      <div class="meta"><div class="row"><h3>Prism</h3><span class="label">24-band EQ</span></div>
+        <p>Up to 24 bands of ten shapes, dynamic and spectral bands, three processing modes, EQ Match and EQ Sketch, on an interactive display.</p></div>
+      <div class="more">
+        <ul>
+          <li><b>Bands.</b> Bell, low and high shelf, low and high cut, notch, band pass, tilt shelf, flat tilt and all pass: FREQ 10 Hz–30 kHz, GAIN ±30 dB, Q 0.025–40, slopes from 6 to 96 dB/octave and a brickwall for the cuts. Each works on both channels, left, right, mid or side, and SPLIT makes a pair.</li>
+          <li><b>Modes.</b> ZERO LATENCY with analog-matched filters; NATURAL PHASE, the same at twice the rate, analog in phase too (0.6 ms); LINEAR PHASE on FFT frames, its latency set by RESOLUTION.</li>
+          <li><b>Dynamic EQ.</b> RANGE ±30 dB moves a band's gain when its trigger crosses THRESH, with an automatic threshold, attack and release, and an internal or external side chain. <b>SPECTRAL</b> moves only the frequencies that cross.</li>
+          <li><b>Display.</b> Click to add a band (its place picks the shape), drag dots for frequency and gain, Cmd-drag for Q, select several and move them together; the band strip below holds every setting, with solo.</li>
+          <li><b>Analyzer.</b> Pre, post and side chain spectra; GRAB marks the highest peaks to drag into bells. <b>MATCH</b> fits bands to a reference, <b>SKETCH</b> follows a curve you draw.</li>
+          <li><b>Output.</b> CHARACTER (clean, subtle or warm saturation), AUTO GAIN, polarity, SCALE, PAN and OUT ±36 dB. The Equalizer stays a node of its own.</li>
+        </ul>
+      </div>
+    </article>
     <article class="card" id="node-tape" tabindex="0" role="button" data-group="effects" data-group-label="Effects" data-name="Tape" data-after="after the classic tape emulation plugins" data-shots="assets/shots/tape.png" data-keys="saturation wow flutter cassette" style="--accent: var(--orange)">
       <div class="thumb"><img src="assets/shots/tape.png" width="1336" height="788" loading="lazy" alt="Tape panel"></div>
       <div class="meta"><div class="row"><h3>Tape</h3><span class="label">Tape machine</span></div>
@@ -540,12 +558,12 @@
 <!-- ============================================================ PLUGINS -->
 <section class="cat-group" id="plugins" style="--accent: var(--green)">
   <header>
-    <span class="label">06 · VST3 plugins</span>
-    <h2>VST3 plugins</h2>
-    <p>Installed VST3 plugins appear in the Plugins section of the palette and of the right-click menu, grouped by maker, and are added like any other node.</p>
+    <span class="label">06 · Plugins</span>
+    <h2>VST3 and Audio Units</h2>
+    <p>Installed plugins, VST3 and Audio Units (AUv3 and AU), appear in the Plugins section of the palette and of the right-click menu, grouped by maker, and are added like any other node.</p>
   </header>
   <div class="cards">
-    <article class="card" id="node-plugin" tabindex="0" role="button" data-group="plugins" data-group-label="VST3 plugins" data-name="Plugin node" data-keys="vst vst3 instrument effect editor" style="--accent: var(--green)">
+    <article class="card" id="node-plugin" tabindex="0" role="button" data-group="plugins" data-group-label="Plugins" data-name="Plugin node" data-keys="vst vst3 au auv3 audio unit instrument effect editor" style="--accent: var(--green)">
       <div class="thumb">
         <svg viewBox="0 0 320 200" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-label="A sketch of a plugin node">
           <rect x="40" y="20" width="240" height="160" rx="10" fill="#1f2024" stroke="#32343a"/>
@@ -564,17 +582,17 @@
           <circle cx="280" cy="98" r="7" fill="#141518" stroke="#84c26c" stroke-width="2"/>
         </svg>
       </div>
-      <div class="meta"><div class="row"><h3>Plugin node</h3><span class="label">VST3</span></div>
-        <p>Instruments and effects from your VST3 folders, with their own editor, a parameter list and up to eight knobs on the node.</p></div>
+      <div class="meta"><div class="row"><h3>Plugin node</h3><span class="label">VST3 · AU</span></div>
+        <p>Instruments and effects, VST3 or Audio Units, with their own editor, a parameter list and up to eight knobs on the node.</p></div>
       <div class="more">
-        <p>Plugins are listed from <code>/Library/Audio/Plug-Ins/VST3</code> and <code>~/Library/Audio/Plug-Ins/VST3</code> without loading them: the maker is read from the bundle's files. <b>Rescan plugins</b> refreshes the list.</p>
+        <p><b>VST3</b> plugins are listed from <code>/Library/Audio/Plug-Ins/VST3</code> and <code>~/Library/Audio/Plug-Ins/VST3</code> without loading them: the maker is read from the bundle's files. <b>Audio Units</b> (macOS), AUv3 app extensions and classic AU components, Apple's own included, are listed as the system knows them; their hint says “AUv3 · Instrument”, “AU · Fx”…, and Settings → Plugins can hide them, or only Apple's. <b>Rescan plugins</b> refreshes the list.</p>
         <ul>
-          <li><b>EDITOR</b> opens the plugin's own window; it floats in front of the board while AudioBoard is active.</li>
+          <li><b>EDITOR</b> opens the plugin's own window (for an Audio Unit without one, the system's generic view); it floats in front of the board while AudioBoard is active.</li>
           <li><b>PARAMS</b> lists every parameter with search and sliders; the dot pins up to eight as knobs on the node, mappable with a MIDI CC node.</li>
           <li><b>KEYBOARD</b> plays the plugin from the external MIDI keyboard, along with whatever arrives on the MIDI cable.</li>
-          <li>A stereo input (effects), a stereo output and, for instruments, a MIDI input. The project saves the plugin's path and its complete state.</li>
+          <li>A stereo input (effects), a stereo output and, for instruments, a MIDI input. The project saves the plugin's complete state; on another computer a VST3 is found by name, an Audio Unit by its component code.</li>
           <li>A plugin is called once per audio buffer, as in a DAW; extra outputs are switched off at load, and a plugin with nothing coming in rests after a second of silence.</li>
-          <li>VST3 only (not VST2, AU or CLAP). Plugins run inside AudioBoard: a faulty plugin can make the application quit.</li>
+          <li>VST3 and Audio Units (not VST2 or CLAP). VST3 plugins and AU components run inside AudioBoard, so a faulty one can make it quit; <b>AUv3</b> extensions run in a process of their own, as in Logic, so a crash leaves the board playing.</li>
         </ul>
       </div>
     </article>
@@ -611,6 +629,34 @@
           <li><b>H</b> lays the strips side by side with vertical faders; the inputs line the node's top edge and their cables drop in from above.</li>
           <li><b>V</b> stacks the strips as rows, with the inputs down the left edge.</li>
           <li><b>12 / 24</b> sets the number of channels; going back to 12 asks first if channels 13–24 have cables.</li>
+        </ul>
+      </div>
+    </article>
+  </div>
+</section>
+
+<!-- ============================================================= VISUAL -->
+<section class="cat-group" id="visual" style="--accent: var(--yellow)">
+  <header>
+    <span class="label">08 · Visual</span>
+    <h2>Visual</h2>
+    <p>Pictures that react to sound, right on the board, in its flat graphic style: line art, dot matrices, coloured outlines.</p>
+  </header>
+  <div class="cards">
+    <article class="card" id="node-iris" tabindex="0" role="button" data-group="visual" data-group-label="Visual" data-name="Iris" data-after="fourteen scenes: geometric, mathematical, generative" data-shots="assets/shots/iris-mandala.png|MANDALA,assets/shots/iris-ridges.png|RIDGES,assets/shots/iris-harmonograph.png|HARMONOGRAPH,assets/shots/iris-spiro.png|SPIRO,assets/shots/iris-tunnel.png|TUNNEL,assets/shots/iris-flow.png|FLOW,assets/shots/iris-life.png|LIFE,assets/shots/iris-automaton.png|AUTOMATON,assets/shots/iris-truchet.png|TRUCHET,assets/shots/iris-moire.png|MOIRE,assets/shots/iris-attractor.png|ATTRACTOR,assets/shots/iris-phase.png|PHASE,assets/shots/iris-dots.png|DOTS,assets/shots/iris-orbits.png|ORBITS" data-keys="video visuals visualizer vj scope spectrum mandala tunnel truchet moire attractor life automaton harmonograph spirograph" style="--accent: var(--yellow)">
+      <div class="thumb"><img src="assets/shots/iris-mandala.png" width="1136" height="772" loading="lazy" alt="Iris showing its Mandala scene"></div>
+      <div class="meta"><div class="row"><h3>Iris</h3><span class="label">Video</span></div>
+        <p>A screen on the board with fourteen scenes that follow the node on its IN, or the main mix while IN is free. Resize it from its corner; set it up in a popup beside it.</p></div>
+      <div class="more">
+        <p>It listens to the node patched into its <b>IN</b>, and only that one, or to the <b>main mix</b> while IN is free (<b>Auto</b>); the settings can force <b>IN</b> or <b>Main mix</b>. <b>THRU</b> passes IN on unchanged, so Iris can sit inside a chain. It keeps running, with the nodes feeding it, even when THRU goes nowhere.</p>
+        <ul>
+          <li><b>Geometric.</b> Mandala (rings of petals, 5- to 16-fold symmetry), Tunnel (polygons flying out of a vanishing point), Truchet (tiles flipping in waves on onsets), Moiré (overprinted rings), Dots (a dot-matrix spectrum), Orbits (planets in a polyrhythm).</li>
+          <li><b>Mathematical.</b> Harmonograph (a damped pendulum drawing), Spiro (nested hypotrochoids), Attractor (a Clifford attractor drifting with the sound), Phase (the sound against itself: a tone draws a circle), Ridges (pulsar lines scrolling up).</li>
+          <li><b>Generative.</b> Flow (particles on a flow field, bursting on onsets), Life (Conway's Game of Life seeded by the spectrum), Automaton (an elementary cellular automaton the spectrum writes into, changing rule on onsets).</li>
+          <li><b>Analysis.</b> A 2048-point spectrum in 32 bands, level, bass, mids, highs, pitch and onsets, all on the UI thread: the audio thread only copies samples.</li>
+          <li><b>The screen.</b> Drag the picture to move the node, the corner grip to resize it (Shift keeps its shape). The scene's name, the gear and the grip show only under the pointer.</li>
+          <li><b>Settings</b> in a popup beside the node: scene, source (Auto, IN, Main mix), seven palettes (Board, Mono, Paper, Riso, Ember, Ice, Acid), REACT, SPEED, DETAIL, SMOOTH, TRAIL, a new scene every 1 to 16 bars, the screen's shape, a new seed.</li>
+          <li><b>Open in a window</b> for a second display or a projector; double-click for full screen.</li>
         </ul>
       </div>
     </article>

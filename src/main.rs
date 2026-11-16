@@ -1,4 +1,5 @@
 mod audio;
+mod board;
 mod graph;
 mod presets;
 mod project;

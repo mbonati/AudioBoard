@@ -566,3 +566,145 @@ fn perf_console_24() {
         report(name, load(&mut e, 4.0));
     }
 }
+
+/// A saved project playing, at a 512-frame buffer: its load offline, every
+/// callback's time made in real time (mean, 99th percentile, worst) and what
+/// each node costs; rounds alternate every node running (as before unheard
+/// nodes rested) and unheard nodes resting, so a laptop's thermal drift
+/// shows in both. `PERF_PROJECT=path/to/project.audioboard` (default: the
+/// Fjord project in ~/Documents/AudioBoard); `PERF_SPIN=1` waits busy
+/// between callbacks instead of sleeping (the CPU's idle states left out).
+#[test]
+#[ignore]
+fn perf_project() {
+    use crate::audio::engine::profile;
+    let path = std::env::var("PERF_PROJECT").map(std::path::PathBuf::from).unwrap_or_else(|_| {
+        std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default()).join("Documents/AudioBoard/Fjord.audioboard")
+    });
+    let Ok(project) = crate::project::load_project(&path) else {
+        eprintln!("no project at {}", path.display());
+        return;
+    };
+    let shared = Arc::new(EngineShared::new());
+    shared.running.store(true, std::sync::atomic::Ordering::Relaxed);
+    let (a, mut e) = audio::offline(shared, SR);
+    let mut g = Graph::default();
+    crate::project::restore(&mut g, &project, &a);
+    shared_tempo(&a, g.tempo);
+    let heard = g.heard();
+    eprintln!("{}: {} nodes, {} heard", path.display(), g.nodes.len(), heard.len());
+    let mut buf = vec![0.0f32; 512 * 2];
+    // Settle: plugins start, delay lines and reverbs fill.
+    for _ in 0..(SR as usize * 4 / 512) {
+        e.render(&mut buf, 2);
+    }
+    let spin = std::env::var("PERF_SPIN").is_ok();
+    let period = 512.0 / SR as f64;
+    let calls = SR as usize * 4 / 512;
+    let mut last = Vec::new();
+    for round in 0..3 {
+        for keep_all in [true, false] {
+            profile::KEEP_ALL.store(keep_all, std::sync::atomic::Ordering::Relaxed);
+            // Past the time unheard nodes run on before resting.
+            for _ in 0..(SR as usize * 3 / 512) {
+                e.render(&mut buf, 2);
+            }
+            let offline = load(&mut e, 2.0);
+            // Callbacks as a device would make them, in real time.
+            let mut times = Vec::with_capacity(calls);
+            profile::enable();
+            for _ in 0..calls {
+                let t = Instant::now();
+                e.render(&mut buf, 2);
+                let took = t.elapsed().as_secs_f64();
+                times.push(took);
+                if period > took {
+                    if spin {
+                        while t.elapsed().as_secs_f64() < period {
+                            std::hint::spin_loop();
+                        }
+                    } else {
+                        std::thread::sleep(Duration::from_secs_f64(period - took));
+                    }
+                }
+            }
+            let per_node = profile::take();
+            times.sort_by(f64::total_cmp);
+            let mean = times.iter().sum::<f64>() / times.len() as f64;
+            eprintln!(
+                "round {round} {:<16} offline {:>5.1}%   real time: mean {:>5.1}% p99 {:>5.1}% worst {:>5.1}% of the buffer",
+                if keep_all { "every node" } else { "unheard resting" },
+                offline * 100.0,
+                mean / period * 100.0,
+                times[times.len() * 99 / 100] / period * 100.0,
+                times[times.len() - 1] / period * 100.0
+            );
+            if round == 2 {
+                last.push((keep_all, per_node));
+            }
+        }
+    }
+    profile::KEEP_ALL.store(false, std::sync::atomic::Ordering::Relaxed);
+    let (_, all) = &last[0];
+    let (_, rest) = &last[1];
+    let mut rows: Vec<_> = all.iter().map(|(id, s)| (*id, *s)).collect();
+    rows.sort_by(|x, y| y.1.total_cmp(&x.1));
+    let total = calls as f64 * period;
+    eprintln!("per node, % of real time (last round): every node / unheard resting");
+    for (id, s) in rows {
+        let Some(n) = g.node(id) else { continue };
+        let kind = match &n.kind {
+            NodeKind::Module(m) => m.params.kind.def().name.to_string(),
+            NodeKind::Plugin(p) => format!("plugin {}", p.meta.name),
+            NodeKind::Osc(_) => "Oscillator".into(),
+            NodeKind::Mixer(_) => "Mixer".into(),
+        };
+        eprintln!(
+            "  {:>3} {:<24} {:<28} {:>5.2}% / {:>5.2}%{}",
+            id,
+            n.title,
+            kind,
+            s / total * 100.0,
+            rest.get(&id).copied().unwrap_or(0.0) / total * 100.0,
+            if heard.contains(&id) { "" } else { "  (not heard)" }
+        );
+    }
+}
+
+fn shared_tempo(a: &AudioHandle, tempo: f32) {
+    a.shared.tempo.set(tempo);
+}
+
+
+/// Renders a saved project offline (`PERF_PROJECT`, as `perf_project`) for
+/// `PERF_SECONDS` (default 30) into `PERF_RENDER_OUT` as raw interleaved
+/// stereo f32: to check that an optimization leaves what is heard as it was.
+#[test]
+#[ignore]
+fn perf_project_render() {
+    let path = std::env::var("PERF_PROJECT").map(std::path::PathBuf::from).unwrap_or_else(|_| {
+        std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default()).join("Documents/AudioBoard/Fjord.audioboard")
+    });
+    let Ok(out) = std::env::var("PERF_RENDER_OUT") else {
+        eprintln!("set PERF_RENDER_OUT");
+        return;
+    };
+    let seconds: usize = std::env::var("PERF_SECONDS").ok().and_then(|s| s.parse().ok()).unwrap_or(30);
+    let project = crate::project::load_project(&path).unwrap();
+    let shared = Arc::new(EngineShared::new());
+    shared.running.store(true, std::sync::atomic::Ordering::Relaxed);
+    let (a, mut e) = audio::offline(shared, SR);
+    let mut g = Graph::default();
+    crate::project::restore(&mut g, &project, &a);
+    shared_tempo(&a, g.tempo);
+    let mut buf = vec![0.0f32; 512 * 2];
+    let mut bytes = Vec::with_capacity(SR as usize * seconds * 8);
+    for _ in 0..(SR as usize * seconds / 512) {
+        e.render(&mut buf, 2);
+        for s in &buf {
+            bytes.extend_from_slice(&s.to_le_bytes());
+        }
+    }
+    std::fs::write(&out, &bytes).unwrap();
+    eprintln!("wrote {} s to {out}", seconds);
+}

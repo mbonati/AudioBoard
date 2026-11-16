@@ -1,3 +1,4 @@
+pub mod au;
 pub mod device;
 pub mod dsp;
 pub mod engine;
@@ -8,6 +9,7 @@ pub mod modules;
 pub mod params;
 pub mod plugin;
 pub mod record;
+pub mod sync;
 pub mod export;
 
 use std::sync::mpsc::{self, Sender};

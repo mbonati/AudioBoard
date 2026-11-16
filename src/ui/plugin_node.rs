@@ -1,7 +1,7 @@
-//! The panel of a VST3 plugin node: ports (audio, and MIDI for plugins that
-//! take it), name and maker, buttons for the plugin's own editor, its
-//! parameter list and the MIDI keyboard, and knobs for up to eight
-//! parameters.
+//! The panel of a plugin node (VST3 or Audio Unit): ports (audio, and MIDI
+//! for plugins that take it), name and maker, buttons for the plugin's own
+//! editor, its parameter list and the MIDI keyboard, and knobs for up to
+//! eight parameters.
 
 use egui::{Align2, Color32, Id, Popup, PopupCloseBehavior, RichText, ScrollArea, Vec2, vec2};
 
@@ -62,7 +62,13 @@ pub fn draw(
     }
     v.text(w - PAD, PORT_Y, Align2::RIGHT_CENTER, "OUT", v.font(9.0), col(output));
     v.text(w * 0.5, PORT_Y, Align2::CENTER_CENTER, category_label(&p.meta.category), v.font(11.0), theme::TEXT);
-    v.text(w * 0.5, PORT_Y + PORT_DY, Align2::CENTER_CENTER, &p.meta.vendor, v.font(9.5), theme::TEXT_DIM);
+    // The maker, and the format when it isn't VST3.
+    let maker = match p.meta.format {
+        crate::audio::plugin::Format::Vst3 => p.meta.vendor.clone(),
+        f if p.meta.vendor.is_empty() => f.label().to_owned(),
+        f => format!("{} · {}", p.meta.vendor, f.label()),
+    };
+    v.text(w * 0.5, PORT_Y + PORT_DY, Align2::CENTER_CENTER, maker, v.font(9.5), theme::TEXT_DIM);
 
     // Buttons: EDITOR · PARAMS · KEYBOARD.
     let gap = 6.0;
