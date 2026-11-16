@@ -19,7 +19,7 @@ use crate::audio::modules::{ModuleKind, ModuleParams, midi_cc, midi_note, random
 use crate::audio::params::{
     AtomicF32, CONSOLE_CHANNELS, DEFAULT_TEMPO, MIXER_CHANNELS, MixerParams, OSC_PARAMS, OscParams, ParamSpec, Unit, osc,
 };
-use crate::audio::plugin::{self, Control, Loaded, PluginMeta, PluginParam, PluginProcessor, PluginShared};
+use crate::audio::plugin::{self, Control, Format, Instance, LoadedAny, PluginMeta, PluginParam, PluginProcessor, PluginShared};
 use crate::ui::nodes;
 use crate::ui::theme;
 use crate::ui::widgets::MeterState;
@@ -235,7 +235,14 @@ pub struct PluginNode {
     pub control: Sender<Control>,
     pub meter: MeterState,
     /// The plugin's own editor, while open.
-    pub window: Option<vst3_host::PluginWindow>,
+    pub window: Option<EditorWindow>,
+    /// Why the editor didn't open, once it is known (an Audio Unit's view
+    /// arrives later): the canvas shows it.
+    pub editor_error: Option<String>,
+    /// An Audio Unit's parameters, set from here directly (they are
+    /// thread-safe) rather than through the audio thread.
+    #[cfg(target_os = "macos")]
+    au_params: Option<crate::audio::au::ParamHandle>,
     /// Filter for the parameter list.
     pub query: String,
     /// Until when a parameter the user just moved ignores the plugin's
@@ -256,6 +263,24 @@ pub struct PluginNode {
 /// How often the UI reads plugin parameters (seconds).
 const PLUGIN_SYNC_EVERY: f64 = 0.1;
 
+/// A plugin's own editor window, while open. Dropping it closes it.
+pub enum EditorWindow {
+    Vst3(vst3_host::PluginWindow),
+    /// An Audio Unit's: the unit opens and owns the window (see `au`).
+    #[cfg(target_os = "macos")]
+    Au(Arc<Mutex<crate::audio::au::AudioUnit>>),
+}
+
+impl Drop for EditorWindow {
+    fn drop(&mut self) {
+        #[cfg(target_os = "macos")]
+        if let EditorWindow::Au(unit) = self {
+            wait_audio_idle(Duration::from_millis(50));
+            unit.lock().unwrap_or_else(|e| e.into_inner()).close_editor();
+        }
+    }
+}
+
 impl PluginNode {
     fn new(meta: PluginMeta, params: Vec<PluginParam>, shared: Arc<PluginShared>, control: Sender<Control>) -> Self {
         let n = params.len();
@@ -274,8 +299,22 @@ impl PluginNode {
             control,
             meter: MeterState::default(),
             window: None,
+            editor_error: None,
+            #[cfg(target_os = "macos")]
+            au_params: None,
             query: String::new(),
         }
+    }
+
+    /// Sends a parameter value on its way: an Audio Unit takes it at once,
+    /// a VST3 plugin on the audio thread.
+    fn send_value(&self, id: u32, value: f64) {
+        #[cfg(target_os = "macos")]
+        if let Some(h) = &self.au_params {
+            h.set(id, value);
+            return;
+        }
+        let _ = self.control.send(Control::Param(id, value));
     }
 
     /// Sets a parameter from the UI (applied on the audio thread).
@@ -285,13 +324,14 @@ impl PluginNode {
         self.values[index] = value;
         self.held_until[index] = now + 0.3;
         self.state_stale.set(true);
-        let _ = self.control.send(Control::Param(p.id, value));
+        let id = p.id;
+        self.send_value(id, value);
     }
 
     /// Sends a parameter change from a MIDI mapping.
     pub fn send_param(&self, id: u32, value: f64) {
         self.state_stale.set(true);
-        let _ = self.control.send(Control::Param(id, value));
+        self.send_value(id, value);
     }
 
     /// Keeps the knobs in step with the plugin (including edits made in its
@@ -299,7 +339,26 @@ impl PluginNode {
     /// taken for one call at a time and never waited for, so the audio
     /// thread is held up as little as possible.
     pub fn sync(&mut self, now: f64) {
-        if self.window.as_ref().is_some_and(|w| w.closed_by_user() || !w.is_open()) {
+        let gone = match &self.window {
+            Some(EditorWindow::Vst3(w)) => w.closed_by_user() || !w.is_open(),
+            // Its state is read under the plugin's lock: between callbacks.
+            #[cfg(target_os = "macos")]
+            Some(EditorWindow::Au(_)) if !audio_idle() => false,
+            #[cfg(target_os = "macos")]
+            Some(EditorWindow::Au(_)) => match self.shared.plugin.try_lock() {
+                Ok(plugin::Guard::Au(unit)) => match unit.editor_state() {
+                    crate::audio::au::EditorState::Closed => true,
+                    crate::audio::au::EditorState::NoView => {
+                        self.editor_error = Some("this Audio Unit has no editor".to_owned());
+                        true
+                    }
+                    _ => false,
+                },
+                _ => false,
+            },
+            None => false,
+        };
+        if gone {
             self.window = None;
         }
         self.shared.editor_open.store(self.window.is_some(), Ordering::Relaxed);
@@ -309,7 +368,9 @@ impl PluginNode {
             return;
         }
         if let Some(w) = &self.window {
-            let _ = w.service_platform_events();
+            if let EditorWindow::Vst3(w) = w {
+                let _ = w.service_platform_events();
+            }
             // Its editor can change anything, presets included.
             self.state_stale.set(true);
         }
@@ -318,9 +379,7 @@ impl PluginNode {
         }
         self.synced_at = now;
         match self.shared.plugin.try_lock() {
-            Ok(mut plugin) => {
-                let _ = plugin.service_host_requests();
-            }
+            Ok(mut plugin) => plugin.service_host_requests(),
             Err(_) => return,
         }
         for k in 0..self.pinned.len() {
@@ -381,10 +440,22 @@ impl PluginNode {
         if self.window.take().is_some() {
             return Ok(());
         }
-        let mut window = vst3_host::PluginWindow::new(self.shared.plugin.clone());
-        wait_audio_idle(Duration::from_millis(50));
-        window.open().map_err(|e| e.to_string())?;
-        self.window = Some(window);
+        self.editor_error = None;
+        match &self.shared.plugin {
+            Instance::Vst3(p) => {
+                let mut window = vst3_host::PluginWindow::new(p.clone());
+                wait_audio_idle(Duration::from_millis(50));
+                window.open().map_err(|e| e.to_string())?;
+                self.window = Some(EditorWindow::Vst3(window));
+            }
+            #[cfg(target_os = "macos")]
+            Instance::Au(unit) => {
+                wait_audio_idle(Duration::from_millis(50));
+                let title = format!("{} - {}", self.meta.name, self.meta.format.label());
+                unit.lock().unwrap_or_else(|e| e.into_inner()).open_editor(&title);
+                self.window = Some(EditorWindow::Au(unit.clone()));
+            }
+        }
         Ok(())
     }
 
@@ -887,24 +958,30 @@ impl Graph {
         id
     }
 
-    /// Loads a VST3 plugin as a node. Runs plugin code (UI thread).
+    /// Loads a plugin (a VST3 bundle, or an Audio Unit by its pseudo-path)
+    /// as a node. Runs plugin code (UI thread).
     pub fn add_plugin(&mut self, path: &Path, pos: Pos2, audio: &AudioHandle) -> Result<NodeId, String> {
-        let host = match &mut self.plugin_host {
-            Some(h) => h,
-            None => self.plugin_host.insert(plugin::new_host(audio.info.sample_rate as f32)?),
+        let loaded = match Format::of(path) {
+            Format::Vst3 => {
+                let host = match &mut self.plugin_host {
+                    Some(h) => h,
+                    None => self.plugin_host.insert(plugin::new_host(audio.info.sample_rate as f32)?),
+                };
+                plugin::load(host, path)?.into()
+            }
+            Format::AudioUnit { .. } => plugin::load_au(path, audio.info.sample_rate as f32)?,
         };
-        let loaded = plugin::load(host, path)?;
         Ok(self.add_plugin_loaded(loaded, pos, audio))
     }
 
-    fn add_plugin_loaded(&mut self, loaded: Loaded, pos: Pos2, audio: &AudioHandle) -> NodeId {
-        let Loaded { plugin, meta, params } = loaded;
+    fn add_plugin_loaded(&mut self, loaded: LoadedAny, pos: Pos2, audio: &AudioHandle) -> NodeId {
+        let LoadedAny { instance, meta, params } = loaded;
         let id = self.alloc_id();
         let accent = self.next_accent();
         let title = self.next_title(&plugin_prefix(&meta.name));
         let instrument = meta.instrument;
         let shared = Arc::new(PluginShared {
-            plugin: Arc::new(Mutex::new(plugin)),
+            plugin: instance,
             meter: AtomicF32::new(0.0),
             midi_in: AtomicBool::new(instrument),
             editor_open: AtomicBool::new(false),
@@ -914,6 +991,12 @@ impl Graph {
         let sample_rate = audio.info.sample_rate as f32;
         let proc = PluginProcessor::new(shared.clone(), rx, audio.midi.clone(), &meta, sample_rate);
         let bypass = spawn(id, Slot::new(Box::new(proc), 1), audio);
+        #[allow(unused_mut)]
+        let mut node = PluginNode::new(meta, params, shared, tx);
+        #[cfg(target_os = "macos")]
+        if let Instance::Au(unit) = &node.shared.plugin {
+            node.au_params = unit.lock().unwrap_or_else(|e| e.into_inner()).param_handle();
+        }
         self.nodes.push(Node {
             id,
             pos,
@@ -921,7 +1004,7 @@ impl Graph {
             accent,
             collapsed: false,
             bypass,
-            kind: NodeKind::Plugin(Box::new(PluginNode::new(meta, params, shared, tx))),
+            kind: NodeKind::Plugin(Box::new(node)),
         });
         self.sync(audio);
         id

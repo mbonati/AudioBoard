@@ -1,17 +1,20 @@
-//! VST3 plugins as nodes. A plugin is shared between the UI (its editor
-//! window, parameter display, saved state) and the audio thread, which
-//! renders it. Knob moves reach it through a lock-free channel. Plugins that
-//! take MIDI play what arrives on their MIDI cable (a sequencer, an
-//! arpeggiator), and can also take the MIDI keyboard directly.
+//! Plugins as nodes: VST3 everywhere, and Audio Units (v3 and v2) on macOS
+//! (see `au`). A plugin is shared between the UI (its editor window,
+//! parameter display, saved state) and the audio thread, which renders it.
+//! Knob moves reach it through a lock-free channel. Plugins that take MIDI
+//! play what arrives on their MIDI cable (a sequencer, an arpeggiator), and
+//! can also take the MIDI keyboard directly.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering::Relaxed};
 use std::sync::mpsc::Receiver;
-use std::sync::{Arc, Mutex, TryLockError};
+use std::sync::{Arc, Mutex, MutexGuard, TryLockError};
 use std::time::{Duration, Instant};
 
 use vst3_host::{AudioBuffers, MidiChannel, MidiEvent, Plugin, TransportPosition, Vst3Host};
 
+#[cfg(target_os = "macos")]
+use super::au::{self, AudioUnit};
 use super::engine::{BLOCK, Buf, Inputs, PASS, PassInputs, ProcessCtx, Processor};
 use super::midi::MidiState;
 use super::modules::steps::note_event;
@@ -23,9 +26,165 @@ pub enum Control {
     Param(u32, f64),
 }
 
+/// A loaded plugin, of either format, behind the lock the UI and the audio
+/// thread share.
+pub enum Instance {
+    Vst3(Arc<Mutex<Plugin>>),
+    #[cfg(target_os = "macos")]
+    Au(Arc<Mutex<AudioUnit>>),
+}
+
+/// A locked plugin: the calls both formats answer.
+pub enum Guard<'a> {
+    Vst3(MutexGuard<'a, Plugin>),
+    #[cfg(target_os = "macos")]
+    Au(MutexGuard<'a, AudioUnit>),
+}
+
+impl Instance {
+    /// The plugin if nobody holds it (a poisoned lock is taken anyway).
+    pub fn try_lock(&self) -> Result<Guard<'_>, ()> {
+        fn take<'a, T>(r: Result<MutexGuard<'a, T>, TryLockError<MutexGuard<'a, T>>>) -> Result<MutexGuard<'a, T>, ()> {
+            match r {
+                Ok(g) => Ok(g),
+                Err(TryLockError::Poisoned(p)) => Ok(p.into_inner()),
+                Err(TryLockError::WouldBlock) => Err(()),
+            }
+        }
+        match self {
+            Instance::Vst3(p) => take(p.try_lock()).map(Guard::Vst3),
+            #[cfg(target_os = "macos")]
+            Instance::Au(p) => take(p.try_lock()).map(Guard::Au),
+        }
+    }
+
+    /// The plugin, waiting for it.
+    pub fn lock(&self) -> Result<Guard<'_>, String> {
+        Ok(match self {
+            Instance::Vst3(p) => Guard::Vst3(p.lock().unwrap_or_else(|e| e.into_inner())),
+            #[cfg(target_os = "macos")]
+            Instance::Au(p) => Guard::Au(p.lock().unwrap_or_else(|e| e.into_inner())),
+        })
+    }
+}
+
+/// The clock a plugin follows, for one pass.
+pub struct HostClock {
+    pub tempo: f64,
+    pub beat: f64,
+    pub beats_per_sample: f64,
+    pub playing: bool,
+    /// Samples rendered since the transport last started over.
+    pub samples: i64,
+    pub tempo_changed: bool,
+    pub playing_changed: bool,
+    pub restart: bool,
+}
+
+impl Guard<'_> {
+    /// Tempo, transport and position, before a render.
+    pub fn clock(&mut self, c: &HostClock) {
+        match self {
+            Guard::Vst3(p) => {
+                if c.tempo_changed {
+                    let _ = p.set_tempo(c.tempo);
+                }
+                if c.playing_changed {
+                    let _ = p.set_playing(c.playing);
+                }
+                let _ = p.set_transport_position(TransportPosition { samples: c.samples, quarter_notes: c.beat });
+            }
+            #[cfg(target_os = "macos")]
+            Guard::Au(u) => u.set_transport(c.tempo, c.beat, c.beats_per_sample, c.playing, c.playing_changed || c.restart, c.restart),
+        }
+    }
+
+    /// Sets a parameter (normalized) for the next render.
+    pub fn set_parameter(&mut self, id: u32, value: f64) {
+        match self {
+            Guard::Vst3(p) => {
+                let _ = p.set_parameter(id, value);
+            }
+            #[cfg(target_os = "macos")]
+            Guard::Au(u) => u.set_parameter(id, value),
+        }
+    }
+
+    /// A raw MIDI message, at `frame` into the next render (None: at once).
+    pub fn send_midi(&mut self, msg: [u8; 3], frame: Option<i32>) {
+        match self {
+            Guard::Vst3(p) => {
+                if let Some(event) = midi_event(msg) {
+                    let _ = match frame {
+                        Some(f) => p.send_midi_event_at(event, f),
+                        None => p.send_midi_event(event),
+                    };
+                }
+            }
+            #[cfg(target_os = "macos")]
+            Guard::Au(u) => u.send_midi(msg, frame.unwrap_or(0) as i64),
+        }
+    }
+
+    /// Renders `buffers.block_size` frames; false on a plugin error.
+    pub fn process(&mut self, buffers: &mut AudioBuffers) -> bool {
+        match self {
+            Guard::Vst3(p) => p.process_audio(buffers).is_ok(),
+            #[cfg(target_os = "macos")]
+            Guard::Au(u) => u.process(buffers),
+        }
+    }
+
+    /// Lets a VST3 plugin do what it asked the host for (restart, resize).
+    pub fn service_host_requests(&mut self) {
+        match self {
+            Guard::Vst3(p) => {
+                let _ = p.service_host_requests();
+            }
+            #[cfg(target_os = "macos")]
+            Guard::Au(_) => {}
+        }
+    }
+
+    /// A parameter's value now, normalized.
+    pub fn get_parameter(&self, id: u32) -> Result<f64, String> {
+        match self {
+            Guard::Vst3(p) => p.get_parameter(id).map_err(|e| e.to_string()),
+            #[cfg(target_os = "macos")]
+            Guard::Au(u) => u.get_parameter(id).ok_or_else(|| "no such parameter".to_owned()),
+        }
+    }
+
+    /// The plugin's own text for a value of a parameter.
+    pub fn format_parameter(&self, id: u32, value: f64) -> Result<String, String> {
+        match self {
+            Guard::Vst3(p) => p.format_parameter(id, value).map_err(|e| e.to_string()),
+            #[cfg(target_os = "macos")]
+            Guard::Au(u) => u.format_parameter(id, value).ok_or_else(|| "no such parameter".to_owned()),
+        }
+    }
+
+    /// The complete state, in the plugin's own format.
+    pub fn save_state(&self) -> Result<Vec<u8>, String> {
+        match self {
+            Guard::Vst3(p) => p.save_state().map_err(|e| e.to_string()),
+            #[cfg(target_os = "macos")]
+            Guard::Au(u) => u.save_state().ok_or_else(|| "no state".to_owned()),
+        }
+    }
+
+    pub fn load_state(&mut self, data: &[u8]) -> Result<(), String> {
+        match self {
+            Guard::Vst3(p) => p.load_state(data).map_err(|e| e.to_string()),
+            #[cfg(target_os = "macos")]
+            Guard::Au(u) => u.load_state(data),
+        }
+    }
+}
+
 /// The part of a plugin node both threads see.
 pub struct PluginShared {
-    pub plugin: Arc<Mutex<Plugin>>,
+    pub plugin: Instance,
     /// Output peak since the UI last looked.
     pub meter: AtomicF32,
     /// Feed the external MIDI stream into the plugin.
@@ -37,10 +196,36 @@ pub struct PluginShared {
     pub missed: AtomicU32,
 }
 
+/// A plugin's format.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Format {
+    Vst3,
+    /// An Audio Unit: v3 (an app extension) or v2 (a component).
+    AudioUnit { v3: bool },
+}
+
+impl Format {
+    /// "VST3", "AUv3", "AU".
+    pub fn label(&self) -> &'static str {
+        match self {
+            Format::Vst3 => "VST3",
+            Format::AudioUnit { v3: true } => "AUv3",
+            Format::AudioUnit { v3: false } => "AU",
+        }
+    }
+
+    /// The format of a plugin path: Audio Units have pseudo-paths.
+    pub fn of(path: &Path) -> Self {
+        if super::au::is_au_path(path) { Format::AudioUnit { v3: false } } else { Format::Vst3 }
+    }
+}
+
 /// What we know about a loaded plugin.
 #[derive(Clone, Debug)]
 pub struct PluginMeta {
+    /// Its bundle, or an Audio Unit's pseudo-path (see `au`).
     pub path: PathBuf,
+    pub format: Format,
     pub name: String,
     pub vendor: String,
     pub category: String,
@@ -105,6 +290,7 @@ pub fn load(host: &mut Vst3Host, path: &Path) -> Result<Loaded, String> {
     let instrument = info.category.contains("Instrument") || (info.has_midi_input && info.audio_inputs == 0);
     let meta = PluginMeta {
         path: path.to_path_buf(),
+        format: Format::Vst3,
         name: info.name.clone(),
         vendor: info.vendor.clone(),
         category: info.category.clone(),
@@ -115,6 +301,60 @@ pub fn load(host: &mut Vst3Host, path: &Path) -> Result<Loaded, String> {
         midi: info.has_midi_input,
     };
     Ok(Loaded { plugin, meta, params })
+}
+
+/// A loaded plugin of either format, ready for a node.
+pub struct LoadedAny {
+    pub instance: Instance,
+    pub meta: PluginMeta,
+    pub params: Vec<PluginParam>,
+}
+
+impl From<Loaded> for LoadedAny {
+    fn from(l: Loaded) -> Self {
+        Self { instance: Instance::Vst3(Arc::new(Mutex::new(l.plugin))), meta: l.meta, params: l.params }
+    }
+}
+
+/// Loads an Audio Unit by its pseudo-path. Runs plugin code: UI thread only.
+#[cfg(target_os = "macos")]
+pub fn load_au(path: &Path, sample_rate: f32) -> Result<LoadedAny, String> {
+    let component = au::Component::from_path(path).ok_or("not an Audio Unit")?;
+    // Plugins get a whole device buffer per call (see `engine::PASS`).
+    let unit = AudioUnit::open(component, sample_rate, PASS)?;
+    let params = unit.params.iter().map(|p| PluginParam { id: p.id, name: p.name.clone(), default: p.default }).collect();
+    let meta = PluginMeta {
+        path: path.to_path_buf(),
+        format: Format::AudioUnit { v3: unit.v3 },
+        name: unit.name.clone(),
+        vendor: clean_vendor(&unit.vendor),
+        category: component.category().to_owned(),
+        instrument: component.kind == au::INSTRUMENT,
+        inputs: if unit.inputs > 0 { 2 } else { 0 },
+        outputs: unit.outputs.max(1),
+        // Its own view, else the system's generic one.
+        editor: true,
+        midi: unit.midi,
+    };
+    Ok(LoadedAny { instance: Instance::Au(Arc::new(Mutex::new(unit))), meta, params })
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn load_au(_path: &Path, _sample_rate: f32) -> Result<LoadedAny, String> {
+    Err("Audio Units are macOS only".to_owned())
+}
+
+/// Installed Audio Units (none outside macOS). Only the system's list: no
+/// plugin code runs.
+pub fn scan_au() -> Vec<super::au::Listed> {
+    #[cfg(target_os = "macos")]
+    {
+        au::list()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Vec::new()
+    }
 }
 
 /// Folders where VST3 plugins are installed.
@@ -359,9 +599,8 @@ impl Processor for PluginProcessor {
         let guard = loop {
             match self.shared.plugin.try_lock() {
                 Ok(g) => break Some(g),
-                Err(TryLockError::Poisoned(p)) => break Some(p.into_inner()),
-                Err(TryLockError::WouldBlock) if started.elapsed() < LOCK_WAIT => std::hint::spin_loop(),
-                Err(TryLockError::WouldBlock) => break None,
+                Err(()) if started.elapsed() < LOCK_WAIT => std::hint::spin_loop(),
+                Err(()) => break None,
             }
         };
         let Some(mut plugin) = guard else {
@@ -372,33 +611,34 @@ impl Processor for PluginProcessor {
 
         // The global clock, for tempo-synced LFOs, delays and arpeggiators.
         let tempo = ctx.beats_per_sample * 60.0 * ctx.sample_rate as f64;
-        if (tempo - self.tempo).abs() > 1e-6 && tempo > 0.0 {
-            let _ = plugin.set_tempo(tempo);
+        let tempo_changed = (tempo - self.tempo).abs() > 1e-6 && tempo > 0.0;
+        if tempo_changed {
             self.tempo = tempo;
         }
-        if self.transport != Some(ctx.playing) {
-            let _ = plugin.set_playing(ctx.playing);
-            self.transport = Some(ctx.playing);
-        }
+        let playing_changed = self.transport != Some(ctx.playing);
+        self.transport = Some(ctx.playing);
         if ctx.restart {
             self.samples = 0;
         }
-        let _ = plugin.set_transport_position(TransportPosition { samples: self.samples, quarter_notes: ctx.beat });
+        plugin.clock(&HostClock {
+            tempo: self.tempo,
+            beat: ctx.beat,
+            beats_per_sample: ctx.beats_per_sample,
+            playing: ctx.playing,
+            samples: self.samples,
+            tempo_changed,
+            playing_changed,
+            restart: ctx.restart,
+        });
         self.samples += n as i64;
 
         for command in self.control.try_iter() {
             match command {
-                Control::Param(id, value) => {
-                    let _ = plugin.set_parameter(id, value.clamp(0.0, 1.0));
-                }
+                Control::Param(id, value) => plugin.set_parameter(id, value.clamp(0.0, 1.0)),
             }
         }
         if keyboard {
-            self.midi.read_stream(&mut self.midi_cursor, |msg| {
-                if let Some(event) = midi_event(msg) {
-                    let _ = plugin.send_midi_event(event);
-                }
-            });
+            self.midi.read_stream(&mut self.midi_cursor, |msg| plugin.send_midi(msg, None));
         } else {
             self.midi_cursor = self.midi.stream_head();
         }
@@ -411,8 +651,8 @@ impl Processor for PluginProcessor {
                     Some(false) => self.cable_notes[note as usize & 0x7F] &= !bit,
                     None => {}
                 }
-                if let Some(event) = midi_event(e.data) {
-                    let _ = plugin.send_midi_event_at(event, (k * BLOCK + e.frame as usize) as i32);
+                if midi_event(e.data).is_some() {
+                    plugin.send_midi(e.data, Some((k * BLOCK + e.frame as usize) as i32));
                 }
             }
         }
@@ -420,9 +660,7 @@ impl Processor for PluginProcessor {
         if !inputs.midi_connected {
             for (note, channels) in self.cable_notes.iter_mut().enumerate() {
                 for ch in (0..16).filter(|ch| *channels & 1 << ch != 0) {
-                    if let Some(event) = midi_event([0x80 | ch as u8, note as u8, 0]) {
-                        let _ = plugin.send_midi_event(event);
-                    }
+                    plugin.send_midi([0x80 | ch as u8, note as u8, 0], None);
                 }
                 *channels = 0;
             }
@@ -442,7 +680,7 @@ impl Processor for PluginProcessor {
                 }
             }
         }
-        if plugin.process_audio(b).is_err() {
+        if !plugin.process(b) {
             silence(outputs);
             return;
         }

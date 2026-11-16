@@ -20,6 +20,7 @@ use std::time::Instant;
 use cpal::{FromSample, Sample};
 
 use super::params::{EngineShared, TEMPO_RANGE};
+use super::sync::{self, Follow, Timeline};
 
 pub type NodeId = u32;
 
@@ -279,6 +280,8 @@ pub struct Engine {
     /// The output level now, gliding to the shared one.
     output: f32,
     limiter: Limiter,
+    /// Steers the beat to an external MIDI clock, while following one.
+    follow: Follow,
 }
 
 /// Keeps the output under full scale. A sum of loud plugins would otherwise
@@ -361,6 +364,7 @@ impl Limiter {
 impl Engine {
     pub fn new(rx: Receiver<Command>, shared: Arc<EngineShared>, sample_rate: f32) -> Self {
         let (trash, trash_rx) = sync_channel(GARBAGE_CAP);
+        let follow = Follow::new(&shared.sync);
         Self {
             rx,
             trash,
@@ -388,6 +392,7 @@ impl Engine {
             mix: vec![[[0.0; BLOCK]; 2]; PASS_BLOCKS].into_boxed_slice(),
             output: 1.0,
             limiter: Limiter::new(sample_rate),
+            follow,
         }
     }
 
@@ -442,9 +447,6 @@ impl Engine {
             *buf = [[0.0; BLOCK]; 2];
         }
         let bypass_step = 1.0 / (BYPASS_SECONDS * ctx.sample_rate);
-        let (slowest, fastest) = TEMPO_RANGE;
-        ctx.beats_per_sample = self.shared.tempo.get().clamp(slowest, fastest) as f64 / (60.0 * ctx.sample_rate as f64);
-        ctx.playing = self.shared.running.load(Ordering::Relaxed);
         let pass = *ctx;
         // The context of block `k`: its beat, and the rewind only at the start.
         let block_ctx = |k: usize| ProcessCtx {
@@ -534,6 +536,39 @@ impl Engine {
         ctx.restart = false;
     }
 
+    /// The transport for a callback of `frames`: the board's own (its
+    /// tempo, Start and Stop) or, while following one, an external MIDI
+    /// clock's (see `sync`). Publishes the result for the clock sent out.
+    fn transport(&mut self, frames: usize) {
+        let sync = &self.shared.sync;
+        let now = sync::now_ns();
+        let sr = self.ctx.sample_rate;
+        let (slowest, fastest) = TEMPO_RANGE;
+        let board = self.shared.tempo.get().clamp(slowest, fastest) as f64 / (60.0 * sr as f64);
+        if sync.follow.load(Ordering::Relaxed) {
+            let clock = sync.clock();
+            let (beat, per_sample, playing, rewound) = self.follow.step(&clock, now, self.ctx.beat, frames, sr);
+            self.ctx.beat = beat;
+            self.ctx.restart |= rewound;
+            self.ctx.playing = playing;
+            // No clock coming: the board's tempo, for plugins and delays.
+            self.ctx.beats_per_sample = if clock.alive(now) { per_sample } else { board };
+            // The UI shows the transport the clock sets.
+            self.shared.running.store(playing, Ordering::Relaxed);
+        } else {
+            self.follow = Follow::new(sync);
+            self.ctx.beats_per_sample = board;
+            self.ctx.playing = self.shared.running.load(Ordering::Relaxed);
+        }
+        sync.publish(Timeline {
+            beat: self.ctx.beat,
+            bpm: self.ctx.beats_per_sample * 60.0 * sr as f64,
+            playing: self.ctx.playing,
+            at_ns: now,
+            latency_ns: (frames as f64 / sr as f64 * 1e9) as u64,
+        });
+    }
+
     /// Fills an interleaved device buffer, the board on its first two channels.
     #[cfg(test)]
     pub fn render<T: Sample + FromSample<f32>>(&mut self, data: &mut [T], channels: usize) {
@@ -557,6 +592,7 @@ impl Engine {
         let channels = channels.max(1);
         let frames = data.len() / channels;
         let first = first.min(channels.saturating_sub(2));
+        self.transport(frames);
         // What the input captured meanwhile, for the Audio In nodes.
         self.shared.input.begin_render(frames);
         let mut mono = [0.0f32; PASS];

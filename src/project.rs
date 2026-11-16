@@ -117,7 +117,8 @@ enum KindData {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         target: Option<TargetData>,
     },
-    /// A VST3 plugin: where it lives and its complete state.
+    /// A plugin: where it lives (a VST3 bundle, or an Audio Unit's
+    /// pseudo-path) and its complete state.
     Plugin {
         path: String,
         /// The plugin's own state, base64.
@@ -558,10 +559,11 @@ impl Library {
 }
 
 /// A saved plugin path, or the plugin with the same bundle name in this
-/// machine's plugin folders.
+/// machine's plugin folders. Audio Units are kept as they are.
 fn locate_plugin(saved: &str) -> PathBuf {
     let path = PathBuf::from(saved);
-    if path.exists() {
+    // An Audio Unit is found by its component description, wherever it is.
+    if path.exists() || crate::audio::au::is_au_path(&path) {
         return path;
     }
     crate::audio::plugin::scan()

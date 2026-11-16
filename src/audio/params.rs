@@ -536,6 +536,9 @@ pub struct EngineShared {
     pub tap: super::record::Tap,
     /// What the audio input captures, for the Audio In nodes.
     pub input: super::input::Capture,
+    /// MIDI sync: the external clock followed, and the engine's timeline
+    /// for the clock sent out.
+    pub sync: super::sync::SyncShared,
 }
 
 impl EngineShared {
@@ -554,6 +557,7 @@ impl EngineShared {
             scope: Scope::new(),
             tap: super::record::Tap::new(),
             input: super::input::Capture::new(),
+            sync: super::sync::SyncShared::new(),
         }
     }
 }

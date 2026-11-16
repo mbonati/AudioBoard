@@ -18,19 +18,21 @@ const ROW_H: f32 = 34.0;
 pub enum Spawn {
     Node(NodeType),
     Preset(usize),
-    /// A VST3 plugin from the installed list.
+    /// A plugin (VST3 or Audio Unit) from the installed list.
     Plugin(usize),
 }
 
-/// An installed VST3 plugin, as listed (its code is not loaded to list it).
+/// An installed plugin, as listed (its code is not loaded to list it).
 #[derive(Clone, Debug)]
 pub struct PluginEntry {
+    /// Its bundle, or an Audio Unit's pseudo-path (see `audio::au`).
     pub path: std::path::PathBuf,
     pub name: String,
     /// Its category once it has been loaded, else "VST3".
     pub hint: String,
     /// Its maker, or empty if unknown.
     pub vendor: String,
+    pub format: crate::audio::plugin::Format,
 }
 
 /// Plugins grouped by maker: (maker, indices into `plugins`), makers in
@@ -134,7 +136,7 @@ impl Palette {
                 section(ui, "Plugins", shown.len(), searching, |ui| {
                     if plugins.is_empty() && !searching {
                         ui.label(
-                            RichText::new("No VST3 plugins in the system plug-in folders.")
+                            RichText::new("No plugins in the system plug-in folders.")
                                 .size(10.5)
                                 .color(theme::TEXT_FAINT),
                         );
@@ -379,7 +381,13 @@ mod tests {
     use super::*;
 
     fn entry(name: &str, vendor: &str) -> PluginEntry {
-        PluginEntry { path: name.into(), name: name.to_owned(), hint: "VST3".to_owned(), vendor: vendor.to_owned() }
+        PluginEntry {
+            path: name.into(),
+            name: name.to_owned(),
+            hint: "VST3".to_owned(),
+            vendor: vendor.to_owned(),
+            format: crate::audio::plugin::Format::Vst3,
+        }
     }
 
     #[test]

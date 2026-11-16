@@ -1,5 +1,6 @@
 //! The global tempo in the toolbar: a BPM field that is dragged to change
-//! the tempo or clicked to type it, a beat light, and a TAP button.
+//! the tempo or clicked to type it, a beat light, and a TAP button. While
+//! the transport follows a MIDI clock, the clock's tempo instead.
 
 use egui::{Align2, Color32, CursorIcon, FontId, Id, Rect, Response, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
 
@@ -69,6 +70,8 @@ pub struct TempoControl {
     taps: TapTempo,
     /// When the TAP button was last hit, for its flash.
     tapped_at: f64,
+    /// A followed MIDI clock's tempo as shown (smoothed).
+    external_bpm: Option<f32>,
 }
 
 impl TempoControl {
@@ -91,6 +94,45 @@ impl TempoControl {
         ui.add_space(4.0);
         let field = self.field(ui, tempo, beat);
         tap.hovered() || field.hovered() || field.dragged() || self.editing.is_some()
+    }
+
+    /// While the transport follows a MIDI clock: the clock's tempo (None:
+    /// none coming) in the field, read-only, and SYNC where TAP was, both
+    /// outlined in the accent. Returns whether either was clicked (the app
+    /// opens Settings → Sync).
+    pub fn show_external(&mut self, ui: &mut Ui, bpm: Option<f32>, beat: Option<f32>, source: &str, now: f64) -> bool {
+        // Smoothed for reading; a jump is shown at once.
+        if let Some(b) = bpm {
+            let shown = self.external_bpm.get_or_insert(b);
+            *shown = if (*shown - b).abs() > 3.0 { b } else { *shown + (b - *shown) * 0.08 };
+        } else {
+            self.external_bpm = None;
+        }
+        let tip = match bpm {
+            Some(_) => format!("Following the MIDI clock from {source}\nClick for Settings → Sync"),
+            None => format!("Waiting for a MIDI clock from {source}\nClick for Settings → Sync"),
+        };
+        let (tag, tag_resp) = ui.allocate_exact_size(vec2(40.0, 24.0), Sense::CLICK);
+        ui.add_space(4.0);
+        let (rect, resp) = ui.allocate_exact_size(vec2(92.0, 24.0), Sense::CLICK);
+        let p = ui.painter();
+        let border = if bpm.is_some() { theme::ACCENT } else { theme::NODE_BORDER };
+        for (r, hot) in [(tag, tag_resp.hovered()), (rect, resp.hovered())] {
+            p.rect(r, 12.0, if hot { theme::CONTROL } else { Color32::TRANSPARENT }, Stroke::new(1.0, border), StrokeKind::Inside);
+        }
+        p.text(tag.center(), Align2::CENTER_CENTER, "SYNC", FontId::proportional(9.5), if bpm.is_some() { theme::ACCENT } else { theme::TEXT_DIM });
+        let flash = beat.map_or(0.0, |b| (1.0 - b.fract() * 4.0).max(0.0));
+        p.circle_filled(pos2(rect.left() + 13.0, rect.center().y), 3.0, theme::mix(theme::TEXT_FAINT, theme::ACCENT, flash));
+        let text = self.external_bpm.map_or_else(|| "– –".to_owned(), |b| format_tempo((b * 10.0).round() / 10.0));
+        p.text(pos2(rect.left() + 23.0, rect.center().y), Align2::LEFT_CENTER, text, FontId::monospace(11.5), theme::TEXT);
+        p.text(pos2(rect.right() - 11.0, rect.center().y + 0.5), Align2::RIGHT_CENTER, "BPM", FontId::proportional(9.5), theme::TEXT_FAINT);
+        if bpm.is_some() || now.fract() < 0.5 {
+            ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
+        }
+        let clicked = tag_resp.clicked() || resp.clicked();
+        tag_resp.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(&tip);
+        resp.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(&tip);
+        clicked
     }
 
     fn tap_button(&self, ui: &mut Ui, now: f64) -> Response {

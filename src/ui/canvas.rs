@@ -848,6 +848,9 @@ impl Editor {
                     NodeKind::Plugin(p) => {
                         let input = connected.first().copied().unwrap_or(false);
                         let events = plugin_node::draw(&view, id, accent, p, (input, midi_in), out, now);
+                        if let Some(e) = p.editor_error.take() {
+                            self.notices.push(format!("Could not open the editor: {e}"));
+                        }
                         if events.toggle_editor {
                             #[cfg(target_os = "macos")]
                             let before = super::macos::windows();
@@ -1889,8 +1892,9 @@ fn type_label(graph: &Graph, target: TipTarget) -> Option<(String, String)> {
             let n = graph.node(id)?;
             Some(match &n.kind {
                 NodeKind::Plugin(p) => {
-                    let what = if p.meta.instrument { "VST3 instrument" } else { "VST3 effect" };
-                    let detail = if p.meta.vendor.is_empty() { what.to_owned() } else { format!("{what} · {}", p.meta.vendor) };
+                    let kind = if p.meta.instrument { "instrument" } else { "effect" };
+                    let what = format!("{} {kind}", p.meta.format.label());
+                    let detail = if p.meta.vendor.is_empty() { what } else { format!("{what} · {}", p.meta.vendor) };
                     (p.meta.name.clone(), detail)
                 }
                 k => (k.node_type().name().to_owned(), k.node_type().hint().to_owned()),

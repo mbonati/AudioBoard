@@ -23,6 +23,7 @@ pub mod plugin_node;
 pub mod pops;
 pub mod preset_menu;
 pub mod prism;
+pub mod recent;
 pub mod settings;
 pub mod tape;
 pub mod tempo;

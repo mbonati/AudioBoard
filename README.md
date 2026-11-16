@@ -752,8 +752,8 @@ library modules.
 ### MIDI sequences: Step Sequencer, MIDIcer, Automa, Colloid, MIDI Looper, Arpeggiator, MIDI In
 
 Besides audio cables there are **MIDI cables**: square ports (audio ports are round) and dashed cables.
-A MIDI cable only joins a MIDI output to a MIDI input. VST3 plugins that accept MIDI (instruments), the
-Arpeggiator, MIDIcer, Colloid, the MIDI Looper and MIDI Note have a MIDI input.
+A MIDI cable only joins a MIDI output to a MIDI input. Plugins that accept MIDI (VST3 or Audio Unit
+instruments), the Arpeggiator, MIDIcer, Colloid, the MIDI Looper and MIDI Note have a MIDI input.
 
 **Start / Stop** (toolbar, or Space) drive the transport, not the audio: Stop ends the sound's generation
 but lets it die away. Sequencers, arpeggiators, MIDIcer, Automa and Colloid stop and end the notes they were holding (VST
@@ -768,6 +768,24 @@ click it to type a value (Enter sets it, Esc cancels; "97,5" works too), Alt+cli
 a pause of two seconds starts a new count. The light flashes on every beat while playing. Sequencers
 and arpeggiators are locked to the same grid, so they always stay in time with each other; the tempo is
 also passed to plugins (synced LFOs and delays). It is saved in the project.
+
+**External MIDI sync.** In **Settings → Sync** the transport can follow a **MIDI clock** from a chosen MIDI
+input instead of keeping its own time (a drum machine, a DAW, a hardware sequencer):
+- the tempo follows the clock's 24 ticks a beat, smoothed over the last beat of ticks (a late or early tick
+  barely moves it), and a jump to a new tempo is caught within two ticks;
+- **Start** plays from the top, **Stop** stops and holds the position, **Continue** plays on, and the **song
+  position** moves to the clock's place. The board's beat is steered onto the clock's (nudged ahead or back,
+  jumping only when far out), one audio buffer ahead, so what you hear lands on the clock's beat;
+- while it follows, the toolbar shows the clock's tempo next to **SYNC** (click either for the Sync settings),
+  the BPM field and TAP can't be changed, and Start/Stop and Space say that the clock drives the transport,
+  whose button shows EXT. If the clock stops ticking, the transport stops. Back to Internal, the board stops
+  and keeps its own tempo again (the project's tempo is never changed by the clock).
+
+The board can also **send its clock** to MIDI outputs (Settings → Sync → Send clock, one switch per output):
+24 ticks a beat at the board's tempo (also while stopped, so a device can show the tempo), **Start** when the
+board starts, **Stop**, and the song position plus **Continue** when it starts elsewhere. Ticks are timed to
+leave when their beat is heard, one audio buffer after it is rendered. Following a clock and sending one
+relays it; the clock source's own output is skipped, so the clock can't go round in a loop.
 
 **Step Sequencer**: up to 16 steps on a scale. In the grid each column is a step and the lit cell is its
 note: click a cell to move the step there (on the lit cell, to switch it off or back on), drag to draw a
@@ -968,15 +986,21 @@ Examples:
 Unplugging a MIDI cable (or deleting the node feeding it) sends the plugin note-offs for the notes still
 sounding, so no notes hang.
 
-### VST3 plugins
+### Plugins: VST3 and Audio Units
 
-Installed VST3 plugins (`/Library/Audio/Plug-Ins/VST3` and `~/Library/Audio/Plug-Ins/VST3`) appear in the
-**Plugins** section of the palette and of the right-click menu, grouped by maker (foldable groups in the
-palette, submenus in the menu), and are added like any other node. No plugin is loaded to list them: the
-maker is read from the bundle's files (VST3 module info, copyright notice or bundle identifier), and the
-category appears after the first load, which also confirms the maker. Makers that can't be found are under
-"Other"; the search matches makers too.
-**Rescan plugins** refreshes the list.
+Installed plugins appear in the **Plugins** section of the palette and of the right-click menu, grouped by
+maker (foldable groups in the palette, submenus in the menu), and are added like any other node:
+- **VST3** plugins from `/Library/Audio/Plug-Ins/VST3` and `~/Library/Audio/Plug-Ins/VST3`. No plugin is loaded
+  to list them: the maker is read from the bundle's files (VST3 module info, copyright notice or bundle
+  identifier), and the category appears after the first load, which also confirms the maker;
+- **Audio Units** (macOS): **AUv3** app extensions and classic **AU** (v2) components, Apple's own included
+  (AUDelay, AUReverb2, AUNBandEQ, DLSMusicDevice, AUSampler…), as the system lists them (none of their code
+  runs to list them; the list is read in the background at launch). Their hint says "AUv3 · Instrument",
+  "AU · Fx"…, so a plugin installed in both formats shows twice, VST3 first. **Settings → Plugins** can hide
+  Audio Units, or only Apple's.
+
+Makers that can't be found are under "Other"; the search matches makers too.
+**Rescan plugins** (in the palette, or in Settings → Plugins) refreshes the list.
 
 A plugin node has a stereo input (effects) and a stereo output; if it accepts MIDI it also has a MIDI
 input (square port) for sequencers and arpeggiators. It shows:
@@ -988,8 +1012,16 @@ input (square port) for sequencers and arpeggiators. It shows:
   with whatever arrives on the MIDI cable.
 
 The node's knobs can be mapped with a MIDI CC node (MAP), like the others. The project saves the plugin's
-path and its complete state, so the sound chosen in its editor too; on another computer the plugin is
-looked up by name in the VST3 folders. The same goes for library modules.
+path and its complete state, so the sound chosen in its editor too; on another computer a VST3 plugin is
+looked up by name in the VST3 folders, and an Audio Unit by its component code (type, subtype and maker),
+wherever it is installed. The same goes for library modules.
+
+An Audio Unit node works like a VST3 one: stereo in and out (effects), MIDI in (instruments and MIDI-driven
+effects), **EDITOR**, **PARAMS**, **KEYBOARD**, knobs, tempo and transport (for synced LFOs, delays and
+arpeggiators). Its maker line says **AUv3** or **AU**. EDITOR opens the unit's own view in a window that
+floats like a VST3 editor; a unit without a view of its own gets the system's generic one (sliders) where
+macOS has it. Parameters move evenly in octaves for frequencies (those the unit shows logarithmically),
+and the values read as the unit writes them ("1200 Hz", "25 %").
 
 A plugin is called once per audio buffer (as in a DAW), so a heavy instrument costs the same whatever the
 patch around it. Only its main stereo outputs are used: extra outputs (a drum machine's separate drum
@@ -998,8 +1030,9 @@ plugin with nothing coming in rests after a second of silence; any MIDI or sound
 plugin's sound (its complete state) is read when the project is saved: some plugins take a while to
 answer, so saving while playing may briefly interrupt them.
 
-Plugins run inside AudioBoard: a faulty plugin can make the application quit. VST3 is supported
-(not VST2, AU or CLAP).
+VST3 plugins and AU (v2) components run inside AudioBoard: a faulty one can make the application quit.
+**AUv3** extensions run in a process of their own, as in Logic, so a crash there leaves AudioBoard playing
+(the node falls silent). VST3 and Audio Units are supported (not VST2 or CLAP).
 
 ### Output
 
@@ -1027,10 +1060,14 @@ AUX on the tracks you want effected, patch Mixer 1's AUX into a Reverb (or a cha
 Reverb into a second mixer. That mixer also plays on the device, so you hear the clean tracks plus the
 effected layer, each with its own level. MUTE on Mixer 1 leaves only the effected layer.
 
-### Audio settings
+### Settings
 
-**Settings** (Cmd+,, the sliders button in the toolbar, or click the device name next to it) chooses the
-sound card. Every change applies at once and is kept between launches:
+**Settings** (Cmd+,, the sliders button in the toolbar, or click the device name next to it) has four tabs
+down its left side: **Audio**, **MIDI**, **Sync** and **Plugins**. Each is made of titled cards of rows, with
+the labels in one column, the controls in the next and a status line under them (green when all is well).
+Every change applies at once and is kept between launches.
+
+**Audio** chooses the sound card:
 
 - **Output.**
   - **Device**: the system default (it follows the Mac's choice) or a specific interface. A device that is
@@ -1049,6 +1086,17 @@ sound card. Every change applies at once and is kept between launches:
 
 **Refresh devices** reads the list again. It also refreshes itself every few seconds while the window is open,
 so an interface plugged in meanwhile appears.
+
+**MIDI** lists the MIDI inputs connected (every input is used, and one plugged in is picked up within
+seconds), each with a **notes** light (notes and controllers arriving) and a **clock** light (clock and
+transport arriving); the one followed as the clock is marked SYNC SOURCE.
+
+**Sync** chooses the transport's clock: **Internal** (the board's BPM, TAP, Start/Stop) or **MIDI clock** from
+one of the inputs; a status line shows the tempo received, whether it plays and where (bar and beat), or
+what it is waiting for. **Send clock** has a switch for each MIDI output. See *External MIDI sync* above.
+
+**Plugins** shows the VST3 folders and how many plugins they hold, switches for listing Audio Units and
+Apple's own, with how many there are (AUv3 and AU), and **Rescan plugins**.
 
 ### Audio buffer, load and limiter
 
@@ -1113,7 +1161,8 @@ The full list of shortcuts appears when hovering the **?** button in the toolbar
 
 Resting the pointer on a node or a module for a moment shows a small translucent label just above it with
 its type, since titles can be renamed: "Reverb · hall · shimmer · freeze", "Originals - Cinematic Pads ·
-VST3 instrument · Spitfire Audio", or for a module the nodes it holds ("Module · Drone · Filter · 2× Reverb").
+VST3 instrument · Spitfire Audio" ("AUv3 instrument", "AU effect" for Audio Units), or for a module the nodes
+it holds ("Module · Drone · Filter · 2× Reverb").
 The label stays put rather than following the pointer, takes no clicks, and hides while dragging, in menus
 and while renaming.
 
@@ -1189,7 +1238,10 @@ recording, **Discard take**, or quitting.
 
 ## Projects and library
 
-**Projects.** The project name in the toolbar opens the File menu (New project, Open…, Save, Save as…).
+**Projects.** The project name in the toolbar opens the File menu (New project, Open…, Open Recent, Save,
+Save as…). **Open Recent** lists the last ten projects opened or saved, newest first, with their folder; it is
+kept between launches. A project that is no longer there is shown greyed out ("missing"); **Clear menu**
+empties the list.
 A dot next to the name, and "(edited)" in the window title, flag unsaved changes: before creating a new
 project, opening another one or closing the window, AudioBoard asks whether to save them.
 A project (`.audioboard`) is a JSON file with nodes and parameters, positions, colors, collapsed nodes,
@@ -1261,8 +1313,15 @@ src/
 │   │   ├── oversample.rs 2× oversampling (half-band FIR) shared by Magma, Tape, Aether and Prism
 │   │   ├── steps.rs step grid on the global tempo, outgoing notes, held keys
 │   │   └── mod.rs  module descriptions (ModuleDef), generic parameters and DSP helpers
-│   ├── midi.rs     MIDI inputs (midir) and shared state read by the MIDI nodes (clock and transport too)
-│   ├── plugin.rs   VST3 plugins (vst3-host): loading, scanning, processing on the audio thread
+│   ├── midi.rs     MIDI inputs (midir) and shared state read by the MIDI nodes (clock and transport too),
+│   │               activity per input, the clock source's follower
+│   ├── sync.rs     MIDI sync: timing an external clock (least-squares tempo, transport, song position),
+│   │               steering the engine's beat onto it, the clock-out thread
+│   ├── plugin.rs   plugins of both formats behind one lock (VST3 through vst3-host, Audio Units): loading,
+│   │               scanning, processing on the audio thread
+│   ├── au.rs       Audio Units (macOS): listing, pseudo-paths, parameter ranges, the Rust face of au_host.m
+│   ├── au_host.m   the Objective-C host over AUAudioUnit (built by build.rs): AUv3 out of process, AU in
+│   │               process, render and MIDI blocks, host clock, parameters, state, the editor window
 │   ├── record.rs   recording the output: a lock-free tap on the audio thread, a writer thread, takes
 │   ├── export.rs   takes to WAV/AIFF (written here), FLAC/ALAC/AAC (afconvert), MP3 (ffmpeg or lame)
 │   ├── device.rs   the audio setup (devices by id, channel pair, rate, buffer), listing what the system offers
@@ -1299,14 +1358,17 @@ src/
 │   │               the chord lanes, the progression strip, knob groups
 │   ├── colloid.rs  the Colloid panel, flat and graphic: the tank (bands, dot matrix, wells, molecule icons, wakes,
 │   │               strikes, stirring), HANDPAN / CHORD and the shape, the notes' cells, knob groups, CC lanes
-│   ├── settings.rs the Settings window: output device, channels, rate, buffer; input and its meters
+│   ├── settings.rs the Settings window: tabs Audio (output, input and its meters), MIDI (inputs and their
+│   │               lights), Sync (clock source, clock out), Plugins (VST3 folders, Audio Units)
+│   ├── recent.rs   Open Recent: the list of recent projects and its submenu
 │   ├── pops.rs     the Pops 66 panel: MACHINE, MIXER and EDITOR detail levels (the node resizes), waveform preview
 │   ├── fjord.rs    the Fjord panel: the bank map of the 99 programs, channel keys and their lights, ALEA and
 │   │               its die; pages SOUND (the strike's outlines, NOISE, TONE, CLICK, MIXER, AMP and FILTER
 │   │               ENV) and SEQUENCER · MIDI (the lanes, SYSTEM); the node resizes with the page
 │   ├── widgets.rs  hand-drawn knobs, faders, meters, ports and cables
 │   ├── monitor.rs  bottom panel: oscilloscope and spectrum (FFT)
-│   ├── tempo.rs    the toolbar's tempo: BPM field (drag or type), beat light, tap tempo
+│   ├── tempo.rs    the toolbar's tempo: BPM field (drag or type), beat light, tap tempo; a MIDI clock's
+│   │               tempo while following one
 │   ├── macos.rs    native windows: toolbar controls don't drag the window; plugin editors float
 │   ├── theme.rs    colors, system fonts and style
 │   └── app.rs      window, toolbar, panels, demo patch
@@ -1317,7 +1379,12 @@ src/
 The UI never blocks the audio thread: knob values travel through atomics, while structural changes
 (nodes added/removed, a new processing order) reach the engine as commands on a channel.
 Buffers (delay, reverb, granular loop) are allocated on the UI thread when the node is created.
-VST3 plugins are shared through a lock: the UI calls into a plugin only between audio callbacks (when
+Audio Units are hosted through `audio/au_host.m`, a small Objective-C layer over `AUAudioUnit` that
+`build.rs` compiles with the `cc` crate on macOS (manual reference counting, so nothing on the render path
+retains, releases or allocates); `audio/au.rs` is its Rust face. An Audio Unit has no file, so it travels as
+a pseudo-path (`audiounit:<type>-<subtype>-<maker>` in hex) wherever a plugin path goes. Its parameters are
+set from the UI directly (`AUParameter` is thread-safe), not through the audio thread.
+Plugins are shared through a lock: the UI calls into a plugin only between audio callbacks (when
 the audio thread has just finished and won't need the plugin for most of a buffer), one call at a time, at
 most ten times a second, and the plugin's state is read only when saving, so the audio thread is not kept
 waiting. Each buffer is processed as one pass: built-in nodes run through it in 64-frame blocks (so MIDI
@@ -1349,6 +1416,13 @@ redraw.
 
 ```bash
 cargo test
+```
+
+Loading and playing real Audio Units (Apple's, always installed, and a few others found on the Mac) is a
+test of its own, not run by default:
+
+```bash
+cargo test -- --ignored audio_units_load_and_play --nocapture
 ```
 
 Benchmarks don't run with the normal tests:
