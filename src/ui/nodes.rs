@@ -71,6 +71,15 @@ pub type FrameActions = audioboard_ui::card::CardActions;
 /// Card, header (collapse chevron, activity LED, title, close button)
 /// shared by every node: the UI Kit's card.
 pub fn frame(v: &NodeView, node: &Node, selected: bool) -> FrameActions {
+    // No card: only an outline while selected.
+    if frameless(node) {
+        if selected {
+            let s = node.size();
+            let stroke = Stroke::new(1.5 * v.z, node.accent);
+            v.painter.rect_stroke(v.r(0.0, 0.0, s.x, s.y), 4.0 * v.z, stroke, egui::StrokeKind::Outside);
+        }
+        return FrameActions::default();
+    }
     let card = audioboard_ui::card::Card {
         size: node.size(),
         title: &node.title,
@@ -81,6 +90,14 @@ pub fn frame(v: &NodeView, node: &Node, selected: bool) -> FrameActions {
         bypass: node.is_effect().then(|| node.bypassed()),
     };
     audioboard_ui::card::card(v, &card)
+}
+
+/// Drawn without its card (an Iris set to show only its picture), unless
+/// collapsed.
+pub fn frameless(node: &Node) -> bool {
+    !node.collapsed
+        && matches!(&node.kind, NodeKind::Module(m)
+            if m.params.kind == crate::audio::modules::ModuleKind::Iris && super::iris::frameless(&m.params))
 }
 
 /// A bypassed effect's body, dimmed over its controls.

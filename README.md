@@ -1103,8 +1103,11 @@ palette and of the right-click menu.
   The settings can also force **IN** (nothing while unpatched) or **Main mix** (even with IN patched).
   **THRU** passes IN on unchanged, so Iris can sit inside a chain; it is never an effect (no bypass), and it keeps running, with the nodes feeding it,
   even when THRU goes nowhere.
-- **Fourteen scenes**:
-  - geometric: **Mandala** (rings of petals with 5- to 16-fold symmetry, each ring a band), **Tunnel**
+- **Eighteen scenes**:
+  - geometric: **Mandala** (rings of petals with 5- to 16-fold symmetry, each ring a band), **Halo** (a
+    halftone ring of dots on rays round an empty centre, biggest half way out and shrinking to specks inside
+    and out, with faint streaks along the rays: it turns, swells with the bass, sends a ripple out on
+    onsets, and its colours travel round it; the spectrum goes round the ring), **Tunnel**
     (polygons flying out of a vanishing point, twisting with the mids, new sides on onsets), **Truchet**
     (quarter-circle tiles joining into endless paths; onsets send a wave of flips across the grid), **Moiré**
     (overprinted sets of rings whose centres orbit, the bass pulling them apart), **Dots** (a dot-matrix
@@ -1118,7 +1121,14 @@ palette and of the right-click menu.
   - generative: **Flow** (particles on a flow field; onsets burst them outwards), **Life** (Conway's Game of
     Life on a dot matrix: onsets drop gliders and R-pentominoes where the spectrum peaks, the highs spark
     cells, and it never dies out), **Automaton** (an elementary cellular automaton scrolling up, the spectrum
-    writing into its newest row, onsets changing the rule and the ink).
+    writing into its newest row, onsets changing the rule and the ink);
+  - 3D, projected in software with the same flat dots and lines: **Globe** (a cloud of dots on a sphere, a
+    torus or a trefoil knot turning in space, each dot pushed out by its band; onsets spin it and now and
+    then morph it into the next shape), **Terrain** (the spectrum as a wireframe landscape: each new row is
+    the sound now, in front, and the rows move away into the distance, hiding what is behind them, under a
+    sun in outline; onsets mark their row), **Flight** (flying through a field of dots: the bass and the
+    level set the speed, onsets kick it, the mids roll the view, each dot swelling with its band and
+    streaking as it rushes past).
 - **The analysis**, on the UI thread (the audio thread only copies the samples): a 2048-point spectrum in 32
   bands from 30 Hz to 16 kHz (tilted +3 dB an octave, as music has less energy up high), the level, bass, mids
   and highs, the strongest pitch, and onsets (spectral flux over its own running average).
@@ -1128,17 +1138,20 @@ palette and of the right-click menu.
   When a scene changes by itself, its name shows for a moment.
 - **The gear** opens the settings in a popup beside the node, so the picture stays in view: the scene;
   **Auto**, **IN** or **Main mix**, with a line saying what it listens to now; the **palette** (Board, Mono in the node's colour, Paper and Riso on light paper,
-  Ember, Ice, Acid); **React** (how strongly it follows the sound), **Speed**, **Detail** (lines, particles,
+  Ember, Ice, Acid, and Lagoon: blue through cyan to green on white); **React** (how strongly it follows the sound), **Speed**, **Detail** (lines, particles,
   cells, symmetry), **Smooth** (how slowly the analysis lets go) and **Trail** (trails, echoes, histories);
-  **Next scene every** 1 to 16 bars at the board's tempo (or never); the screen's shape (16:9, 4:3, 1:1,
-  9:16, Reset); **New seed** for the generative scenes.
+  **Next scene every** 1 to 16 bars at the board's tempo (or never); **Frame** or **No frame**; the
+  screen's shape (16:9, 4:3, 1:1, 9:16, Reset); **New seed** for the generative scenes.
+- **No frame**: the node's card (title bar, border, bezel, shadow) goes and the picture fills the whole
+  node, as if stuck on the board; the ports stay on its edges, an outline shows while it is selected, and
+  the scene's name, gear and grip still show under the pointer. Collapsed, it has its card again.
 - **Open in a window**: the picture in a window of its own (its own generative state, the same sound),
   for a second display or a projector. Double-click it for full screen (the pointer hides while it rests),
   Esc leaves full screen, then closes the window. It keeps playing when the node is off the view or
   collapsed.
 
-The scene, the knobs, the size and the look are saved with the project (the scene by name); the window is
-not. A scene costs the UI about 0.1 to 2.4 ms a frame at full detail; the board redraws at full rate while an
+The scene, the knobs, the size, the look and the frame are saved with the project (the scene by name, so
+projects keep their scene as new ones are added); the window is not. A scene costs the UI about 0.1 to 2.4 ms a frame at full detail; the board redraws at full rate while an
 Iris is in view.
 
 ### Settings
@@ -1668,8 +1681,9 @@ src/
 │   ├── settings.rs the Settings window: tabs Audio (output, input and its meters), MIDI (inputs and their
 │   │               lights), Sync (clock source, clock out), Plugins (VST3 folders, Audio Units, plugin
 │   │               nodes)
-│   ├── iris.rs     the Iris panel: the analysis (spectrum, bands, onsets), the fourteen scenes, palettes, the
-│   │               scene's name, gear and grip, the settings popup, the window of its own
+│   ├── iris.rs     the Iris panel: the analysis (spectrum, bands, onsets), the eighteen scenes (the 3D ones
+│   │               projected in software), palettes, the scene's name, gear and grip, the frameless look, the
+│   │               settings popup, the window of its own
 │   ├── recent.rs   Open Recent: the list of recent projects and its submenu
 │   ├── board.rs    background presets and image, stickers on the canvas (drawing, moving, handles, menu,
 │   │               dropped files, textures), the built-in designs, the Stickers and Background submenus

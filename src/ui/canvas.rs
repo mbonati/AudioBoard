@@ -874,7 +874,7 @@ impl Editor {
             let on_header = body
                 .interact_pointer_pos()
                 .is_some_and(|p| p.y < rect_s.top() + nodes::HEADER_H * z);
-            if header.toggle_collapse || (body.double_clicked() && on_header) {
+            if header.toggle_collapse || (body.double_clicked() && on_header && !nodes::frameless(node)) {
                 actions.push(Action::ToggleCollapse(id));
             }
 

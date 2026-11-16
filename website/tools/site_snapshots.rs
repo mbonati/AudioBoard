@@ -534,8 +534,8 @@ mod site_snap {
             p.set_mode(k);
             // A palette for each scene, to show them all (SNAP_IRIS_PALETTE
             // picks one for every scene): Board, Mono, Paper, Riso, Ember,
-            // Ice, Acid.
-            const LOOKS: [f32; 14] = [0.0, 0.0, 5.0, 3.0, 4.0, 6.0, 0.0, 2.0, 2.0, 3.0, 4.0, 1.0, 5.0, 0.0];
+            // Ice, Acid, Lagoon.
+            const LOOKS: [f32; 18] = [0.0, 0.0, 5.0, 3.0, 4.0, 6.0, 0.0, 2.0, 2.0, 3.0, 4.0, 1.0, 5.0, 0.0, 7.0, 0.0, 5.0, 6.0];
             let look = std::env::var("SNAP_IRIS_PALETTE").ok().and_then(|v| v.parse().ok()).unwrap_or(LOOKS[k]);
             p.data[md::iris::data::PALETTE].set(look);
             let mix = s.g.add_mixer(pos2(0.0, 520.0), &s.a);
@@ -546,6 +546,21 @@ mod site_snap {
             node_shot(&name, FRAMES, &mut s, id);
         }
 
+        if want("iris-frameless") {
+            // No frame: the Halo on the Board palette, right on the board.
+            let mut s = scene(118.0);
+            let id = add(&mut s, ModuleKind::Iris, 0.0, 0.0);
+            let p = module_params(&s.g, id);
+            p.set_mode(14);
+            p.data[md::iris::data::FRAMELESS].set(1.0);
+            let mix = s.g.add_mixer(pos2(0.0, 520.0), &s.a);
+            let drone = add(&mut s, ModuleKind::Drone, -420.0, 420.0);
+            let pops = add(&mut s, ModuleKind::Pops, -420.0, 760.0);
+            link(&mut s, drone, 0, mix, 0);
+            link(&mut s, pops, 0, mix, 1);
+            node_shot("iris-frameless", FRAMES, &mut s, id);
+        }
+
         if want("iris-ui") {
             // The scene's name, the gear and the grip, with the settings open.
             let mut s = scene(118.0);
@@ -554,7 +569,7 @@ mod site_snap {
             let f = feeder(&mut s, ModuleKind::Drone, 0.0);
             link(&mut s, f, 0, id, 0);
             crate::ui::iris::SHOW_CONTROLS.store(true, Ordering::Relaxed);
-            full_shot("iris-ui", FRAMES, &mut s, vec2(1700.0, 940.0), PPP);
+            full_shot("iris-ui", FRAMES, &mut s, vec2(1700.0, 1010.0), PPP);
             crate::ui::iris::SHOW_CONTROLS.store(false, Ordering::Relaxed);
         }
 

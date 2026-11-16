@@ -7721,6 +7721,8 @@ fn iris_draws_every_scene_and_resizes() {
         p.set_mode(scene);
         p.data[data::PALETTE].set((scene % crate::ui::iris::PALETTES.len()) as f32);
         p.set(crate::audio::modules::iris::DETAIL, (scene % 3) as f32 * 0.5);
+        // Every other scene with no frame.
+        p.data[data::FRAMELESS].set((scene % 2) as f32);
         for _ in 0..8 {
             render_buf(&mut e, 800);
             let input = egui::RawInput { time: Some(frame as f64 / 60.0), ..Default::default() };

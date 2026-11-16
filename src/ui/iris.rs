@@ -46,16 +46,25 @@ pub fn size(p: &ModuleParams) -> Vec2 {
     )
 }
 
-/// The screen, in node-local units.
-fn screen_local(size: Vec2) -> Rect {
+/// No frame: only the picture, as if stuck on the board.
+pub fn frameless(p: &ModuleParams) -> bool {
+    p.data[data::FRAMELESS].get() > 0.5
+}
+
+/// The screen, in node-local units: inside the frame, or the whole node
+/// when it has none.
+fn screen_local(size: Vec2, frameless: bool) -> Rect {
+    if frameless {
+        return Rect::from_min_size(Pos2::ZERO, size);
+    }
     Rect::from_min_max(pos2(BEZEL, HEADER_H + 6.0), pos2(size.x - BEZEL, size.y - BEZEL))
 }
 
 /// Sets the node's size so the screen has the aspect `w / h`, keeping its width.
 fn set_aspect(p: &ModuleParams, w: f32, h: f32) {
     let s = size(p);
-    let screen_w = s.x - 2.0 * BEZEL;
-    let height = screen_w * h / w + HEADER_H + 6.0 + BEZEL;
+    let screen = screen_local(s, frameless(p));
+    let height = screen.width() * h / w + (s.y - screen.height());
     p.data[data::H].set(height.clamp(iris::MIN_SIZE[1], iris::MAX_SIZE[1]));
 }
 
@@ -92,7 +101,8 @@ const fn rgb(r: u8, g: u8, b: u8) -> Color32 {
     Color32::from_rgb(r, g, b)
 }
 
-pub const PALETTES: [Palette; 7] = [
+/// Saved by index: new ones go at the end.
+pub const PALETTES: [Palette; 8] = [
     Palette {
         name: "Board",
         bg: rgb(17, 18, 21),
@@ -124,6 +134,12 @@ pub const PALETTES: [Palette; 7] = [
         name: "Acid",
         bg: rgb(8, 8, 10),
         inks: [rgb(240, 240, 240), rgb(200, 255, 60), rgb(255, 60, 200), rgb(40, 230, 255), rgb(255, 236, 70)],
+    },
+    // On white, blue through cyan to green and back (the Halo's own look).
+    Palette {
+        name: "Lagoon",
+        bg: rgb(244, 246, 247),
+        inks: [rgb(30, 46, 62), rgb(28, 108, 240), rgb(0, 190, 226), rgb(44, 196, 110), rgb(0, 166, 178)],
     },
 ];
 
@@ -424,6 +440,25 @@ struct Scenes {
     peaks: Vec<f32>,
     orbits: Vec<f32>,
     spiro_flip: f32,
+    /// Fixed per seed: varies the Halo's rays.
+    salt: u32,
+    halo_rot: f32,
+    halo_spin: f32,
+    halo_hue: f32,
+    halo_hue_to: f32,
+    /// Ripples running out, 0 (inside) to 1 (outside).
+    halo_waves: Vec<f32>,
+    globe_shape: usize,
+    globe_mix: f32,
+    globe_yaw: f32,
+    globe_spin: f32,
+    /// Newest first: a row of heights, and its onset mark.
+    terrain: VecDeque<(Vec<f32>, f32)>,
+    terrain_clock: f32,
+    terrain_n: f32,
+    flight_z: f32,
+    flight_v: f32,
+    flight_roll: f32,
 }
 
 impl Scenes {
@@ -455,6 +490,22 @@ impl Scenes {
             peaks: Vec::new(),
             orbits: Vec::new(),
             spiro_flip: 0.0,
+            salt: seed.wrapping_mul(0x85EB_CA77) | 1,
+            halo_rot: 0.0,
+            halo_spin: 0.0,
+            halo_hue: 0.0,
+            halo_hue_to: 0.0,
+            halo_waves: Vec::new(),
+            globe_shape: 0,
+            globe_mix: 0.0,
+            globe_yaw: 0.0,
+            globe_spin: 0.0,
+            terrain: VecDeque::new(),
+            terrain_clock: 0.0,
+            terrain_n: 0.0,
+            flight_z: 0.0,
+            flight_v: 1.0,
+            flight_roll: 0.0,
         }
     }
 }
@@ -1368,6 +1419,467 @@ fn orbits(c: &Ctx, s: &mut Scenes) {
     c.p.circle_stroke(o, sun, Stroke::new(c.w(1.6), c.pal.line()));
 }
 
+// ---------------------------------------------------------------------------
+// Dots and 3D
+// ---------------------------------------------------------------------------
+
+/// Round dots in a mesh (no anti-aliasing: for thousands of them), with the
+/// unit circle worked out once a frame.
+struct Discs {
+    six: [Vec2; 6],
+    ten: [Vec2; 10],
+}
+
+impl Discs {
+    fn new() -> Self {
+        fn ring<const N: usize>() -> [Vec2; N] {
+            std::array::from_fn(|k| {
+                let a = k as f32 / N as f32 * TAU;
+                vec2(a.cos(), a.sin())
+            })
+        }
+        Self { six: ring(), ten: ring() }
+    }
+
+    /// A dot of radius `r`: a square while tiny, a polygon otherwise.
+    fn add(&self, mesh: &mut Mesh, p: Pos2, r: f32, col: Color32) {
+        if r < 1.1 {
+            mesh.add_colored_rect(Rect::from_center_size(p, Vec2::splat(r * 1.8)), col);
+            return;
+        }
+        let rim: &[Vec2] = if r < 3.0 { &self.six } else { &self.ten };
+        let i = mesh.vertices.len() as u32;
+        mesh.colored_vertex(p, col);
+        for d in rim {
+            mesh.colored_vertex(p + *d * r, col);
+        }
+        let n = rim.len() as u32;
+        for k in 0..n {
+            mesh.add_triangle(i, i + 1 + k, i + 1 + (k + 1) % n);
+        }
+    }
+}
+
+/// A number in 0..1, always the same for `i` and `salt`.
+fn hash(i: u32, salt: u32) -> f32 {
+    let mut x = i.wrapping_mul(0x9E37_79B1) ^ salt;
+    x ^= x >> 15;
+    x = x.wrapping_mul(0x85EB_CA77);
+    x ^= x >> 13;
+    x = x.wrapping_mul(0xC2B2_AE3D);
+    x ^= x >> 16;
+    (x >> 8) as f32 / (1u32 << 24) as f32
+}
+
+/// A point of the 3D scenes: x to the right, y up, z away from the eye.
+#[derive(Clone, Copy)]
+struct V3 {
+    x: f32,
+    y: f32,
+    z: f32,
+}
+
+const fn v3(x: f32, y: f32, z: f32) -> V3 {
+    V3 { x, y, z }
+}
+
+impl std::ops::Add for V3 {
+    type Output = V3;
+    fn add(self, o: V3) -> V3 {
+        v3(self.x + o.x, self.y + o.y, self.z + o.z)
+    }
+}
+
+impl std::ops::Mul<f32> for V3 {
+    type Output = V3;
+    fn mul(self, k: f32) -> V3 {
+        v3(self.x * k, self.y * k, self.z * k)
+    }
+}
+
+impl V3 {
+    fn lerp(self, o: V3, t: f32) -> V3 {
+        self * (1.0 - t) + o * t
+    }
+
+    fn cross(self, o: V3) -> V3 {
+        v3(self.y * o.z - self.z * o.y, self.z * o.x - self.x * o.z, self.x * o.y - self.y * o.x)
+    }
+
+    fn normalized(self) -> V3 {
+        self * (1.0 / (self.x * self.x + self.y * self.y + self.z * self.z).sqrt().max(1e-6))
+    }
+
+    /// Turned by `a` round the vertical axis.
+    fn yaw(self, a: f32) -> V3 {
+        let (s, c) = a.sin_cos();
+        v3(self.x * c + self.z * s, self.y, self.z * c - self.x * s)
+    }
+
+    /// Tipped by `a` round the horizontal axis.
+    fn pitch(self, a: f32) -> V3 {
+        let (s, c) = a.sin_cos();
+        v3(self.x, self.y * c - self.z * s, self.y * s + self.z * c)
+    }
+}
+
+/// A halftone halo: rays of dots round an empty centre, biggest in a band
+/// half way out and shrinking to specks inside and out, with faint streaks
+/// along the rays. It turns, swells with the bass, sends a ripple out on
+/// onsets, and its colours travel round it.
+fn halo(c: &Ctx, s: &mut Scenes) {
+    let rays = 96 + (c.detail * 144.0) as usize;
+    let per = 16 + (c.detail * 18.0) as usize;
+    if c.a.onset {
+        s.halo_waves.push(0.0);
+        s.halo_hue_to += 0.1 + 0.12 * s.rng.unit();
+        s.halo_spin += 0.5;
+    }
+    s.halo_hue_to += c.dt * 0.02;
+    s.halo_hue += (s.halo_hue_to - s.halo_hue) * (c.real_dt * 2.5).min(1.0);
+    s.halo_spin *= (-c.real_dt * 2.0).exp();
+    s.halo_rot += c.dt * (0.05 + 0.25 * c.a.level) + c.real_dt * s.halo_spin * 0.4;
+    for w in &mut s.halo_waves {
+        *w += c.real_dt * (0.6 + 0.3 * c.speed.min(2.0));
+    }
+    s.halo_waves.retain(|w| *w < 1.3);
+    let o = c.c();
+    let rad = c.rad() * 0.97;
+    let (r_in, r_out) = (rad * 0.14, rad);
+    let dr = (r_out - r_in) / (per - 1) as f32;
+    let rc = rad * (0.55 + 0.07 * c.a.bass + 0.05 * c.a.beat);
+    let wd = rad * (0.12 + 0.07 * c.a.level);
+    let size = (dr * 0.5).min(TAU * rc / rays as f32 * 0.5) * (0.9 + 0.3 * c.a.beat);
+    let discs = Discs::new();
+    let mut streaks = Mesh::default();
+    let mut dots = Mesh::default();
+    for i in 0..rays {
+        let f = i as f32 / rays as f32;
+        let th = f * TAU + s.halo_rot;
+        let dir = vec2(th.cos(), th.sin());
+        // The spectrum round the ring, mirrored so it joins up: the bass on
+        // one side, the highs opposite.
+        let e = c.band((1.0 - (2.0 * f - 1.0).abs()) * 0.85);
+        let reach = rc + wd * (1.0 + 2.2 * e + 0.9 * hash(i as u32, s.salt));
+        let col = c.pal.cyc(f + s.halo_hue);
+        let from = (rc - wd * 1.6).max(r_in);
+        seg(&mut streaks, o + dir * from, o + dir * reach.min(r_out), c.w(0.7) + size * 0.5, alpha(col, 0.08 + 0.2 * e));
+        let stagger = if i % 2 == 1 { 0.5 * dr } else { 0.0 };
+        for j in 0..per {
+            let r = r_in + j as f32 * dr + stagger;
+            if r > r_out {
+                break;
+            }
+            let mut k = if r < rc {
+                (-((rc - r) / wd).powi(2)).exp()
+            } else {
+                (-((r - rc) / (reach - rc).max(1.0) * 1.7).powi(2)).exp()
+            };
+            for w in &s.halo_waves {
+                let rw = r_in + w * (r_out - r_in);
+                k += 0.7 * (1.0 - w / 1.3) * (-((r - rw) / (dr * 1.3)).powi(2)).exp();
+            }
+            let k = k.min(1.25);
+            let dot = size * k;
+            if dot < 0.3 {
+                continue;
+            }
+            let col = c.pal.cyc(f + s.halo_hue + (r / rad - 0.55) * 0.12);
+            discs.add(&mut dots, o + dir * r, dot, alpha(col, 0.35 + 0.65 * k.min(1.0)));
+        }
+    }
+    c.p.add(Shape::mesh(streaks));
+    c.p.add(Shape::mesh(dots));
+}
+
+/// How far the bands push a Globe shape's dots out: less on the thinner
+/// ones, which would otherwise close up.
+const GLOBE_PUSH: [f32; 3] = [0.3, 0.16, 0.07];
+
+/// A point of a Globe shape and its normal, from `u` and `v` in 0..1: a
+/// sphere (`u` the latitude), a torus (`u` round the tube, 0.5 outside) or
+/// a trefoil knot (`u` round the tube, `v` along it).
+fn globe_point(shape: usize, u: f32, v: f32) -> (V3, V3) {
+    match shape {
+        0 => {
+            let th = (1.0 - 2.0 * u).clamp(-1.0, 1.0).acos();
+            let ph = TAU * v;
+            let n = v3(th.sin() * ph.cos(), th.cos(), th.sin() * ph.sin());
+            (n, n)
+        }
+        1 => {
+            let (big, small) = (TAU * v, TAU * u + PI);
+            let n = v3(small.cos() * big.cos(), small.sin(), small.cos() * big.sin());
+            (v3(big.cos() * 0.68, 0.0, big.sin() * 0.68) + n * 0.32, n)
+        }
+        _ => {
+            let a = TAU * v;
+            let k = 1.0 / 3.1;
+            let p = v3(a.sin() + 2.0 * (2.0 * a).sin(), a.cos() - 2.0 * (2.0 * a).cos(), -(3.0 * a).sin()) * k;
+            let t = v3(a.cos() + 4.0 * (2.0 * a).cos(), -a.sin() + 4.0 * (2.0 * a).sin(), -3.0 * (3.0 * a).cos());
+            // The tangent never points along z, so this frame never folds.
+            let nn = t.cross(v3(0.0, 0.0, 1.0)).normalized();
+            let b = t.normalized().cross(nn);
+            let n = nn * (TAU * u).cos() + b * (TAU * u).sin();
+            (p + n * 0.12, n)
+        }
+    }
+}
+
+/// A cloud of dots on a sphere, a torus or a trefoil knot, turning in
+/// space. Each dot is pushed out by its band (the bass round the middle,
+/// the highs at the ends); onsets give it a spin and now and then morph it
+/// into the next shape.
+fn globe(c: &Ctx, s: &mut Scenes) {
+    if c.a.onset {
+        s.globe_spin += 1.0;
+        if s.globe_mix <= 0.0 && s.rng.unit() < 0.15 {
+            s.globe_mix = 0.0001;
+        }
+    }
+    if s.globe_mix > 0.0 {
+        s.globe_mix += c.real_dt;
+        if s.globe_mix >= 1.0 {
+            s.globe_shape = (s.globe_shape + 1) % 3;
+            s.globe_mix = 0.0;
+        }
+    }
+    s.globe_spin *= (-c.real_dt * 1.5).exp();
+    s.globe_yaw += c.dt * (0.3 + 0.5 * c.a.level) + c.real_dt * s.globe_spin;
+    let pitch = 0.45 + 0.3 * (c.t * 0.11).sin();
+    let n = 900 + (c.detail * 3100.0) as usize;
+    let m = smoothstep(s.globe_mix);
+    let (from, to) = (s.globe_shape, (s.globe_shape + 1) % 3);
+    let dist = 3.2;
+    let f = c.rad() * 2.3;
+    let o = c.c();
+    let swell = 1.0 + 0.1 * c.a.beat;
+    let bounds = c.r.expand(12.0);
+    let mut pts: Vec<(f32, Pos2, f32, Color32)> = Vec::with_capacity(n);
+    for i in 0..n {
+        let u = (i as f32 + 0.5) / n as f32;
+        let v = (i as f32 * 0.618_034).fract();
+        let e = c.band((2.0 * u - 1.0).abs() * 0.9);
+        let (mut p, mut nrm) = globe_point(from, u, v);
+        if m > 0.0 {
+            let (p2, n2) = globe_point(to, u, v);
+            p = p.lerp(p2, m);
+            nrm = nrm.lerp(n2, m);
+        }
+        let push = GLOBE_PUSH[from] + (GLOBE_PUSH[to] - GLOBE_PUSH[from]) * m;
+        let q = ((p + nrm * (push * e)) * swell).yaw(s.globe_yaw).pitch(pitch);
+        let z = q.z + dist;
+        let sp = o + vec2(q.x, -q.y) * (f / z);
+        if !bounds.contains(sp) {
+            continue;
+        }
+        let depth = ((z - dist + 1.3) / 2.6).clamp(0.0, 1.0);
+        let col = mix(c.pal.cyc(u * 0.5 + c.t * 0.015), c.pal.bg, 0.72 * depth);
+        pts.push((z, sp, c.w(0.8 + 2.0 * e) * (dist / z), col));
+    }
+    // Far dots first, so the near ones cover them.
+    pts.sort_unstable_by(|a, b| b.0.total_cmp(&a.0));
+    let discs = Discs::new();
+    let mut mesh = Mesh::default();
+    for (_, p, r, col) in pts {
+        discs.add(&mut mesh, p, r, col);
+    }
+    c.p.add(Shape::mesh(mesh));
+}
+
+/// A new row of the Terrain: rolling hills, plus the spectrum when `live`
+/// (the low bands either side of a flat middle, the highs out at the edges).
+fn terrain_row(c: &Ctx, s: &mut Scenes, cols: usize, live: bool) -> Vec<f32> {
+    s.terrain_n += 1.0;
+    let z = s.terrain_n * 0.23;
+    let mut row: Vec<f32> = (0..=cols)
+        .map(|j| {
+            let u = j as f32 / cols as f32;
+            let d = (2.0 * u - 1.0).abs();
+            let side = smoothstep((d - 0.08) * 2.6);
+            let hills = 0.5 + 0.5 * ((u * 9.0 + z).sin() * (u * 4.0 - z * 0.7).cos());
+            let (e, jitter) = if live { (c.band(d * 0.88), s.rng.unit() * 0.05 * c.a.level) } else { (0.0, 0.0) };
+            (0.05 + 0.12 * hills + 0.85 * e + jitter) * side
+        })
+        .collect();
+    let prev = row.clone();
+    for j in 1..cols {
+        row[j] = (prev[j - 1] + 2.0 * prev[j] + prev[j + 1]) * 0.25;
+    }
+    row
+}
+
+/// The spectrum as a landscape: each new row is the sound now, in front,
+/// and the rows move away into the distance, drawn as a wireframe that
+/// hides what is behind it, under a sun in outline. Onsets mark their row
+/// with a bright line.
+fn terrain(c: &Ctx, s: &mut Scenes) {
+    let cols = 24 + (c.detail * 40.0) as usize;
+    let rows = 18 + (c.detail * 26.0) as usize;
+    if s.terrain.front().is_none_or(|r| r.0.len() != cols + 1) {
+        s.terrain.clear();
+        for _ in 0..=rows {
+            let row = terrain_row(c, s, cols, false);
+            s.terrain.push_back((row, 0.0));
+        }
+    }
+    s.terrain_clock += c.dt * (5.0 + 6.0 * c.a.level);
+    let mut steps = 0;
+    while s.terrain_clock >= 1.0 {
+        s.terrain_clock -= 1.0;
+        steps += 1;
+        if steps > 4 {
+            s.terrain_clock = s.terrain_clock.fract();
+            break;
+        }
+        let row = terrain_row(c, s, cols, true);
+        s.terrain.push_front((row, 0.0));
+        s.terrain.truncate(80);
+    }
+    if c.a.onset
+        && let Some(row) = s.terrain.front_mut()
+    {
+        row.1 = 1.0;
+    }
+    let n = rows.min(s.terrain.len() - 1);
+    let r = c.r;
+    let (eye, near, half, amp) = (1.0f32, 1.0f32, 1.8f32, 0.9f32);
+    let dz = 9.0 / rows as f32;
+    let hy = r.top() + r.height() * 0.3;
+    let f = (0.62 * r.height() * near / eye).max(0.55 * r.width() * near / half);
+    let frac = s.terrain_clock;
+
+    // Behind it: the horizon, and a sun in outline above it.
+    c.line(vec![pos2(r.left(), hy), pos2(r.right(), hy)], c.w(0.8), alpha(c.pal.line(), 0.25));
+    let sky = c.p.with_clip_rect(Rect::from_min_max(r.min, pos2(r.right(), hy)).intersect(c.p.clip_rect()));
+    let sun_r = r.height() * (0.15 + 0.04 * c.a.bass);
+    let sun = pos2(r.center().x, hy - sun_r * 0.55);
+    let sun_col = mix(c.pal.ink(1), c.pal.line(), c.a.beat * 0.6);
+    sky.circle_stroke(sun, sun_r, Stroke::new(c.w(1.3), sun_col));
+    for k in 0..5 {
+        let y = hy - sun_r * 0.16 * (k as f32 + 1.0 - (c.t * 0.3).fract());
+        let dx = (sun_r * sun_r - (y - sun.y).powi(2)).max(0.0).sqrt();
+        sky.line_segment([pos2(sun.x - dx, y), pos2(sun.x + dx, y)], Stroke::new(c.w(1.0), alpha(sun_col, 0.8)));
+    }
+
+    let pts: Vec<Vec<Pos2>> = (0..=n)
+        .map(|k| {
+            let z = near + (k as f32 + frac) * dz;
+            s.terrain[k]
+                .0
+                .iter()
+                .enumerate()
+                .map(|(j, h)| {
+                    let x = (j as f32 / cols as f32 * 2.0 - 1.0) * half;
+                    pos2(r.center().x + x * f / z, hy + (eye - h * amp) * f / z)
+                })
+                .collect()
+        })
+        .collect();
+    // Far to near: each strip hides what is behind it, then draws its lines.
+    for k in (0..n).rev() {
+        let depth = (k as f32 + frac) / n as f32;
+        let fog = depth.powf(1.2) * 0.9;
+        let w = c.w(0.6 + 1.0 * (1.0 - depth));
+        let (far, front) = (&pts[k + 1], &pts[k]);
+        let (hf, hn) = (&s.terrain[k + 1].0, &s.terrain[k].0);
+        let mut mesh = Mesh::default();
+        // Just under the far line, so it keeps its whole width.
+        let under = vec2(0.0, w * 0.5);
+        for j in 0..cols {
+            let i = mesh.vertices.len() as u32;
+            mesh.colored_vertex(far[j] + under, c.pal.bg);
+            mesh.colored_vertex(far[j + 1] + under, c.pal.bg);
+            mesh.colored_vertex(front[j + 1], c.pal.bg);
+            mesh.colored_vertex(front[j], c.pal.bg);
+            mesh.add_triangle(i, i + 1, i + 2);
+            mesh.add_triangle(i, i + 2, i + 3);
+        }
+        for j in 0..=cols {
+            let col = mix(c.pal.grad((hf[j] + hn[j]) * 0.6), c.pal.bg, fog);
+            seg(&mut mesh, far[j], front[j], w, col);
+        }
+        let mark = s.terrain[k].1;
+        for j in 0..cols {
+            let col = mix(c.pal.grad((hn[j] + hn[j + 1]) * 0.6), c.pal.line(), mark);
+            seg(&mut mesh, front[j], front[j + 1], w * (1.0 + mark), mix(col, c.pal.bg, fog));
+        }
+        c.p.add(Shape::mesh(mesh));
+    }
+    for row in s.terrain.iter_mut() {
+        row.1 *= (-c.real_dt * 0.4).exp();
+    }
+}
+
+/// Flying through a lattice of dots: the bass and the level set the speed,
+/// onsets kick it, the mids roll the view. Each layer has its colour, each
+/// dot swells with its band (the bass in the middle of the view, the highs
+/// at the edges) and streaks as it rushes past.
+fn flight(c: &Ctx, s: &mut Scenes) {
+    let depth = 10 + (c.detail * 6.0) as i32;
+    let target = 1.0 + 5.0 * c.a.bass + 2.0 * c.a.level;
+    if c.a.onset {
+        s.flight_v += 4.0;
+    }
+    s.flight_v += (target - s.flight_v) * (c.real_dt * 1.5).min(1.0);
+    s.flight_z += c.dt * s.flight_v;
+    s.flight_roll += c.dt * (0.06 + 0.4 * c.a.mid);
+    let (sn, cs) = s.flight_roll.sin_cos();
+    // The eye weaves about, a little off the middle of a cell.
+    let eye = vec2(0.5 + 0.3 * (c.t * 0.19).sin(), 0.5 + 0.3 * (c.t * 0.15).cos());
+    let fl = s.flight_z.floor();
+    let fr = s.flight_z - fl;
+    let f = c.rad() * 1.15;
+    let o = c.c();
+    let bounds = c.r.expand(6.0);
+    // How far behind each dot its streak starts.
+    let tail = (s.flight_v * 0.025 * (0.4 + c.trail)).min(0.6);
+    let keep = 0.35 + 0.35 * c.detail;
+    let reach = c.r.size().length() * 0.5 / f;
+    let rad = c.rad();
+    let discs = Discs::new();
+    let mut mesh = Mesh::default();
+    for iz in (1..=depth).rev() {
+        let z = iz as f32 - fr;
+        if z < 0.12 {
+            continue;
+        }
+        let layer = iz as f32 + fl;
+        let id = (layer as i64).rem_euclid(1 << 20) as u32;
+        let fog = (z / depth as f32).powf(1.3);
+        let flash = c.a.beat * (1.0 - z / 4.0).max(0.0);
+        let col = mix(mix(c.pal.cyc(layer * 0.06 + c.t * 0.01), c.pal.line(), flash), c.pal.bg, fog * 0.9);
+        let k = (reach * z).ceil() as i32 + 1;
+        let scale = f / z;
+        let back = f / (z + tail);
+        for iy in -k..=k {
+            for ix in -k..=k {
+                // Somewhere in its cell, the same every time it comes round.
+                let cell = id.wrapping_mul(0x01F3_5A67) ^ ((ix + 512) as u32).wrapping_mul(0x9E37) ^ ((iy + 512) as u32).wrapping_mul(0x632B_E5AB);
+                if hash(cell, s.salt) > keep {
+                    continue;
+                }
+                let jx = hash(cell ^ 0x5555, s.salt) - 0.5;
+                let jy = hash(cell ^ 0xAAAA, s.salt) - 0.5;
+                let (x, y) = (ix as f32 + jx - eye.x, iy as f32 + jy - eye.y);
+                let d = vec2(x * cs - y * sn, x * sn + y * cs);
+                let p = o + d * scale;
+                if !bounds.contains(p) {
+                    continue;
+                }
+                let e = c.band(((p - o).length() / (rad * 1.6)).min(1.0));
+                let dot = (0.045 * scale * (0.55 + 1.1 * e)).min(rad * 0.05).max(0.5);
+                let q = o + d * back;
+                if (p - q).length_sq() > 1.0 {
+                    seg(&mut mesh, q, p, dot * 0.6, alpha(col, 0.35));
+                }
+                discs.add(&mut mesh, p, dot, col);
+            }
+        }
+    }
+    c.p.add(Shape::mesh(mesh));
+}
+
 fn draw_scene(i: usize, c: &Ctx, s: &mut Scenes, seed: f32) {
     match i {
         0 => ridges(c, s),
@@ -1383,7 +1895,11 @@ fn draw_scene(i: usize, c: &Ctx, s: &mut Scenes, seed: f32) {
         10 => attractor(c, s),
         11 => phase(c, s),
         12 => dots(c, s),
-        _ => orbits(c, s),
+        13 => orbits(c, s),
+        14 => halo(c, s),
+        15 => globe(c, s),
+        16 => terrain(c, s),
+        _ => flight(c, s),
     }
 }
 
@@ -1395,7 +1911,7 @@ pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, (input, _
     let p = &m.params;
     let z = v.z;
     let size = size(p);
-    let local = screen_local(size);
+    let local = screen_local(size, frameless(p));
     let screen = v.r(local.min.x, local.min.y, local.max.x, local.max.y);
     let now = v.ui.input(|i| i.time);
     let pal = Pal::of(palette_index(p), accent);
@@ -1754,12 +2270,12 @@ fn settings(ui: &mut Ui, id: NodeId, p: &ModuleParams, accent: Color32, input: b
     let current = palette_index(p);
     ui.horizontal(|ui| {
         for (k, pal) in PALETTES.iter().enumerate() {
-            let (rect, resp) = ui.allocate_exact_size(vec2(38.0, 24.0), Sense::click());
+            let (rect, resp) = ui.allocate_exact_size(vec2(33.0, 24.0), Sense::click());
             let colors = Pal::of(k, accent);
             let painter = ui.painter();
             painter.rect_filled(rect, 4.0, colors.bg);
             for (j, ink) in colors.inks.iter().enumerate() {
-                let x = rect.left() + 5.0 + j as f32 * 6.0;
+                let x = rect.left() + 5.0 + j as f32 * 5.0;
                 painter.line_segment([pos2(x, rect.top() + 6.0), pos2(x + 4.0, rect.bottom() - 6.0)], Stroke::new(2.0, *ink));
             }
             let stroke = if k == current { Stroke::new(2.0, accent) } else { Stroke::new(1.0, theme::PANEL_BORDER) };
@@ -1791,6 +2307,18 @@ fn settings(ui: &mut Ui, id: NodeId, p: &ModuleParams, accent: Color32, input: b
             if ui.selectable_label(cycle == bars, label).clicked() {
                 p.data[data::CYCLE].set(bars as f32);
             }
+        }
+    });
+
+    heading(ui, "ON THE BOARD");
+    ui.horizontal(|ui| {
+        let bare = frameless(p);
+        if ui.selectable_label(!bare, "Frame").on_hover_text("The node's card: title bar, border and bezel").clicked() {
+            p.data[data::FRAMELESS].set(0.0);
+        }
+        let tip = "Only the picture, as if stuck on the board; the scene's name, gear and grip still show under the pointer";
+        if ui.selectable_label(bare, "No frame").on_hover_text(tip).clicked() {
+            p.data[data::FRAMELESS].set(1.0);
         }
     });
 
@@ -1935,6 +2463,19 @@ mod tests {
                 eprintln!("{:>4}×{:<4} {:<13} {:>6.2} ms a frame", w, h, SCENES[scene], total.as_secs_f64() * 1000.0 / frames as f64);
             }
         }
+    }
+
+    #[test]
+    fn frameless_fills_the_node_and_keeps_the_shape() {
+        let p = ModuleParams::new(ModuleKind::Iris);
+        assert!(!frameless(&p), "a new Iris has its frame");
+        assert!(screen_local(size(&p), false).width() < size(&p).x);
+        p.data[data::FRAMELESS].set(1.0);
+        assert!(frameless(&p));
+        assert_eq!(screen_local(size(&p), true), Rect::from_min_size(Pos2::ZERO, size(&p)));
+        set_aspect(&p, 16.0, 9.0);
+        let s = size(&p);
+        assert!((s.x / s.y - 16.0 / 9.0).abs() < 0.01, "{s:?}");
     }
 
     #[test]

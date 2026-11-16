@@ -32,8 +32,9 @@ const PARAMS: [ParamSpec; 5] = [
     ParamSpec::lin("TRAIL", 0.0, 1.0, 0.5, Unit::Percent),
 ];
 
-/// The scenes, in the order of the mode (saved by name).
-pub const SCENES: [&str; 14] = [
+/// The scenes, in the order of the mode (saved by name; new ones go at the
+/// end).
+pub const SCENES: [&str; 18] = [
     "RIDGES",
     "MANDALA",
     "HARMONOGRAPH",
@@ -48,6 +49,10 @@ pub const SCENES: [&str; 14] = [
     "PHASE",
     "DOTS",
     "ORBITS",
+    "HALO",
+    "GLOBE",
+    "TERRAIN",
+    "FLIGHT",
 ];
 
 /// Extra settings, saved with the node.
@@ -64,6 +69,8 @@ pub mod data {
     pub const CYCLE: usize = 4;
     /// Varies the generative scenes.
     pub const SEED: usize = 5;
+    /// 1: no frame, only the picture, as if stuck on the board.
+    pub const FRAMELESS: usize = 6;
 }
 
 /// Size of a new Iris, and the smallest and largest it can be made.
@@ -110,7 +117,7 @@ pub static DEF: ModuleDef = ModuleDef {
     map: false,
     midi_in: false,
     midi_out: false,
-    data: &[DEFAULT_SIZE[0], DEFAULT_SIZE[1], 0.0, 0.0, 0.0, 0.0],
+    data: &[DEFAULT_SIZE[0], DEFAULT_SIZE[1], 0.0, 0.0, 0.0, 0.0, 0.0],
     display_h: 0.0,
     controls_h: 0.0,
     viz: viz::LEN,
