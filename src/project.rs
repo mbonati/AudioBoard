@@ -37,6 +37,9 @@ pub struct Project {
     /// Beats per minute.
     #[serde(default = "default_tempo")]
     tempo: f32,
+    /// Stickers and background (with their images).
+    #[serde(default, skip_serializing_if = "crate::board::Board::is_default")]
+    board: crate::board::Board,
 }
 
 fn fader_unity() -> f32 {
@@ -296,6 +299,7 @@ fn snapshot_with(graph: &Graph, fresh: bool) -> Project {
         cables,
         modules,
         tempo: graph.tempo,
+        board: graph.board.clone(),
     }
 }
 
@@ -434,6 +438,7 @@ fn instantiate(
 pub fn restore(graph: &mut Graph, project: &Project, audio: &AudioHandle) -> usize {
     graph.clear(audio);
     graph.tempo = project.tempo.clamp(TEMPO_RANGE.0, TEMPO_RANGE.1);
+    graph.board = project.board.clone();
     let ids = instantiate(graph, &project.nodes, &project.cables, Vec2::ZERO, audio);
     for m in &project.modules {
         let members: Vec<NodeId> = m.members.iter().filter_map(|id| ids.get(id).copied()).collect();

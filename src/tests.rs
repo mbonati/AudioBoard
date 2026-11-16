@@ -709,6 +709,290 @@ fn right_click_opens_a_menu_on_anything() {
     }
 }
 
+/// The canvas driven with pointer events, for the selection tests.
+struct Canvas {
+    ctx: egui::Context,
+    editor: crate::ui::canvas::Editor,
+    /// Widgets of the last frame with a label (menu items, buttons), and
+    /// where they are: the accessibility tree egui builds.
+    labels: Vec<(String, egui::Pos2)>,
+}
+
+impl Canvas {
+    fn new() -> Self {
+        let ctx = egui::Context::default();
+        ctx.enable_accesskit();
+        Self { ctx, editor: crate::ui::canvas::Editor::new(), labels: Vec::new() }
+    }
+
+    fn frame(&mut self, g: &mut Graph, a: &AudioHandle, modifiers: egui::Modifiers, events: Vec<egui::Event>) {
+        let mut all = vec![egui::Event::ModifiersChanged(modifiers)];
+        all.extend(events);
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 900.0))),
+            events: all,
+            ..Default::default()
+        };
+        let editor = &mut self.editor;
+        let mut out = self.ctx.run_ui(input, |ui| editor.show(ui, g, a));
+        out.textures_delta.clear();
+        self.labels = out
+            .platform_output
+            .accesskit_update
+            .map(|u| {
+                u.nodes
+                    .iter()
+                    .filter_map(|(_, n)| {
+                        let b = n.bounds()?;
+                        let text = n.label().or(n.value())?;
+                        Some((text.to_owned(), egui::pos2(((b.x0 + b.x1) * 0.5) as f32, ((b.y0 + b.y1) * 0.5) as f32)))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+    }
+
+    /// Where the widget labelled `text` was last frame (a menu item's label
+    /// also holds its shortcut: "Make module Cmd+G").
+    fn find(&self, text: &str) -> Option<egui::Pos2> {
+        self.labels.iter().find(|(l, _)| l == text || l.starts_with(&format!("{text} "))).map(|(_, p)| *p)
+    }
+
+    fn button(pos: egui::Pos2, button: egui::PointerButton, pressed: bool, modifiers: egui::Modifiers) -> egui::Event {
+        egui::Event::PointerButton { pos, button, pressed, modifiers }
+    }
+
+    /// Press and release `button` at `p` (screen), with `modifiers` held.
+    fn click(&mut self, g: &mut Graph, a: &AudioHandle, p: egui::Pos2, button: egui::PointerButton, modifiers: egui::Modifiers) {
+        self.frame(g, a, modifiers, vec![egui::Event::PointerMoved(p)]);
+        self.frame(g, a, modifiers, vec![Self::button(p, button, true, modifiers)]);
+        self.frame(g, a, modifiers, vec![Self::button(p, button, false, modifiers)]);
+        self.frame(g, a, egui::Modifiers::NONE, vec![]);
+    }
+
+    fn escape(&mut self, g: &mut Graph, a: &AudioHandle) {
+        let key = egui::Event::Key { key: egui::Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::NONE };
+        self.frame(g, a, egui::Modifiers::NONE, vec![key]);
+        self.frame(g, a, egui::Modifiers::NONE, vec![]);
+    }
+
+    /// A node's header, on screen (its title, away from the buttons).
+    fn header(&self, g: &Graph, id: u32) -> egui::Pos2 {
+        let n = g.node(id).unwrap();
+        let p = n.pos + egui::vec2(n.size().x * 0.4, 12.0);
+        (self.editor.pan + p.to_vec2() * self.editor.zoom).to_pos2()
+    }
+
+    fn selected(&self) -> Vec<u32> {
+        let mut s: Vec<u32> = self.editor.selected.iter().copied().collect();
+        s.sort();
+        s
+    }
+
+    fn menu_open(&self) -> bool {
+        egui::Popup::is_any_open(&self.ctx)
+    }
+}
+
+#[test]
+fn the_selection_survives_menus_and_right_drags() {
+    use egui::{Modifiers, PointerButton};
+    let (mut g, a, _e) = setup();
+    let [random, drone, filter, reverb, mixer] = ambient_chain(&mut g, &a);
+    let mut c = Canvas::new();
+    c.frame(&mut g, &a, Modifiers::NONE, vec![]);
+    let three = {
+        let mut v = vec![random, drone, filter];
+        v.sort();
+        v
+    };
+    c.editor.selected = three.iter().copied().collect();
+    let empty = egui::pos2(1380.0, 880.0);
+
+    // Right-click on a selected node: the menu, for the whole selection.
+    let at = c.header(&g, filter);
+    c.click(&mut g, &a, at, PointerButton::Secondary, Modifiers::NONE);
+    assert!(c.menu_open());
+    assert_eq!(c.selected(), three);
+    // A click on empty canvas only closes the menu.
+    c.click(&mut g, &a, empty, PointerButton::Primary, Modifiers::NONE);
+    assert!(!c.menu_open());
+    assert_eq!(c.selected(), three, "closing the menu kept the selection");
+    // A click on a node that only closes a menu doesn't pick it either (the
+    // menu is opened on the left, the click lands on the right).
+    let at = c.header(&g, random);
+    c.click(&mut g, &a, at, PointerButton::Secondary, Modifiers::NONE);
+    assert!(c.menu_open());
+    let at = c.header(&g, mixer);
+    c.click(&mut g, &a, at, PointerButton::Primary, Modifiers::NONE);
+    assert!(!c.menu_open());
+    assert_eq!(c.selected(), three);
+
+    // A right drag from an unselected node pans the view, and selects nothing.
+    let pan = c.editor.pan;
+    let from = c.header(&g, reverb);
+    c.frame(&mut g, &a, Modifiers::NONE, vec![egui::Event::PointerMoved(from)]);
+    c.frame(&mut g, &a, Modifiers::NONE, vec![Canvas::button(from, PointerButton::Secondary, true, Modifiers::NONE)]);
+    for k in 1..=6 {
+        c.frame(&mut g, &a, Modifiers::NONE, vec![egui::Event::PointerMoved(from + egui::vec2(15.0 * k as f32, 0.0))]);
+    }
+    let to = from + egui::vec2(90.0, 0.0);
+    c.frame(&mut g, &a, Modifiers::NONE, vec![Canvas::button(to, PointerButton::Secondary, false, Modifiers::NONE)]);
+    c.frame(&mut g, &a, Modifiers::NONE, vec![]);
+    assert!(c.editor.pan.x > pan.x + 30.0, "the right drag panned: {:?} → {:?}", pan, c.editor.pan);
+    assert!(!c.menu_open(), "a drag is no right-click");
+    assert_eq!(c.selected(), three, "the right drag kept the selection");
+
+    // Shift+right-click on an unselected node adds it.
+    let at = c.header(&g, reverb);
+    c.click(&mut g, &a, at, PointerButton::Secondary, Modifiers::SHIFT);
+    assert!(c.menu_open());
+    let mut four = three.clone();
+    four.push(reverb);
+    four.sort();
+    assert_eq!(c.selected(), four);
+    // Esc closes the menu, and only that.
+    c.escape(&mut g, &a);
+    assert!(!c.menu_open());
+    assert_eq!(c.selected(), four, "Esc on an open menu kept the selection");
+
+    // On the Mac, Ctrl+click is a right-click: a menu, never a deselect.
+    if cfg!(target_os = "macos") {
+        let ctrl = Modifiers { ctrl: true, ..Modifiers::NONE };
+        c.click(&mut g, &a, empty, PointerButton::Primary, ctrl);
+        assert!(c.menu_open());
+        assert_eq!(c.selected(), four, "Ctrl+click on the canvas kept the selection");
+        c.escape(&mut g, &a);
+        let at = c.header(&g, drone);
+        c.click(&mut g, &a, at, PointerButton::Primary, ctrl);
+        assert!(c.menu_open());
+        assert_eq!(c.selected(), four, "Ctrl+click on a selected node kept the selection");
+        c.escape(&mut g, &a);
+    }
+
+    // A plain right-click on an unselected node is about that node alone.
+    let at = c.header(&g, mixer);
+    c.click(&mut g, &a, at, PointerButton::Secondary, Modifiers::NONE);
+    assert_eq!(c.selected(), vec![mixer]);
+    c.escape(&mut g, &a);
+}
+
+#[test]
+fn the_selection_bar_makes_and_merges_modules() {
+    use egui::{Modifiers, PointerButton};
+    let (mut g, a, _e) = setup();
+    let [random, drone, filter, reverb, _mixer] = ambient_chain(&mut g, &a);
+    let mut c = Canvas::new();
+    c.frame(&mut g, &a, Modifiers::NONE, vec![]);
+
+    // One node: no bar.
+    c.editor.selected = [filter].into_iter().collect();
+    c.frame(&mut g, &a, Modifiers::NONE, vec![]);
+    assert!(c.editor.selection_bar_layout().is_none());
+
+    // Three: the bar, above them, with Make module first.
+    c.editor.selected = [random, drone, filter].into_iter().collect();
+    c.frame(&mut g, &a, Modifiers::NONE, vec![]);
+    let (bar, buttons) = c.editor.selection_bar_layout().expect("a bar for three nodes");
+    let names: Vec<&str> = buttons.iter().map(|(n, _)| *n).collect();
+    assert_eq!(names, ["Make module", "Collapse", "Duplicate", "Delete"]);
+    let top = (c.editor.pan.y + g.node(random).unwrap().pos.y * c.editor.zoom).min(c.editor.pan.y + g.node(filter).unwrap().pos.y * c.editor.zoom);
+    assert!(bar.bottom() <= top || bar.top() >= top, "the bar keeps off the nodes");
+
+    // A click on the bar's count (not a button) changes nothing.
+    c.click(&mut g, &a, bar.left_center() + egui::vec2(16.0, 0.0), PointerButton::Primary, Modifiers::NONE);
+    assert_eq!(c.selected().len(), 3);
+    assert!(g.groups.is_empty());
+
+    // Make module.
+    let make = buttons[0].1;
+    c.click(&mut g, &a, make, PointerButton::Primary, Modifiers::NONE);
+    assert_eq!(g.groups.len(), 1);
+    let gid = g.groups[0].id;
+    assert_eq!(g.group(gid).unwrap().members.len(), 3);
+    assert_eq!(c.selected().len(), 3, "the new module stays selected");
+    // The selection is exactly that module now: no Make module on the bar.
+    let (_, buttons) = c.editor.selection_bar_layout().expect("still a bar");
+    assert!(buttons.iter().all(|(n, _)| *n != "Make module"));
+
+    // Shift+click another node, and Make module merges it in.
+    let at = c.header(&g, reverb);
+    c.click(&mut g, &a, at, PointerButton::Primary, Modifiers::SHIFT);
+    assert_eq!(c.selected().len(), 4);
+    let (_, buttons) = c.editor.selection_bar_layout().expect("a bar for module + node");
+    let make = buttons.iter().find(|(n, _)| *n == "Make module").expect("Make module is back").1;
+    c.click(&mut g, &a, make, PointerButton::Primary, Modifiers::NONE);
+    assert_eq!(g.groups.len(), 1, "one module, the old one merged in");
+    assert_eq!(g.groups[0].members.len(), 4);
+
+    // Hidden while a rectangle is being drawn.
+    c.editor.selected = [random, drone].into_iter().collect();
+    let empty = egui::pos2(1380.0, 880.0);
+    c.frame(&mut g, &a, Modifiers::NONE, vec![egui::Event::PointerMoved(empty)]);
+    c.frame(&mut g, &a, Modifiers::NONE, vec![Canvas::button(empty, PointerButton::Primary, true, Modifiers::NONE)]);
+    c.frame(&mut g, &a, Modifiers::NONE, vec![egui::Event::PointerMoved(empty - egui::vec2(60.0, 60.0))]);
+    c.frame(&mut g, &a, Modifiers::NONE, vec![egui::Event::PointerMoved(empty - egui::vec2(80.0, 80.0))]);
+    assert!(c.editor.selection_bar_layout().is_none(), "no bar while a rectangle is drawn");
+    c.frame(&mut g, &a, Modifiers::NONE, vec![Canvas::button(empty - egui::vec2(80.0, 80.0), PointerButton::Primary, false, Modifiers::NONE)]);
+}
+
+/// Right-clicking a module with more selected offers to merge them all.
+#[test]
+fn a_module_menu_offers_to_merge_the_selection() {
+    use egui::{Modifiers, PointerButton};
+    let (mut g, a, _e) = setup();
+    let [random, drone, filter, reverb, _mixer] = ambient_chain(&mut g, &a);
+    let gid = g.create_group(&[random, drone]).unwrap();
+    g.set_group_collapsed(gid, true);
+    let mut c = Canvas::new();
+    c.frame(&mut g, &a, Modifiers::NONE, vec![]);
+    c.editor.selected = [random, drone, filter, reverb].into_iter().collect();
+    c.frame(&mut g, &a, Modifiers::NONE, vec![]);
+    let card = crate::ui::groups::card_layout(&g, g.group(gid).unwrap()).unwrap().0;
+    let on_card = (c.editor.pan + (card.center().to_vec2()) * c.editor.zoom).to_pos2();
+    c.click(&mut g, &a, on_card, PointerButton::Secondary, Modifiers::NONE);
+    assert!(c.menu_open());
+    assert_eq!(c.selected().len(), 4, "right-clicking a selected module keeps the rest");
+    // It says what it acts on, and merges.
+    assert!(c.find("4 nodes selected").is_some(), "the menu names its subject: {:?}", c.labels);
+    let merge = c.find("Make module from selection").expect("the module's menu offers to merge");
+    c.click(&mut g, &a, merge, PointerButton::Primary, Modifiers::NONE);
+    assert_eq!(g.groups.len(), 1);
+    assert_eq!(g.groups[0].members.len(), 4, "the module and the two nodes, in one module");
+    assert!(!c.menu_open());
+
+    // With only the module selected, its menu names it, and has no merge.
+    c.editor.selected = g.groups[0].members.iter().copied().collect();
+    let gid = g.groups[0].id;
+    g.set_group_collapsed(gid, true);
+    c.frame(&mut g, &a, Modifiers::NONE, vec![]);
+    let card = crate::ui::groups::card_layout(&g, g.group(gid).unwrap()).unwrap().0;
+    let on_card = (c.editor.pan + (card.center().to_vec2()) * c.editor.zoom).to_pos2();
+    c.click(&mut g, &a, on_card, PointerButton::Secondary, Modifiers::NONE);
+    assert!(c.menu_open());
+    assert!(c.find("Make module from selection").is_none());
+    assert!(c.find("Rename…").is_some());
+    c.escape(&mut g, &a);
+}
+
+/// The canvas menu leads with what to do with the selection.
+#[test]
+fn the_canvas_menu_leads_with_the_selection() {
+    use egui::{Modifiers, PointerButton};
+    let (mut g, a, _e) = setup();
+    let [random, drone, _filter, _reverb, _mixer] = ambient_chain(&mut g, &a);
+    let mut c = Canvas::new();
+    c.frame(&mut g, &a, Modifiers::NONE, vec![]);
+    c.editor.selected = [random, drone].into_iter().collect();
+    let empty = egui::pos2(1300.0, 820.0);
+    c.click(&mut g, &a, empty, PointerButton::Secondary, Modifiers::NONE);
+    assert!(c.find("2 nodes selected").is_some(), "{:?}", c.labels);
+    let make = c.find("Make module from selection").expect("Make module in the canvas menu");
+    c.click(&mut g, &a, make, PointerButton::Primary, Modifiers::NONE);
+    assert_eq!(g.groups.len(), 1);
+    assert_eq!(c.selected().len(), 2);
+}
+
 // ---------------------------------------------------------------------------
 // Saving and the module library
 // ---------------------------------------------------------------------------

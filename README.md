@@ -1134,12 +1134,12 @@ Gain staging follows a DAW's:
 | Reconnect / unplug a cable | drag it away from the input it is plugged into |
 | Delete a cable | double-click the cable, or right-click → Disconnect |
 | Adjust knobs / faders | drag (Shift = fine adjustment), double-click = reset. Stepped knobs (notes, whole numbers, divisions) step on smoothly however slowly you drag, and their pointer glides from step to step |
-| Select several nodes | drag a rectangle on empty canvas, or Shift+click (Cmd+A all, Esc none) |
-| Move the view | two-finger scroll, drag with the right or middle button, or Alt+drag |
+| Select several nodes | drag a rectangle on empty canvas, or Shift+click (Cmd+A all, Esc none); Shift+click a module's header or card adds or removes the whole module; Shift+right-click adds what is under the pointer and opens its menu |
+| Move the view | two-finger scroll, drag with the right or middle button (also starting on a node or a module), or Alt+drag |
 | Zoom | pinch or Cmd+scroll; Cmd+= / Cmd+− / Cmd+0 (100%); or click the percentage in the status bar |
 | Move / delete / duplicate the selection | drag a selected node / Del / Cmd+D (inner cables are copied) |
 | Delete a node | the × in its header, Del, or right-click → Delete: AudioBoard asks first (Enter deletes, Esc cancels), since deleting can't be undone |
-| Make a module from the selection | Cmd+G, or right-click → Make module |
+| Make a module from the selection | **Make module** on the selection bar, Cmd+G, or right-click → Make module |
 | Rename a module | Enter or F2 with the module selected, or right-click → Rename… (Enter confirms, Esc cancels) |
 | Dissolve a module | Cmd+Shift+G, the × in the module's header, or right-click → Ungroup |
 | Collapse / expand a node or a module | arrow in the header, double-click the title, the C key, or right-click → Collapse |
@@ -1167,7 +1167,20 @@ The label stays put rather than following the pointer, takes no clicks, and hide
 and while renaming.
 
 Right-click (or Ctrl+click on macOS) opens the menu for whatever is under the pointer: canvas, node
-(also when clicking a knob or a display), module or cable.
+(also when clicking a knob or a display), module or cable. Its first line says what it acts on: "4 nodes
+selected", or the node's or module's name.
+- Right-clicking something already selected keeps the whole selection, and the menu acts on all of it.
+  Right-clicking something not selected selects it alone; with Shift (or Cmd) held, it joins the selection.
+- Menus never lose the selection by themselves: the click (or Esc) that closes a menu does only that, a
+  Ctrl+click is a right-click, not a click, and a right drag only moves the view.
+- With a selection, the canvas menu starts with **Make module from selection** and **Deselect**. A module's
+  menu offers **Make module from selection** too when more than that module is selected.
+
+**Selection bar.** While two or more nodes are selected, a small bar floats above them (below, when there is
+no room above) with the count and **Make module**, **Collapse** (or **Expand**), **Duplicate** and **Delete**,
+so a module can be made without any menu. It keeps a fixed size whatever the zoom, stays clear of the module
+headers, and hides while nodes are dragged, a selection rectangle is drawn, a module is renamed or a
+control is mapped. Make module is left out when the selection is exactly one module already.
 
 A collapsed node takes up only a strip with its title, ports and main value (frequency, cutoff, RT…);
 a collapsed mixer also shows the master meters. Cables and audio keep working normally.
@@ -1178,8 +1191,13 @@ Feedback is available inside nodes (Delay, Reverb).
 ### Modules
 
 A **module** groups several nodes into one, to move, collapse and duplicate them together.
-Create one by selecting nodes and pressing Cmd+G. To rename it, select it and press Enter (or F2, or
-right-click → Rename…): the name is edited right in the header.
+Create one by selecting nodes and clicking **Make module** on the selection bar (or Cmd+G, or right-click →
+Make module). To rename it, select it and press Enter (or F2, or right-click → Rename…): the name is edited
+right in the header.
+
+Modules grow by merging: select a module (click its header or card) and Shift+click more nodes or other
+modules, then Make module. The new module holds them all; the modules it took in dissolve into it, since
+a node belongs to one module only.
 
 - **Expanded**: a frame around the nodes, which stay editable in place. Dragging the header moves the
   whole module; the frame adapts when you move a node inside it.
@@ -1215,6 +1233,36 @@ category and the library modules, with a search field. Click a category's headin
 want (an outline shows where it lands), or click it to add it in the middle of the view. On library
 entries, the × removes the module from the library.
 
+## Stickers and background
+
+The board can be made your own with **stickers** and a different **background**, both from the right-click
+menu on empty canvas (**Stickers ▸** and **Background ▸**). They are saved with the project, images included,
+so a project opens looking the same on another computer.
+
+**Stickers** sit on the board behind modules, cables and nodes, so they never get in the way of patching:
+- **Built-in stickers**: fourteen designs (wave, moon, cassette, knob, bolt, mushroom, planet, heart,
+  sparkle, headphones, speaker, leaf, sun, eye) and six tags (AMBIENT, DRONE, LOOP, LIVE, WIP, NO INPUT),
+  drawn as flat line art in the board's colours on a dark badge; they stay sharp at any zoom. The menu
+  shows them as a grid of previews: click one to place it where you right-clicked.
+- **Image stickers**: **PNG** (with its transparent background), **JPG**, **SVG** (and WebP). Add them with
+  **Image file…**, or drag image files from the Finder onto the canvas (the canvas says when it will take
+  them). An SVG stays a vector, drawn again at the size it is shown, so it is sharp at any zoom; PNG and JPG
+  are shrunk to 1024 pixels on their longest side if larger. Images in the **stickers folder**
+  (`~/Library/Application Support/AudioBoard/Stickers`, **Open stickers folder** in the menu) are listed in
+  the menu too. **Example files** adds the four SVG examples in `assets/stickers` (vinyl, synth, rain
+  cloud, patch cable).
+- **Moving and shaping**: drag a sticker to move it; click it to select it (its outline shows), then drag
+  the square handle at its corner to resize it or the round one to rotate it (Shift: 15° steps). Del deletes
+  the selected sticker, Esc lets it go. A right or middle drag on a sticker pans the canvas as anywhere else.
+- **Its menu** (right-click a sticker): Bring to front, Send to back, Rotate left / right 15°, Straighten,
+  Duplicate, **Lock** and Delete. A locked sticker lets clicks through, so rectangle selection and panning
+  work over it; **Unlock all stickers** in the Stickers menu frees them again.
+
+**Background**: eight presets, each a colour and a grid: Graphite (the usual), Dots, Blueprint, Night, Moss,
+Ember, Plum and Plain (no grid), shown as swatches. **Image…** puts a picture (PNG, JPG, SVG) behind the
+board, filling the view without stretching; **Veil** sets how much the preset's colour covers it, so nodes
+stay readable, and **Grid** shows or hides the grid. A photo is kept as a JPEG of up to 2560 pixels.
+
 ## Recording and export
 
 **REC** in the toolbar (or **R**) records what the board plays: the device's output, after the limiter, so
@@ -1245,7 +1293,8 @@ empties the list.
 A dot next to the name, and "(edited)" in the window title, flag unsaved changes: before creating a new
 project, opening another one or closing the window, AudioBoard asks whether to save them.
 A project (`.audioboard`) is a JSON file with nodes and parameters, positions, colors, collapsed nodes,
-cables and modules; parameters are saved by name. The demo patch always opens on launch.
+cables and modules, and the board's stickers and background (images inside, base64); parameters are saved by
+name. The demo patch always opens on launch.
 
 **Module library.** Right-click a module's header → **Save to library** saves it under its name (if it
 already exists, it asks whether to replace it). Saved modules appear in the **Library** section of the
@@ -1329,6 +1378,7 @@ src/
 │   │               against drift between the two devices' clocks
 │   └── mod.rs      opening the output and input streams (cpal); a new rate builds a new engine
 ├── graph.rs        UI-side patch model (nodes, cables, modules, Kahn ordering)
+├── board.rs        the board's stickers, images (PNG/JPEG kept encoded, SVG kept as text) and background
 ├── project.rs      saving/loading projects and the module library (JSON)
 ├── presets.rs      named presets of a module (knobs, settings, mode, toggle), one file per kind in the app's
 │                   data folder
@@ -1361,6 +1411,8 @@ src/
 │   ├── settings.rs the Settings window: tabs Audio (output, input and its meters), MIDI (inputs and their
 │   │               lights), Sync (clock source, clock out), Plugins (VST3 folders, Audio Units)
 │   ├── recent.rs   Open Recent: the list of recent projects and its submenu
+│   ├── board.rs    background presets and image, stickers on the canvas (drawing, moving, handles, menu,
+│   │               dropped files, textures), the built-in designs, the Stickers and Background submenus
 │   ├── pops.rs     the Pops 66 panel: MACHINE, MIXER and EDITOR detail levels (the node resizes), waveform preview
 │   ├── fjord.rs    the Fjord panel: the bank map of the 99 programs, channel keys and their lights, ALEA and
 │   │               its die; pages SOUND (the strike's outlines, NOISE, TONE, CLICK, MIXER, AMP and FILTER

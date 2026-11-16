@@ -789,6 +789,8 @@ pub struct Graph {
     /// Removed plugins, kept until the audio thread lets go of them so they
     /// are destroyed here, never on the audio thread.
     graveyard: Vec<Arc<PluginShared>>,
+    /// The board's stickers and background.
+    pub board: crate::board::Board,
 }
 
 impl Default for Graph {
@@ -803,6 +805,7 @@ impl Default for Graph {
             accent_count: 0,
             plugin_host: None,
             graveyard: Vec::new(),
+            board: crate::board::Board::default(),
         }
     }
 }
@@ -826,7 +829,8 @@ impl Graph {
         }
     }
 
-    /// Removes every node, cable and module.
+    /// Removes every node, cable and module, and the board's stickers and
+    /// background.
     pub fn clear(&mut self, audio: &AudioHandle) {
         let ids: Vec<NodeId> = self.nodes.iter().map(|n| n.id).collect();
         for id in ids {
@@ -835,6 +839,7 @@ impl Graph {
         self.groups.clear();
         self.accent_count = 0;
         self.tempo = DEFAULT_TEMPO;
+        self.board = crate::board::Board::default();
     }
 
     fn alloc_id(&mut self) -> NodeId {

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 150" width="240" height="150">
+  <!-- A small synth: knobs on top, keys below. -->
+  <rect x="8" y="8" width="224" height="134" rx="14" fill="#1d1e23" stroke="#56bcac" stroke-width="6"/>
+  <g fill="none" stroke="#56bcac" stroke-width="4">
+    <circle cx="44" cy="44" r="14"/>
+    <circle cx="92" cy="44" r="14"/>
+    <circle cx="140" cy="44" r="14"/>
+  </g>
+  <g stroke="#e48e58" stroke-width="4" stroke-linecap="round">
+    <line x1="44" y1="44" x2="52" y2="34"/>
+    <line x1="92" y1="44" x2="84" y2="33"/>
+    <line x1="140" y1="44" x2="150" y2="40"/>
+  </g>
+  <rect x="172" y="30" width="44" height="28" rx="5" fill="none" stroke="#debc56" stroke-width="4"/>
+  <path d="M 178 50 L 186 38 L 194 48 L 202 36 L 210 46" fill="none" stroke="#debc56" stroke-width="3" stroke-linejoin="round"/>
+  <g fill="none" stroke="#e2e4e8" stroke-width="3">
+    <rect x="24" y="78" width="192" height="50" rx="4"/>
+    <line x1="48" y1="78" x2="48" y2="128"/><line x1="72" y1="78" x2="72" y2="128"/>
+    <line x1="96" y1="78" x2="96" y2="128"/><line x1="120" y1="78" x2="120" y2="128"/>
+    <line x1="144" y1="78" x2="144" y2="128"/><line x1="168" y1="78" x2="168" y2="128"/>
+    <line x1="192" y1="78" x2="192" y2="128"/>
+  </g>
+  <g fill="#56bcac">
+    <rect x="40" y="78" width="14" height="28" rx="2"/><rect x="64" y="78" width="14" height="28" rx="2"/>
+    <rect x="112" y="78" width="14" height="28" rx="2"/><rect x="136" y="78" width="14" height="28" rx="2"/>
+    <rect x="160" y="78" width="14" height="28" rx="2"/>
+  </g>
+</svg>

@@ -5,7 +5,6 @@
 - drum machine differenti
 - strumenti alla Alva Noto, per ottenere medesime sonorità
 - possibilità di salvare kits su Pops 66 e di salvare patterns
-- aggiungere supporto per AUv3
 
 
 DONE
@@ -15,4 +14,5 @@ DONE
 - tape emulator
 - mixer mute su master
 - mixer aux out
+- aggiungere supporto per AUv3
 

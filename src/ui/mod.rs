@@ -1,6 +1,7 @@
 pub mod aether;
 pub mod app;
 pub mod automa;
+pub mod board;
 pub mod colloid;
 pub mod canvas;
 pub mod console;
