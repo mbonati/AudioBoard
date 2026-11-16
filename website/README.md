@@ -19,7 +19,7 @@ website/serve.sh
 
 It serves on http://localhost:8000 (or the next free port); `website/serve.sh 9000` picks another port, `--no-open` leaves the browser alone, and Ctrl+C stops it. It needs only `python3`. Opening `index.html` straight from disk works too.
 
-The fonts (Unbounded, Space Grotesk, JetBrains Mono) come from Google Fonts; offline, the pages fall back to the system fonts.
+The main font is [Chillax](https://www.fontshare.com/fonts/chillax) (Indian Type Foundry, free for personal and commercial use), loaded from Fontshare's CDN by `assets/css/fonts.css`; labels and code use JetBrains Mono from Google Fonts. Offline, the pages fall back to the system fonts.
 
 The text follows the main `README.md`, which stays the source of truth: when a node changes there, change its card in `nodes.html` (and its spotlight in `index.html`, if it has one).
 
