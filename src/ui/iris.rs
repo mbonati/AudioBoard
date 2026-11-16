@@ -72,7 +72,8 @@ pub fn scene_name(i: usize) -> String {
 }
 
 pub fn readout(p: &ModuleParams) -> (String, String) {
-    let source = if iris::listens_to_input(p) { "IN" } else { "main mix" };
+    // What the processor listens to now (Auto follows the cable).
+    let source = if p.viz[viz::FROM_INPUT].get() > 0.5 { "IN" } else { "main mix" };
     (scene_name(scene_of(p)), format!("{} · {}", source, PALETTES[palette_index(p)].name))
 }
 
@@ -1399,7 +1400,7 @@ pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, (input, _
     let now = v.ui.input(|i| i.time);
     let pal = Pal::of(palette_index(p), accent);
     let scene = scene_of(p);
-    let listens_in = iris::listens_to_input(p);
+    let listens_in = iris::listens_to_input(p, input);
     let hovered = v.ui.rect_contains_pointer(v.r(0.0, 0.0, size.x, size.y)) || show_controls();
 
     // The screen and its picture.
@@ -1729,19 +1730,25 @@ fn settings(ui: &mut Ui, id: NodeId, p: &ModuleParams, accent: Color32, input: b
     });
 
     heading(ui, "REACTS TO");
-    let mut source = iris::listens_to_input(p);
+    let source = p.data[data::SOURCE].get().round();
     ui.horizontal(|ui| {
-        if ui.selectable_label(!source, "Main mix").clicked() {
-            source = false;
-        }
-        if ui.selectable_label(source, "IN").clicked() {
-            source = true;
-        }
-        if source && !input {
-            ui.label(RichText::new("nothing patched").small().color(theme::TEXT_FAINT));
+        for (value, label, tip) in [
+            (iris::AUTO, "Auto", "The node patched into IN; the main mix while IN is free"),
+            (iris::INPUT, "IN", "Only what is patched into IN"),
+            (iris::MAIN, "Main mix", "Everything the board plays, even with IN patched"),
+        ] {
+            if ui.selectable_label(source == value, label).on_hover_text(tip).clicked() {
+                p.data[data::SOURCE].set(value);
+            }
         }
     });
-    p.data[data::SOURCE].set(if source { 1.0 } else { 0.0 });
+    let now = match (iris::listens_to_input(p, input), input) {
+        (true, true) => "Listening to the node on IN",
+        (true, false) => "Nothing patched into IN",
+        (false, true) => "Listening to the main mix (IN only goes on to THRU)",
+        (false, false) => "Listening to the main mix",
+    };
+    ui.label(RichText::new(now).small().color(theme::TEXT_FAINT));
 
     heading(ui, "PALETTE");
     let current = palette_index(p);

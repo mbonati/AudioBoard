@@ -7658,6 +7658,52 @@ fn iris_listens_to_the_main_mix() {
     assert!(!g.node(iris).unwrap().is_effect());
 }
 
+/// Zero crossings in the samples Iris handed to its panel: about twice
+/// the frequency it hears, per second of ring.
+fn iris_crossings(p: &ModuleParams) -> usize {
+    let ring = iris_ring(p);
+    ring.windows(2).filter(|w| (w[0] < 0.0) != (w[1] < 0.0)).count()
+}
+
+#[test]
+fn iris_follows_the_node_on_its_in_and_not_the_rest_of_the_mix() {
+    use crate::audio::modules::iris::{self, data, viz};
+    let (mut g, a, mut e) = setup();
+    // A low tone into Iris, a high one straight into the mixer.
+    let low = g.add_osc(pos2(0.0, 0.0), &a);
+    osc_params(&g, low).set(osc::FREQ, 110.0);
+    let high = g.add_osc(pos2(0.0, 300.0), &a);
+    osc_params(&g, high).set(osc::FREQ, 1760.0);
+    let mix = g.add_mixer(pos2(900.0, 0.0), &a);
+    let iris_id = g.add_module(ModuleKind::Iris, pos2(400.0, 0.0), &a);
+    g.connect(port(high, 0), port(mix, 1), &a);
+    let p = module_params(&g, iris_id);
+    let settle = |e: &mut Engine| {
+        for _ in 0..4 {
+            render_buf(e, 2400);
+        }
+    };
+
+    // Auto, IN free: the main mix (the high tone).
+    settle(&mut e);
+    assert_eq!(p.viz[viz::FROM_INPUT].get(), 0.0);
+    assert!(iris_crossings(&p) > 200, "hears the mix: {}", iris_crossings(&p));
+
+    // Auto, IN patched: only the low tone, whatever else plays.
+    g.connect(port(low, 0), port(iris_id, 0), &a);
+    settle(&mut e);
+    assert_eq!(p.viz[viz::FROM_INPUT].get(), 1.0);
+    let n = iris_crossings(&p);
+    assert!(n < 40, "hears only its IN (110 Hz ≈ 19 crossings): {n}");
+    assert_eq!(crate::ui::iris::readout(&p).1.split(" · ").next(), Some("IN"));
+
+    // Main mix forced: the mix again, though IN is patched.
+    p.data[data::SOURCE].set(iris::MAIN);
+    settle(&mut e);
+    assert_eq!(p.viz[viz::FROM_INPUT].get(), 0.0);
+    assert!(iris_crossings(&p) > 200);
+}
+
 #[test]
 fn iris_draws_every_scene_and_resizes() {
     use crate::audio::modules::iris::{SCENES, data};

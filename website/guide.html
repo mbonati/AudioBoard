@@ -196,13 +196,13 @@
     <section id="iris">
       <h2><span class="n">10</span>Visuals: Iris</h2>
       <figure>
-        <img src="assets/shots/iris-ui-1x.png" srcset="assets/shots/iris-ui-1x.png 1380w, assets/shots/iris-ui.png 2760w" sizes="(max-width: 900px) 100vw, 820px" width="1380" height="630" loading="lazy" alt="A Drone patched into Iris, which shows its Mandala scene; the settings popup is open beside the node, with the scenes, the source, the palettes and the motion sliders." data-zoom="assets/shots/iris-ui.png" data-title="Iris and its settings">
+        <img src="assets/shots/iris-ui-1x.png" srcset="assets/shots/iris-ui-1x.png 1380w, assets/shots/iris-ui.png 2760w" sizes="(max-width: 900px) 100vw, 820px" width="1380" height="650" loading="lazy" alt="A Drone patched into Iris, which shows its Mandala scene; the settings popup is open beside the node, with the scenes, the source, the palettes and the motion sliders." data-zoom="assets/shots/iris-ui.png" data-title="Iris and its settings">
         <figcaption>Iris following a Drone on its IN, with its settings open beside it</figcaption>
       </figure>
-      <p><strong>Iris</strong> (in the <strong>Visual</strong> group) is a screen on the board where visuals react to the sound. With nothing patched it follows the <strong>main mix</strong>; patch a node into its <strong>IN</strong> to follow that one. <strong>THRU</strong> passes the sound on unchanged, so Iris can sit inside a chain.</p>
+      <p><strong>Iris</strong> (in the <strong>Visual</strong> group) is a screen on the board where visuals react to the sound. Patch a node into its <strong>IN</strong> and it follows that node only; with IN free it follows the <strong>main mix</strong>, everything the board plays. The settings can force either one (<strong>Auto</strong>, <strong>IN</strong>, <strong>Main mix</strong>). <strong>THRU</strong> passes the sound on unchanged, so Iris can sit inside a chain.</p>
       <ul>
         <li><strong>Move and resize</strong>: drag the picture to move the node; while the pointer is over it, a grip appears in the bottom right corner: drag it to resize the screen (<kbd>Shift</kbd> keeps its shape). The scene's name shows at the top left.</li>
-        <li><strong>Settings</strong>: the gear at the top right opens them in a popup <em>beside</em> the node, so the picture stays in view: the scene (fourteen: geometric, mathematical, generative), Main mix or IN, seven palettes, React, Speed, Detail, Smooth, Trail, a new scene every 1 to 16 bars, the screen's shape and a new seed.</li>
+        <li><strong>Settings</strong>: the gear at the top right opens them in a popup <em>beside</em> the node, so the picture stays in view: the scene (fourteen: geometric, mathematical, generative), Auto, IN or Main mix, seven palettes, React, Speed, Detail, Smooth, Trail, a new scene every 1 to 16 bars, the screen's shape and a new seed.</li>
         <li><strong>Open in a window</strong>: the picture in a window of its own, for a second display or a projector. Double-click it for full screen; <kbd>Esc</kbd> leaves full screen, then closes it. It keeps playing when the node is off the view.</li>
       </ul>
       <p>Every scene is in the <a href="nodes.html#node-iris">catalogue</a>, with a picture of each.</p>

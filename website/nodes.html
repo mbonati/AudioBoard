@@ -646,16 +646,16 @@
     <article class="card" id="node-iris" tabindex="0" role="button" data-group="visual" data-group-label="Visual" data-name="Iris" data-after="fourteen scenes: geometric, mathematical, generative" data-shots="assets/shots/iris-mandala.png|MANDALA,assets/shots/iris-ridges.png|RIDGES,assets/shots/iris-harmonograph.png|HARMONOGRAPH,assets/shots/iris-spiro.png|SPIRO,assets/shots/iris-tunnel.png|TUNNEL,assets/shots/iris-flow.png|FLOW,assets/shots/iris-life.png|LIFE,assets/shots/iris-automaton.png|AUTOMATON,assets/shots/iris-truchet.png|TRUCHET,assets/shots/iris-moire.png|MOIRE,assets/shots/iris-attractor.png|ATTRACTOR,assets/shots/iris-phase.png|PHASE,assets/shots/iris-dots.png|DOTS,assets/shots/iris-orbits.png|ORBITS" data-keys="video visuals visualizer vj scope spectrum mandala tunnel truchet moire attractor life automaton harmonograph spirograph" style="--accent: var(--yellow)">
       <div class="thumb"><img src="assets/shots/iris-mandala.png" width="1136" height="772" loading="lazy" alt="Iris showing its Mandala scene"></div>
       <div class="meta"><div class="row"><h3>Iris</h3><span class="label">Video</span></div>
-        <p>A screen on the board with fourteen scenes that follow the main mix or the node on its IN. Resize it from its corner; set it up in a popup beside it.</p></div>
+        <p>A screen on the board with fourteen scenes that follow the node on its IN, or the main mix while IN is free. Resize it from its corner; set it up in a popup beside it.</p></div>
       <div class="more">
-        <p>It listens to the <b>main mix</b> (with nothing patched) or to its <b>IN</b>, so it can follow one node; <b>THRU</b> passes IN on unchanged, so Iris can sit inside a chain. It keeps running, with the nodes feeding it, even when THRU goes nowhere.</p>
+        <p>It listens to the node patched into its <b>IN</b>, and only that one, or to the <b>main mix</b> while IN is free (<b>Auto</b>); the settings can force <b>IN</b> or <b>Main mix</b>. <b>THRU</b> passes IN on unchanged, so Iris can sit inside a chain. It keeps running, with the nodes feeding it, even when THRU goes nowhere.</p>
         <ul>
           <li><b>Geometric.</b> Mandala (rings of petals, 5- to 16-fold symmetry), Tunnel (polygons flying out of a vanishing point), Truchet (tiles flipping in waves on onsets), Moiré (overprinted rings), Dots (a dot-matrix spectrum), Orbits (planets in a polyrhythm).</li>
           <li><b>Mathematical.</b> Harmonograph (a damped pendulum drawing), Spiro (nested hypotrochoids), Attractor (a Clifford attractor drifting with the sound), Phase (the sound against itself: a tone draws a circle), Ridges (pulsar lines scrolling up).</li>
           <li><b>Generative.</b> Flow (particles on a flow field, bursting on onsets), Life (Conway's Game of Life seeded by the spectrum), Automaton (an elementary cellular automaton the spectrum writes into, changing rule on onsets).</li>
           <li><b>Analysis.</b> A 2048-point spectrum in 32 bands, level, bass, mids, highs, pitch and onsets, all on the UI thread: the audio thread only copies samples.</li>
           <li><b>The screen.</b> Drag the picture to move the node, the corner grip to resize it (Shift keeps its shape). The scene's name, the gear and the grip show only under the pointer.</li>
-          <li><b>Settings</b> in a popup beside the node: scene, source, seven palettes (Board, Mono, Paper, Riso, Ember, Ice, Acid), REACT, SPEED, DETAIL, SMOOTH, TRAIL, a new scene every 1 to 16 bars, the screen's shape, a new seed.</li>
+          <li><b>Settings</b> in a popup beside the node: scene, source (Auto, IN, Main mix), seven palettes (Board, Mono, Paper, Riso, Ember, Ice, Acid), REACT, SPEED, DETAIL, SMOOTH, TRAIL, a new scene every 1 to 16 bars, the screen's shape, a new seed.</li>
           <li><b>Open in a window</b> for a second display or a projector; double-click for full screen.</li>
         </ul>
       </div>

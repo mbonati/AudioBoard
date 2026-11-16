@@ -551,11 +551,10 @@ mod site_snap {
             let mut s = scene(118.0);
             let id = add(&mut s, ModuleKind::Iris, 0.0, 0.0);
             module_params(&s.g, id).set_mode(1);
-            module_params(&s.g, id).data[md::iris::data::SOURCE].set(1.0);
             let f = feeder(&mut s, ModuleKind::Drone, 0.0);
             link(&mut s, f, 0, id, 0);
             crate::ui::iris::SHOW_CONTROLS.store(true, Ordering::Relaxed);
-            full_shot("iris-ui", FRAMES, &mut s, vec2(1700.0, 900.0), PPP);
+            full_shot("iris-ui", FRAMES, &mut s, vec2(1700.0, 940.0), PPP);
             crate::ui::iris::SHOW_CONTROLS.store(false, Ordering::Relaxed);
         }
 

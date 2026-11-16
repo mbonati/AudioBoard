@@ -55,7 +55,8 @@ pub mod data {
     /// The panel's size, in board units (the user resizes it).
     pub const W: usize = 0;
     pub const H: usize = 1;
-    /// What it listens to: 0 the main mix, 1 its IN.
+    /// What it listens to: [`super::AUTO`], [`super::INPUT`] or
+    /// [`super::MAIN`].
     pub const SOURCE: usize = 2;
     /// Index into the panel's palettes.
     pub const PALETTE: usize = 3;
@@ -81,10 +82,19 @@ pub mod viz {
     pub const SR: usize = 1;
     /// 1 while sound arrives from the chosen source (0: IN unpatched).
     pub const LIVE: usize = 2;
+    /// What it listens to now: 1 its IN, 0 the main mix.
+    pub const FROM_INPUT: usize = 3;
     /// The ring: sample `n` sits at `RING + n % super::RING`.
-    pub const RING: usize = 3;
+    pub const RING: usize = 4;
     pub const LEN: usize = RING + super::RING;
 }
+
+/// Listens to IN when a cable is plugged into it, to the main mix otherwise.
+pub const AUTO: f32 = 0.0;
+/// Always IN (nothing while unpatched).
+pub const INPUT: f32 = 1.0;
+/// Always the main mix, even with IN patched (IN still goes on to THRU).
+pub const MAIN: f32 = 2.0;
 
 pub static DEF: ModuleDef = ModuleDef {
     name: "Iris",
@@ -106,9 +116,16 @@ pub static DEF: ModuleDef = ModuleDef {
     viz: viz::LEN,
 };
 
-/// Listens to IN (true) or to the main mix.
-pub fn listens_to_input(p: &ModuleParams) -> bool {
-    p.data[data::SOURCE].get() >= 0.5
+/// Listens to IN (true) or to the main mix, with IN `patched` or not.
+pub fn listens_to_input(p: &ModuleParams, patched: bool) -> bool {
+    let source = p.data[data::SOURCE].get().round();
+    if source == INPUT {
+        true
+    } else if source == MAIN {
+        false
+    } else {
+        patched
+    }
 }
 
 pub struct Iris {
@@ -148,7 +165,9 @@ impl Processor for Iris {
                 out[1][..n].fill(0.0);
             }
         }
-        let live = if listens_to_input(&self.params) {
+        let from_input = listens_to_input(&self.params, input.is_some());
+        self.params.viz[viz::FROM_INPUT].set(if from_input { 1.0 } else { 0.0 });
+        let live = if from_input {
             self.seen = None;
             match input {
                 Some(b) => {

@@ -1066,9 +1066,10 @@ effected layer, each with its own level. MUTE on Mixer 1 leaves only the effecte
 graphic style (line art, dot matrices, coloured outlines; no glows). It is in the **Visual** group of the
 palette and of the right-click menu.
 
-- **What it listens to**: the **main mix** (what the board plays, with nothing patched) or its **IN**, so it
-  can follow one node: a drum machine, a bass line, a reverb's tail. **THRU** passes IN on unchanged, so Iris
-  can sit inside a chain; it is never an effect (no bypass), and it keeps running, with the nodes feeding it,
+- **What it listens to**: by default (**Auto**) the node patched into its **IN**, and only that one (a drum
+  machine, a bass line, a reverb's tail), or the **main mix** (everything the board plays) while IN is free.
+  The settings can also force **IN** (nothing while unpatched) or **Main mix** (even with IN patched).
+  **THRU** passes IN on unchanged, so Iris can sit inside a chain; it is never an effect (no bypass), and it keeps running, with the nodes feeding it,
   even when THRU goes nowhere.
 - **Fourteen scenes**:
   - geometric: **Mandala** (rings of petals with 5- to 16-fold symmetry, each ring a band), **Tunnel**
@@ -1090,11 +1091,11 @@ palette and of the right-click menu.
   bands from 30 Hz to 16 kHz (tilted +3 dB an octave, as music has less energy up high), the level, bass, mids
   and highs, the strongest pitch, and onsets (spectral flux over its own running average).
 - **The screen** fills the node. Drag the picture to move the node. While the pointer is over it, the
-  scene's name and what it listens to show at the top left, a **gear** at the top right and a **grip** at the
+  scene's name and what it listens to now (IN or MAIN) show at the top left, a **gear** at the top right and a **grip** at the
   bottom right: drag the grip to resize the node (Shift keeps its shape), from 240 × 170 to 2400 × 1600.
   When a scene changes by itself, its name shows for a moment.
 - **The gear** opens the settings in a popup beside the node, so the picture stays in view: the scene;
-  **Main mix** or **IN**; the **palette** (Board, Mono in the node's colour, Paper and Riso on light paper,
+  **Auto**, **IN** or **Main mix**, with a line saying what it listens to now; the **palette** (Board, Mono in the node's colour, Paper and Riso on light paper,
   Ember, Ice, Acid); **React** (how strongly it follows the sound), **Speed**, **Detail** (lines, particles,
   cells, symmetry), **Smooth** (how slowly the analysis lets go) and **Trail** (trails, echoes, histories);
   **Next scene every** 1 to 16 bars at the board's tempo (or never); the screen's shape (16:9, 4:3, 1:1,
