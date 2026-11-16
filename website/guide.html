@@ -27,6 +27,7 @@
       <a href="nodes.html">Nodes</a>
       <a href="guide.html" aria-current="page">Guide</a>
       <a href="architecture.html">Architecture</a>
+      <a href="sdk.html">SDK</a>
       <a class="gh" href="https://github.com/mbonati/AudioBoard"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>Source</a>
     </nav>
   </div>
@@ -175,6 +176,7 @@
     <section id="palette">
       <h2><span class="n">08</span>Palette</h2>
       <p>The panel on the left lists all nodes by category and the library modules, with a search field. Click a category's heading to fold it; while searching, every category with matches opens. Drag an entry onto the canvas (an outline shows where it lands), or click it to add it in the middle of the view. Installed plugins, VST3 and Audio Units (AUv3 and AU), are grouped by maker, and the search matches makers too.</p>
+      <p><strong>Plugin nodes</strong>, nodes built with AudioBoard's own Rust SDK, have a section of their own, by maker as well. Put a plugin's library (<code>.dylib</code>) in <code>~/Library/Application Support/AudioBoard/Nodes</code> (the section's <strong>Open Nodes folder</strong> link opens it) and press <strong>Rescan</strong>. They work like built-in nodes, with the generic panel, and a project saves them by a stable id: one whose plugin isn't installed opens without that node and says which is missing. <a href="sdk.html">The SDK page</a> shows how to make one.</p>
     </section>
 
     <section id="board">
@@ -221,7 +223,7 @@
       </ul>
       <p><strong>MIDI</strong> lists the inputs connected (all are used, and one plugged in is picked up within seconds), each with a <strong>notes</strong> light and a <strong>clock</strong> light; the one followed as the clock is marked SYNC SOURCE.</p>
       <p><strong>Sync</strong> chooses the transport's clock, <strong>Internal</strong> or <strong>MIDI clock</strong> from one of the inputs, with a status line for the tempo received and where it plays; <strong>Send clock</strong> has a switch for each MIDI output (see <a href="#transport">Transport and tempo</a>).</p>
-      <p><strong>Plugins</strong> shows the VST3 folders and how many plugins they hold, switches for listing Audio Units and Apple's own, and <strong>Rescan plugins</strong>.</p>
+      <p><strong>Plugins</strong> shows the VST3 folders and how many plugins they hold, switches for listing Audio Units and Apple's own, the plugin nodes' folders and the libraries loaded from them, and <strong>Rescan plugins</strong>, which rescans plugin nodes too.</p>
     </section>
 
     <section id="load">
@@ -250,7 +252,7 @@
     <section id="projects">
       <h2><span class="n">14</span>Projects and library</h2>
       <p>The project name in the toolbar opens the File menu: New project, Open…, <strong>Open Recent</strong>, Save, Save as…. Open Recent lists the last ten projects opened or saved, newest first, with their folder, and is kept between launches; a project that is no longer there is greyed out, and <strong>Clear menu</strong> empties the list.</p>
-      <p>A dot next to the name, and “(edited)” in the window title, flag unsaved changes; AudioBoard asks before discarding them. A project (<code>.audioboard</code>) is a JSON file with nodes and parameters, positions, colours, collapsed nodes, cables and modules, and the board's stickers and background (images inside, base64); parameters are saved by name.</p>
+      <p>A dot next to the name, and “(edited)” in the window title, flag unsaved changes; AudioBoard asks before discarding them. A project (<code>.audioboard</code>) is a JSON file with nodes and parameters, positions, colours, collapsed nodes, cables and modules, and the board's stickers and background (images inside, base64); parameters are saved by name, built-in modules by name and plugin nodes by their stable id.</p>
       <p><strong>Module library.</strong> Right-click a module's header → <strong>Save to library</strong>. Saved modules appear in the Library section of the palette and of the right-click menu: inserting one adds the nodes, their cables and settings as a new module, already collapsed to a card. <strong>Open library folder</strong> opens the folder of <code>.abmodule</code> files (<code>~/Library/Application Support/AudioBoard/Library</code> on macOS), handy for sharing them.</p>
       <p>Named presets of Nullpunkt, Aether, Larsen and Vesper are kept in the app's data folder too, so every project sees them.</p>
     </section>
@@ -275,7 +277,7 @@
       <p class="dim" style="margin-top: 12px">A node-based modular synthesizer in Rust. Built with egui and eframe, cpal, midir and vst3-host. Every panel on this site is rendered from the app.</p>
     </div>
     <nav aria-label="Footer">
-      <a href="index.html">Home</a><a href="nodes.html">Nodes</a><a href="guide.html">Guide</a><a href="architecture.html">Architecture</a><a href="https://github.com/mbonati/AudioBoard">Source</a>
+      <a href="index.html">Home</a><a href="nodes.html">Nodes</a><a href="guide.html">Guide</a><a href="architecture.html">Architecture</a><a href="sdk.html">SDK</a><a href="https://github.com/mbonati/AudioBoard">Source</a>
     </nav>
   </div>
 </footer>

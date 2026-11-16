@@ -1034,6 +1034,38 @@ VST3 plugins and AU (v2) components run inside AudioBoard: a faulty one can make
 **AUv3** extensions run in a process of their own, as in Logic, so a crash there leaves AudioBoard playing
 (the node falls silent). VST3 and Audio Units are supported (not VST2 or CLAP).
 
+### Plugin nodes
+
+**Plugin nodes** are AudioBoard's own plugin format: nodes written in Rust with the node SDK and shipped
+precompiled, one dynamic library each (`.dylib` on macOS, `.so` on Linux, `.dll` on Windows). Put the library in
+`~/Library/Application Support/AudioBoard/Nodes` (the palette's **Open Nodes folder** link opens it, creating
+it if needed) and press **Rescan** (in the palette, or **Rescan plugins** in Settings → Plugins), or restart.
+Folders listed in the `AUDIOBOARD_NODE_PATH` environment variable are searched too (separated like `PATH`).
+
+Their nodes appear in the **Plugin nodes** section of the palette and of the right-click menu, by maker,
+and from there on they are nodes like the built-in ones: ports, cables (audio and MIDI), knobs that a MIDI
+CC node can MAP, presets, bypass, modules and the library. Their panel is the generic module panel, laid
+out from the node's description: port labels, a readout line, an optional switch, a display, a mode
+selector and the knobs. The display is one of a few pictures the node feeds with numbers: its output
+level, bars, a curve, a scrolling trace or an XY dot.
+
+A project saves a plugin node by its stable id (`"module": "dev.audioboard.example.haze"`), with its
+parameters by name, its mode, switch and extra data, like a built-in module. Opening a project whose plugin
+isn't installed skips that node and says which ids are missing; the rest of the project opens.
+
+A plugin library is checked before any of its nodes is used: a library built for another version of the
+plugin interface, or whose description doesn't hold together (a knob with an empty range, a display value
+it doesn't have), is refused with the reason, and AudioBoard carries on. Plugin nodes run inside
+AudioBoard, on the audio thread: a node that panics is caught, stops, and shows "Stopped: the plugin
+crashed" in its display while the rest of the patch plays on; samples that are not finite (or absurdly
+loud) are muted before they reach the mix. A library is never unloaded while AudioBoard runs (its nodes run
+its code), so a rebuilt library loads after a restart; a new one loads on Rescan. **Settings → Plugins**
+lists the folders and the libraries loaded, with their version and the SDK version they were built with.
+
+An example library, with an instrument, an effect and a MIDI generator, is in `plugins/example-nodes`; see
+[Writing nodes](#writing-nodes-sdk-plugins-and-ui-kit) to build and install it, and
+[plugins/README.md](plugins/README.md) for a step-by-step guide to making your own.
+
 ### Output
 
 **Mixer (4 channels)**: for each channel a volume fader, pan (balance on stereo signals), an **AUX** send,
@@ -1145,7 +1177,8 @@ one of the inputs; a status line shows the tempo received, whether it plays and 
 what it is waiting for. **Send clock** has a switch for each MIDI output. See *External MIDI sync* above.
 
 **Plugins** shows the VST3 folders and how many plugins they hold, switches for listing Audio Units and
-Apple's own, with how many there are (AUv3 and AU), and **Rescan plugins**.
+Apple's own, with how many there are (AUv3 and AU), the plugin nodes' folders and the libraries loaded from
+them, and **Rescan plugins** (which rescans plugin nodes too).
 
 ### Audio buffer, load and limiter
 
@@ -1289,7 +1322,7 @@ turns itself off as soon as you zoom or move the view by hand.
 ## Palette
 
 The panel on the left (shown and hidden with the button next to the project name) lists all nodes by
-category and the library modules, with a search field. Click a category's heading to fold or unfold it
+category, the plugin nodes and plugins by maker, and the library modules, with a search field. Click a category's heading to fold or unfold it
 (a folded one shows how many entries it holds); while searching, every category with matches opens. Drag an entry onto the canvas to place it where you
 want (an outline shows where it lands), or click it to add it in the middle of the view. On library
 entries, the × removes the module from the library.
@@ -1355,7 +1388,7 @@ A dot next to the name, and "(edited)" in the window title, flag unsaved changes
 project, opening another one or closing the window, AudioBoard asks whether to save them.
 A project (`.audioboard`) is a JSON file with nodes and parameters, positions, colors, collapsed nodes,
 cables and modules, and the board's stickers and background (images inside, base64); parameters are saved by
-name. The demo patch always opens on launch.
+name, built-in modules by name and plugin nodes by their stable id. The demo patch always opens on launch.
 
 **Module library.** Right-click a module's header → **Save to library** saves it under its name (if it
 already exists, it asks whether to replace it). Saved modules appear in the **Library** section of the
@@ -1364,16 +1397,172 @@ settings as a new module, already **collapsed** to a card. The × next to the na
 library, and **Open library folder** opens the folder of `.abmodule` files
 (`~/Library/Application Support/AudioBoard/Library` on macOS), useful for copying or sharing them.
 
+## Writing nodes: SDK, plugins and UI Kit
+
+AudioBoard is a Cargo workspace. Besides the app it holds three crates:
+
+```
+crates/audioboard-node   the node SDK (the "foundation"): what a node is and how it runs; no dependencies
+crates/audioboard-ui     the UI Kit: theme, controls, node card, displays and the generic panel's layout (egui)
+plugins/example-nodes    an example plugin library: Glass (instrument), Haze (effect), Pulse (MIDI)
+```
+
+`cargo build` and `cargo test` work on the app alone (they build the two crates it uses); add `--workspace`
+to build and test everything, plugins included.
+
+### The node SDK (`audioboard-node`)
+
+Every node, built-in or plugin, is written in the SDK's terms; the app re-exports them where its modules
+always found them (`audio::params`, `audio::engine`, `audio::fastmath`, `audio::modules`), so built-in
+modules already run on the SDK's types. Built-in modules keep their own `Processor` for now; a plugin node,
+or a new module, implements the SDK's `Node` trait.
+
+- **Description.** `NodeDef`: name, title prefix, menu hint, audio inputs and outputs, MIDI in and out,
+  knobs (`ParamSpec`: range, `Taper` linear or log, `Unit` for how the value reads, bipolar arc), CV depth
+  knobs, mode labels, a switch, extra saved values (`data`, a sequencer's steps), the display's height and
+  how many display values the node publishes. A plugin node adds a `Descriptor`: a **stable id** (reverse-DNS,
+  saved in projects; never change it), its maker, and its `Panel` (below).
+- **Processing.** `Node::new(&Init)` runs on the UI thread (sample rate, the node's settings): allocate
+  everything there. `Node::process(&ProcessCtx, &mut Io)` runs on the audio thread, one block of at most 64
+  stereo frames (`BLOCK`, `Buf = [[f32; 64]; 2]`) at a time. `Io` hands it its inputs (`input(i)`, `cv(i)`,
+  unpatched as `None`), its outputs (`output(i)`, or `through(i, j)` for an effect), the MIDI that arrived
+  (`midi()`: `MidiMsg` with the frame offset within the block) and `send_midi(frame, bytes)` for its MIDI
+  output. `ProcessCtx` gives the sample rate, the ~10 ms smoothing coefficient, the transport's beat at the
+  block's start, beats per sample (`tempo()`, `beat_at(i)`), whether the transport plays, and `restart`
+  (rewound to beat 0: start over, end held notes).
+- **Settings, lock-free.** The app owns a node's `Params` (knob values, mode, switch, data in atomics; the
+  output meter and display values coming back). The node reads them through `Shared`: `get(i)`, `mode()`,
+  `toggled()`, `data(i)` / `set_data(i, v)`, `set_viz(i, v)`. Out-of-range indexes read 0 and write nothing.
+- **DSP helpers** (`dsp`, `fastmath`): `Rng` (xorshift), `Wander` (smooth random drift), `DelayLine`
+  (fractional reads), `Quiet` (tells when an effect may rest), `Smoothed`, `OnePole`, `pan_gains`,
+  `mix_gains`, `soft_limit`, `soft_ceiling`, `time_coeff`, `note_hz`, `peak`; fast `sin_turns`, `exp2`,
+  `log2`, `tanh`.
+
+**On the audio thread**, `process` must not allocate, lock, wait or do I/O; everything it needs is made in
+`new`. A panic is caught at the plugin boundary: the node stops and stays silent.
+
+A whole effect, from `crates/audioboard-node/src/lib.rs`:
+
+```rust
+use audioboard_node::prelude::*;
+
+const PARAMS: &[ParamSpec] = &[ParamSpec::lin("GAIN", 0.0, 2.0, 1.0, Unit::Percent)];
+
+pub struct Gain { params: Shared, gain: Smoothed }
+
+impl Node for Gain {
+    const DESCRIPTOR: Descriptor = Descriptor {
+        id: "com.example.gain",
+        maker: "Example",
+        def: NodeDef { name: "Gain", prefix: "GAIN", hint: "louder · softer",
+                       inputs: &["IN"], outputs: &["OUT"], params: PARAMS, ..NodeDef::EMPTY },
+        panel: Panel { display: Display::Level, readout: Readout::Param(0) },
+    };
+
+    fn new(init: &Init) -> Self {
+        Gain { params: init.params, gain: Smoothed::new(1.0) }
+    }
+
+    fn process(&mut self, ctx: &ProcessCtx, io: &mut Io<'_>) {
+        let n = io.frames();
+        let target = self.params.get(0);
+        let (input, out) = io.through(0, 0);
+        for i in 0..n {
+            let g = self.gain.next(target, ctx.smooth);
+            for c in 0..2 {
+                out[c][i] = input.map_or(0.0, |b| b[c][i]) * g;
+            }
+        }
+    }
+}
+
+audioboard_node::export_nodes! { name: "Gain", maker: "Example", version: "1.0", nodes: [Gain] }
+```
+
+### Plugin format and ABI versioning
+
+A plugin is a `cdylib` crate that depends on `audioboard-node` and ends with `export_nodes!` (any number of
+nodes in one library). Rust has no stable ABI, so the app and a plugin, possibly built by different compilers
+and SDK versions, share only a C ABI (`audioboard_node::abi`): `#[repr(C)]` tables and `extern "C"` functions,
+no Rust types.
+
+- The library exports one symbol, `audioboard_node_entry(host_abi: u32) -> *const PluginInfo`. `PluginInfo`
+  stays valid for the life of the process; it carries the library's name, maker and version, the SDK version,
+  the block size and the nodes.
+- **The first field of `PluginInfo` is the ABI version (`u32`), at the same place in every version.** The app
+  reads it before anything else and refuses a library built for another version, with a message saying to
+  rebuild it ("built for node ABI v2, this AudioBoard loads v1: rebuild it with audioboard-node 0.1.0"). Any
+  change to the tables or functions bumps `abi::ABI_VERSION`; units and display kinds have stable numbers,
+  and unknown ones read as a plain number and no picture.
+- Each node is a description (text as UTF-8 pointer and length, arrays as pointer and length) and three
+  functions: `create` (UI thread; gets the sample rate and pointers to its settings' atomics, valid until
+  `destroy`), `process` (audio thread; one block: buffers, MIDI in and room for MIDI out, the transport) and
+  `destroy` (UI thread). The app copies the description at load and checks it (sizes, ranges, ids, what the
+  panel refers to); text that isn't UTF-8, an id already taken, or anything inconsistent refuses the library.
+- `export_nodes!` wraps each call in `catch_unwind`, so a panic becomes an error code instead of crossing the
+  boundary. Nothing crosses it per block but pointers: no allocation, no lock. (A plugin built with
+  `panic = "abort"` would take the app down with it: keep the default.)
+
+**Build and install** the example (macOS; `.so` and `~/.local/share/audioboard/Nodes` on Linux):
+
+```bash
+cargo build --release -p audioboard-example-nodes
+```
+
+```bash
+mkdir -p ~/Library/Application\ Support/AudioBoard/Nodes && cp target/release/libaudioboard_example_nodes.dylib ~/Library/Application\ Support/AudioBoard/Nodes/
+```
+
+then Rescan in the palette. A plugin of your own is the same: a crate with `crate-type = ["cdylib"]` and
+`audioboard-node` as a dependency (a path into this repository, or a git dependency), built in release.
+
+**[plugins/README.md](plugins/README.md) is the step-by-step guide**: creating the crate, writing a node
+(a complete Tremolo effect), building, installing (or `AUDIOBOARD_NODE_PATH` while developing), testing a
+node without the app, instruments, MIDI generators, CV inputs and several outputs, the generic panel, the
+audio-thread rules, keeping saved projects working across versions, universal macOS libraries and signing,
+and what each refusal message means.
+
+### The UI Kit (`audioboard-ui`)
+
+The parts every panel is drawn from, in the app's flat, line-art style:
+
+- `theme`: the colour palette, fonts (`font`, `mono`, `strong`, sized by the canvas zoom), the egui style.
+- `view::NodeView`: draws in node units at any zoom (`p`, `r`, `text`, `font`) and records the knobs and
+  faders drawn, so MIDI can be mapped to them.
+- `widgets`: knob, horizontal and vertical faders, toggle, peak meters (`MeterState`), ports, cables, shadow.
+- `controls`: `knob_cell` (label, knob, value as its unit reads), `segmented` selector, `pill`,
+  `port_labels`, `caption`.
+- `card`: the node card and header (collapse chevron, activity light, title, bypass, close), bypass veil.
+- `display`: the dark inset and its pictures (`Screen::bars`, `curve`, `trace`, `dot`, `level`, `area`,
+  `message`).
+- `panel`: the generic panel's layout from a `NodeDef` (columns, display, selector and knob rows, ports).
+
+Built-in panels use these parts directly (`ui/nodes.rs` and `ui/modules.rs` take `NodeView`, `knob_cell`,
+`segmented`, the card and the panel layout from the kit). **A plugin node can't**: egui's types change from
+one version to the next and can't cross the C ABI. Its panel is therefore described, not drawn: the generic
+panel from its `NodeDef`, plus a `Panel` saying which picture its display shows (`Display::Level`, `Bars`,
+`Curve`, `Trace` or `Dot`, fed by its display values) and what its readout line says (its name, a knob's
+value, a display value in a unit, or the mode). The app draws it with the kit (`ui/node_panel.rs`).
+
 ## Architecture
 
 ```
+crates/
+├── audioboard-node/src/   the node SDK: def (NodeDef, Params, Descriptor, Panel), node (Node, Init, Io,
+│                          Shared), buffer (BLOCK, Buf, MidiBuf, ProcessCtx), param (ParamSpec, Taper, Unit,
+│                          AtomicF32, formatting), dsp, fastmath, abi (the C ABI, export_nodes!)
+└── audioboard-ui/src/     the UI Kit: theme, view (NodeView), widgets, controls, card, display, panel
+plugins/
+├── README.md              writing, building, testing and distributing a node plugin, step by step
+└── example-nodes/         an example plugin library (cdylib): glass, haze, pulse
 src/
 ├── audio/
-│   ├── params.rs   parameters shared lock-free (atomics) between the UI and the audio thread
+│   ├── params.rs   parameters shared lock-free (atomics) between the UI and the audio thread (the
+│   │               vocabulary, ParamSpec, units and formatting, comes from the node SDK)
 │   ├── engine.rs   audio-side graph: one pass per device buffer (built-ins in 64-frame stereo blocks,
 │   │               plugins in one call), per-block MIDI events, global clock in beats, precomputed
 │   │               topological order, lookahead limiter, denormals flushed to zero
-│   ├── fastmath.rs fast sine, exp2, log2 and tanh for per-sample DSP (error < 1e-6)
+│   ├── fastmath.rs fast sine, exp2, log2 and tanh for per-sample DSP (error < 1e-6), from the node SDK
 │   ├── dsp.rs      Oscillator and Mixer (any number of channels, main and AUX outputs)
 │   ├── modules/    audio_in, drone, random, granular, resonator, filter, equalizer (after Waves F6), delay, pingpong,
 │   │               reverb, midi_cc, midi_note, sequencer, arpeggiator, midi_in, midicer (after Vermona's
@@ -1422,7 +1611,12 @@ src/
 │   │   ├── tape.rs     Tape: record EQ, magnetic curve, transport (wow, flutter, stop/start), playback head
 │   │   ├── oversample.rs 2× oversampling (half-band FIR) shared by Magma, Tape, Aether and Prism
 │   │   ├── steps.rs step grid on the global tempo, outgoing notes, held keys
-│   │   └── mod.rs  module descriptions (ModuleDef), generic parameters and DSP helpers
+│   │   └── mod.rs  ModuleKind (built-ins, and Ext for plugin nodes), their descriptions (the SDK's NodeDef),
+│   │               ModuleParams (the SDK's Params with the kind), the shared DSP helpers from the SDK
+│   ├── node_plugin.rs plugin nodes: scanning the Nodes folders, loading dylibs (libloading), checking the
+│   │               ABI version and descriptions, the lock-free registry behind ModuleKind::Ext, the processor
+│   │               that runs a plugin's node block by block (panics and bad samples contained)
+│   ├── node_plugin_tests.rs SDK nodes through the ABI, patches, projects, refusals; the example dylib
 │   ├── midi.rs     MIDI inputs (midir) and shared state read by the MIDI nodes (clock and transport too),
 │   │               activity per input, the clock source's follower
 │   ├── sync.rs     MIDI sync: timing an external clock (least-squares tempo, transport, song position),
@@ -1447,11 +1641,13 @@ src/
 │   ├── canvas.rs   canvas with pan/zoom, selection, cable drag & drop, context menus
 │   ├── groups.rs   modules: frame (expanded) and card with the boundary ports (collapsed)
 │   ├── layout.rs   auto layout by signal flow (columns, aligned ports, corridors for cables)
-│   ├── palette.rs  palette of nodes and library modules, with dragging onto the canvas
+│   ├── palette.rs  palette of nodes, plugin nodes, plugins and library modules, with dragging onto the canvas
 │   ├── plugin_node.rs panel of plugin nodes (editor, parameters, MIDI, knobs)
-│   ├── nodes.rs    layout and drawing of the oscillator and mixer, shared controls
+│   ├── nodes.rs    layout and drawing of the oscillator and mixer; NodeView, the card, knob cells and
+│   │               selectors from the UI Kit
 │   ├── console.rs  the Console's panel: horizontal (inputs on top) or vertical, 12 or 24 channels
-│   ├── modules.rs  common module panel and their displays
+│   ├── modules.rs  common module panel and their displays (layout from the UI Kit's panel)
+│   ├── node_panel.rs a plugin node's display (its Panel, drawn with the UI Kit) and readout
 │   ├── frakture.rs the Frakture node's panel: HEXAGON, EFFECTS, MUTATE (the grain cloud) and MOTION pages
 │   ├── equalizer.rs the Equalizer's panel: graph and band markers, analyzer (FFT), band controls
 │   ├── prism.rs    the Prism panel, flat: analyzer bar, the display (spectra, curves as outlines, band dots,
@@ -1470,7 +1666,8 @@ src/
 │   ├── colloid.rs  the Colloid panel, flat and graphic: the tank (bands, dot matrix, wells, molecule icons, wakes,
 │   │               strikes, stirring), HANDPAN / CHORD and the shape, the notes' cells, knob groups, CC lanes
 │   ├── settings.rs the Settings window: tabs Audio (output, input and its meters), MIDI (inputs and their
-│   │               lights), Sync (clock source, clock out), Plugins (VST3 folders, Audio Units)
+│   │               lights), Sync (clock source, clock out), Plugins (VST3 folders, Audio Units, plugin
+│   │               nodes)
 │   ├── iris.rs     the Iris panel: the analysis (spectrum, bands, onsets), the fourteen scenes, palettes, the
 │   │               scene's name, gear and grip, the settings popup, the window of its own
 │   ├── recent.rs   Open Recent: the list of recent projects and its submenu
@@ -1480,12 +1677,12 @@ src/
 │   ├── fjord.rs    the Fjord panel: the bank map of the 99 programs, channel keys and their lights, ALEA and
 │   │               its die; pages SOUND (the strike's outlines, NOISE, TONE, CLICK, MIXER, AMP and FILTER
 │   │               ENV) and SEQUENCER · MIDI (the lanes, SYSTEM); the node resizes with the page
-│   ├── widgets.rs  hand-drawn knobs, faders, meters, ports and cables
+│   ├── widgets.rs  hand-drawn knobs, faders, meters, ports and cables (the UI Kit's), waveform previews
 │   ├── monitor.rs  bottom panel: oscilloscope and spectrum (FFT)
 │   ├── tempo.rs    the toolbar's tempo: BPM field (drag or type), beat light, tap tempo; a MIDI clock's
 │   │               tempo while following one
 │   ├── macos.rs    native windows: toolbar controls don't drag the window; plugin editors float
-│   ├── theme.rs    colors, system fonts and style
+│   ├── theme.rs    colors, system fonts and style (the UI Kit's)
 │   └── app.rs      window, toolbar, panels, demo patch
 ├── tests.rs        tests of the graph, the modules and offline engine rendering
 └── perf.rs         benchmarks (audio per module, large patches, UI frames, auto layout)
@@ -1528,8 +1725,10 @@ and the grid is a single mesh. Auto layout and zoom transitions follow a spring 
 set off in a wave from left to right, and zoom proceeds on a logarithmic scale around the center, with no
 sideways drift.
 
-To add a new module: a file in `audio/modules/` with its `ModuleDef` (knobs, ports, modes, toggle) and a
-`Processor`, an entry in `ModuleKind` and, in `ui/modules.rs`, the readout and the display.
+To add a new module: a file in `audio/modules/` with its `ModuleDef` (the SDK's `NodeDef`: knobs, ports,
+modes, toggle) and a `Processor`, an entry in `ModuleKind` and, in `ui/modules.rs`, the readout and the display.
+A node that should ship on its own is a plugin instead (see [Writing nodes](#writing-nodes-sdk-plugins-and-ui-kit)):
+it needs no change to the app.
 The panel (ports, selector, knobs) is generated from the definition; Frakture, too large for the generic
 panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`), Prism (`ui/prism.rs`), Magma (`ui/magma.rs`), Tape (`ui/tape.rs`), Nullpunkt (`ui/nullpunkt.rs`), Aether (`ui/aether.rs`), Larsen (`ui/larsen.rs`), Vesper (`ui/vesper.rs`), the MIDI Looper (`ui/looper.rs`), Automa (`ui/automa.rs`), Colloid (`ui/colloid.rs`), Fjord (`ui/fjord.rs`), Iris (`ui/iris.rs`, sized by the user) and Pops 66
 (`ui/pops.rs`; its size, like Fjord's and Iris's, follows its settings through `modules::size_of`). Frakture's hexagon runs on the audio thread, block by block: the panel
@@ -1540,6 +1739,20 @@ redraw.
 
 ```bash
 cargo test
+```
+
+With `--workspace`, the SDK's, the UI Kit's and the example plugin's own tests run too:
+
+```bash
+cargo test --workspace
+```
+
+Building the example plugin as a dynamic library (with cargo, into `target/node-plugin-test`), loading it
+from a folder as the app does, playing its nodes in a patch (Haze on an oscillator, Pulse playing Glass)
+and saving and restoring that patch is a test of its own, not run by default:
+
+```bash
+cargo test example_plugin_builds_loads_and_plays -- --ignored
 ```
 
 Loading and playing real Audio Units (Apple's, always installed, and a few others found on the Mac) is a

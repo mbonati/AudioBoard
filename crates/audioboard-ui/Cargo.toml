@@ -1,0 +1,10 @@
+[package]
+name = "audioboard-ui"
+version = "0.1.0"
+edition = "2024"
+description = "AudioBoard's UI Kit: theme, controls (knobs, faders, toggles, selectors, meters, ports), node panel parts and display primitives, on egui."
+publish = false
+
+[dependencies]
+audioboard-node = { path = "../audioboard-node" }
+egui = "0.37.0"

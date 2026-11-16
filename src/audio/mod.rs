@@ -6,6 +6,7 @@ pub mod fastmath;
 pub mod input;
 pub mod midi;
 pub mod modules;
+pub mod node_plugin;
 pub mod params;
 pub mod plugin;
 pub mod record;

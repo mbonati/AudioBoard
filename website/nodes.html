@@ -27,6 +27,7 @@
       <a href="nodes.html" aria-current="page">Nodes</a>
       <a href="guide.html">Guide</a>
       <a href="architecture.html">Architecture</a>
+      <a href="sdk.html">SDK</a>
       <a class="gh" href="https://github.com/mbonati/AudioBoard"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>Source</a>
     </nav>
   </div>
@@ -43,13 +44,13 @@
 
 <div class="filters">
   <div class="wrap">
-    <button class="chip" data-filter="all" aria-pressed="true" style="--c: var(--text)"><i></i>All <small>34</small></button>
+    <button class="chip" data-filter="all" aria-pressed="true" style="--c: var(--text)"><i></i>All <small>35</small></button>
     <button class="chip" data-filter="sources" aria-pressed="false" style="--c: var(--blue)"><i></i>Sources <small>10</small></button>
     <button class="chip" data-filter="texture" aria-pressed="false" style="--c: var(--teal)"><i></i>Texture <small>3</small></button>
     <button class="chip" data-filter="effects" aria-pressed="false" style="--c: var(--orange)"><i></i>Effects <small>8</small></button>
     <button class="chip" data-filter="midi" aria-pressed="false" style="--c: var(--violet)"><i></i>MIDI <small>2</small></button>
     <button class="chip" data-filter="sequences" aria-pressed="false" style="--c: var(--rose)"><i></i>MIDI sequences <small>7</small></button>
-    <button class="chip" data-filter="plugins" aria-pressed="false" style="--c: var(--green)"><i></i>Plugins <small>1</small></button>
+    <button class="chip" data-filter="plugins" aria-pressed="false" style="--c: var(--green)"><i></i>Plugins <small>2</small></button>
     <button class="chip" data-filter="output" aria-pressed="false" style="--c: var(--amber)"><i></i>Output <small>2</small></button>
     <button class="chip" data-filter="visual" aria-pressed="false" style="--c: var(--yellow)"><i></i>Visual <small>1</small></button>
     <label class="search">
@@ -559,8 +560,8 @@
 <section class="cat-group" id="plugins" style="--accent: var(--green)">
   <header>
     <span class="label">06 · Plugins</span>
-    <h2>VST3 and Audio Units</h2>
-    <p>Installed plugins, VST3 and Audio Units (AUv3 and AU), appear in the Plugins section of the palette and of the right-click menu, grouped by maker, and are added like any other node.</p>
+    <h2>VST3, Audio Units, plugin nodes</h2>
+    <p>Installed plugins, VST3 and Audio Units (AUv3 and AU), appear in the Plugins section of the palette and of the right-click menu, grouped by maker, and are added like any other node. Plugin nodes, built with AudioBoard's own <a href="sdk.html">Rust SDK</a>, have a section of their own.</p>
   </header>
   <div class="cards">
     <article class="card" id="node-plugin" tabindex="0" role="button" data-group="plugins" data-group-label="Plugins" data-name="Plugin node" data-keys="vst vst3 au auv3 audio unit instrument effect editor" style="--accent: var(--green)">
@@ -593,6 +594,21 @@
           <li>A stereo input (effects), a stereo output and, for instruments, a MIDI input. The project saves the plugin's complete state; on another computer a VST3 is found by name, an Audio Unit by its component code.</li>
           <li>A plugin is called once per audio buffer, as in a DAW; extra outputs are switched off at load, and a plugin with nothing coming in rests after a second of silence.</li>
           <li>VST3 and Audio Units (not VST2 or CLAP). VST3 plugins and AU components run inside AudioBoard, so a faulty one can make it quit; <b>AUv3</b> extensions run in a process of their own, as in Logic, so a crash leaves the board playing.</li>
+        </ul>
+      </div>
+    </article>
+    <article class="card" id="node-plugin-node" tabindex="0" role="button" data-group="plugins" data-group-label="Plugins" data-name="Plugin nodes" data-after="your own nodes, built with the Rust SDK" data-shots="assets/shots/plugin-glass.png|GLASS,assets/shots/plugin-nodes.png|THE EXAMPLE LIBRARY" data-keys="sdk rust dylib plugin node own custom build example glass haze pulse" style="--accent: var(--green)">
+      <div class="thumb"><img src="assets/shots/plugin-glass.png" width="608" height="652" loading="lazy" alt="Glass, a node from the example plugin, on the generic panel"></div>
+      <div class="meta"><div class="row"><h3>Plugin nodes</h3><span class="label">SDK</span></div>
+        <p>Nodes written in Rust with AudioBoard's SDK and built into a dynamic library: drop it in the Nodes folder, Rescan, and they join the palette like built-in nodes.</p></div>
+      <div class="more">
+        <p>A plugin library (<code>.dylib</code>, <code>.so</code> or <code>.dll</code>) holds any number of nodes. Install it in <code>~/Library/Application Support/AudioBoard/Nodes</code> (the palette's <b>Open Nodes folder</b>) and press <b>Rescan</b>: its nodes appear under <b>Plugin nodes</b>, by maker. <a href="sdk.html">The SDK page</a> shows how to write and build one.</p>
+        <ul>
+          <li><b>Like built-in nodes.</b> Audio and MIDI cables, knobs a MIDI CC node can MAP, presets, bypass, modules and the library.</li>
+          <li><b>The generic panel</b>, laid out from the node's description: ports, a readout, a switch, a mode selector, knobs, and a display showing its level, bars, a curve, a trace or an XY dot.</li>
+          <li><b>Saved by a stable id</b>, with its settings by name. A project whose plugin isn't installed opens without that node and says which id is missing.</li>
+          <li><b>Checked before use.</b> A library built for another version of the plugin interface, or with a description that doesn't hold together, is refused with the reason. A node that panics stops alone, and samples that aren't finite are muted.</li>
+          <li><b>The example library</b> in <code>plugins/example-nodes</code>: Glass (FM voices played over MIDI), Haze (a stereo chorus) and Pulse (a Euclidean rhythm on the MIDI output).</li>
         </ul>
       </div>
     </article>
@@ -694,7 +710,7 @@
       <p class="dim" style="margin-top: 12px">A node-based modular synthesizer in Rust. Built with egui and eframe, cpal, midir and vst3-host. Every panel on this site is rendered from the app.</p>
     </div>
     <nav aria-label="Footer">
-      <a href="index.html">Home</a><a href="nodes.html">Nodes</a><a href="guide.html">Guide</a><a href="architecture.html">Architecture</a><a href="https://github.com/mbonati/AudioBoard">Source</a>
+      <a href="index.html">Home</a><a href="nodes.html">Nodes</a><a href="guide.html">Guide</a><a href="architecture.html">Architecture</a><a href="sdk.html">SDK</a><a href="https://github.com/mbonati/AudioBoard">Source</a>
     </nav>
   </div>
 </footer>

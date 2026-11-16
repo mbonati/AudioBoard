@@ -1,30 +1,26 @@
 //! Layout and painting of each node type. Coordinates are in node-local
 //! world units and scaled by the canvas zoom through [`NodeView`].
 
-use egui::{
-    Align2, Color32, CornerRadius, CursorIcon, FontId, Id, Painter, Pos2, Rect, Sense,
-    Shape, Stroke, StrokeKind, Ui, Vec2, vec2,
-};
+use egui::{Align2, Color32, Id, Pos2, Rect, Shape, Stroke, Vec2, vec2};
 
 use super::modules;
 use super::plugin_node;
-use super::theme::{self, alpha};
+use super::theme;
 use super::widgets::{self, hfader, hmeter, knob, toggle};
 use crate::audio::engine::NodeId;
 use crate::audio::params::{
-    MIXER_CHANNELS, MixerParams, OSC_PARAMS, ParamSpec, Waveform, fader_gain, format_db, format_hz, gain_to_db, osc,
+    MIXER_CHANNELS, MixerParams, OSC_PARAMS, Waveform, fader_gain, format_db, format_hz, gain_to_db, osc,
 };
-use std::cell::RefCell;
 
 use crate::graph::{MixerNode, Node, NodeKind, NodeType, OscNode, ParamRef};
 
-pub const HEADER_H: f32 = 26.0;
-/// Smallest text drawn on the canvas, in points.
-pub const MIN_TEXT: f32 = 4.0;
+/// Header height, card radius and the smallest text drawn come from the UI
+/// Kit (`audioboard_ui`).
+pub use audioboard_ui::card::HEADER_H;
+pub use audioboard_ui::view::MIN_TEXT;
 pub const OSC_SIZE: Vec2 = vec2(216.0, 268.0);
 pub const MIX_SIZE: Vec2 = vec2(380.0, 282.0);
 
-const RADIUS: f32 = 6.0;
 const OSC_PORT_Y: [f32; 2] = [42.0, 60.0];
 const MIX_ROW_Y: f32 = 38.0;
 const MIX_ROW_H: f32 = 38.0;
@@ -63,185 +59,33 @@ pub fn output_offset(ty: NodeType, i: usize) -> Vec2 {
 }
 
 /// A control drawn this frame, for MIDI mapping (click one to map it).
-#[derive(Clone, Copy)]
-pub struct KnobHit {
-    pub rect: Rect,
-    pub node: NodeId,
-    pub param: ParamRef,
-}
+pub type KnobHit = audioboard_ui::Hit<ParamRef>;
 
-/// Maps node-local coordinates to the screen.
-pub struct NodeView<'a> {
-    pub ui: &'a Ui,
-    pub painter: &'a Painter,
-    pub min: Pos2,
-    pub z: f32,
-    pub node: NodeId,
-    /// Collects every knob and fader drawn.
-    pub hits: &'a RefCell<Vec<KnobHit>>,
-    /// The global tempo, for tempo-synced displays.
-    pub tempo: f32,
-}
-
-impl NodeView<'_> {
-    pub(super) fn p(&self, x: f32, y: f32) -> Pos2 {
-        self.min + vec2(x, y) * self.z
-    }
-
-    pub(super) fn r(&self, x0: f32, y0: f32, x1: f32, y1: f32) -> Rect {
-        Rect::from_min_max(self.p(x0, y0), self.p(x1, y1))
-    }
-
-    /// Records a control for MIDI mapping.
-    pub(super) fn hit(&self, rect: Rect, param: ParamRef) {
-        self.hits.borrow_mut().push(KnobHit { rect, node: self.node, param });
-    }
-
-    pub(super) fn font(&self, size: f32) -> FontId {
-        theme::font(size * self.z)
-    }
-
-    pub(super) fn mono(&self, size: f32) -> FontId {
-        theme::mono(size * self.z)
-    }
-
-    /// Text too small to read when zoomed far out is skipped.
-    pub(super) fn text(&self, x: f32, y: f32, align: Align2, text: impl ToString, font: FontId, color: Color32) -> Rect {
-        if font.size < MIN_TEXT {
-            return Rect::from_center_size(self.p(x, y), Vec2::ZERO);
-        }
-        self.painter.text(self.p(x, y), align, text, font, color)
-    }
-}
-
-fn radius(r: f32, z: f32) -> u8 {
-    (r * z).round().clamp(0.0, 255.0) as u8
-}
+/// Maps node-local coordinates to the screen: the UI Kit's `NodeView`,
+/// recording controls by their `ParamRef`.
+pub type NodeView<'a> = audioboard_ui::NodeView<'a, ParamRef>;
 
 /// What the user clicked in a node's header.
-pub struct FrameActions {
-    pub close: bool,
-    pub toggle_collapse: bool,
-    /// The bypass switch (effects only) was clicked.
-    pub bypass: bool,
-}
+pub type FrameActions = audioboard_ui::card::CardActions;
 
 /// Card, header (collapse chevron, activity LED, title, close button)
-/// shared by every node.
+/// shared by every node: the UI Kit's card.
 pub fn frame(v: &NodeView, node: &Node, selected: bool) -> FrameActions {
-    let z = v.z;
-    let size = node.size();
-    let rect = v.r(0.0, 0.0, size.x, size.y);
-    let p = v.painter;
-
-    widgets::shadow(p, rect, RADIUS * z, z);
-    p.rect_filled(rect, RADIUS * z, theme::NODE_BODY);
-    let top = CornerRadius {
-        nw: radius(RADIUS, z),
-        ne: radius(RADIUS, z),
-        sw: 0,
-        se: 0,
+    let card = audioboard_ui::card::Card {
+        size: node.size(),
+        title: &node.title,
+        accent: node.accent,
+        level: node.signal_level(),
+        collapsed: node.collapsed,
+        selected,
+        bypass: node.is_effect().then(|| node.bypassed()),
     };
-    p.rect_filled(v.r(0.0, 0.0, size.x, HEADER_H), top, theme::NODE_HEADER);
-    p.line_segment(
-        [v.p(0.0, HEADER_H), v.p(size.x, HEADER_H)],
-        Stroke::new(1.0 * z, theme::NODE_BORDER),
-    );
-
-    // Collapse chevron: points down when expanded, right when collapsed.
-    let fold_rect = Rect::from_center_size(v.p(12.0, HEADER_H * 0.5), Vec2::splat(16.0 * z));
-    let fold = v
-        .ui
-        .interact(fold_rect, Id::unique(("fold", node.id)), Sense::CLICK)
-        .on_hover_cursor(CursorIcon::PointingHand)
-        .on_hover_text(if node.collapsed { "Expand (C)" } else { "Collapse (C)" });
-    let c = fold_rect.center();
-    let s = 3.0 * z;
-    let tri = if node.collapsed {
-        vec![c + vec2(-0.6 * s, -s), c + vec2(0.9 * s, 0.0), c + vec2(-0.6 * s, s)]
-    } else {
-        vec![c + vec2(-s, -0.6 * s), c + vec2(s, -0.6 * s), c + vec2(0.0, 0.9 * s)]
-    };
-    let fold_col = if fold.hovered() { theme::TEXT } else { theme::TEXT_FAINT };
-    p.add(Shape::convex_polygon(tri, fold_col, Stroke::NONE));
-
-    // Activity LED in the node's colour, lit by its output level.
-    let level = node.signal_level().clamp(0.0, 1.0).sqrt();
-    p.circle_filled(
-        v.p(26.0, HEADER_H * 0.5),
-        3.5 * z,
-        theme::mix(theme::CONTROL_HI, node.accent, 0.35 + 0.65 * level),
-    );
-    v.text(36.0, HEADER_H * 0.5, Align2::LEFT_CENTER, &node.title, theme::strong(11.5 * z), theme::TEXT);
-
-    // Close button, only shown while the node is hovered or selected.
-    let close_rect = Rect::from_center_size(v.p(size.x - 13.0, HEADER_H * 0.5), Vec2::splat(16.0 * z));
-    let close = v
-        .ui
-        .interact(close_rect, Id::unique(("close", node.id)), Sense::CLICK)
-        .on_hover_cursor(CursorIcon::PointingHand);
-    if selected || v.ui.rect_contains_pointer(rect) {
-        let c = close_rect.center();
-        if close.hovered() {
-            p.circle_filled(c, 8.0 * z, theme::CONTROL_HI);
-        }
-        let col = if close.hovered() { theme::TEXT } else { theme::TEXT_FAINT };
-        let d = 3.0 * z;
-        p.line_segment([c - vec2(d, d), c + vec2(d, d)], Stroke::new(1.2 * z, col));
-        p.line_segment([c + vec2(-d, d), c + vec2(d, -d)], Stroke::new(1.2 * z, col));
-    }
-
-    // Bypass: a power switch, lit while the effect is on.
-    let mut bypass = false;
-    if node.is_effect() {
-        let off = node.bypassed();
-        let bp_rect = Rect::from_center_size(v.p(size.x - 34.0, HEADER_H * 0.5), Vec2::splat(16.0 * z));
-        let resp = v
-            .ui
-            .interact(bp_rect, Id::unique(("bypass", node.id)), Sense::CLICK)
-            .on_hover_cursor(CursorIcon::PointingHand)
-            .on_hover_text(if off { "Bypassed: click to switch the effect back on (B)" } else { "Bypass: hear the dry signal (B)" });
-        if resp.hovered() {
-            p.circle_filled(bp_rect.center(), 8.0 * z, theme::CONTROL_HI);
-        }
-        let col = if off { theme::METER_YELLOW } else { node.accent };
-        power_icon(p, bp_rect.center(), 4.0 * z, Stroke::new(1.3 * z, col));
-        if off {
-            v.text(size.x - 46.0, HEADER_H * 0.5, Align2::RIGHT_CENTER, "BYPASS", theme::strong(8.0 * z), theme::METER_YELLOW);
-        }
-        bypass = resp.clicked();
-    }
-
-    if selected {
-        p.rect_stroke(rect, RADIUS * z, Stroke::new(1.5 * z, node.accent), StrokeKind::Outside);
-    } else {
-        p.rect_stroke(rect, RADIUS * z, Stroke::new(1.0 * z, theme::NODE_BORDER), StrokeKind::Inside);
-    }
-    FrameActions {
-        close: close.clicked(),
-        toggle_collapse: fold.clicked(),
-        bypass,
-    }
-}
-
-/// A power symbol: a ring open at the top, and a bar through the gap.
-fn power_icon(p: &Painter, c: Pos2, r: f32, stroke: Stroke) {
-    let arc: Vec<Pos2> = (0..=20)
-        .map(|k| {
-            let a = -std::f32::consts::FRAC_PI_2 + 0.7 + (std::f32::consts::TAU - 1.4) * k as f32 / 20.0;
-            c + vec2(a.cos(), a.sin()) * r
-        })
-        .collect();
-    p.add(Shape::line(arc, stroke));
-    p.line_segment([c + vec2(0.0, -r * 1.25), c + vec2(0.0, -r * 0.2)], stroke);
+    audioboard_ui::card::card(v, &card)
 }
 
 /// A bypassed effect's body, dimmed over its controls.
 pub fn bypass_veil(v: &NodeView, node: &Node) {
-    let size = node.size();
-    let rect = v.r(0.0, HEADER_H, size.x, size.y);
-    let bottom = CornerRadius { nw: 0, ne: 0, sw: radius(RADIUS, v.z), se: radius(RADIUS, v.z) };
-    v.painter.rect_filled(rect, bottom, alpha(theme::NODE_BODY, 0.55));
+    audioboard_ui::card::veil(v, node.size());
 }
 
 // ---------------------------------------------------------------------------
@@ -403,92 +247,11 @@ pub fn osc(v: &NodeView, id: NodeId, accent: Color32, o: &mut OscNode, inputs: &
     }
 }
 
-/// Segmented control in `rect` (screen space). `item` paints segment `i`
-/// in the given colour and returns its tooltip. Returns a clicked segment.
-pub(super) fn segmented(
-    v: &NodeView,
-    salt: impl std::hash::Hash + std::fmt::Debug,
-    rect: Rect,
-    count: usize,
-    selected: usize,
-    accent: Color32,
-    mut item: impl FnMut(usize, Rect, Color32) -> &'static str,
-) -> Option<usize> {
-    let z = v.z;
-    let p = v.painter;
-    p.rect_filled(rect, 4.0 * z, theme::INSET);
-    let seg_w = rect.width() / count as f32;
-    let base = Id::unique(salt);
-    let mut picked = None;
-    for i in 0..count {
-        let seg = Rect::from_min_size(rect.min + vec2(seg_w * i as f32, 0.0), vec2(seg_w, rect.height()));
-        let resp = v
-            .ui
-            .interact(seg, base.with(i), Sense::CLICK)
-            .on_hover_cursor(CursorIcon::PointingHand);
-        let on = i == selected;
-        if on {
-            p.rect_filled(seg.shrink(2.0 * z), 3.0 * z, theme::CONTROL);
-        }
-        let col = if on {
-            accent
-        } else if resp.hovered() {
-            theme::TEXT_DIM
-        } else {
-            theme::TEXT_FAINT
-        };
-        let tip = item(i, seg, col);
-        if resp.on_hover_text(tip).clicked() {
-            picked = Some(i);
-        }
-    }
-    picked
-}
-
 /// Placement and look of one knob cell (label, knob, value).
-pub(super) struct KnobCell<'a> {
-    pub cx: f32,
-    /// Node-local y of the label line.
-    pub row_y: f32,
-    pub label: &'a str,
-    /// For modulation-depth knobs whose input is unpatched.
-    pub dimmed: bool,
-    pub accent: Color32,
-    pub param: ParamRef,
-}
+pub type KnobCell<'a> = audioboard_ui::KnobCell<'a, ParamRef>;
 
-/// Draws a knob cell; returns the new value when it was moved or reset.
-pub(super) fn knob_cell(v: &NodeView, id: Id, spec: &ParamSpec, value: f32, cell: KnobCell) -> Option<f32> {
-    let z = v.z;
-    let KnobCell { cx, row_y, label, dimmed, accent, param } = cell;
-    let label_col = if dimmed { alpha(theme::TEXT_FAINT, 0.6) } else { theme::TEXT_FAINT };
-    v.text(cx, row_y, Align2::CENTER_CENTER, label, v.font(8.5), label_col);
-    let mut norm = spec.to_norm(value);
-    let resp = knob(
-        v.ui,
-        v.painter,
-        id,
-        v.p(cx, row_y + 19.0),
-        12.0 * z,
-        &mut norm,
-        spec.to_norm(spec.default),
-        spec.bipolar,
-        accent,
-        z,
-    );
-    v.hit(resp.rect, param);
-    let new = (resp.dragged() || resp.double_clicked()).then(|| spec.denorm(norm));
-    let hot = resp.dragged() || resp.hovered();
-    v.text(
-        cx,
-        row_y + 38.0,
-        Align2::CENTER_CENTER,
-        spec.format(new.unwrap_or(value)),
-        v.mono(9.0),
-        if hot { theme::TEXT } else { theme::TEXT_DIM },
-    );
-    new
-}
+/// Segmented selectors and knob cells come from the UI Kit.
+pub use audioboard_ui::{knob_cell, segmented};
 
 // ---------------------------------------------------------------------------
 // Mixer

@@ -626,5 +626,54 @@ mod site_snap {
             arrange(&mut s);
             full_shot("patch-hero", FRAMES, &mut s, vec2(2400.0, 1350.0), PPP);
         }
+
+        // --- Plugin nodes (the SDK page) ---------------------------------
+        // The example plugin, built as a dylib and loaded as the app does.
+        if want("plugin-") {
+            use crate::audio::node_plugin as np;
+            let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            let target = root.join("target/node-plugin-test");
+            let ok = std::process::Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
+                .args(["build", "-p", "audioboard-example-nodes", "--target-dir"])
+                .arg(&target)
+                .current_dir(&root)
+                .status()
+                .is_ok_and(|s| s.success());
+            assert!(ok, "the example plugin builds");
+            let scan = np::scan_dirs(&[target.join("debug")]);
+            assert!(scan.refused.is_empty(), "{:?}", scan.refused);
+            let kind = |id: &str| ModuleKind::Ext(np::find(id).expect("example node loaded"));
+            let (haze, glass, pulse) =
+                (kind("dev.audioboard.example.haze"), kind("dev.audioboard.example.glass"), kind("dev.audioboard.example.pulse"));
+            // Meters and traces update as in the app (Haze traces its LFO).
+            let meters = |g: &mut Graph, _: usize| {
+                for node in &mut g.nodes {
+                    node.update_meters(1.0 / 60.0);
+                }
+            };
+            if want("plugin-nodes") {
+                let mut s = scene(120.0);
+                let osc = s.g.add_osc(pos2(-300.0, 0.0), &s.a);
+                let h = add(&mut s, haze, 0.0, 0.0);
+                let p = add(&mut s, pulse, -300.0, 320.0);
+                let gl = add(&mut s, glass, 0.0, 320.0);
+                let mix = s.g.add_mixer(pos2(300.0, 100.0), &s.a);
+                link(&mut s, osc, 0, h, 0);
+                link(&mut s, h, 0, mix, 0);
+                link(&mut s, p, MIDI_PORT, gl, MIDI_PORT);
+                link(&mut s, gl, 0, mix, 1);
+                arrange(&mut s);
+                let size = bounds(&s.g).size() + vec2(160.0, 160.0);
+                let (img, w, h) = shoot(&mut s, size, PPP, FRAMES, meters);
+                save("plugin-nodes", &img, w, (0, 0, w, h));
+            }
+            if want("plugin-glass") {
+                let mut s = scene(120.0);
+                let gl = add(&mut s, glass, 0.0, 0.0);
+                let p = feeder(&mut s, pulse, 0.0);
+                link(&mut s, p, MIDI_PORT, gl, MIDI_PORT);
+                node_shot_with("plugin-glass", FRAMES, &mut s, gl, meters);
+            }
+        }
     }
 }

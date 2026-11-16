@@ -17,6 +17,7 @@ pub mod magma;
 #[cfg(target_os = "macos")]
 pub mod macos;
 pub mod modules;
+pub mod node_panel;
 pub mod monitor;
 pub mod nodes;
 pub mod nullpunkt;

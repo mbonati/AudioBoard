@@ -78,6 +78,8 @@ pub enum Request {
     DeletePreset(usize),
     RevealLibrary,
     RescanPlugins,
+    /// Open the folder node plugins are installed into.
+    RevealNodePlugins,
 }
 
 /// What was picked in the "add" menu.
@@ -1861,6 +1863,23 @@ pub fn add_menu(ui: &mut Ui, library: &[Preset], plugins: &[PluginEntry]) -> Opt
                 picked = Some(AddChoice::Node(ty));
                 ui.close();
             }
+        }
+    }
+
+    // Plugin nodes (dylibs built with the node SDK): one submenu per maker.
+    let makers = crate::audio::node_plugin::by_maker();
+    if !makers.is_empty() {
+        menu_heading(ui, "Plugin nodes");
+        for (maker, list) in makers {
+            ui.menu_button(format!("{maker}  ({})", list.len()), |ui| {
+                for e in list {
+                    let ty = NodeType::Module(crate::audio::modules::ModuleKind::Ext(e));
+                    if menu_item(ui, ty.name(), ty.hint()) {
+                        picked = Some(AddChoice::Node(ty));
+                        ui.close();
+                    }
+                }
+            });
         }
     }
 

@@ -58,7 +58,8 @@ impl ModulePreset {
 
 /// Where a kind's presets live.
 pub fn file(dir: &Path, kind: ModuleKind) -> PathBuf {
-    dir.join(format!("{}.json", kind.def().name))
+    // Built-in modules by name, plugin nodes by their stable id.
+    dir.join(format!("{}.json", kind.key()))
 }
 
 /// The app's preset folder.

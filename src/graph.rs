@@ -754,6 +754,7 @@ impl Node {
                     ModuleKind::Random => Some(m.params.viz[random::VALUE].get()),
                     ModuleKind::MidiCc => Some(m.params.viz[midi_cc::VALUE].get()),
                     ModuleKind::MidiNote => Some(m.params.viz[midi_note::ENV].get() * 2.0 - 1.0),
+                    ModuleKind::Ext(e) => crate::ui::node_panel::traced(e).and_then(|i| m.params.viz.get(i)).map(|v| v.get()),
                     _ => None,
                 };
                 if let Some(v) = traced {

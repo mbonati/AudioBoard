@@ -211,7 +211,8 @@ fn node_data(graph: &Graph, n: &Node, numbers: &HashMap<NodeId, u32>, origin: Ve
             let p = &m.params;
             let def = p.kind.def();
             KindData::Module {
-                module: def.name.to_owned(),
+                // Built-in modules by name, plugin nodes by their stable id.
+                module: p.kind.key().to_owned(),
                 params: def
                     .params
                     .iter()
@@ -389,7 +390,7 @@ fn instantiate(
             KindData::Module { module, params, mode, toggle, data: extra, .. } => {
                 // Frakture was first called Fractal.
                 let module = if module == "Fractal" { "Frakture" } else { module.as_str() };
-                let Some(kind) = ModuleKind::ALL.iter().copied().find(|k| k.def().name == module) else {
+                let Some(kind) = ModuleKind::from_key(module) else {
                     continue;
                 };
                 let def = kind.def();
@@ -431,6 +432,21 @@ fn instantiate(
         }
     }
     ids
+}
+
+/// The modules in `project` this app can't make, each once in file order:
+/// an unknown name, or a node plugin (by its id) that isn't installed.
+pub fn missing_modules(project: &Project) -> Vec<String> {
+    let mut missing: Vec<String> = Vec::new();
+    for data in &project.nodes {
+        if let KindData::Module { module, .. } = &data.kind {
+            let known = module == "Fractal" || ModuleKind::from_key(module).is_some();
+            if !known && !missing.contains(module) {
+                missing.push(module.clone());
+            }
+        }
+    }
+    missing
 }
 
 /// Replaces the patch with the project's. Returns how many nodes could not

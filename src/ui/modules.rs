@@ -19,45 +19,11 @@ use crate::audio::params::{
 };
 use crate::graph::{ModuleNode, ParamRef};
 
-const PAD: f32 = 12.0;
-const COL_W: f32 = 64.0;
-const PORT_Y: f32 = 42.0;
-const PORT_DY: f32 = 18.0;
-const ROW_H: f32 = 58.0;
-
-fn columns(def: &ModuleDef) -> usize {
-    match def.params.len() {
-        4 => 4,
-        n if n >= 7 => 4,
-        _ => 3,
-    }
-}
-
-/// Node-local top of the display: below the port rows.
-fn display_top(def: &ModuleDef) -> f32 {
-    let rows = (def.inputs.len() + def.midi_in as usize).max(def.outputs.len() + def.midi_out as usize);
-    (PORT_Y + PORT_DY * rows.saturating_sub(1) as f32 + 12.0).max(72.0)
-}
-
-fn display_bottom(def: &ModuleDef) -> f32 {
-    display_top(def) + def.display_h
-}
-
-/// Node-local bottom of the extra controls under the display, if any.
-fn controls_bottom(def: &ModuleDef) -> f32 {
-    display_bottom(def) + if def.controls_h > 0.0 { 6.0 + def.controls_h } else { 0.0 }
-}
-
-/// Node-local top and bottom of the mode selector row.
-fn selector_y(def: &ModuleDef) -> [f32; 2] {
-    let d = controls_bottom(def);
-    [d + 6.0, d + 26.0]
-}
-
-/// Node-local y of the first knob row's labels.
-fn knobs_top(def: &ModuleDef) -> f32 {
-    controls_bottom(def) + if def.modes.is_empty() && !def.map { 18.0 } else { 42.0 }
-}
+// The generic panel's layout comes from the UI Kit (`audioboard_ui::panel`):
+// the same one plugin nodes are drawn with.
+use audioboard_ui::panel::{
+    COL_W, PAD, PORT_DY, PORT_Y, ROW_H, columns, display_bottom, display_top, knobs_top, selector_y,
+};
 
 /// A module node's size now: most only depend on their kind, some panels
 /// grow and shrink with their settings.
@@ -117,16 +83,11 @@ pub fn size(def: &ModuleDef) -> Vec2 {
     if std::ptr::eq(def, &iris::DEF) {
         return Vec2::from(iris::DEFAULT_SIZE);
     }
-    let cols = columns(def);
-    let rows = def.params.len().div_ceil(cols);
-    vec2(
-        PAD * 2.0 + COL_W * cols as f32,
-        knobs_top(def) + ROW_H * rows as f32 - 4.0,
-    )
+    audioboard_ui::panel::size(def)
 }
 
 pub fn input_offset(i: usize) -> Vec2 {
-    vec2(0.0, PORT_Y + PORT_DY * i as f32)
+    audioboard_ui::panel::input_offset(i)
 }
 
 pub fn output_offset(def: &ModuleDef, i: usize) -> Vec2 {
@@ -304,6 +265,7 @@ pub fn draw(
         ModuleKind::Sequencer => step_grid(v, id, &screen, p),
         ModuleKind::Arpeggiator | ModuleKind::MidiIn => keys_display(&screen, p),
         ModuleKind::Midicer => midicer_display(v, id, &screen, p),
+        ModuleKind::Ext(e) => super::node_panel::display(screen.p, screen.rect, accent, z, m, e),
     }
     if kind == ModuleKind::Midicer {
         midicer_controls(v, id, p, accent, display_bottom(def) + 6.0, w);
@@ -423,6 +385,7 @@ fn knob_unused(kind: ModuleKind, p: &ModuleParams, k: usize) -> bool {
 fn readout(kind: ModuleKind, p: &ModuleParams, tempo: f32) -> (String, String) {
     let mode = mode_name(kind, p.mode());
     match kind {
+        ModuleKind::Ext(e) => super::node_panel::readout(p, e),
         ModuleKind::MidiCc => {
             let (channel, number) = midi_cc::address(p);
             let learning = p.toggled();

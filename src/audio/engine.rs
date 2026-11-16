@@ -24,81 +24,15 @@ use super::sync::{self, Follow, Timeline};
 
 pub type NodeId = u32;
 
-/// Frames per block: built-in nodes run block by block.
-pub const BLOCK: usize = 64;
 /// Blocks in the longest pass (device buffers longer than a pass are split).
 pub const PASS_BLOCKS: usize = 32;
 /// Longest pass, in frames: also the largest block plugins are given.
 pub const PASS: usize = BLOCK * PASS_BLOCKS;
 pub const MAX_INPUTS: usize = 24;
 
-#[derive(Clone, Copy)]
-pub struct ProcessCtx {
-    pub sample_rate: f32,
-    /// One-pole coefficient for ~10 ms parameter smoothing.
-    pub smooth: f32,
-    /// Transport position at the start of the block, in beats. Advances only
-    /// while audio runs, so every rhythmic node shares one clock.
-    pub beat: f64,
-    /// Beats per sample at the current tempo.
-    pub beats_per_sample: f64,
-    /// The transport is playing. Stopped, sources fall silent and rhythm
-    /// generators end their notes, while effects keep processing their
-    /// tails; the beat stands still.
-    pub playing: bool,
-    /// The transport was just rewound to beat 0 (Stop, then Start): rhythm
-    /// generators start over and end the notes they were holding.
-    pub restart: bool,
-}
-
-/// Events a MIDI cable can hold per block (more are dropped).
-pub const MIDI_CAP: usize = 128;
-
-/// A raw MIDI message at a frame within the block.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct MidiMsg {
-    pub frame: u16,
-    pub data: [u8; 3],
-}
-
-/// One block of MIDI, fixed size so the audio thread never allocates.
-#[derive(Clone)]
-pub struct MidiBuf {
-    events: [MidiMsg; MIDI_CAP],
-    len: usize,
-}
-
-impl Default for MidiBuf {
-    fn default() -> Self {
-        Self { events: [MidiMsg::default(); MIDI_CAP], len: 0 }
-    }
-}
-
-impl MidiBuf {
-    pub fn clear(&mut self) {
-        self.len = 0;
-    }
-
-    pub fn push(&mut self, frame: usize, data: [u8; 3]) {
-        if self.len < MIDI_CAP {
-            self.events[self.len] = MidiMsg { frame: frame as u16, data };
-            self.len += 1;
-        }
-    }
-
-    pub fn events(&self) -> &[MidiMsg] {
-        &self.events[..self.len]
-    }
-
-    fn copy_from(&mut self, other: &MidiBuf) {
-        self.len = other.len;
-        self.events[..other.len].copy_from_slice(other.events());
-    }
-}
-
-/// One block of stereo audio, `[left, right]`. Every cable carries stereo;
-/// mono sources write the same signal to both channels.
-pub type Buf = [[f32; BLOCK]; 2];
+// Blocks, MIDI and the transport come from the node SDK: built-in nodes and
+// plugin nodes see the same types.
+pub use audioboard_node::buffer::{BLOCK, Buf, MIDI_CAP, MidiBuf, MidiMsg, ProcessCtx};
 
 pub struct Inputs {
     pub bufs: [Buf; MAX_INPUTS],
