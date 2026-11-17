@@ -170,7 +170,7 @@
 │   │   ├── <b>automa/</b>       <i>LIFE, CASCADE, TREE, JULIA; harmony rules</i>
 │   │   ├── <b>colloid/</b>      <i>the tank's physics, handpan layouts and chords</i>
 │   │   ├── <b>looper/</b>       <i>scenes, recording, MIDI clock</i>
-│   │   ├── <b>iris.rs</b>       <i>passes IN through, hands the panel the sound it listens to</i>
+│   │   ├── <b>iris.rs</b>       <i>passes IN through, hands the panel the sound, the MIDI and the transport</i>
 │   │   ├── <b>tape.rs</b>       <i>record EQ, magnetic curve, transport, playback head</i>
 │   │   ├── <b>oversample.rs</b> <i>2× half-band FIR for Magma, Tape, Aether and Prism</i>
 │   │   └── <b>steps.rs</b>      <i>step grid on the global tempo, outgoing notes, held keys</i>
@@ -199,7 +199,8 @@
 │   ├── fjord, pops, colloid, automa, vesper, aether, larsen, nullpunkt,
 │   │   magma, equalizer, prism, tape, frakture, looper, console … <i>custom panels</i>
 │   ├── <b>board.rs</b>      <i>backgrounds, stickers on the canvas, built-in designs, their menus</i>
-│   ├── <b>iris.rs</b>       <i>Iris: analysis, eighteen scenes (3D in software), palettes, frameless look, settings popup, its window</i>
+│   ├── <b>iris.rs</b>       <i>Iris: analysis, nineteen scenes (3D in software), palettes, frameless look, settings popup, its window</i>
+│   ├── <b>iris/synth.rs</b> <i>Iris as a visual synth: layers composited on the CPU, LFOs, envelopes, audio and MIDI, the matrix</i>
 │   ├── <b>settings.rs</b>   <i>the Settings window: Audio, MIDI, Sync, Plugins</i>
 │   ├── <b>recent.rs</b>     <i>Open Recent</i>
 │   ├── <b>tempo.rs</b>      <i>BPM field, beat light, tap tempo; a MIDI clock's tempo</i>

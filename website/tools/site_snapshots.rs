@@ -535,7 +535,7 @@ mod site_snap {
             // A palette for each scene, to show them all (SNAP_IRIS_PALETTE
             // picks one for every scene): Board, Mono, Paper, Riso, Ember,
             // Ice, Acid, Lagoon.
-            const LOOKS: [f32; 18] = [0.0, 0.0, 5.0, 3.0, 4.0, 6.0, 0.0, 2.0, 2.0, 3.0, 4.0, 1.0, 5.0, 0.0, 7.0, 0.0, 5.0, 6.0];
+            const LOOKS: [f32; 19] = [0.0, 0.0, 5.0, 3.0, 4.0, 6.0, 0.0, 2.0, 2.0, 3.0, 4.0, 1.0, 5.0, 0.0, 7.0, 0.0, 5.0, 6.0, 4.0];
             let look = std::env::var("SNAP_IRIS_PALETTE").ok().and_then(|v| v.parse().ok()).unwrap_or(LOOKS[k]);
             p.data[md::iris::data::PALETTE].set(look);
             let mix = s.g.add_mixer(pos2(0.0, 520.0), &s.a);
@@ -544,6 +544,55 @@ mod site_snap {
             link(&mut s, drone, 0, mix, 0);
             link(&mut s, pops, 0, mix, 1);
             node_shot(&name, FRAMES, &mut s, id);
+        }
+
+        // Iris as a visual synth: two layers, echoes, a mirror and the matrix.
+        let synth = |p: &ModuleParams| {
+            use md::iris::data::{self, layer, slot};
+            let l = |k: usize, j: usize, v: f32| p.data[data::LAYER + k * data::LAYER_LEN + j].set(v);
+            p.set_mode(5);
+            l(0, layer::ECHO, 6.0);
+            l(0, layer::FEEDBACK, 1.08);
+            l(0, layer::MIRROR, 2.0);
+            l(1, layer::ON, 1.0);
+            l(1, layer::SCENE, 14.0);
+            l(1, layer::ZOOM, 0.72);
+            l(1, layer::HUE, 0.12);
+            l(1, layer::OPACITY, 0.55);
+            // LFO 1 swells layer 2, the bass fades it in, envelope 1 turns
+            // layer 1's colours.
+            for (s, (src, dst, amount)) in [(1.0, 12.0, 0.3), (7.0, 11.0, 0.4), (5.0, 9.0, 0.25)].into_iter().enumerate() {
+                let b = data::MATRIX + s * data::SLOT_LEN;
+                p.data[b + slot::SOURCE].set(src);
+                p.data[b + slot::DEST].set(dst);
+                p.data[b + slot::AMOUNT].set(amount);
+            }
+        };
+        if want("iris-layers") {
+            let mut s = scene(118.0);
+            let id = add(&mut s, ModuleKind::Iris, 0.0, 0.0);
+            synth(&module_params(&s.g, id));
+            let mix = s.g.add_mixer(pos2(0.0, 520.0), &s.a);
+            let drone = add(&mut s, ModuleKind::Drone, -420.0, 420.0);
+            let pops = add(&mut s, ModuleKind::Pops, -420.0, 760.0);
+            link(&mut s, drone, 0, mix, 0);
+            link(&mut s, pops, 0, mix, 1);
+            node_shot("iris-layers", FRAMES, &mut s, id);
+        }
+        for (tab, name) in [(1u8, "iris-ui-layers"), (2u8, "iris-ui-mod")] {
+            if !want(name) {
+                continue;
+            }
+            let mut s = scene(118.0);
+            let id = add(&mut s, ModuleKind::Iris, 0.0, 0.0);
+            synth(&module_params(&s.g, id));
+            let f = feeder(&mut s, ModuleKind::Drone, 0.0);
+            link(&mut s, f, 0, id, 0);
+            crate::ui::iris::SHOW_CONTROLS.store(true, Ordering::Relaxed);
+            crate::ui::iris::SHOW_TAB.store(tab, Ordering::Relaxed);
+            full_shot(name, FRAMES, &mut s, vec2(2000.0, 1010.0), PPP);
+            crate::ui::iris::SHOW_TAB.store(0, Ordering::Relaxed);
+            crate::ui::iris::SHOW_CONTROLS.store(false, Ordering::Relaxed);
         }
 
         if want("iris-frameless") {
@@ -569,7 +618,7 @@ mod site_snap {
             let f = feeder(&mut s, ModuleKind::Drone, 0.0);
             link(&mut s, f, 0, id, 0);
             crate::ui::iris::SHOW_CONTROLS.store(true, Ordering::Relaxed);
-            full_shot("iris-ui", FRAMES, &mut s, vec2(1700.0, 1010.0), PPP);
+            full_shot("iris-ui", FRAMES, &mut s, vec2(2000.0, 1160.0), PPP);
             crate::ui::iris::SHOW_CONTROLS.store(false, Ordering::Relaxed);
         }
 

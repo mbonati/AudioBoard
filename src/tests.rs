@@ -7773,3 +7773,23 @@ fn iris_is_saved_with_its_scene_size_and_look() {
         assert_eq!(q.data[i].get(), p.data[i].get());
     }
 }
+
+#[test]
+fn iris_hears_midi_notes_and_the_transport() {
+    use crate::audio::modules::iris::viz;
+    use crate::graph::MIDI_PORT;
+    let (mut g, a, mut e) = setup();
+    let seq = g.add_module(ModuleKind::Sequencer, pos2(-600.0, 0.0), &a);
+    let iris = g.add_module(ModuleKind::Iris, pos2(0.0, 0.0), &a);
+    assert!(g.connect(port(seq, MIDI_PORT), port(iris, MIDI_PORT), &a), "Iris takes MIDI");
+    let p = module_params(&g, iris);
+    render_buf(&mut e, 4800);
+    let beat = p.viz[viz::BEAT].get();
+    for _ in 0..20 {
+        render_buf(&mut e, 4800);
+    }
+    assert!(p.viz[viz::NOTES].get() > 0.0, "notes from the sequencer");
+    assert!(p.viz[viz::VELOCITY].get() > 0.0 && p.viz[viz::NOTE].get() > 0.0);
+    assert_eq!(p.viz[viz::PLAYING].get(), 1.0);
+    assert!(p.viz[viz::BEAT].get() > beat, "the transport moves on: {beat} → {}", p.viz[viz::BEAT].get());
+}

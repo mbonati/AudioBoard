@@ -205,7 +205,7 @@ impl ModuleKind {
             ModuleKind::Automa => Box::new(automa::Automa::new(params)),
             ModuleKind::Colloid => Box::new(colloid::Colloid::new(params, midi.clone(), sample_rate)),
             ModuleKind::Looper => Box::new(looper::Looper::new(params, midi, sample_rate)),
-            ModuleKind::Iris => Box::new(iris::Iris::new(params, audio.shared.clone(), sample_rate)),
+            ModuleKind::Iris => Box::new(iris::Iris::new(params, audio.shared.clone(), midi.clone(), sample_rate)),
             ModuleKind::Ext(e) => super::node_plugin::processor(e, params, sample_rate),
         }
     }

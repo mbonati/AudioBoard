@@ -1095,15 +1095,17 @@ effected layer, each with its own level. MUTE on Mixer 1 leaves only the effecte
 ### Visual: Iris
 
 **Iris** is a video node: a screen on the board where visuals react to the sound, drawn in the board's flat,
-graphic style (line art, dot matrices, coloured outlines; no glows). It is in the **Visual** group of the
-palette and of the right-click menu.
+graphic style (line art, dot matrices, coloured outlines; no glows). It is also a visual synthesizer: up to
+four layers of scenes, each blended, moved, tinted, mirrored and echoed, and modulators (LFOs, envelopes,
+audio bands, MIDI) routed to them by a matrix. It is in the **Visual** group of the palette and of the
+right-click menu.
 
 - **What it listens to**: by default (**Auto**) the node patched into its **IN**, and only that one (a drum
   machine, a bass line, a reverb's tail), or the **main mix** (everything the board plays) while IN is free.
   The settings can also force **IN** (nothing while unpatched) or **Main mix** (even with IN patched).
   **THRU** passes IN on unchanged, so Iris can sit inside a chain; it is never an effect (no bypass), and it keeps running, with the nodes feeding it,
   even when THRU goes nowhere.
-- **Eighteen scenes**:
+- **Nineteen scenes**:
   - geometric: **Mandala** (rings of petals with 5- to 16-fold symmetry, each ring a band), **Halo** (a
     halftone ring of dots on rays round an empty centre, biggest half way out and shrinking to specks inside
     and out, with faint streaks along the rays: it turns, swells with the bass, sends a ripple out on
@@ -1116,7 +1118,9 @@ palette and of the right-click menu.
   - mathematical: **Harmonograph** (a damped pendulum drawing in small ratios, which jump on onsets),
     **Spiro** (nested hypotrochoids), **Attractor** (a Clifford attractor's cloud of points, its constants
     drifting with the sound), **Phase** (the sound against itself a quarter period later: a tone draws a
-    circle, a chord a knot, with echoes of past frames spiralling out), **Ridges** (pulsar lines, the
+    circle, a chord a knot, with echoes of past frames spiralling out), **Scope** (an oscilloscope: the
+    waveform held still on a rising zero crossing over three periods of the pitch, on a faint graticule,
+    its past traces fading behind it), **Ridges** (pulsar lines, the
     spectrum scrolling up the screen, each line hiding the ones behind);
   - generative: **Flow** (particles on a flow field; onsets burst them outwards), **Life** (Conway's Game of
     Life on a dot matrix: onsets drop gliders and R-pentominoes where the spectrum peaks, the highs spark
@@ -1129,6 +1133,25 @@ palette and of the right-click menu.
     sun in outline; onsets mark their row), **Flight** (flying through a field of dots: the bass and the
     level set the speed, onsets kick it, the mids roll the view, each dot swelling with its band and
     streaking as it rushes past).
+- **Layers**: up to four, drawn in order (layer 1 first, 4 on top), each with its own scene (layer 1's is
+  the node's scene), on or off, **Solo**, and a blend: **Normal**, or **Add** (light adds up, for dark
+  palettes). Each has its **Opacity**, **Zoom**, **Rotate**, **Spin** (turns a second), **X** and **Y**,
+  **Hue** (turns the colours round the wheel), its own **Speed**, a **Mirror** (**Mirror**: the left half
+  reflected on the right; **Quad**: the top left quarter reflected into the other three; **×3** and **×6**
+  turned copies) and **Echoes**: up to eight past frames behind it, each grown by **Feedback** and fading
+  (above ×1 an endless zoom, below it a fall inwards). A plain layer draws straight onto the screen; any
+  other is drawn into a layer of its own, tessellated into one mesh, moved and tinted vertex by vertex and
+  put on the screen, all on the CPU. Each layer keeps to a budget of vertices: a heavy scene gets fewer
+  echoes rather than a slow frame.
+- **Modulation**: four **LFOs** (sine, triangle, saw, square, random; free from 0.02 to 10 Hz, or synced to
+  the transport from 1/16 to 8 bars, on the beat while it plays; a phase), two **envelopes** (attack,
+  decay, sustain, release; fired by MIDI notes, by onsets or by both, the gate held while a note is), four
+  **audio** modulators (a range of the 32 bands and a gain: bass, mids, highs and everything to begin
+  with), and MIDI: **Velocity**, **Note**, **Mod wheel** and two controllers, **CC A** and **CC B**, by
+  number. The onset **Beat** is a source too. The **matrix** has twelve slots, each a source, a destination
+  and a bipolar amount: the destinations are the global Speed, Detail and Trail and every layer's Opacity,
+  Zoom, Rotate, X, Y, Hue and Speed.
+- **MIDI**: notes and controllers arrive on its **MIDI** input, or from the keyboards while that is free.
 - **The analysis**, on the UI thread (the audio thread only copies the samples): a 2048-point spectrum in 32
   bands from 30 Hz to 16 kHz (tilted +3 dB an octave, as music has less energy up high), the level, bass, mids
   and highs, the strongest pitch, and onsets (spectral flux over its own running average).
@@ -1136,7 +1159,10 @@ palette and of the right-click menu.
   scene's name and what it listens to now (IN or MAIN) show at the top left, a **gear** at the top right and a **grip** at the
   bottom right: drag the grip to resize the node (Shift keeps its shape), from 240 × 170 to 2400 × 1600.
   When a scene changes by itself, its name shows for a moment.
-- **The gear** opens the settings in a popup beside the node, so the picture stays in view: the scene;
+- **The gear** opens the settings in a popup beside the node, so the picture stays in view, in three tabs:
+  **Picture**, **Layers** (the four layers, then the one selected) and **Modulation** (the matrix, with
+  the slots in use and a free one, then the LFOs, envelopes, audio and MIDI, each with a small meter of
+  what it does now). Picture holds the scene;
   **Auto**, **IN** or **Main mix**, with a line saying what it listens to now; the **palette** (Board, Mono in the node's colour, Paper and Riso on light paper,
   Ember, Ice, Acid, and Lagoon: blue through cyan to green on white); **React** (how strongly it follows the sound), **Speed**, **Detail** (lines, particles,
   cells, symmetry), **Smooth** (how slowly the analysis lets go) and **Trail** (trails, echoes, histories);
@@ -1150,9 +1176,11 @@ palette and of the right-click menu.
   Esc leaves full screen, then closes the window. It keeps playing when the node is off the view or
   collapsed.
 
-The scene, the knobs, the size, the look and the frame are saved with the project (the scene by name, so
-projects keep their scene as new ones are added); the window is not. A scene costs the UI about 0.1 to 2.4 ms a frame at full detail; the board redraws at full rate while an
-Iris is in view.
+The scene, the knobs, the size, the look, the frame, the layers, the modulators and the matrix are saved
+with the project (the scene by name, so projects keep their scene as new ones are added; a project saved
+before the layers opens with layer 1 alone, as it was); the window is not. A scene costs the UI about 0.1 to
+3.5 ms a frame at full detail (the Attractor the most); a layer with echoes and a mirror up to about 3 ms
+more, and four such layers together about 12 ms. The board redraws at full rate while an Iris is in view.
 
 ### Settings
 
@@ -1579,7 +1607,8 @@ src/
 │   ├── dsp.rs      Oscillator and Mixer (any number of channels, main and AUX outputs)
 │   ├── modules/    audio_in, drone, random, granular, resonator, filter, equalizer (after Waves F6), delay, pingpong,
 │   │               reverb, midi_cc, midi_note, sequencer, arpeggiator, midi_in, midicer (after Vermona's
-│   │               meloDICER), iris (passes IN through, hands the panel the sound it listens to)
+│   │               meloDICER), iris (passes IN through, hands the panel the sound it listens to, the MIDI it
+│   │               receives and the transport; the layers', modulators' and matrix's settings)
 │   │   ├── magma.rs    Magma (after FabFilter Volcano 3): parameters, routing, oversampling, slots
 │   │   ├── magma/      filter (non-linear SVF styles, responses), modulation (XLFO, EG, EF, MIDI, XY)
 │   │   ├── prism.rs    Prism (after FabFilter Pro-Q 4): the bands' knobs and settings, the minimum-phase cascade
@@ -1681,9 +1710,12 @@ src/
 │   ├── settings.rs the Settings window: tabs Audio (output, input and its meters), MIDI (inputs and their
 │   │               lights), Sync (clock source, clock out), Plugins (VST3 folders, Audio Units, plugin
 │   │               nodes)
-│   ├── iris.rs     the Iris panel: the analysis (spectrum, bands, onsets), the eighteen scenes (the 3D ones
+│   ├── iris.rs     the Iris panel: the analysis (spectrum, bands, onsets), the nineteen scenes (the 3D ones
 │   │               projected in software), palettes, the scene's name, gear and grip, the frameless look, the
-│   │               settings popup, the window of its own
+│   │               settings popup (Picture tab), the window of its own
+│   ├── iris/synth.rs  Iris as a visual synth: the layers (blend, transform, hue, mirror, echoes) composited on
+│   │               the CPU, the LFOs, envelopes, audio and MIDI modulators, the matrix, the Layers and
+│   │               Modulation tabs
 │   ├── recent.rs   Open Recent: the list of recent projects and its submenu
 │   ├── board.rs    background presets and image, stickers on the canvas (drawing, moving, handles, menu,
 │   │               dropped files, textures), the built-in designs, the Stickers and Background submenus

@@ -26,6 +26,8 @@ use crate::audio::modules::ModuleParams;
 use crate::audio::modules::iris::{self, DETAIL, REACT, RING, SCENES, SMOOTH, SPEED, TRAIL, data, viz};
 use crate::graph::ModuleNode;
 
+mod synth;
+
 /// Margin between the node's edge and the screen (the ports sit in it).
 const BEZEL: f32 = 10.0;
 const BANDS: usize = 32;
@@ -459,6 +461,8 @@ struct Scenes {
     flight_z: f32,
     flight_v: f32,
     flight_roll: f32,
+    /// The Scope's past traces, newest first.
+    scope: VecDeque<Vec<f32>>,
 }
 
 impl Scenes {
@@ -506,15 +510,17 @@ impl Scenes {
             flight_z: 0.0,
             flight_v: 1.0,
             flight_roll: 0.0,
+            scope: VecDeque::new(),
         }
     }
 }
 
 struct State {
     a: Analysis,
-    s: Scenes,
-    /// Scene time: runs at SPEED, a little faster with loud sound.
-    t: f32,
+    /// Each layer's scene state and time (which runs at SPEED, a little
+    /// faster with loud sound).
+    layers: [synth::Layer; data::LAYERS],
+    mods: synth::Mods,
     last: f64,
     seen: f64,
     /// Seconds left showing the scene's name.
@@ -527,8 +533,9 @@ impl State {
     fn new(seed: f32) -> Self {
         Self {
             a: Analysis::new(),
-            s: Scenes::new(seed.to_bits() ^ 0x9E37_79B9),
-            t: 0.0,
+            // Layer 1 as Iris always seeded its scenes.
+            layers: std::array::from_fn(|k| synth::Layer::new(seed.to_bits() ^ 0x9E37_79B9 ^ (k as u32).wrapping_mul(0x632B_E5AB))),
+            mods: synth::Mods::new(seed.to_bits()),
             last: f64::NAN,
             seen: 0.0,
             hud: 0.0,
@@ -555,6 +562,20 @@ fn show_controls() -> bool {
 #[cfg(not(test))]
 fn show_controls() -> bool {
     false
+}
+
+/// Tests and snapshots: the settings tab to show with the controls.
+#[cfg(test)]
+pub static SHOW_TAB: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+#[cfg(test)]
+fn show_tab() -> Option<u8> {
+    show_controls().then(|| SHOW_TAB.load(std::sync::atomic::Ordering::Relaxed))
+}
+
+#[cfg(not(test))]
+fn show_tab() -> Option<u8> {
+    None
 }
 
 // ---------------------------------------------------------------------------
@@ -1880,6 +1901,48 @@ fn flight(c: &Ctx, s: &mut Scenes) {
     c.p.add(Shape::mesh(mesh));
 }
 
+/// An oscilloscope: the waveform across the screen, held still on a
+/// rising zero crossing over three periods of the pitch, on a faint
+/// graticule, with its past traces fading behind it (TRAIL).
+fn scope(c: &Ctx, s: &mut Scenes) {
+    let r = c.r;
+    let faint = alpha(c.pal.line(), 0.08);
+    for i in 1..10 {
+        let x = r.left() + r.width() * i as f32 / 10.0;
+        c.line(vec![pos2(x, r.top()), pos2(x, r.bottom())], c.w(0.6), if i == 5 { alpha(c.pal.line(), 0.16) } else { faint });
+    }
+    for i in 1..8 {
+        let y = r.top() + r.height() * i as f32 / 8.0;
+        c.line(vec![pos2(r.left(), y), pos2(r.right(), y)], c.w(0.6), if i == 4 { alpha(c.pal.line(), 0.16) } else { faint });
+    }
+    let span = (c.a.sr / c.a.pitch.max(30.0) * 3.0).clamp(256.0, 2048.0) as usize;
+    let w = &c.a.wave;
+    let latest = RING - span - 1;
+    let start = (latest.saturating_sub(1024)..=latest).rev().find(|&i| i > 0 && w[i - 1] < 0.0 && w[i] >= 0.0).unwrap_or(latest);
+    let n = 200 + (c.detail * 500.0) as usize;
+    let g = (c.a.gain * 0.85).min(30.0);
+    let trace: Vec<f32> = (0..n)
+        .map(|j| {
+            let x = start as f32 + j as f32 / (n - 1) as f32 * span as f32;
+            let i = (x as usize).min(RING - 2);
+            let f = x - i as f32;
+            ((w[i] * (1.0 - f) + w[i + 1] * f) * g).clamp(-1.2, 1.2)
+        })
+        .collect();
+    let to = |trace: &[f32]| -> Vec<Pos2> {
+        trace.iter().enumerate().map(|(j, v)| pos2(r.left() + r.width() * j as f32 / (trace.len() - 1) as f32, r.center().y - v * r.height() * 0.42)).collect()
+    };
+    let keep = (c.trail * 12.0) as usize;
+    s.scope.push_front(trace);
+    s.scope.truncate(keep + 1);
+    for (k, old) in s.scope.iter().enumerate().skip(1).rev() {
+        let f = k as f32 / (keep + 1) as f32;
+        c.line(to(old), c.w(0.8), alpha(c.pal.ink(k), 0.35 * (1.0 - f) * (1.0 - f)));
+    }
+    let pts = to(&s.scope[0]);
+    c.gradient_line(&pts, 16, c.w(1.4 + 1.2 * c.a.beat), |u| c.pal.grad(u));
+}
+
 fn draw_scene(i: usize, c: &Ctx, s: &mut Scenes, seed: f32) {
     match i {
         0 => ridges(c, s),
@@ -1899,7 +1962,8 @@ fn draw_scene(i: usize, c: &Ctx, s: &mut Scenes, seed: f32) {
         14 => halo(c, s),
         15 => globe(c, s),
         16 => terrain(c, s),
-        _ => flight(c, s),
+        17 => flight(c, s),
+        _ => scope(c, s),
     }
 }
 
@@ -1944,25 +2008,19 @@ pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, (input, _
         }
         st.hud = (st.hud - dt).max(0.0);
         st.a.update(p, dt);
-        let speed = p.get(SPEED);
-        st.t += dt * speed * (0.7 + 0.6 * st.a.level);
-
-        if visible {
-            let ctx = Ctx {
-                p: &painter,
-                r: screen,
-                pal,
-                k: z * (local.height() / 300.0).sqrt().clamp(0.85, 2.2),
-                t: st.t,
-                dt: dt * speed,
-                real_dt: dt,
-                speed,
-                detail: p.get(DETAIL),
-                trail: p.get(TRAIL),
-                a: &st.a,
-            };
-            draw_scene(scene, &ctx, &mut st.s, seed);
-        }
+        let frame = synth::Frame {
+            ctx: v.ui.ctx(),
+            painter: &painter,
+            screen,
+            pal,
+            k: z * (local.height() / 300.0).sqrt().clamp(0.85, 2.2),
+            dt,
+            seed,
+            key: Id::unique(("iris-layers", id)),
+            visible,
+            tempo: v.tempo,
+        };
+        synth::render(&frame, p, st);
 
         // The scene's name, while the pointer is over the node or just
         // after the scene changed.
@@ -2018,7 +2076,7 @@ pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, (input, _
             .align_alternatives(&[RectAlign::LEFT_START, RectAlign::BOTTOM_START, RectAlign::TOP_START])
             .gap(10.0)
             .close_behavior(PopupCloseBehavior::CloseOnClickOutside)
-            .width(330.0)
+            .width(380.0)
             .show(|ui| settings(ui, id, p, accent, input));
     }
 
@@ -2148,23 +2206,20 @@ pub fn tick(ctx: &egui::Context, id: NodeId, title: &str, accent: Color32, p: &M
                 *st = State::new(seed);
             }
             st.a.update(p, dt);
-            let speed = p.get(SPEED);
-            st.t += dt * speed * (0.7 + 0.6 * st.a.level);
             let painter = ui.painter().with_clip_rect(rect);
-            let c = Ctx {
-                p: &painter,
-                r: rect,
+            let frame = synth::Frame {
+                ctx: ui.ctx(),
+                painter: &painter,
+                screen: rect,
                 pal,
                 k: (rect.height() / 300.0).sqrt().clamp(1.0, 3.0),
-                t: st.t,
-                dt: dt * speed,
-                real_dt: dt,
-                speed,
-                detail: p.get(DETAIL),
-                trail: p.get(TRAIL),
-                a: &st.a,
+                dt,
+                seed,
+                key: Id::unique(("iris-window-layers", id)),
+                visible: true,
+                tempo,
             };
-            draw_scene(scene_of(p), &c, &mut st.s, seed);
+            synth::render(&frame, p, st);
 
             let resp = ui.interact(rect, Id::unique(("iris-window-area", id)), Sense::click());
             let fullscreen = ui.input(|i| i.viewport().fullscreen.unwrap_or(false));
@@ -2229,6 +2284,28 @@ fn settings(ui: &mut Ui, id: NodeId, p: &ModuleParams, accent: Color32, input: b
             }
         });
     });
+
+    // Tabs: the picture, its layers, their modulation.
+    let tab_id = Id::unique(("iris-tab", id));
+    let mut tab = show_tab().unwrap_or_else(|| ui.data(|d| d.get_temp::<u8>(tab_id)).unwrap_or(0));
+    ui.horizontal(|ui| {
+        for (k, name) in ["Picture", "Layers", "Modulation"].iter().enumerate() {
+            if ui.selectable_label(tab == k as u8, *name).clicked() {
+                tab = k as u8;
+            }
+        }
+    });
+    ui.data_mut(|d| d.insert_temp(tab_id, tab));
+    if tab > 0 {
+        egui::ScrollArea::vertical().max_height(600.0).min_scrolled_height(520.0).show(ui, |ui| {
+            if tab == 1 {
+                synth::layers_tab(ui, id, p);
+            } else {
+                synth::mod_tab(ui, id, p, accent);
+            }
+        });
+        return;
+    }
 
     heading(ui, "SCENE");
     let scene = scene_of(p);
@@ -2462,7 +2539,108 @@ mod tests {
                 }
                 eprintln!("{:>4}×{:<4} {:<13} {:>6.2} ms a frame", w, h, SCENES[scene], total.as_secs_f64() * 1000.0 / frames as f64);
             }
+            // Four layers, each mirrored with four echoes, through the matrix.
+            let layers = ModuleParams::new(ModuleKind::Iris);
+            all_layers(&layers);
+            let mut st = State::new(1.0);
+            let screen = Rect::from_min_size(pos2(0.0, 0.0), vec2(w, h));
+            let mut total = std::time::Duration::ZERO;
+            let frames = 120;
+            for _ in 0..frames {
+                feed(&layers, (0..800).map(|_| {
+                    n += 1;
+                    (TAU * 110.0 * n as f32 / 48_000.0).sin() * 0.5
+                }));
+                st.a.update(&layers, 1.0 / 60.0);
+                let start = std::time::Instant::now();
+                let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+                    let frame = synth::Frame {
+                        ctx: ui.ctx(),
+                        painter: ui.painter(),
+                        screen,
+                        pal: Pal::of(0, Color32::from_rgb(96, 165, 238)),
+                        k: (h / 300.0).sqrt(),
+                        dt: 1.0 / 60.0,
+                        seed: 1.0,
+                        key: Id::unique("iris-cost"),
+                        visible: true,
+                        tempo: 120.0,
+                    };
+                    synth::render(&frame, &layers, &mut st);
+                });
+                let _ = ctx.tessellate(std::mem::take(&mut out.shapes), 2.0);
+                out.textures_delta.clear();
+                total += start.elapsed();
+            }
+            eprintln!("{:>4}×{:<4} {:<13} {:>6.2} ms a frame", w, h, "4 LAYERS", total.as_secs_f64() * 1000.0 / frames as f64);
         }
+    }
+
+    /// Every layer on, each with a different mix of what a layer can do,
+    /// and three matrix slots.
+    fn all_layers(p: &ModuleParams) {
+        use data::layer;
+        for k in 0..data::LAYERS {
+            let b = data::LAYER + k * data::LAYER_LEN;
+            p.data[b + layer::ON].set(1.0);
+            p.data[b + layer::SCENE].set([0.0, 14.0, 4.0, 18.0][k]);
+            p.data[b + layer::OPACITY].set(0.8);
+            p.data[b + layer::BLEND].set((k % 2) as f32);
+            p.data[b + layer::ZOOM].set(0.8 + 0.2 * k as f32);
+            p.data[b + layer::SPIN].set(0.1);
+            p.data[b + layer::HUE].set(0.1 * k as f32);
+            p.data[b + layer::MIRROR].set(k as f32 + 1.0);
+            p.data[b + layer::ECHO].set(4.0);
+        }
+        let dest = |name: &str| (0..synth::DESTS).find(|&d| synth::dest_name(d) == name).unwrap() as f32;
+        for (s, (src, dst, amount)) in [(1.0, dest("Layer 2 Zoom"), 0.5), (5.0, dest("Layer 3 Opacity"), -0.6), (7.0, dest("Speed"), 0.4)].into_iter().enumerate() {
+            let b = data::MATRIX + s * data::SLOT_LEN;
+            p.data[b + data::slot::SOURCE].set(src);
+            p.data[b + data::slot::DEST].set(dst);
+            p.data[b + data::slot::AMOUNT].set(amount);
+        }
+    }
+
+    #[test]
+    fn every_layer_feature_draws_inside_the_screen() {
+        let p = ModuleParams::new(ModuleKind::Iris);
+        all_layers(&p);
+        let ctx = egui::Context::default();
+        let mut st = State::new(0.0);
+        let screen = Rect::from_min_size(pos2(100.0, 50.0), vec2(400.0, 250.0));
+        let mut n = 0usize;
+        let mut most = 0;
+        for f in 0..30 {
+            feed(&p, (0..800).map(|_| {
+                n += 1;
+                (TAU * 110.0 * n as f32 / 48_000.0).sin() * 0.6
+            }));
+            st.a.update(&p, 1.0 / 60.0);
+            st.a.onset = f % 7 == 0;
+            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+                let painter = ui.painter().with_clip_rect(screen);
+                let frame = synth::Frame {
+                    ctx: ui.ctx(),
+                    painter: &painter,
+                    screen,
+                    pal: Pal::of(0, Color32::from_rgb(96, 165, 238)),
+                    k: 1.0,
+                    dt: 1.0 / 60.0,
+                    seed: 0.0,
+                    key: Id::unique("iris-test"),
+                    visible: true,
+                    tempo: 120.0,
+                };
+                synth::render(&frame, &p, &mut st);
+            });
+            out.textures_delta.clear();
+            for s in &out.shapes {
+                assert!(screen.expand(0.5).contains_rect(s.clip_rect), "drawn outside the screen: {:?}", s.clip_rect);
+            }
+            most = most.max(out.shapes.len());
+        }
+        // Two, four, three and six copies.
+        assert!(most >= 15, "{most} shapes");
     }
 
     #[test]
@@ -2541,3 +2719,4 @@ mod tests {
         out.textures_delta.clear();
     }
 }
+
