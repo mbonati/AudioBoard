@@ -27,6 +27,7 @@ pub mod pops;
 pub mod prism;
 pub mod midi_note;
 pub mod nullpunkt;
+pub mod orrery;
 pub mod oversample;
 pub mod random;
 pub mod resonator;
@@ -81,6 +82,7 @@ pub enum ModuleKind {
     Midicer,
     Automa,
     Colloid,
+    Orrery,
     Looper,
     Iris,
     /// A node from a node plugin (see `audio::node_plugin`).
@@ -88,7 +90,7 @@ pub enum ModuleKind {
 }
 
 impl ModuleKind {
-    pub const ALL: [ModuleKind; 31] = [
+    pub const ALL: [ModuleKind; 32] = [
         ModuleKind::Drone,
         ModuleKind::Aether,
         ModuleKind::Larsen,
@@ -118,6 +120,7 @@ impl ModuleKind {
         ModuleKind::Midicer,
         ModuleKind::Automa,
         ModuleKind::Colloid,
+        ModuleKind::Orrery,
         ModuleKind::Looper,
         ModuleKind::Iris,
     ];
@@ -153,6 +156,7 @@ impl ModuleKind {
             ModuleKind::Midicer => &midicer::DEF,
             ModuleKind::Automa => &automa::DEF,
             ModuleKind::Colloid => &colloid::DEF,
+            ModuleKind::Orrery => &orrery::DEF,
             ModuleKind::Looper => &looper::DEF,
             ModuleKind::Iris => &iris::DEF,
             ModuleKind::Ext(e) => super::node_plugin::ext(e).def,
@@ -209,6 +213,7 @@ impl ModuleKind {
             ModuleKind::Midicer => Box::new(midicer::Midicer::new(params, midi)),
             ModuleKind::Automa => Box::new(automa::Automa::new(params)),
             ModuleKind::Colloid => Box::new(colloid::Colloid::new(params, midi.clone(), sample_rate)),
+            ModuleKind::Orrery => Box::new(orrery::Orrery::new(params)),
             ModuleKind::Looper => Box::new(looper::Looper::new(params, midi, sample_rate)),
             ModuleKind::Iris => Box::new(iris::Iris::new(params, audio.shared.clone(), midi.clone(), sample_rate)),
             ModuleKind::Ext(e) => super::node_plugin::processor(e, params, sample_rate),

@@ -59,7 +59,7 @@
           <a class="btn solid" href="guide.html">Get started
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
           </a>
-          <a class="btn ghost" href="nodes.html">Browse the 34 nodes</a>
+          <a class="btn ghost" href="nodes.html">Browse the 35 nodes</a>
         </div>
       </div>
 
@@ -113,7 +113,7 @@
 
   <div class="marquee" aria-hidden="true">
     <div class="marquee-track">
-      <span style="--c:var(--blue)">Drone</span><span class="o" style="--c:var(--rose)">Aether</span><span style="--c:var(--green)">Larsen</span><span class="o" style="--c:var(--violet)">Vesper</span><span style="--c:var(--orange)">Pops 66</span><span class="o" style="--c:var(--teal)">Fjord</span><span style="--c:var(--yellow)">Nullpunkt</span><span class="o" style="--c:var(--blue)">Granular</span><span style="--c:var(--rose)">Frakture</span><span class="o" style="--c:var(--green)">Magma</span><span style="--c:var(--violet)">Equalizer</span><span style="--c:var(--orange)">Prism</span><span class="o" style="--c:var(--yellow)">Iris</span><span class="o" style="--c:var(--orange)">Tape</span><span style="--c:var(--teal)">Reverb</span><span class="o" style="--c:var(--yellow)">MIDIcer</span><span style="--c:var(--blue)">Automa</span><span class="o" style="--c:var(--rose)">Colloid</span><span style="--c:var(--green)">MIDI Looper</span><span class="o" style="--c:var(--amber)">Console</span>
+      <span style="--c:var(--blue)">Drone</span><span class="o" style="--c:var(--rose)">Aether</span><span style="--c:var(--green)">Larsen</span><span class="o" style="--c:var(--violet)">Vesper</span><span style="--c:var(--orange)">Pops 66</span><span class="o" style="--c:var(--teal)">Fjord</span><span style="--c:var(--yellow)">Nullpunkt</span><span class="o" style="--c:var(--blue)">Granular</span><span style="--c:var(--rose)">Frakture</span><span class="o" style="--c:var(--green)">Magma</span><span style="--c:var(--violet)">Equalizer</span><span style="--c:var(--orange)">Prism</span><span class="o" style="--c:var(--yellow)">Iris</span><span class="o" style="--c:var(--orange)">Tape</span><span style="--c:var(--teal)">Reverb</span><span class="o" style="--c:var(--yellow)">MIDIcer</span><span style="--c:var(--blue)">Automa</span><span class="o" style="--c:var(--rose)">Colloid</span><span style="--c:var(--yellow)">Orrery</span><span class="o" style="--c:var(--green)">MIDI Looper</span><span class="o" style="--c:var(--amber)">Console</span>
     </div>
   </div>
 </section>
@@ -143,7 +143,7 @@
           </div>
           <span class="num">01</span>
           <h3>Drop nodes</h3>
-          <p class="dim">Drag a source, an effect or a sequencer from the palette onto the canvas, or right-click anywhere. Thirty-four built-in nodes, your saved modules and every installed plugin, VST3 or Audio Unit, are there.</p>
+          <p class="dim">Drag a source, an effect or a sequencer from the palette onto the canvas, or right-click anywhere. Thirty-five built-in nodes, your saved modules and every installed plugin, VST3 or Audio Unit, are there.</p>
         </div>
         <span class="port out on"></span>
       </article>
@@ -368,6 +368,24 @@
         </ul>
       </div>
     </article>
+
+    <article class="spot flip reveal" style="--accent: var(--yellow)">
+      <div class="spot-shot">
+        <div class="tag-row"><span class="tag">MIDI sequences</span><span class="tag" style="--c: var(--dim)">Euclidean</span></div>
+        <img src="assets/shots/orrery.png" width="1896" height="1132" loading="lazy" alt="The Orrery panel: eight concentric rings of steps, each a Euclidean rhythm in its own colour with its hits joined into a polygon and a planet travelling its orbit, beside a table of the rings and the selected ring's strip." data-title="Orrery">
+      </div>
+      <div class="spot-text">
+        <h3>Orrery</h3>
+        <div class="after">Euclidean rhythms on concentric rings</div>
+        <p>Eight rings, like the orbits of an orrery, each a Euclidean rhythm with a note on a MIDI channel of its own. A planet travels every orbit and plays the hits it passes: a whole drum kit, or eight instruments, in one node.</p>
+        <ul class="specs">
+          <li><b>Rings</b> STEPS (1–32) and PULSES spread over them as evenly as they go, a NOTE and a MIDI CHANNEL each; then any step by hand, hit, rest or accent.</li>
+          <li><b>Turn</b> drag a ring round to shift its rhythm against the others, by steps or by any part of one; TWIST throws them all out of phase.</li>
+          <li><b>Time</b> GRID, where rings of different lengths drift apart, or CYCLE, where they share one turn: 3 against 4 against 5.</li>
+          <li><b>Ready</b> it starts as a General MIDI groove on channel 10: patch it into Pops 66 and press Start.</li>
+        </ul>
+      </div>
+    </article>
   </div>
 </section>
 
@@ -384,6 +402,7 @@
       <figure><img src="assets/shots/larsen.png" width="1696" height="912" loading="lazy" alt="Larsen panel" data-title="Larsen"><figcaption class="tag" style="--c: var(--teal)">Larsen</figcaption></figure>
       <figure><img src="assets/shots/nullpunkt.png" width="1696" height="1004" loading="lazy" alt="Nullpunkt panel" data-title="Nullpunkt"><figcaption class="tag" style="--c: var(--yellow)">Nullpunkt</figcaption></figure>
       <figure><img src="assets/shots/splitter-seq.png" width="2016" height="1304" loading="lazy" alt="Splitter, SEQUENCE page: the built-in atoms each on a Euclidean ring of its own length" data-title="Splitter · SEQUENCE"><figcaption class="tag" style="--c: var(--blue)">Splitter · rings</figcaption></figure>
+      <figure><img src="assets/shots/orrery-cycle.png" width="1896" height="1132" loading="lazy" alt="Orrery in CYCLE mode: eight rings of different lengths under one sweeping hand, twisted out of phase" data-title="Orrery · CYCLE"><figcaption class="tag" style="--c: var(--rose)">Orrery · polyrhythm</figcaption></figure>
       <figure><img src="assets/shots/midicer.png" width="736" height="1012" loading="lazy" alt="MIDIcer panel" data-title="MIDIcer"><figcaption class="tag" style="--c: var(--rose)">MIDIcer</figcaption></figure>
       <figure><img src="assets/shots/equalizer.png" width="1696" height="980" loading="lazy" alt="Equalizer panel" data-title="Equalizer"><figcaption class="tag" style="--c: var(--orange)">Equalizer</figcaption></figure>
       <figure><img src="assets/shots/prism.png" width="2016" height="1224" loading="lazy" alt="Prism panel" data-title="Prism"><figcaption class="tag" style="--c: var(--orange)">Prism</figcaption></figure>
@@ -509,7 +528,7 @@
   <div class="wrap">
     <div class="section-head reveal" style="--accent: var(--teal)">
       <span class="label">06 · Catalogue</span>
-      <h2>Thirty-four nodes, <span class="outline">eight groups.</span></h2>
+      <h2>Thirty-five nodes, <span class="outline">eight groups.</span></h2>
       <p class="lead">Plus every VST3 and Audio Unit plugin on your machine, and the nodes you <a href="sdk.html">build yourself</a>. Browse them all with a picture and the details of each.</p>
     </div>
     <div class="groups">
@@ -517,7 +536,7 @@
       <a class="group-tile reveal" href="nodes.html#texture" style="--accent: var(--teal)"><span class="arrow">→</span><span class="count">3</span><h4>Texture</h4><span class="dim">Granular, Frakture, Resonator</span></a>
       <a class="group-tile reveal" href="nodes.html#effects" style="--accent: var(--orange)"><span class="arrow">→</span><span class="count">8</span><h4>Effects</h4><span class="dim">Filter, Magma, Equalizer, Prism, Tape, Delay, Ping Pong, Reverb</span></a>
       <a class="group-tile reveal" href="nodes.html#midi" style="--accent: var(--violet)"><span class="arrow">→</span><span class="count">2</span><h4>MIDI</h4><span class="dim">MIDI CC, MIDI Note, and MAP onto any control</span></a>
-      <a class="group-tile reveal" href="nodes.html#sequences" style="--accent: var(--rose)"><span class="arrow">→</span><span class="count">7</span><h4>MIDI sequences</h4><span class="dim">Step Sequencer, MIDIcer, Automa, Colloid, MIDI Looper, Arpeggiator, MIDI In</span></a>
+      <a class="group-tile reveal" href="nodes.html#sequences" style="--accent: var(--rose)"><span class="arrow">→</span><span class="count">8</span><h4>MIDI sequences</h4><span class="dim">Step Sequencer, MIDIcer, Automa, Colloid, Orrery, MIDI Looper, Arpeggiator, MIDI In</span></a>
       <a class="group-tile reveal" href="nodes.html#plugins" style="--accent: var(--green)"><span class="arrow">→</span><span class="count">∞</span><h4>Plugins</h4><span class="dim">VST3, Audio Units and plugin nodes built with the SDK, grouped by maker</span></a>
       <a class="group-tile reveal" href="nodes.html#output" style="--accent: var(--amber)"><span class="arrow">→</span><span class="count">2</span><h4>Output</h4><span class="dim">Mixer (4 channels), Console (12 or 24)</span></a>
       <a class="group-tile reveal" href="nodes.html#visual" style="--accent: var(--yellow)"><span class="arrow">→</span><span class="count">1</span><h4>Visual</h4><span class="dim">Iris: a visual synth, nineteen scenes in four layers with LFOs and a modulation matrix</span></a>

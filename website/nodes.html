@@ -36,7 +36,7 @@
 <main id="main">
 <section class="page-hero">
   <div class="wrap">
-    <span class="label">Catalogue · 34 built-in nodes + plugins</span>
+    <span class="label">Catalogue · 35 built-in nodes + plugins</span>
     <h1>Every node, <span class="outline" style="--accent: var(--teal)">on the board.</span></h1>
     <p class="lead">Sources make sound, textures and effects shape it, MIDI nodes play and move it, mixers bring it home, and Iris turns it into pictures. Every cable is stereo; mono sources write the same signal to both sides. Click a node for its full description; every picture is its real panel, rendered from the app while the board plays.</p>
   </div>
@@ -44,12 +44,12 @@
 
 <div class="filters">
   <div class="wrap">
-    <button class="chip" data-filter="all" aria-pressed="true" style="--c: var(--text)"><i></i>All <small>36</small></button>
+    <button class="chip" data-filter="all" aria-pressed="true" style="--c: var(--text)"><i></i>All <small>37</small></button>
     <button class="chip" data-filter="sources" aria-pressed="false" style="--c: var(--blue)"><i></i>Sources <small>11</small></button>
     <button class="chip" data-filter="texture" aria-pressed="false" style="--c: var(--teal)"><i></i>Texture <small>3</small></button>
     <button class="chip" data-filter="effects" aria-pressed="false" style="--c: var(--orange)"><i></i>Effects <small>8</small></button>
     <button class="chip" data-filter="midi" aria-pressed="false" style="--c: var(--violet)"><i></i>MIDI <small>2</small></button>
-    <button class="chip" data-filter="sequences" aria-pressed="false" style="--c: var(--rose)"><i></i>MIDI sequences <small>7</small></button>
+    <button class="chip" data-filter="sequences" aria-pressed="false" style="--c: var(--rose)"><i></i>MIDI sequences <small>8</small></button>
     <button class="chip" data-filter="plugins" aria-pressed="false" style="--c: var(--green)"><i></i>Plugins <small>2</small></button>
     <button class="chip" data-filter="output" aria-pressed="false" style="--c: var(--amber)"><i></i>Output <small>2</small></button>
     <button class="chip" data-filter="visual" aria-pressed="false" style="--c: var(--yellow)"><i></i>Visual <small>1</small></button>
@@ -471,7 +471,7 @@
   <header>
     <span class="label">05 · MIDI sequences</span>
     <h2>MIDI sequences</h2>
-    <p>Notes travel on MIDI cables: square ports and dashed cables, joining a MIDI output to a MIDI input. Start and Stop drive the transport, and every sequencer and arpeggiator is locked to the board's global tempo, so they always stay in time with each other. Try <i>Automa → VST instrument</i>, <i>MIDI In → Arpeggiator → VST instrument</i>, or <i>MIDI In → Colloid → VST instrument</i> to have the atoms play your chords.</p>
+    <p>Notes travel on MIDI cables: square ports and dashed cables, joining a MIDI output to a MIDI input. Start and Stop drive the transport, and every sequencer and arpeggiator is locked to the board's global tempo, so they always stay in time with each other. Try <i>Automa → VST instrument</i>, <i>MIDI In → Arpeggiator → VST instrument</i>, <i>MIDI In → Colloid → VST instrument</i> to have the atoms play your chords, or <i>Orrery → Pops 66</i> for Euclidean grooves.</p>
   </header>
   <div class="cards">
     <article class="card" id="node-sequencer" tabindex="0" role="button" data-group="sequences" data-group-label="MIDI sequences" data-name="Step Sequencer" data-shots="assets/shots/sequencer.png" data-keys="steps scale melody" style="--accent: var(--rose)">
@@ -531,6 +531,22 @@
           <li><b>Particles</b> (MOLECULES, ATOMS, MASS), <b>field</b> (ATTRACT, RANGE, CHARGE, BOUNCE) and <b>liquid</b> (VISCOSITY, HEAT, FLOW, DRIFT).</li>
           <li><b>Notes.</b> Velocity follows the strike's force as far as DYNAMICS says; the length is how long the molecule rings. QUANT holds notes to the grid, or FREE.</li>
           <li><b>CC events.</b> Four lanes sending a controller from PEDAL, KEYS, ENERGY, DENSITY, SPEED, STRIKE, SWIRL or CHARGE.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="card" id="node-orrery" tabindex="0" role="button" data-group="sequences" data-group-label="MIDI sequences" data-name="Orrery" data-after="Euclidean rhythms on concentric rings" data-shots="assets/shots/orrery.png|GRID,assets/shots/orrery-cycle.png|CYCLE" data-keys="euclid euclidean bjorklund rhythm drums polyrhythm polymeter rings rotate twist channel" style="--accent: var(--rose)">
+      <div class="thumb"><img src="assets/shots/orrery.png" width="1896" height="1132" loading="lazy" alt="Orrery panel"></div>
+      <div class="meta"><div class="row"><h3>Orrery</h3><span class="label">Euclid</span></div>
+        <p>Eight concentric rings, each a Euclidean rhythm with a note on a MIDI channel of its own: a whole drum kit in one node.</p></div>
+      <div class="more">
+        <p>The panel is an orrery, drawn flat and graphic: each ring an orbit with its steps round it, hits joined into the rhythm's polygon, and a planet that plays the hits it passes. Click a step to make it a hit or a rest, right-click to accent it, drag a ring round to turn it.</p>
+        <ul>
+          <li><b>The rings.</b> A row per ring: ON, STEPS (1–32), PULSES spread over them as evenly as they go (3 over 8 is the tresillo), ROT, NOTE (with its General MIDI drum) and CH, the MIDI channel.</li>
+          <li><b>Every step by hand.</b> On the orbits or in the selected ring's strip (drag to paint), with EUCLID, INVERT, CLEAR and DICE; VELOCITY, GATE and CHANCE per ring, ACCENT for accented steps.</li>
+          <li><b>Turning.</b> Drag a ring to shift its rhythm against the others, by steps or (with Shift) by any part of one; <b>TWIST</b> turns each ring further than the one outside it, so they all fall out of phase.</li>
+          <li><b>GRID or CYCLE.</b> On the board's grid (RATE, SWING) rings of different lengths drift apart (polymeter); in CYCLE each goes round once in 1 beat to 8 bars, 3 against 4 against 5 (polyrhythm), under one sweeping hand.</li>
+          <li>It starts as a General MIDI groove on channel 10, so it plays Pops 66 at once; <b>DICE</b> throws new rhythms on every ring that plays.</li>
         </ul>
       </div>
     </article>

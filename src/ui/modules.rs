@@ -12,7 +12,7 @@ use crate::audio::engine::NodeId;
 use crate::audio::midi::note_hz;
 use crate::audio::modules::{
     ModuleDef, ModuleKind, ModuleParams, aether, arpeggiator, fjord, iris, larsen, looper, vesper, audio_in, automa, colloid, delay, drone, equalizer, filter, frakture, magma, pops, granular, midi_cc, midi_in, midi_note,
-    midicer, nullpunkt, pingpong, prism, random, resonator, reverb, sequencer, splitter, steps, tape,
+    midicer, nullpunkt, orrery, pingpong, prism, random, resonator, reverb, sequencer, splitter, steps, tape,
 };
 use crate::audio::params::{
     DIVISIONS, NOTE_NAMES, NOTE_VALUES, format_hz, format_seconds, note_label, sync_division,
@@ -83,6 +83,9 @@ pub fn size(def: &ModuleDef) -> Vec2 {
     }
     if std::ptr::eq(def, &colloid::DEF) {
         return super::colloid::SIZE;
+    }
+    if std::ptr::eq(def, &orrery::DEF) {
+        return super::orrery::SIZE;
     }
     if std::ptr::eq(def, &iris::DEF) {
         return Vec2::from(iris::DEFAULT_SIZE);
@@ -181,6 +184,10 @@ pub fn draw(
         super::colloid::draw(v, id, accent, m, midi);
         return MapButton::default();
     }
+    if kind == ModuleKind::Orrery {
+        super::orrery::draw(v, id, accent, m, midi.1);
+        return MapButton::default();
+    }
     if kind == ModuleKind::Iris {
         super::iris::draw(v, id, accent, m, (patched(0), outputs.first().copied().unwrap_or(false)));
         return MapButton::default();
@@ -264,7 +271,7 @@ pub fn draw(
         ModuleKind::AudioIn => audio_in_display(&screen, p),
         ModuleKind::Random | ModuleKind::MidiCc | ModuleKind::MidiNote => trace_display(&screen, m),
         ModuleKind::Granular => granular_display(&screen, p),
-        ModuleKind::Frakture | ModuleKind::Equalizer | ModuleKind::Prism | ModuleKind::Magma | ModuleKind::Pops | ModuleKind::Fjord | ModuleKind::Splitter | ModuleKind::Tape | ModuleKind::Nullpunkt | ModuleKind::Aether | ModuleKind::Larsen | ModuleKind::Vesper | ModuleKind::Automa | ModuleKind::Colloid | ModuleKind::Looper | ModuleKind::Iris => {}
+        ModuleKind::Frakture | ModuleKind::Equalizer | ModuleKind::Prism | ModuleKind::Magma | ModuleKind::Pops | ModuleKind::Fjord | ModuleKind::Splitter | ModuleKind::Tape | ModuleKind::Nullpunkt | ModuleKind::Aether | ModuleKind::Larsen | ModuleKind::Vesper | ModuleKind::Automa | ModuleKind::Colloid | ModuleKind::Orrery | ModuleKind::Looper | ModuleKind::Iris => {}
         ModuleKind::Resonator => resonator_display(&screen, p),
         ModuleKind::Filter => filter_display(&screen, p),
         ModuleKind::Delay => delay_display(&screen, p, echo_seconds(p, v.tempo)),
@@ -493,6 +500,7 @@ fn readout(kind: ModuleKind, p: &ModuleParams, tempo: f32) -> (String, String) {
         ModuleKind::Iris => super::iris::readout(p),
         ModuleKind::Automa => super::automa::readout(p),
         ModuleKind::Colloid => super::colloid::readout(p),
+        ModuleKind::Orrery => super::orrery::readout(p),
         ModuleKind::Granular => {
             let n = p.viz[granular::viz::COUNT].get() as usize;
             let state = if p.toggled() { "Frozen" } else { "Recording" };

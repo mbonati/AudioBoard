@@ -21,6 +21,7 @@ pub mod node_panel;
 pub mod monitor;
 pub mod nodes;
 pub mod nullpunkt;
+pub mod orrery;
 pub mod palette;
 pub mod plugin_node;
 pub mod pops;

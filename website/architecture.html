@@ -170,6 +170,7 @@
 │   │   ├── <b>vesper/</b>       <i>harmony, sound recipes, rendering thread, layers, fx</i>
 │   │   ├── <b>automa/</b>       <i>LIFE, CASCADE, TREE, JULIA; harmony rules</i>
 │   │   ├── <b>colloid/</b>      <i>the tank's physics, handpan layouts and chords</i>
+│   │   ├── <b>orrery.rs</b>     <i>eight Euclidean rings: turns, patterns, GRID and CYCLE, a channel each</i>
 │   │   ├── <b>looper/</b>       <i>scenes, recording, MIDI clock</i>
 │   │   ├── <b>iris.rs</b>       <i>passes IN through, hands the panel the sound, the MIDI and the transport</i>
 │   │   ├── <b>tape.rs</b>       <i>record EQ, magnetic curve, transport, playback head</i>
@@ -198,7 +199,7 @@
 │   ├── <b>palette.rs</b>    <i>nodes and library modules</i>
 │   ├── <b>modules.rs</b>    <i>the generic panel, readouts, displays</i>
 │   ├── <b>node_panel.rs</b> <i>a plugin node's display and readout, drawn with the UI Kit</i>
-│   ├── fjord, splitter, pops, colloid, automa, vesper, aether, larsen, nullpunkt,
+│   ├── fjord, splitter, pops, colloid, orrery, automa, vesper, aether, larsen, nullpunkt,
 │   │   magma, equalizer, prism, tape, frakture, looper, console … <i>custom panels</i>
 │   ├── <b>board.rs</b>      <i>backgrounds, stickers on the canvas, built-in designs, their menus</i>
 │   ├── <b>iris.rs</b>       <i>Iris: analysis, nineteen scenes (3D in software), palettes, frameless look, settings popup, its window</i>
@@ -221,7 +222,7 @@
         <li>An entry in <code>ModuleKind</code>.</li>
         <li>In <code>ui/modules.rs</code>, the readout and the display.</li>
       </ol>
-      <p>The panel (ports, selector, knobs) is generated from the definition. Larger instruments draw their own: Frakture, the Equalizer, Prism, Magma, Tape, Nullpunkt, Aether, Larsen, Vesper, the MIDI Looper, Automa, Colloid, Fjord, Splitter, Iris (sized by the user) and Pops 66, whose sizes, like Fjord's, follow their settings through <code>modules::size_of</code>. Frakture's hexagon runs on the audio thread, block by block: the panel hands it the mouse through the module's display values, so paths keep time even when the window doesn't redraw.</p>
+      <p>The panel (ports, selector, knobs) is generated from the definition. Larger instruments draw their own: Frakture, the Equalizer, Prism, Magma, Tape, Nullpunkt, Aether, Larsen, Vesper, the MIDI Looper, Automa, Colloid, Orrery, Fjord, Splitter, Iris (sized by the user) and Pops 66, whose sizes, like Fjord's, follow their settings through <code>modules::size_of</code>. Frakture's hexagon runs on the audio thread, block by block: the panel hands it the mouse through the module's display values, so paths keep time even when the window doesn't redraw.</p>
       <p>A node that should ship on its own is a <strong>plugin node</strong> instead, and needs no change to the app: see <a href="sdk.html">the SDK page</a>.</p>
     </section>
 

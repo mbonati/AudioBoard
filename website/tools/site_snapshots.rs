@@ -434,6 +434,36 @@ mod site_snap {
                 }
             });
         }
+        // Orrery: every ring brought in, two of them turned; then CYCLE, a
+        // polyrhythm of eight ring lengths under one hand.
+        for (name, cycle) in [("orrery", false), ("orrery-cycle", true)] {
+            if !want(name) {
+                continue;
+            }
+            use md::orrery::{self as or, ring};
+            let mut s = scene(104.0);
+            let id = add(&mut s, ModuleKind::Orrery, 0.0, 0.0);
+            let p = module_params(&s.g, id);
+            for r in 0..or::RINGS {
+                or::set(&p, r, ring::ON, 1.0);
+            }
+            if cycle {
+                p.set_mode(or::CYCLE_MODE);
+                p.set(or::CYCLE, 8.0);
+                for (r, (n, k)) in [(16, 7), (12, 5), (10, 4), (8, 3), (7, 3), (6, 2), (5, 2), (3, 1)].into_iter().enumerate() {
+                    or::set_steps(&p, r, n);
+                    or::set_pulses(&p, r, k);
+                    or::set_rotation(&p, r, 0.0);
+                }
+                p.set(or::TWIST, 0.35);
+                or::select(&p, 1);
+            } else {
+                or::set_rotation(&p, 5, 1.5);
+                or::set_step(&p, 0, 0, or::ACCENTED);
+                or::select(&p, 2);
+            }
+            node_shot(name, FRAMES, &mut s, id);
+        }
         if want("patch-midi") {
             let mut s = scene(96.0);
             let automa = add(&mut s, ModuleKind::Automa, 0.0, 0.0);

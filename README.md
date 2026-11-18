@@ -841,14 +841,14 @@ semitone knobs the distance from middle C, and the others the key's position. Th
 messages that arrive after mapping. **UNMAP** removes the mapping. Mappings are saved in the project and in
 library modules.
 
-### MIDI sequences: Step Sequencer, MIDIcer, Automa, Colloid, MIDI Looper, Arpeggiator, MIDI In
+### MIDI sequences: Step Sequencer, MIDIcer, Automa, Colloid, Orrery, MIDI Looper, Arpeggiator, MIDI In
 
 Besides audio cables there are **MIDI cables**: square ports (audio ports are round) and dashed cables.
 A MIDI cable only joins a MIDI output to a MIDI input. Plugins that accept MIDI (VST3 or Audio Unit
 instruments), the Arpeggiator, MIDIcer, Colloid, the MIDI Looper and MIDI Note have a MIDI input.
 
 **Start / Stop** (toolbar, or Space) drive the transport, not the audio: Stop ends the sound's generation
-but lets it die away. Sequencers, arpeggiators, MIDIcer, Automa and Colloid stop and end the notes they were holding (VST
+but lets it die away. Sequencers, arpeggiators, MIDIcer, Automa, Colloid and Orrery stop and end the notes they were holding (VST
 instruments and MIDI Note release them as usual), oscillators and Drones fade out in a few milliseconds,
 while effects (Delay, Ping Pong, Reverb, Granular, Resonator, Filter) and plugins keep running, so their
 tails ring on. Stop also goes back to the start: on the next Start everything begins again from its first
@@ -1025,6 +1025,50 @@ name up in a tag. New notes sweep a line through the tank. **Click** in the tank
   Start lets them in again from the seed (**RESEED** picks a new one, scattering the molecules too). The settings, the
   CC lanes and the seed are saved in the project and in library modules.
 
+**Orrery**: a Euclidean rhythm generator drawn as concentric rings, like the orbits of an orrery (the clockwork model
+of the planets). Each of its eight rings is a rhythm of its own with a note on a MIDI channel of its own, so one node can
+play a whole drum kit, or eight instruments at once. A Euclidean rhythm spreads PULSES hits over STEPS steps as evenly
+as they go (the rhythms of Bjorklund's algorithm, after Toussaint's *The Euclidean Algorithm Generates Traditional
+Musical Rhythms*): 3 over 8 is the Cuban tresillo, 5 over 8 the cinquillo, 2 over 16 turned by four steps the backbeat.
+It works in the manner of Euclidean sequencers such as Vitling's Euclidean Circles, Olympia Noise Co's Patterning and
+Torso's T-1, with a panel of its own.
+
+- **The rings.** A row per ring, from the outside in: **ON**, **STEPS** (1–32), **PULSES** (0 to STEPS), **ROT**
+  (how far the ring is turned, in steps), **NOTE** (with the General MIDI drum's name, for channel 10), **CH** (the MIDI
+  channel, 1–16) and its pattern laid out flat. Drag a number up or down; double-click resets it. STEPS and PULSES lay
+  the Euclidean pattern again, over your edits (a step that stays a hit keeps its accent).
+- **Every step by hand.** Click a step on its ring, or in the selected ring's strip under the table, to make it a hit
+  or a rest; right-click (or Shift-click) accents it. In the strip, drag to paint. **EUCLID** lays the Euclidean pattern
+  again, **INVERT** swaps hits and rests, **CLEAR** rests every step, **DICE** throws new pulses and a new turn for the
+  ring.
+- **Turning the rings.** A ring's hits come ROT steps later: turning one ring against the others shifts its rhythm
+  against theirs (the snare's 2 over 16 turned by four is the backbeat; turned one more, it pushes). Drag a ring round on
+  the orbits to turn it, by whole steps, or with **Shift** freely: half a step turned delays every hit by half a step, for
+  flams and lazy grooves. **◀ ▶** turn the selected ring a step, **0** brings it back. **TWIST** turns every ring
+  further than the one outside it (ring 2 by TWIST steps, ring 3 by twice as much…, ±2 steps, any part of a step): the
+  rings fall out of phase together, the inner ones the most. A notch on each ring marks its first step, so its turn
+  shows.
+- **GRID or CYCLE.** **GRID**: every ring steps on the board's grid (**RATE**, 1/4 to 1/32, triplets; **SWING** delays
+  every other step), so a ring of 5 steps comes round sooner than one of 16 and they drift against each other
+  (polymeter). **CYCLE**: every ring goes round once in **CYCLE** beats (1 beat to 8 bars), its steps sharing them out
+  evenly, so 3 steps play against 4 and 5 (polyrhythm).
+- **Notes.** The selected ring's **VELOCITY**, **GATE** (how long its notes last, as a part of its step) and **CHANCE**
+  (the chance each hit plays). **ACCENT** is how much louder accented steps play, from the ring's velocity up to 127.
+  A ring holds one note at a time: a new hit ends the one before. **DICE** at the top throws new pulses and turns for
+  every ring that plays (steps, notes and channels stay); Shift-click it for the selected ring only.
+- **PLAY** plays the rings while the transport plays. Start plays them from their first step, Stop ends their notes.
+
+The rings start as a General MIDI groove on channel 10 (bass drum 5 over 16, snare 2 over 16 turned by four, closed
+hi-hat 11 over 16 with accents on the beats, open hi-hat on the offbeats), so it plays Pops 66 or any General MIDI kit
+at once; the four inner rings (side stick 5 over 12, low tom 3 over 7, hand clap 4 over 9, cowbell 2 over 5) wait,
+muted, to be brought in. Everything is saved in the project and in library modules.
+
+The panel is the orrery itself, drawn flat and graphic. The rings are orbits round a hub, each in a colour of its own; a
+ring's steps sit round it, a small dot for a rest, a coloured outline for a hit, a bullseye for an accent, and its hits
+are joined into the rhythm's polygon. A planet travels each orbit, trailing a wake of dots, and plays the hits it
+passes: they flash and send out a ring. In CYCLE mode the planets line up on one hand that sweeps the dial, the cycle's
+beats round the bezel. The hub shows the selected ring's name, E(5,16), and its turn.
+
 **Arpeggiator**: plays the held notes one at a time, in time, over 1–4 octaves (OCTAVES), in UP, DOWN,
 U+D (up and down), RAND or ORDER (as played) order. RATE, GATE, SWING, CHANCE, VELOCITY as in the
 sequencer. Notes come from its MIDI cable or, with no cable, straight from the MIDI keyboard.
@@ -1071,6 +1115,8 @@ Examples:
 - *Automa → VST instrument*: generative lines in key (with **PAD**, the chords as well);
 - *Colloid → VST instrument*: handpan melodies from the atoms (with a Sustain lane from PEDAL for a piano);
 - *MIDI In → Colloid → VST instrument*: play chords on the keyboard, and the atoms play them;
+- *Orrery → Pops 66* (or a drum plugin): Euclidean grooves on General MIDI drums; give each ring a channel
+  of its own and send the node into a multitimbral plugin to play several instruments;
 - *MIDI Looper → VST instrument*: play a phrase, loop it, layer it, and switch between scenes;
 - *Step Sequencer → MIDI Note*, with ENV into an oscillator's AM and MAP on its FREQ: the sequence plays
   the built-in nodes.
@@ -1745,6 +1791,8 @@ src/
 │   │   │               the CC lanes
 │   │   ├── colloid/    physics (the tank: molecules, atoms, gravity, liquid, strikes, stirring), chords
 │   │   │               (handpan layouts, chord shapes, colour tones, roles, spreading notes over the molecules)
+│   │   ├── orrery.rs   Orrery: the rings (steps, pulses, turns, patterns), Euclidean rhythms, GRID and CYCLE,
+│   │   │               a note per ring on its channel, DICE
 │   │   ├── looper.rs   MIDI Looper: scenes and their notes, transport, recording and overdub, playing
 │   │   │               forward, reversed or by random slices, launching and following scenes, MIDI control
 │   │   ├── looper/     clock (following a MIDI clock: ticks, Start, Stop, Continue, song position)
@@ -1807,6 +1855,8 @@ src/
 │   │               the chord lanes, the progression strip, knob groups
 │   ├── colloid.rs  the Colloid panel, flat and graphic: the tank (bands, dot matrix, wells, molecule icons, wakes,
 │   │               strikes, stirring), HANDPAN / CHORD and the shape, the notes' cells, knob groups, CC lanes
+│   ├── orrery.rs   the Orrery panel, flat and graphic: the orbits (steps, polygons, notches, planets and their
+│   │               wakes, pings, the CYCLE hand), turning rings by dragging, the rings' table, the strip, knobs
 │   ├── settings.rs the Settings window: tabs Audio (output, input and its meters), MIDI (inputs and their
 │   │               lights), Sync (clock source, clock out), Plugins (VST3 folders, Audio Units, plugin
 │   │               nodes)
@@ -1882,7 +1932,7 @@ modes, toggle) and a `Processor`, an entry in `ModuleKind` and, in `ui/modules.r
 A node that should ship on its own is a plugin instead (see [Writing nodes](#writing-nodes-sdk-plugins-and-ui-kit)):
 it needs no change to the app.
 The panel (ports, selector, knobs) is generated from the definition; Frakture, too large for the generic
-panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`), Prism (`ui/prism.rs`), Magma (`ui/magma.rs`), Tape (`ui/tape.rs`), Nullpunkt (`ui/nullpunkt.rs`), Aether (`ui/aether.rs`), Larsen (`ui/larsen.rs`), Vesper (`ui/vesper.rs`), the MIDI Looper (`ui/looper.rs`), Automa (`ui/automa.rs`), Colloid (`ui/colloid.rs`), Fjord (`ui/fjord.rs`), Splitter (`ui/splitter.rs`), Iris (`ui/iris.rs`, sized by the user) and Pops 66
+panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`), Prism (`ui/prism.rs`), Magma (`ui/magma.rs`), Tape (`ui/tape.rs`), Nullpunkt (`ui/nullpunkt.rs`), Aether (`ui/aether.rs`), Larsen (`ui/larsen.rs`), Vesper (`ui/vesper.rs`), the MIDI Looper (`ui/looper.rs`), Automa (`ui/automa.rs`), Colloid (`ui/colloid.rs`), Orrery (`ui/orrery.rs`), Fjord (`ui/fjord.rs`), Splitter (`ui/splitter.rs`), Iris (`ui/iris.rs`, sized by the user) and Pops 66
 (`ui/pops.rs`; its size, like Fjord's and Iris's, follows its settings through `modules::size_of`). Frakture's hexagon runs on the audio thread, block by block: the panel
 hands it the mouse through the module's display values, so paths keep time even when the window doesn't
 redraw.
