@@ -185,7 +185,7 @@ pub fn draw(
         return MapButton::default();
     }
     if kind == ModuleKind::Orrery {
-        super::orrery::draw(v, id, accent, m, midi.1);
+        super::orrery::draw(v, id, accent, m, midi);
         return MapButton::default();
     }
     if kind == ModuleKind::Iris {

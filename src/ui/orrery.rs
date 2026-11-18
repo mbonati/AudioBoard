@@ -7,6 +7,10 @@
 //! send out a ring. In CYCLE mode the planets line up on one hand that
 //! sweeps the dial, its beats round the bezel.
 //!
+//! Under the header, the pattern buttons: click one to recall it (it comes
+//! in as LAUNCH says), Shift-click or STORE to keep the rings in it,
+//! right-click to name, clear or fill it from the library (PATTERNS ▾).
+//!
 //! Click a step to switch it, right-click (or Shift-click) to accent it,
 //! drag a ring round to turn it (by whole steps; with Shift, freely). On the
 //! right, a row per ring (ON, STEPS, PULSES, ROT, NOTE, CH and its pattern),
@@ -22,7 +26,8 @@ use super::theme::{self, alpha, mix};
 use super::widgets;
 use crate::audio::engine::NodeId;
 use crate::audio::modules::ModuleParams;
-use crate::audio::modules::orrery::{self as or, ACCENT, ACCENTED, CYCLE, CYCLE_MODE, OFF, ON, RATE, RINGS, SWING, TWIST, ring, viz};
+use crate::audio::modules::orrery::{self as or, ACCENT, ACCENTED, CYCLE, CYCLE_MODE, OFF, ON, Pattern, RATE, RINGS, SLOTS, SWING, TWIST, ring, slot, viz};
+use crate::presets::{self, ModulePreset};
 use crate::audio::params::note_label as midi_note_label;
 use crate::graph::{ModuleNode, ParamRef};
 
@@ -31,25 +36,30 @@ fn note_label(note: u8) -> String {
     midi_note_label(note as i32)
 }
 
-pub const SIZE: Vec2 = vec2(860.0, 510.0);
+pub const SIZE: Vec2 = vec2(860.0, 544.0);
 const W: f32 = SIZE.x;
 const PAD: f32 = 12.0;
+/// The pattern buttons' row.
+const SLOTS_Y: [f32; 2] = [58.0, 84.0];
+const SLOT_W: f32 = 70.0;
+/// Everything under the pattern buttons is this much lower.
+const DY: f32 = 34.0;
 /// The orbits' square, and the rings' radii (outer, inner).
-const DISPLAY: [f32; 4] = [PAD, 58.0, PAD + 440.0, 498.0];
+const DISPLAY: [f32; 4] = [PAD, 58.0 + DY, PAD + 440.0, 498.0 + DY];
 const R_OUT: f32 = 184.0;
 const R_IN: f32 = 62.0;
 const BEZEL: f32 = 197.0;
 /// The column on the right: the rings' table, the selected ring, the clock.
 const X0: f32 = 468.0;
 const X1: f32 = W - PAD;
-const TABLE_Y: f32 = 64.0;
-const ROW0: f32 = 84.0;
+const TABLE_Y: f32 = 64.0 + DY;
+const ROW0: f32 = 84.0 + DY;
 const ROW_H: f32 = 23.0;
-const RING_Y: f32 = 280.0;
-const STRIP: [f32; 2] = [291.0, 315.0];
-const BUTTONS: [f32; 2] = [322.0, 338.0];
-const RING_KNOBS_Y: f32 = 350.0;
-const CLOCK_Y: f32 = 414.0;
+const RING_Y: f32 = 280.0 + DY;
+const STRIP: [f32; 2] = [291.0 + DY, 315.0 + DY];
+const BUTTONS: [f32; 2] = [322.0 + DY, 338.0 + DY];
+const RING_KNOBS_Y: f32 = 350.0 + DY;
+const CLOCK_Y: f32 = 414.0 + DY;
 /// The table's columns.
 const COL_NUM: [f32; 2] = [X0, X0 + 22.0];
 const COL_ON: [f32; 2] = [X0 + 26.0, X0 + 52.0];
@@ -141,6 +151,11 @@ struct View {
     turning: Option<Turning>,
     /// The strip being painted: the value it paints.
     paint: Option<u8>,
+    /// STORE is armed: the next button clicked keeps the rings.
+    storing: bool,
+    /// The processor's last tick and when it changed.
+    tick: f32,
+    tick_at: f64,
 }
 
 impl View {
@@ -156,6 +171,18 @@ impl View {
             }
         }
         self.seen = Some(hits);
+        // A recall waits for the processor; one that rests (nothing patched
+        // from it) never takes it, so the panel does.
+        let tick = p.viz[viz::TICK].get();
+        if tick != self.tick {
+            self.tick = tick;
+            self.tick_at = now;
+        }
+        if let Some(k) = or::pending(p)
+            && now - self.tick_at > 0.3
+        {
+            or::take(p, k);
+        }
         self.pings.retain(|g| now - g.at < PING);
         if self.pings.len() > 64 {
             let extra = self.pings.len() - 64;
@@ -229,8 +256,8 @@ fn angle(pos: f32, n: usize) -> f32 {
     -FRAC_PI_2 + pos / n.max(1) as f32 * TAU
 }
 
-/// `(midi_out)`: the MIDI output is patched.
-pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, midi_out: bool) {
+/// `(midi_in, midi_out)`: the MIDI input and output are patched.
+pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, (midi_in, midi_out): (bool, bool)) {
     let p = &m.params;
     let key = Id::unique(("orrery-view", id));
     let mut view: View = v.ui.data_mut(|d| d.remove_temp(key)).unwrap_or_default();
@@ -240,14 +267,16 @@ pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, midi_out:
     let live = p.viz[viz::LIVE].get() > 0.5;
     let s = Panel { v, id, p, accent, now, live };
 
-    let col = if midi_out { theme::TEXT_DIM } else { theme::TEXT_FAINT };
-    v.text(W - PAD, 42.0, Align2::RIGHT_CENTER, "MIDI", v.font(9.0), col);
+    let col = |on: bool| if on { theme::TEXT_DIM } else { theme::TEXT_FAINT };
+    v.text(PAD, 42.0, Align2::LEFT_CENTER, "MIDI", v.font(9.0), col(midi_in));
+    v.text(W - PAD, 42.0, Align2::RIGHT_CENTER, "MIDI", v.font(9.0), col(midi_out));
     s.header();
+    s.patterns(&mut view);
     s.orbits(&mut view);
     s.table();
     s.selected(&mut view);
     s.clock();
-    if live || !view.pings.is_empty() || view.turning.is_some() {
+    if live || !view.pings.is_empty() || view.turning.is_some() || view.storing || or::pending(p).is_some() {
         v.ui.ctx().request_repaint_after(std::time::Duration::from_millis(16));
     }
     v.ui.data_mut(|d| d.insert_temp(key, view));
@@ -273,21 +302,21 @@ impl Panel<'_, '_> {
             ("GRID", "Every ring steps on the board's grid (RATE): rings of different lengths drift against each other (polymeter)"),
             ("CYCLE", "Every ring goes round once in CYCLE beats, its steps sharing them out: 3 against 4 against 5 (polyrhythm)"),
         ];
-        let picked = segmented(v, self.uid("mode"), v.r(PAD, 34.0, 132.0, 50.0), 2, p.mode().min(1), self.accent, |k, r, col| {
+        let picked = segmented(v, self.uid("mode"), v.r(46.0, 34.0, 166.0, 50.0), 2, p.mode().min(1), self.accent, |k, r, col| {
             v.painter.text(r.center(), Align2::CENTER_CENTER, MODES[k].0, v.font(7.5), col);
             MODES[k].1
         });
         if let Some(k) = picked {
             p.set_mode(if k == 0 { or::GRID } else { CYCLE_MODE });
         }
-        let dice = widgets::toggle(v.ui, v.painter, self.uid("dice"), v.r(140.0, 34.0, 186.0, 50.0), "DICE", false, self.accent, z)
+        let dice = widgets::toggle(v.ui, v.painter, self.uid("dice"), v.r(174.0, 34.0, 220.0, 50.0), "DICE", false, self.accent, z)
             .on_hover_text("New rhythms on the rings that play: their pulses and turns (steps, notes and channels stay).\nShift-click: only the selected ring");
         if dice.clicked() {
             let seed = (self.now * 1000.0) as u32 ^ self.id.wrapping_mul(0x9E37_79B9);
             let only = v.ui.input(|i| i.modifiers.shift).then(|| or::selected(p));
             or::dice(p, seed, only);
         }
-        let play = widgets::toggle(v.ui, v.painter, self.uid("play"), v.r(192.0, 34.0, 234.0, 50.0), "PLAY", p.toggled(), self.accent, z)
+        let play = widgets::toggle(v.ui, v.painter, self.uid("play"), v.r(226.0, 34.0, 268.0, 50.0), "PLAY", p.toggled(), self.accent, z)
             .on_hover_text("Play the rings while the transport plays");
         if play.clicked() {
             p.set_toggle(!p.toggled());
@@ -301,7 +330,247 @@ impl Panel<'_, '_> {
         } else {
             format!("a step every {}", or::clock_label(p))
         };
-        v.text(242.0, 42.0, Align2::LEFT_CENTER, text, v.font(7.5), if self.live { theme::TEXT_DIM } else { theme::TEXT_FAINT });
+        v.text(276.0, 42.0, Align2::LEFT_CENTER, text, v.font(7.5), if self.live { theme::TEXT_DIM } else { theme::TEXT_FAINT });
+    }
+
+    // -----------------------------------------------------------------------
+    // The pattern buttons
+    // -----------------------------------------------------------------------
+
+    /// Eight buttons of patterns, STORE, LAUNCH and the library.
+    fn patterns(&self, view: &mut View) {
+        let (v, p, z) = (self.v, self.p, self.z());
+        let [y0, y1] = SLOTS_Y;
+        let shift = v.ui.input(|i| i.modifiers.shift);
+        let (active, pending, edited) = (or::active(p), or::pending(p), or::edited(p));
+        for k in 0..SLOTS {
+            let x0 = PAD + k as f32 * (SLOT_W + 4.0);
+            let rect = v.r(x0, y0, x0 + SLOT_W, y1);
+            let used = or::slot_used(p, k);
+            let s = or::slot(p, k);
+            let name = or::name_of(&s);
+            let tip = if used {
+                format!("{} · {}\nClick: recall ({}) · Shift-click: keep the rings here · right-click: name, clear, library", self.slot_title(k, &name), self.slot_summary(&s), LAUNCH_TIPS[or::launch(p)])
+            } else {
+                format!("Button {} · empty\nShift-click (or STORE, then click): keep the rings here · right-click: fill it from the library", k + 1)
+            };
+            let resp = v.ui.interact(rect, self.uid(("slot", k)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).on_hover_text(tip);
+            let hot = resp.hovered();
+            let is_active = active == Some(k);
+            let waiting = pending == Some(k);
+            let blink = ((self.now * 4.0) as i64) % 2 == 0;
+            let fill = if waiting && blink {
+                alpha(self.accent, 0.35)
+            } else if hot {
+                theme::CONTROL_HI
+            } else if used {
+                theme::CONTROL
+            } else {
+                theme::INSET
+            };
+            v.painter.rect_filled(rect, 4.0 * z, fill);
+            if view.storing {
+                let pulse = 0.5 + 0.5 * (self.now as f32 * 6.0).sin();
+                v.painter.rect_stroke(rect, 4.0 * z, Stroke::new(1.5 * z, alpha(theme::MUTE, 0.5 + 0.5 * pulse)), StrokeKind::Inside);
+            } else if is_active {
+                v.painter.rect_stroke(rect, 4.0 * z, Stroke::new(1.5 * z, self.accent), StrokeKind::Inside);
+            } else if !used {
+                v.painter.rect_stroke(rect, 4.0 * z, Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.3)), StrokeKind::Inside);
+            }
+            let c = v.p(x0 + 14.0, (y0 + y1) * 0.5);
+            if used {
+                glyph(v.painter, c, 10.0 * z, &s, z);
+            } else {
+                v.painter.circle_stroke(c, 9.0 * z, Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.4)));
+            }
+            let title = self.slot_title(k, &name);
+            let ink = if used { if is_active { theme::TEXT } else { theme::TEXT_DIM } } else { theme::TEXT_FAINT };
+            let shown = if is_active && edited { format!("{title} •") } else { title };
+            label(v.painter, v.p(x0 + 27.0, y0 + 9.0), Align2::LEFT_CENTER, shown, v.font(7.5), ink);
+            let sub = if waiting {
+                "waiting…".to_owned()
+            } else if used {
+                if s[slot::MODE] > 0.5 { "CYCLE".to_owned() } else { "GRID".to_owned() }
+            } else {
+                format!("{} · empty", k + 1)
+            };
+            label(v.painter, v.p(x0 + 27.0, y0 + 19.0), Align2::LEFT_CENTER, sub, v.font(6.5), if waiting { self.accent } else { theme::TEXT_FAINT });
+
+            if resp.clicked() {
+                if view.storing || shift {
+                    or::store(p, k);
+                    view.storing = false;
+                } else if used {
+                    or::recall(p, k);
+                }
+            }
+            resp.context_menu(|ui| self.slot_menu(ui, k));
+        }
+
+        let x = PAD + SLOTS as f32 * (SLOT_W + 4.0) + 4.0;
+        let store = widgets::toggle(v.ui, v.painter, self.uid("store"), v.r(x, y0 + 4.0, x + 46.0, y1 - 4.0), "STORE", view.storing, theme::MUTE, z)
+            .on_hover_text("Keep the rings in a button: press STORE, then click the button (or Shift-click a button)");
+        if store.clicked() {
+            view.storing = !view.storing;
+        }
+        const LAUNCHES: [&str; 3] = ["NOW", "BEAT", "BAR"];
+        let picked = segmented(v, self.uid("launch"), v.r(x + 52.0, y0 + 4.0, x + 160.0, y1 - 4.0), 3, or::launch(p), self.accent, |k, r, col| {
+            v.painter.text(r.center(), Align2::CENTER_CENTER, LAUNCHES[k], v.font(7.0), col);
+            LAUNCH_TIPS[k]
+        });
+        if let Some(k) = picked {
+            p.data[or::data::LAUNCH].set(k as f32);
+        }
+        let menu_rect = v.r(x + 166.0, y0 + 4.0, X1, y1 - 4.0);
+        let menu = widgets::toggle(v.ui, v.painter, self.uid("library"), menu_rect, "PATTERNS ▾", false, self.accent, z)
+            .on_hover_text("The library of named patterns, kept for every project: save the rings, load a pattern or put it on a button");
+        egui::Popup::menu(&menu).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| self.library(ui));
+        if v.ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            view.storing = false;
+        }
+    }
+
+    /// "Groove", or "P3" for a button with no name.
+    fn slot_title(&self, k: usize, name: &str) -> String {
+        if name.is_empty() { format!("P{}", k + 1) } else { name.to_owned() }
+    }
+
+    /// "5 rings · GRID 1/16" for a pattern.
+    fn slot_summary(&self, s: &Pattern) -> String {
+        let on = (0..RINGS).filter(|&r| or::pattern_ring(s, r, slot::ON) > 0.5).count();
+        let clock = if s[slot::MODE] > 0.5 {
+            format!("CYCLE {}", or::beats_label(s[slot::CYCLE].round().max(1.0) as u32))
+        } else {
+            format!("GRID {}", or::spec(RATE).format(s[slot::RATE]))
+        };
+        format!("{on} rings · {clock}")
+    }
+
+    /// A button's right-click menu: keep the rings in it, name it, clear it,
+    /// or fill it from the library.
+    fn slot_menu(&self, ui: &mut egui::Ui, k: usize) {
+        let p = self.p;
+        ui.set_min_width(210.0);
+        ui.weak(format!("Button {}", k + 1));
+        if ui.button("Keep the rings here").clicked() {
+            or::store(p, k);
+            ui.close();
+        }
+        if or::slot_used(p, k) {
+            ui.horizontal(|ui| {
+                ui.label("Name");
+                let mut name = or::slot_name(p, k);
+                let field = egui::TextEdit::singleline(&mut name).char_limit(slot::NAME_CHARS).desired_width(130.0).hint_text(format!("P{}", k + 1));
+                if ui.add(field).changed() {
+                    or::rename_slot(p, k, &name);
+                }
+            });
+            if ui.button("Recall now").on_hover_text("Bring it in at once, whatever LAUNCH says").clicked() {
+                or::take(p, k);
+                ui.close();
+            }
+            if ui.button("Clear").clicked() {
+                or::clear_slot(p, k);
+                ui.close();
+            }
+        }
+        ui.separator();
+        ui.weak("Fill from the library");
+        for (i, name) in or::FACTORY_NAMES.iter().enumerate() {
+            if ui.button(*name).clicked() {
+                or::set_slot(p, k, &or::factory(i));
+                ui.close();
+            }
+        }
+        let saved = saved_patterns(ui);
+        if !saved.is_empty() {
+            ui.separator();
+            for preset in saved.iter() {
+                if ui.button(&preset.name).clicked()
+                    && let Some(s) = pattern_of(preset)
+                {
+                    or::set_slot(p, k, &s);
+                    ui.close();
+                }
+            }
+        }
+    }
+
+    /// PATTERNS ▾: save the rings under a name; load a pattern into the
+    /// rings (as LAUNCH says) or put it on a button; delete a saved one.
+    fn library(&self, ui: &mut egui::Ui) {
+        let p = self.p;
+        let name_id = self.uid("library-name");
+        let error_id = self.uid("library-error");
+        ui.set_min_width(330.0);
+        ui.label("Save the rings as");
+        let mut name: String = ui.data(|d| d.get_temp(name_id)).unwrap_or_else(|| "My pattern".to_owned());
+        let mut save = false;
+        ui.horizontal(|ui| {
+            let field = ui.add(egui::TextEdit::singleline(&mut name).char_limit(slot::NAME_CHARS).desired_width(180.0));
+            save = ui.button("Save").clicked() || (field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)));
+        });
+        ui.data_mut(|d| d.insert_temp(name_id, name.clone()));
+        if save && !name.trim().is_empty() {
+            let mut s = or::capture(p);
+            or::set_name(&mut s, name.trim());
+            let mut list = (*saved_patterns(ui)).clone();
+            presets::store(&mut list, ModulePreset { name: or::name_of(&s), params: Default::default(), data: s.to_vec(), mode: None, toggle: None });
+            let result = keep_patterns(ui, list);
+            ui.data_mut(|d| d.insert_temp(error_id, result.err().unwrap_or_default()));
+        }
+        if let Some(error) = ui.data(|d| d.get_temp::<String>(error_id)).filter(|e| !e.is_empty()) {
+            ui.colored_label(theme::MUTE, format!("Could not save: {error}"));
+        }
+        ui.separator();
+        ui.weak("Click a name to load it into the rings; 1–8 put it on a button");
+        ui.weak("Built in");
+        for (i, name) in or::FACTORY_NAMES.iter().enumerate() {
+            self.library_row(ui, name, &or::factory(i), None);
+        }
+        let saved = saved_patterns(ui);
+        if !saved.is_empty() {
+            ui.separator();
+            ui.weak("Saved");
+            let mut remove = None;
+            for (i, preset) in saved.iter().enumerate() {
+                if let Some(s) = pattern_of(preset) {
+                    self.library_row(ui, &preset.name, &s, Some((i, &mut remove)));
+                }
+            }
+            if let Some(i) = remove {
+                let mut list = (*saved).clone();
+                list.remove(i);
+                let result = keep_patterns(ui, list);
+                ui.data_mut(|d| d.insert_temp(error_id, result.err().unwrap_or_default()));
+            }
+        }
+    }
+
+    /// A pattern of the library: its name (load it), a button per slot (put
+    /// it there), and × for a saved one.
+    fn library_row(&self, ui: &mut egui::Ui, name: &str, s: &Pattern, delete: Option<(usize, &mut Option<usize>)>) {
+        let p = self.p;
+        ui.horizontal(|ui| {
+            let load = ui.add_sized([110.0, 18.0], egui::Button::new(name)).on_hover_text(self.slot_summary(s));
+            if load.clicked() {
+                or::cue(p, s);
+                ui.close();
+            }
+            for k in 0..SLOTS {
+                let taken = or::slot_used(p, k);
+                let button = egui::Button::new(egui::RichText::new(format!("{}", k + 1)).small()).min_size(egui::vec2(18.0, 18.0));
+                let tip = if taken { format!("Put it on button {} (now {})", k + 1, self.slot_title(k, &or::slot_name(p, k))) } else { format!("Put it on button {}", k + 1) };
+                if ui.add(button).on_hover_text(tip).clicked() {
+                    or::set_slot(p, k, s);
+                }
+            }
+            if let Some((i, remove)) = delete
+                && ui.small_button("×").on_hover_text("Delete this pattern").clicked()
+            {
+                *remove = Some(i);
+            }
+        });
     }
 
     // -----------------------------------------------------------------------
@@ -958,6 +1227,69 @@ impl Panel<'_, '_> {
         label(v.painter, rect.center(), Align2::CENTER_CENTER, shown, v.mono(7.5), if on { theme::TEXT } else { theme::TEXT_FAINT });
         out
     }
+}
+
+/// What each LAUNCH does, for the tooltips.
+const LAUNCH_TIPS: [&str; 3] = [
+    "now: a recalled pattern comes in at once",
+    "on the next beat",
+    "on the next bar (CYCLE: on the next turn)",
+];
+
+/// A pattern as a little orrery: its rings that play, their hits as dots.
+fn glyph(painter: &Painter, c: Pos2, radius: f32, s: &Pattern, z: f32) {
+    let on: Vec<usize> = (0..RINGS).filter(|&r| or::pattern_ring(s, r, slot::ON) > 0.5).collect();
+    for (r, &color) in COLORS.iter().enumerate() {
+        let rad = radius * (1.0 - 0.72 * r as f32 / (RINGS - 1) as f32);
+        let lit = on.contains(&r);
+        painter.circle_stroke(c, rad, Stroke::new(0.6 * z, alpha(color, if lit { 0.4 } else { 0.08 })));
+        if !lit {
+            continue;
+        }
+        let n = (or::pattern_ring(s, r, slot::STEPS).round() as usize).clamp(1, or::MAX_STEPS);
+        let turned = or::pattern_ring(s, r, slot::ROTATE) + r as f32 * s[slot::TWIST];
+        for i in 0..n {
+            if or::pattern_step(s, r, i) != OFF {
+                painter.circle_filled(c + Vec2::angled(angle(i as f32 + turned, n)) * rad, 0.9 * z, color);
+            }
+        }
+    }
+}
+
+/// Where the library of patterns is kept.
+fn library_file() -> Option<std::path::PathBuf> {
+    presets::dir().map(|d| d.join("Orrery patterns.json"))
+}
+
+fn library_id() -> Id {
+    Id::unique("orrery-pattern-library")
+}
+
+/// The saved patterns, read once and kept for the session.
+fn saved_patterns(ui: &egui::Ui) -> std::sync::Arc<Vec<ModulePreset>> {
+    if let Some(list) = ui.data(|d| d.get_temp::<std::sync::Arc<Vec<ModulePreset>>>(library_id())) {
+        return list;
+    }
+    let list = std::sync::Arc::new(library_file().map(|f| presets::load_file(&f)).unwrap_or_default());
+    ui.data_mut(|d| d.insert_temp(library_id(), list.clone()));
+    list
+}
+
+/// Writes the saved patterns back, and keeps them for the session.
+fn keep_patterns(ui: &egui::Ui, list: Vec<ModulePreset>) -> Result<(), String> {
+    let file = library_file().ok_or("no folder for presets")?;
+    presets::save_file(&file, &list)?;
+    ui.data_mut(|d| d.insert_temp(library_id(), std::sync::Arc::new(list)));
+    Ok(())
+}
+
+/// A saved pattern's values (none if the file holds something else).
+fn pattern_of(preset: &ModulePreset) -> Option<Pattern> {
+    let s: Pattern = preset.data.as_slice().try_into().ok()?;
+    let mut s = s;
+    s[slot::USED] = 1.0;
+    or::set_name(&mut s, &preset.name);
+    Some(s)
 }
 
 /// Text, unless it is too small to read (zoomed far out).

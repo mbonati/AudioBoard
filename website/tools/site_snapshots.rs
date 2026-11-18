@@ -435,7 +435,7 @@ mod site_snap {
             });
         }
         // Orrery: every ring brought in, two of them turned; then CYCLE, a
-        // polyrhythm of eight ring lengths under one hand.
+        // polyrhythm of eight ring lengths under one hand, kept on a button.
         for (name, cycle) in [("orrery", false), ("orrery-cycle", true)] {
             if !want(name) {
                 continue;
@@ -457,6 +457,9 @@ mod site_snap {
                 }
                 p.set(or::TWIST, 0.35);
                 or::select(&p, 1);
+                // Kept on button 7, under a name of its own.
+                or::rename_slot(&p, 6, "Eight rings");
+                or::store(&p, 6);
             } else {
                 or::set_rotation(&p, 5, 1.5);
                 or::set_step(&p, 0, 0, or::ACCENTED);

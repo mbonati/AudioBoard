@@ -8554,14 +8554,23 @@ fn splitter_panel_draws() {
 /// Runs Orrery from frame `from` of a 120 BPM grid for `frames`, returning
 /// its MIDI (absolute frames).
 fn run_orrery(o: &mut crate::audio::modules::orrery::Orrery, from: usize, frames: usize, playing: bool, restart: bool) -> Vec<(usize, [u8; 3])> {
+    run_orrery_with(o, from, frames, playing, restart, &[])
+}
+
+/// The same, with `midi` arriving on its MIDI cable (absolute frames).
+fn run_orrery_with(o: &mut crate::audio::modules::orrery::Orrery, from: usize, frames: usize, playing: bool, restart: bool, midi: &[(usize, [u8; 3])]) -> Vec<(usize, [u8; 3])> {
     use crate::audio::engine::{Inputs, MAX_INPUTS, MidiBuf, ProcessCtx, Processor};
     const SR: f64 = 48_000.0;
     let bps = 2.0 / SR;
-    let inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: false });
+    let mut inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: true });
     let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
     let mut events = Vec::new();
     for done in (0..frames).step_by(64) {
         let at = from + done;
+        inputs.midi.clear();
+        for (f, m) in midi.iter().filter(|(f, _)| (at..at + 64).contains(f)) {
+            inputs.midi.push(f - at, *m);
+        }
         let ctx = ProcessCtx { sample_rate: SR as f32, smooth: 0.01, beat: at as f64 * bps, beats_per_sample: bps, playing, restart: restart && done == 0 };
         o.process(&ctx, &inputs, &mut outputs, 64);
         for e in o.midi_out().expect("sends MIDI").events() {
@@ -8571,6 +8580,10 @@ fn run_orrery(o: &mut crate::audio::modules::orrery::Orrery, from: usize, frames
     events
 }
 
+fn orrery(p: &Arc<ModuleParams>) -> crate::audio::modules::orrery::Orrery {
+    crate::audio::modules::orrery::Orrery::new(p.clone(), Arc::new(crate::audio::midi::MidiState::new()))
+}
+
 /// An Orrery with only the rings in `rings` playing.
 fn orrery_with(rings: &[usize]) -> (Arc<ModuleParams>, crate::audio::modules::orrery::Orrery) {
     use crate::audio::modules::orrery::{self as or, ring};
@@ -8578,7 +8591,7 @@ fn orrery_with(rings: &[usize]) -> (Arc<ModuleParams>, crate::audio::modules::or
     for r in 0..or::RINGS {
         or::set(&p, r, ring::ON, if rings.contains(&r) { 1.0 } else { 0.0 });
     }
-    let o = or::Orrery::new(p.clone());
+    let o = orrery(&p);
     (p, o)
 }
 
@@ -8770,6 +8783,16 @@ fn orrery_panel_draws() {
     assert!(p.viz[viz::HITS].get() > 0.0, "the rings played while drawn");
     let (main, _) = crate::ui::orrery::readout(&p);
     assert!(main.starts_with("4 rings"), "{main}");
+    // A recall while drawn: it comes in on the next bar.
+    or::recall(&p, 6);
+    for _ in 0..30 {
+        render_buf(&mut e, 4_800);
+        time += 0.1;
+        let mut out = ctx.run_ui(egui::RawInput { time: Some(time), ..Default::default() }, |ui| editor.show(ui, &mut g, &a));
+        out.textures_delta.clear();
+    }
+    assert_eq!(or::active(&p), Some(6));
+    assert_eq!(or::pending(&p), None);
 }
 
 /// Draws Orrery's panel at the origin for one frame with `events`.
@@ -8790,7 +8813,7 @@ fn orrery_frame(ctx: &egui::Context, g: &Graph, id: u32, t: f64, events: Vec<egu
         let painter = ui.painter().clone();
         let hits = std::cell::RefCell::new(Vec::new());
         let v = crate::ui::nodes::NodeView { ui, painter: &painter, min: pos2(0.0, 0.0), z: 1.0, node: id, hits: &hits, tempo: 120.0 };
-        crate::ui::orrery::draw(&v, id, egui::Color32::LIGHT_BLUE, m, false);
+        crate::ui::orrery::draw(&v, id, egui::Color32::LIGHT_BLUE, m, (false, false));
     });
     out.textures_delta.clear();
 }
@@ -8806,7 +8829,7 @@ fn orrery_rings_turn_when_dragged() {
     let p = module_params(&g, id);
     let ctx = egui::Context::default();
     // The orbits' centre and ring r's radius (see ui::orrery).
-    let c = pos2(232.0, 278.0);
+    let c = pos2(232.0, 312.0);
     let radius = |r: usize| 184.0 - 122.0 * r as f32 / 7.0;
     let at = |r: usize, deg: f32| c + egui::Vec2::angled(deg.to_radians()) * radius(r);
     let mut t = 0.0;
@@ -8857,4 +8880,163 @@ fn orrery_rings_turn_when_dragged() {
     assert!((turned - 0.5).abs() < 0.1, "half a step: {turned}");
     // The pattern itself is untouched by turning.
     assert_eq!((0..16).filter(|&i| or::step(&p, 1, i) != OFF).collect::<Vec<_>>(), vec![0, 8]);
+}
+
+#[test]
+fn orrery_patterns_keep_everything_but_notes_and_channels() {
+    use crate::audio::modules::orrery::{self as or, ACCENTED, OFF, ring, slot};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Orrery));
+    // It starts on its first button, unedited, every button filled.
+    assert_eq!(or::active(&p), Some(0));
+    assert!(!or::edited(&p), "the rings are button 1's pattern");
+    assert!((0..or::SLOTS).all(|k| or::slot_used(&p, k)));
+    assert_eq!(or::slot_name(&p, 0), "Groove");
+    assert_eq!(or::slot_name(&p, 6), "Poly 3:4:5");
+    // The built-in patterns hold Euclidean rings.
+    for k in 0..or::SLOTS {
+        let s = or::factory(k);
+        for r in 0..or::RINGS {
+            let (n, pulses) = (or::pattern_ring(&s, r, slot::STEPS) as usize, or::pattern_ring(&s, r, slot::PULSES) as usize);
+            assert_eq!((0..n).filter(|&i| or::pattern_step(&s, r, i) != OFF).count(), pulses, "{} ring {}", or::FACTORY_NAMES[k], r + 1);
+        }
+    }
+    // Edit, keep it on button 3, change everything, recall it.
+    or::set_step(&p, 0, 2, ACCENTED);
+    or::set_rotation(&p, 1, 2.5);
+    p.set(or::TWIST, 0.75);
+    p.set_mode(or::CYCLE_MODE);
+    or::set(&p, 3, ring::CHANNEL, 4.0);
+    assert!(or::edited(&p));
+    or::rename_slot(&p, 2, "Verse");
+    or::store(&p, 2);
+    assert_eq!(or::slot_name(&p, 2), "Verse", "storing keeps the name");
+    assert_eq!(or::active(&p), Some(2));
+    assert!(!or::edited(&p));
+    let kept = or::capture(&p);
+    or::take(&p, 1);
+    assert_eq!(or::active(&p), Some(1));
+    assert_eq!(p.mode(), or::GRID);
+    assert_eq!(p.get(or::TWIST), 0.0);
+    or::set(&p, 0, ring::NOTE, 50.0);
+    or::take(&p, 2);
+    assert_eq!(or::capture(&p), kept, "everything comes back");
+    assert_eq!(or::step(&p, 0, 2), ACCENTED);
+    assert_eq!(or::rotation(&p, 1), 2.5);
+    assert_eq!(or::note(&p, 0), 50, "the notes stay");
+    assert_eq!(or::channel(&p, 3), 4, "and the channels");
+    // Names: three characters a value, twelve at most, ASCII.
+    let mut s = or::capture(&p);
+    or::set_name(&mut s, "A much longer name");
+    assert_eq!(or::name_of(&s), "A much longe");
+    or::set_name(&mut s, "Fill · 2");
+    assert_eq!(or::name_of(&s), "Fill ? 2");
+    or::clear_slot(&p, 2);
+    assert!(!or::slot_used(&p, 2));
+    assert_eq!(or::active(&p), None);
+    or::recall(&p, 2);
+    assert_eq!(or::pending(&p), None, "an empty button recalls nothing");
+}
+
+#[test]
+fn orrery_recalls_land_on_the_launch_grid() {
+    use crate::audio::modules::orrery::{self as or, BEAT, NOW};
+    // 120 BPM: a beat is 24 000 frames, a bar 96 000.
+    let kicks = |events: &[(usize, [u8; 3])]| events.iter().filter(|(_, m)| m[0] == 0x99 && m[1] == 36 && m[2] > 0).map(|(f, _)| *f).collect::<Vec<_>>();
+    let p = Arc::new(ModuleParams::new(ModuleKind::Orrery));
+    let mut o = orrery(&p);
+    run_orrery(&mut o, 0, 30_000, true, true);
+    // BAR (the default): asked for in beat 2, Four floor comes in on bar 2.
+    or::recall(&p, 1);
+    let events = run_orrery(&mut o, 30_000, 96_000 * 2 - 30_000, true, false);
+    assert_eq!(or::active(&p), Some(1));
+    let k = kicks(&events);
+    assert_eq!(k.iter().filter(|&&f| f < 96_000).copied().collect::<Vec<_>>(), vec![42_000, 60_000, 78_000], "Groove until the bar");
+    assert_eq!(k.iter().filter(|&&f| (96_000..192_000).contains(&f)).copied().collect::<Vec<_>>(), vec![96_000, 120_000, 144_000, 168_000], "then four on the floor");
+    // BEAT: the next beat.
+    p.data[or::data::LAUNCH].set(BEAT as f32);
+    run_orrery(&mut o, 192_000, 8_000, true, false);
+    or::recall(&p, 0);
+    run_orrery(&mut o, 200_000, 15_000, true, false);
+    assert_eq!(or::pending(&p), Some(0), "not before the beat");
+    run_orrery(&mut o, 215_000, 1_640, true, false);
+    assert_eq!(or::active(&p), Some(0), "on beat 9");
+    // NOW, and stopped: at once.
+    p.data[or::data::LAUNCH].set(NOW as f32);
+    or::recall(&p, 3);
+    run_orrery(&mut o, 216_640, 64, true, false);
+    assert_eq!(or::active(&p), Some(3));
+    p.data[or::data::LAUNCH].set(2.0);
+    or::recall(&p, 4);
+    run_orrery(&mut o, 0, 64, false, false);
+    assert_eq!(or::active(&p), Some(4));
+    // A pattern from the library waits in the cue; no button is lit then.
+    or::cue(&p, &or::factory(7));
+    run_orrery(&mut o, 0, 64, false, false);
+    assert_eq!(or::active(&p), None);
+    assert_eq!(p.get(or::TWIST), 0.25, "Drift came in");
+}
+
+#[test]
+fn orrery_program_changes_recall_the_buttons() {
+    use crate::audio::modules::orrery as or;
+    let p = Arc::new(ModuleParams::new(ModuleKind::Orrery));
+    let mut o = orrery(&p);
+    // Program 3 (2 on the wire) on any channel; 9 and up are ignored.
+    run_orrery_with(&mut o, 0, 640, false, false, &[(100, [0xC4, 2, 0]), (200, [0xC0, 12, 0])]);
+    assert_eq!(or::active(&p), Some(2));
+    // While playing it waits for the bar.
+    run_orrery_with(&mut o, 0, 24_000, true, true, &[(1_000, [0xC0, 5, 0])]);
+    assert_eq!(or::pending(&p), Some(5));
+    run_orrery(&mut o, 24_000, 72_000 + 640, true, false);
+    assert_eq!(or::active(&p), Some(5));
+}
+
+/// The pattern buttons: a click recalls (the panel takes it when the
+/// processor rests), Shift-click or STORE then a click keeps the rings.
+#[test]
+fn orrery_pattern_buttons_recall_and_store() {
+    use crate::audio::modules::orrery::{self as or, ON, OFF};
+    use egui::{Event, Modifiers, PointerButton};
+    let (mut g, a, _e) = setup();
+    let id = g.add_module(ModuleKind::Orrery, pos2(0.0, 0.0), &a);
+    let p = module_params(&g, id);
+    let ctx = egui::Context::default();
+    let slot = |k: usize| pos2(12.0 + 74.0 * k as f32 + 35.0, 71.0);
+    let mut t = 0.0;
+    let frame = |events: Vec<Event>, t: &mut f64| {
+        *t += 1.0 / 60.0;
+        orrery_frame(&ctx, &g, id, *t, events);
+    };
+    let click = |q: egui::Pos2, modifiers: Modifiers, t: &mut f64| {
+        let button = |pressed| Event::PointerButton { pos: q, button: PointerButton::Primary, pressed, modifiers };
+        frame(vec![Event::PointerMoved(q)], t);
+        frame(vec![button(true)], t);
+        frame(vec![button(false)], t);
+        frame(vec![Event::PointerButton { pos: pos2(900.0, 500.0), button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE }], t);
+    };
+    // Recall button 4 (Bossa): nothing processes here, so the panel takes it.
+    click(slot(3), Modifiers::NONE, &mut t);
+    assert_eq!(or::pending(&p), Some(3));
+    for _ in 0..30 {
+        click(pos2(900.0, 500.0), Modifiers::NONE, &mut t);
+    }
+    assert_eq!(or::active(&p), Some(3));
+    assert_eq!(or::pending(&p), None);
+    // Edit, then Shift-click button 8: the rings are kept there.
+    or::set_step(&p, 0, 1, if or::step(&p, 0, 1) == OFF { ON } else { OFF });
+    assert!(or::edited(&p));
+    click(slot(7), Modifiers::SHIFT, &mut t);
+    assert_eq!(or::active(&p), Some(7));
+    let unnamed = |mut s: or::Pattern| {
+        or::set_name(&mut s, "");
+        s
+    };
+    assert_eq!(unnamed(or::slot(&p, 7)), or::capture(&p));
+    assert_eq!(or::slot_name(&p, 7), "Drift", "the button keeps its name");
+    // STORE, then button 2.
+    click(pos2(631.0, 71.0), Modifiers::NONE, &mut t);
+    click(slot(1), Modifiers::NONE, &mut t);
+    assert_eq!(or::active(&p), Some(1));
+    assert_eq!(or::pending(&p), None, "storing does not recall");
+    assert!(!or::edited(&p));
 }
