@@ -342,6 +342,98 @@ OS update and the demo are left out: programs are saved with the node (save it t
 bank to other projects), and the sequencer's starting beat plays the part of the demo. Local stays as set
 instead of returning to On; the tone's envelopes, the channel outputs, the steps and ALEA are new.
 
+**Splitter**: a sample slicer and granular glitch engine on the board's grid, for fractured, minimal, very digital
+music in the spirit of Alva Noto's live sets: sine tones and pings, clicks, data noise, stuttering micro-loops,
+frozen grains, sub pulses, strict grids. Load a sound, cut it into up to 32 slices, give each its own pitch,
+stutter, crusher and grains, and let the animation play them in time, or play them from MIDI.
+
+- **Sources.** **LOAD** takes a WAV or AIFF file (8 to 32-bit integer or float, mono or stereo; more channels:
+  the first two), up to 30 s. The sample is kept **inside the project** (and the library), as 16-bit PCM, so a
+  project carries its sounds; **EJECT** lets it go. With nothing loaded, Splitter still plays: eight built-in
+  glitch **atoms** stand in, each a second long: **SINE** (880 Hz at pitch 0), **PING** (a sine dying in 200 ms),
+  **CLICK** (an impulse with a short ring), **SUB** (a 50 Hz pulse falling onto its pitch), **NOISE**
+  (sample-and-hold noise at 8× the pitch: hiss to data bursts), **DATA** (random bits in packets: modem and
+  fax chatter), **PULSE** (a narrow pulse wave) and **CRACK** (sparse impulses: crackle and dust). It starts
+  with a kit of eight slices of them on Euclidean rhythms, so it plays as soon as the board does.
+- **Cutting.** The display shows the selected slice's source, the sample or the atom it reads, with every
+  slice of that source outlined in its own colour, the playheads and the grains moving over them; a strip
+  above shows the whole source and the part shown (**VIEW**: ALL, or zoomed on the selected **SLICE**). Drag
+  across empty space to cut a new slice, drag a slice's edge to move it, drag inside the selected slice to move
+  it whole; a click selects, a double-click plays, a right-click deletes. **CUT** does it in one go: an equal
+  grid (**÷4**, **÷8**, **÷16**, **÷32**), at the **TRANSIENT**s (**SENS**: how readily; cuts land on the zero
+  crossing before each strike), or **RANDOM** fragments of 8 to 400 ms. A freshly loaded sample with no slices
+  of its own is cut at its transients. The keys 1–32 under the display pick the slice to edit (and flash when
+  it plays); **+** adds a copy of the selected slice, **DEL** deletes it, **CLEAR** deletes them all.
+
+The **SLICE** page edits the selected slice:
+
+| Section | Settings |
+|---------|----------|
+| SOURCE  | SAMPLE or an atom · **ONE** (plays once, through its release), **GATE** (while held: a key, a step's GATE, PLAY), **LOOP** (loops while held: micro-loops) · **REV** · **M** (left out of the animation) · ▶ **PLAY** · COPY, PASTE, ↺ |
+| SOUND   | PITCH ±48 st · GAIN −40…+12 dB · PAN · ATTACK 0–2 s · RELEASE 1 ms – 4 s · FROM / TO (the region, to the millisecond) |
+| STUTTER | REPEAT 1×–16× · RATE 1/8 … 1/128 (on the grid) · FALL (each repeat quieter) · RAMP ±12 st (each repeat higher or lower) |
+| CRUSH   | BITS 16 … 2 · DOWN (each value held for up to 64 samples) · CRUSH ALL (the node's: every slice further) |
+| GRAINS  | GRAIN · FREEZE · SYNC · SIZE 2–500 ms · DENSITY 1–400 a second · POS · SPRAY · JITTER ±12 st · SPREAD (the node's) |
+
+- A sample slice's pitch is its speed, as on a sampler (an octave up plays twice as fast); an atom keeps its
+  timing and changes its frequency. The node's **PITCH** transposes every slice.
+- **RELEASE** is the fade after a key or a step's GATE, and on a ONE slice the fade before its end (at most
+  its second half). The display under the knobs draws the envelope over the slice's length.
+- **REPEAT** turns each strike into a ratchet: that many strikes at RATE of the board's tempo, each restarting
+  the slice. A note-off takes a GATE or LOOP slice's remaining repeats with it.
+- **GRAIN** plays the slice as a cloud of Hann-windowed grains read at its pitch around a playhead that moves
+  through the slice in real time (so the pitch no longer changes its length), from **POS**; **FREEZE** stops
+  the playhead at POS. **SPRAY** scatters where grains start, **JITTER** their pitch, the node's **SPREAD**
+  their place in the stereo field (and every hit's). **SYNC** puts the grains on the board's grid, DENSITY
+  snapped to the nearest note value (1/4 to 1/256, triplets included). A ONE slice's cloud lasts as long as
+  the slice would; a GATE or LOOP slice's, as long as it is held.
+- The crusher comes last: the hold, then the bits.
+
+The **SEQUENCE** page: while **RUN** is on and the board plays, steps of 1/2 to 1/64 (**RATE**, with
+**SWING**) on the board's grid play the slices, in one of six modes:
+
+- **ORDER**: the next slice each step (muted ones skipped).
+- **RANDOM**: a slice at random (never the same twice running, unless LOCK is on).
+- **PATTERN**: the lane's slice on each step, or a rest. Click a step to put the selected slice there (again:
+  a rest), right-click for a rest, drag to paint; **IN ORDER** fills it with the slices in turn.
+- **PROB**: every step, each slice rolls its own dice (its bar, dragged up or down).
+- **EUCLID**: each slice plays its own Euclidean rhythm (**HITS** over **STEPS**, turned by **ROTATE**), drawn
+  as a ring of its steps with its hits joined. Each counts on its own length, so rhythms of 7, 11 or 13 steps
+  drift against the bar. Drag a ring up or down for more or fewer hits.
+- **STUTTER**: the lane's slices (or the slices in order, with an empty lane) rolled into ratchets of 2 to 12
+  strikes at 1/32 to 1/128, rising or falling now and then, and now and then the last slice held instead.
+
+**LENGTH** (1–32 steps) wraps the lane. **FILL** is the chance a step (or a slice's hit) plays at all, in every
+mode. **CHAOS** varies hits now and then: reversed, an octave or a fifth away, skipped into, softer, or
+doubled into a short ratchet (in STUTTER it also makes the rolls longer and the holds more frequent).
+**LOCK** makes the random choices (RANDOM, PROB, STUTTER, CHAOS) repeat every LENGTH steps; **NEW** draws
+others. **GATE** (5–100% of a step) sets how long a step holds a GATE or LOOP slice.
+
+**DICE** throws new settings: **SLICES** (pitches by pure intervals, reversals, ratchets, crushing, grain
+clouds, and a sample slice's region shifted or stretched now and then; with Shift, the selected slice only),
+**RHYTHM** (each slice's Euclidean rhythm and chance, and the lane) or **ALL**. **CHANCE** sets how far a
+throw goes: a little nudges what is there, 100% starts afresh. Throws follow what each slice sounds like
+(shown under its number: low, hit, tone, noise or texture, from the atom, or from a sample slice's length
+and how often it crosses zero): lows land on the strong beats, hits on busy Euclidean patterns, tones sparse
+and on odd lengths so they drift, noise on the offbeats, textures rarely and often as grain clouds. **BACK**
+takes back the last throw (or CLEAR, DEL, PASTE, ↺, a right-click delete).
+
+The **MIDI** page: **CH** (OMNI, or 1–16) is the channel heard and sent on. Each slice can have a note: click
+a key on the keyboard (C1–C7) to give it to the selected slice (again: take it back), or **LEARN** (or a
+slice's **LRN**) to take the next note played; **MAP FROM C2** maps the slices to notes from C2 up, **UNMAP**
+clears them (a freshly cut sample's slices start from C2). A note plays every slice mapped to it, at its
+velocity; its note-off ends a GATE or LOOP slice. **CHROMA** makes the notes no slice is mapped to play the
+selected slice in pitch (C4, note 60: as it is). With **MIDI OUT**, the steps' hits go out as notes (each slice's
+note, or C2 up by slice), held for the step's GATE, to drive other nodes. Sixteen voices play at once; a
+slice struck again cuts its last strike short in 2 ms.
+
+**What differs from Nullpunkt.** Nullpunkt synthesizes four fixed micro-voices on step lanes and works on
+its whole output (stutter, skip, warp, static); Splitter cuts sounds of your own into up to 32 slices, each
+with its own pitch, envelope, ratchet, crusher and grains, plays them from six kinds of animation or from
+MIDI note by note, and its built-in sources are a second of each atom, read like a sample (backwards, in
+grains, looped). Splitter's sample lives in the project: a project with a 30 s stereo sample grows by about
+7 MB.
+
 **Audio In**: the audio interface's inputs on a cable: a microphone, a guitar, a synth, another app through
 a loopback device. **INPUT** picks the channel. **STEREO** takes it and the next as left and right (INPUT 3:
 inputs 3–4); **MONO** puts it on both sides. **GAIN** goes from −24 to +24 dB. The display has a meter per
@@ -749,14 +841,14 @@ semitone knobs the distance from middle C, and the others the key's position. Th
 messages that arrive after mapping. **UNMAP** removes the mapping. Mappings are saved in the project and in
 library modules.
 
-### MIDI sequences: Step Sequencer, MIDIcer, Automa, Colloid, MIDI Looper, Arpeggiator, MIDI In
+### MIDI sequences: Step Sequencer, MIDIcer, Automa, Colloid, Orrery, MIDI Looper, Arpeggiator, MIDI In
 
 Besides audio cables there are **MIDI cables**: square ports (audio ports are round) and dashed cables.
 A MIDI cable only joins a MIDI output to a MIDI input. Plugins that accept MIDI (VST3 or Audio Unit
-instruments), the Arpeggiator, MIDIcer, Colloid, the MIDI Looper and MIDI Note have a MIDI input.
+instruments), the Arpeggiator, MIDIcer, Colloid, Orrery, the MIDI Looper and MIDI Note have a MIDI input.
 
 **Start / Stop** (toolbar, or Space) drive the transport, not the audio: Stop ends the sound's generation
-but lets it die away. Sequencers, arpeggiators, MIDIcer, Automa and Colloid stop and end the notes they were holding (VST
+but lets it die away. Sequencers, arpeggiators, MIDIcer, Automa, Colloid and Orrery stop and end the notes they were holding (VST
 instruments and MIDI Note release them as usual), oscillators and Drones fade out in a few milliseconds,
 while effects (Delay, Ping Pong, Reverb, Granular, Resonator, Filter) and plugins keep running, so their
 tails ring on. Stop also goes back to the start: on the next Start everything begins again from its first
@@ -933,6 +1025,68 @@ name up in a tag. New notes sweep a line through the tank. **Click** in the tank
   Start lets them in again from the seed (**RESEED** picks a new one, scattering the molecules too). The settings, the
   CC lanes and the seed are saved in the project and in library modules.
 
+**Orrery**: a Euclidean rhythm generator drawn as concentric rings, like the orbits of an orrery (the clockwork model
+of the planets). Each of its eight rings is a rhythm of its own with a note on a MIDI channel of its own, so one node can
+play a whole drum kit, or eight instruments at once. A Euclidean rhythm spreads PULSES hits over STEPS steps as evenly
+as they go (the rhythms of Bjorklund's algorithm, after Toussaint's *The Euclidean Algorithm Generates Traditional
+Musical Rhythms*): 3 over 8 is the Cuban tresillo, 5 over 8 the cinquillo, 2 over 16 turned by four steps the backbeat.
+It works in the manner of Euclidean sequencers such as Vitling's Euclidean Circles, Olympia Noise Co's Patterning and
+Torso's T-1, with a panel of its own.
+
+- **The rings.** A row per ring, from the outside in: **ON**, **STEPS** (1–32), **PULSES** (0 to STEPS), **ROT**
+  (how far the ring is turned, in steps), **NOTE** (with the General MIDI drum's name, for channel 10), **CH** (the MIDI
+  channel, 1–16) and its pattern laid out flat. Drag a number up or down; double-click resets it. STEPS and PULSES lay
+  the Euclidean pattern again, over your edits (a step that stays a hit keeps its accent).
+- **Every step by hand.** Click a step on its ring, or in the selected ring's strip under the table, to make it a hit
+  or a rest; right-click (or Shift-click) accents it. In the strip, drag to paint. **EUCLID** lays the Euclidean pattern
+  again, **INVERT** swaps hits and rests, **CLEAR** rests every step, **DICE** throws new pulses and a new turn for the
+  ring.
+- **Turning the rings.** A ring's hits come ROT steps later: turning one ring against the others shifts its rhythm
+  against theirs (the snare's 2 over 16 turned by four is the backbeat; turned one more, it pushes). Drag a ring round on
+  the orbits to turn it, by whole steps, or with **Shift** freely: half a step turned delays every hit by half a step, for
+  flams and lazy grooves. **◀ ▶** turn the selected ring a step, **0** brings it back. **TWIST** turns every ring
+  further than the one outside it (ring 2 by TWIST steps, ring 3 by twice as much…, ±2 steps, any part of a step): the
+  rings fall out of phase together, the inner ones the most. A notch on each ring marks its first step, so its turn
+  shows.
+- **GRID or CYCLE.** **GRID**: every ring steps on the board's grid (**RATE**, 1/4 to 1/32, triplets; **SWING** delays
+  every other step), so a ring of 5 steps comes round sooner than one of 16 and they drift against each other
+  (polymeter). **CYCLE**: every ring goes round once in **CYCLE** beats (1 beat to 8 bars), its steps sharing them out
+  evenly, so 3 steps play against 4 and 5 (polyrhythm).
+- **Notes.** The selected ring's **VELOCITY**, **GATE** (how long its notes last, as a part of its step) and **CHANCE**
+  (the chance each hit plays). **ACCENT** is how much louder accented steps play, from the ring's velocity up to 127.
+  A ring holds one note at a time: a new hit ends the one before. **DICE** at the top throws new pulses and turns for
+  every ring that plays (steps, notes and channels stay); Shift-click it for the selected ring only.
+- **Patterns.** Eight buttons under the header each hold a pattern: everything but the rings' notes and channels (which
+  rings play, their steps, pulses, turns, hits and accents, velocity, gate and chance, and GRID or CYCLE, RATE, CYCLE,
+  SWING, ACCENT and TWIST), so recalling one changes the rhythm and leaves the kit as it is. Click a button to recall
+  it; it comes in as **LAUNCH** says: **NOW**, on the next **BEAT**, or on the next **BAR** (in CYCLE, the next turn),
+  so a change made mid-bar still lands in time, while the button blinks. Shift-click a button, or press **STORE** and
+  then click it, to keep the rings there. The lit button is the one recalled last; a dot after its name says the rings
+  have changed since, so STORE again to keep the changes. Each button shows its pattern as a little orrery (the rings
+  that play, their hits as dots), its name and GRID or CYCLE. Right-click a button to name it (up to twelve
+  characters), recall it at once, clear it, or fill it from the library. On the MIDI input (its cable or, with none,
+  the keyboards), **Program Change 1–8** (any channel) recalls buttons 1–8, as LAUNCH says.
+- **The library.** **PATTERNS ▾** saves the rings as a pattern under a name, in the app's data folder (`presets/Orrery
+  patterns.json`), so every project sees it. Click a pattern's name there to load it into the rings (as LAUNCH says, no
+  button lit), or one of its **1–8** to put it on that button. Eight patterns are built in, and are on the buttons to
+  start with: Groove, Four floor (kick on every beat, offbeat hats, clap on 2 and 4), Tresillo (3 over 8 in the kick,
+  the cinquillo on the side stick), Bossa (the bossa clave on the side stick), Shuffle (triplet eighths, the hi-hat's 8
+  over 12), Breaks (ghost notes, a touch of swing), Poly 3:4:5 (CYCLE: 4 against 3, 5, 6 and 7 in a bar) and Drift
+  (eight ring lengths drifting apart, twisted).
+- **PLAY** plays the rings while the transport plays. Start plays them from their first step, Stop ends their notes.
+
+The rings start as the Groove pattern, a General MIDI groove on channel 10 (bass drum 5 over 16, snare 2 over 16 turned
+by four, closed hi-hat 11 over 16 with accents on the beats, open hi-hat on the offbeats), so it plays Pops 66 or any
+General MIDI kit at once; the four inner rings (side stick 5 over 12, low tom 3 over 7, hand clap 4 over 9, cowbell 2
+over 5) wait, muted, to be brought in. The rings, the buttons and LAUNCH are saved in the project and in library
+modules.
+
+The panel is the orrery itself, drawn flat and graphic. The rings are orbits round a hub, each in a colour of its own; a
+ring's steps sit round it, a small dot for a rest, a coloured outline for a hit, a bullseye for an accent, and its hits
+are joined into the rhythm's polygon. A planet travels each orbit, trailing a wake of dots, and plays the hits it
+passes: they flash and send out a ring. In CYCLE mode the planets line up on one hand that sweeps the dial, the cycle's
+beats round the bezel. The hub shows the selected ring's name, E(5,16), and its turn.
+
 **Arpeggiator**: plays the held notes one at a time, in time, over 1–4 octaves (OCTAVES), in UP, DOWN,
 U+D (up and down), RAND or ORDER (as played) order. RATE, GATE, SWING, CHANCE, VELOCITY as in the
 sequencer. Notes come from its MIDI cable or, with no cable, straight from the MIDI keyboard.
@@ -979,6 +1133,9 @@ Examples:
 - *Automa → VST instrument*: generative lines in key (with **PAD**, the chords as well);
 - *Colloid → VST instrument*: handpan melodies from the atoms (with a Sustain lane from PEDAL for a piano);
 - *MIDI In → Colloid → VST instrument*: play chords on the keyboard, and the atoms play them;
+- *Orrery → Pops 66* (or a drum plugin): Euclidean grooves on General MIDI drums; give each ring a channel
+  of its own and send the node into a multitimbral plugin to play several instruments; recall its pattern buttons from a
+  controller's program changes;
 - *MIDI Looper → VST instrument*: play a phrase, loop it, layer it, and switch between scenes;
 - *Step Sequencer → MIDI Note*, with ENV into an oscillator's AM and MAP on its FREQ: the sequence plays
   the built-in nodes.
@@ -1034,6 +1191,38 @@ VST3 plugins and AU (v2) components run inside AudioBoard: a faulty one can make
 **AUv3** extensions run in a process of their own, as in Logic, so a crash there leaves AudioBoard playing
 (the node falls silent). VST3 and Audio Units are supported (not VST2 or CLAP).
 
+### Plugin nodes
+
+**Plugin nodes** are AudioBoard's own plugin format: nodes written in Rust with the node SDK and shipped
+precompiled, one dynamic library each (`.dylib` on macOS, `.so` on Linux, `.dll` on Windows). Put the library in
+`~/Library/Application Support/AudioBoard/Nodes` (the palette's **Open Nodes folder** link opens it, creating
+it if needed) and press **Rescan** (in the palette, or **Rescan plugins** in Settings → Plugins), or restart.
+Folders listed in the `AUDIOBOARD_NODE_PATH` environment variable are searched too (separated like `PATH`).
+
+Their nodes appear in the **Plugin nodes** section of the palette and of the right-click menu, by maker,
+and from there on they are nodes like the built-in ones: ports, cables (audio and MIDI), knobs that a MIDI
+CC node can MAP, presets, bypass, modules and the library. Their panel is the generic module panel, laid
+out from the node's description: port labels, a readout line, an optional switch, a display, a mode
+selector and the knobs. The display is one of a few pictures the node feeds with numbers: its output
+level, bars, a curve, a scrolling trace or an XY dot.
+
+A project saves a plugin node by its stable id (`"module": "dev.audioboard.example.haze"`), with its
+parameters by name, its mode, switch and extra data, like a built-in module. Opening a project whose plugin
+isn't installed skips that node and says which ids are missing; the rest of the project opens.
+
+A plugin library is checked before any of its nodes is used: a library built for another version of the
+plugin interface, or whose description doesn't hold together (a knob with an empty range, a display value
+it doesn't have), is refused with the reason, and AudioBoard carries on. Plugin nodes run inside
+AudioBoard, on the audio thread: a node that panics is caught, stops, and shows "Stopped: the plugin
+crashed" in its display while the rest of the patch plays on; samples that are not finite (or absurdly
+loud) are muted before they reach the mix. A library is never unloaded while AudioBoard runs (its nodes run
+its code), so a rebuilt library loads after a restart; a new one loads on Rescan. **Settings → Plugins**
+lists the folders and the libraries loaded, with their version and the SDK version they were built with.
+
+An example library, with an instrument, an effect and a MIDI generator, is in `plugins/example-nodes`; see
+[Writing nodes](#writing-nodes-sdk-plugins-and-ui-kit) to build and install it, and
+[plugins/README.md](plugins/README.md) for a step-by-step guide to making your own.
+
 ### Output
 
 **Mixer (4 channels)**: for each channel a volume fader, pan (balance on stereo signals), an **AUX** send,
@@ -1063,16 +1252,21 @@ effected layer, each with its own level. MUTE on Mixer 1 leaves only the effecte
 ### Visual: Iris
 
 **Iris** is a video node: a screen on the board where visuals react to the sound, drawn in the board's flat,
-graphic style (line art, dot matrices, coloured outlines; no glows). It is in the **Visual** group of the
-palette and of the right-click menu.
+graphic style (line art, dot matrices, coloured outlines; no glows). It is also a visual synthesizer: up to
+four layers of scenes, each blended, moved, tinted, mirrored and echoed, and modulators (LFOs, envelopes,
+audio bands, MIDI) routed to them by a matrix. It is in the **Visual** group of the palette and of the
+right-click menu.
 
 - **What it listens to**: by default (**Auto**) the node patched into its **IN**, and only that one (a drum
   machine, a bass line, a reverb's tail), or the **main mix** (everything the board plays) while IN is free.
   The settings can also force **IN** (nothing while unpatched) or **Main mix** (even with IN patched).
   **THRU** passes IN on unchanged, so Iris can sit inside a chain; it is never an effect (no bypass), and it keeps running, with the nodes feeding it,
   even when THRU goes nowhere.
-- **Fourteen scenes**:
-  - geometric: **Mandala** (rings of petals with 5- to 16-fold symmetry, each ring a band), **Tunnel**
+- **Nineteen scenes**:
+  - geometric: **Mandala** (rings of petals with 5- to 16-fold symmetry, each ring a band), **Halo** (a
+    halftone ring of dots on rays round an empty centre, biggest half way out and shrinking to specks inside
+    and out, with faint streaks along the rays: it turns, swells with the bass, sends a ripple out on
+    onsets, and its colours travel round it; the spectrum goes round the ring), **Tunnel**
     (polygons flying out of a vanishing point, twisting with the mids, new sides on onsets), **Truchet**
     (quarter-circle tiles joining into endless paths; onsets send a wave of flips across the grid), **Moiré**
     (overprinted sets of rings whose centres orbit, the bass pulling them apart), **Dots** (a dot-matrix
@@ -1081,12 +1275,40 @@ palette and of the right-click menu.
   - mathematical: **Harmonograph** (a damped pendulum drawing in small ratios, which jump on onsets),
     **Spiro** (nested hypotrochoids), **Attractor** (a Clifford attractor's cloud of points, its constants
     drifting with the sound), **Phase** (the sound against itself a quarter period later: a tone draws a
-    circle, a chord a knot, with echoes of past frames spiralling out), **Ridges** (pulsar lines, the
+    circle, a chord a knot, with echoes of past frames spiralling out), **Scope** (an oscilloscope: the
+    waveform held still on a rising zero crossing over three periods of the pitch, on a faint graticule,
+    its past traces fading behind it), **Ridges** (pulsar lines, the
     spectrum scrolling up the screen, each line hiding the ones behind);
   - generative: **Flow** (particles on a flow field; onsets burst them outwards), **Life** (Conway's Game of
     Life on a dot matrix: onsets drop gliders and R-pentominoes where the spectrum peaks, the highs spark
     cells, and it never dies out), **Automaton** (an elementary cellular automaton scrolling up, the spectrum
-    writing into its newest row, onsets changing the rule and the ink).
+    writing into its newest row, onsets changing the rule and the ink);
+  - 3D, projected in software with the same flat dots and lines: **Globe** (a cloud of dots on a sphere, a
+    torus or a trefoil knot turning in space, each dot pushed out by its band; onsets spin it and now and
+    then morph it into the next shape), **Terrain** (the spectrum as a wireframe landscape: each new row is
+    the sound now, in front, and the rows move away into the distance, hiding what is behind them, under a
+    sun in outline; onsets mark their row), **Flight** (flying through a field of dots: the bass and the
+    level set the speed, onsets kick it, the mids roll the view, each dot swelling with its band and
+    streaking as it rushes past).
+- **Layers**: up to four, drawn in order (layer 1 first, 4 on top), each with its own scene (layer 1's is
+  the node's scene), on or off, **Solo**, and a blend: **Normal**, or **Add** (light adds up, for dark
+  palettes). Each has its **Opacity**, **Zoom**, **Rotate**, **Spin** (turns a second), **X** and **Y**,
+  **Hue** (turns the colours round the wheel), its own **Speed**, a **Mirror** (**Mirror**: the left half
+  reflected on the right; **Quad**: the top left quarter reflected into the other three; **×3** and **×6**
+  turned copies) and **Echoes**: up to eight past frames behind it, each grown by **Feedback** and fading
+  (above ×1 an endless zoom, below it a fall inwards). A plain layer draws straight onto the screen; any
+  other is drawn into a layer of its own, tessellated into one mesh, moved and tinted vertex by vertex and
+  put on the screen, all on the CPU. Each layer keeps to a budget of vertices: a heavy scene gets fewer
+  echoes rather than a slow frame.
+- **Modulation**: four **LFOs** (sine, triangle, saw, square, random; free from 0.02 to 10 Hz, or synced to
+  the transport from 1/16 to 8 bars, on the beat while it plays; a phase), two **envelopes** (attack,
+  decay, sustain, release; fired by MIDI notes, by onsets or by both, the gate held while a note is), four
+  **audio** modulators (a range of the 32 bands and a gain: bass, mids, highs and everything to begin
+  with), and MIDI: **Velocity**, **Note**, **Mod wheel** and two controllers, **CC A** and **CC B**, by
+  number. The onset **Beat** is a source too. The **matrix** has twelve slots, each a source, a destination
+  and a bipolar amount: the destinations are the global Speed, Detail and Trail and every layer's Opacity,
+  Zoom, Rotate, X, Y, Hue and Speed.
+- **MIDI**: notes and controllers arrive on its **MIDI** input, or from the keyboards while that is free.
 - **The analysis**, on the UI thread (the audio thread only copies the samples): a 2048-point spectrum in 32
   bands from 30 Hz to 16 kHz (tilted +3 dB an octave, as music has less energy up high), the level, bass, mids
   and highs, the strongest pitch, and onsets (spectral flux over its own running average).
@@ -1094,20 +1316,28 @@ palette and of the right-click menu.
   scene's name and what it listens to now (IN or MAIN) show at the top left, a **gear** at the top right and a **grip** at the
   bottom right: drag the grip to resize the node (Shift keeps its shape), from 240 × 170 to 2400 × 1600.
   When a scene changes by itself, its name shows for a moment.
-- **The gear** opens the settings in a popup beside the node, so the picture stays in view: the scene;
+- **The gear** opens the settings in a popup beside the node, so the picture stays in view, in three tabs:
+  **Picture**, **Layers** (the four layers, then the one selected) and **Modulation** (the matrix, with
+  the slots in use and a free one, then the LFOs, envelopes, audio and MIDI, each with a small meter of
+  what it does now). Picture holds the scene;
   **Auto**, **IN** or **Main mix**, with a line saying what it listens to now; the **palette** (Board, Mono in the node's colour, Paper and Riso on light paper,
-  Ember, Ice, Acid); **React** (how strongly it follows the sound), **Speed**, **Detail** (lines, particles,
+  Ember, Ice, Acid, and Lagoon: blue through cyan to green on white); **React** (how strongly it follows the sound), **Speed**, **Detail** (lines, particles,
   cells, symmetry), **Smooth** (how slowly the analysis lets go) and **Trail** (trails, echoes, histories);
-  **Next scene every** 1 to 16 bars at the board's tempo (or never); the screen's shape (16:9, 4:3, 1:1,
-  9:16, Reset); **New seed** for the generative scenes.
+  **Next scene every** 1 to 16 bars at the board's tempo (or never); **Frame** or **No frame**; the
+  screen's shape (16:9, 4:3, 1:1, 9:16, Reset); **New seed** for the generative scenes.
+- **No frame**: the node's card (title bar, border, bezel, shadow) goes and the picture fills the whole
+  node, as if stuck on the board; the ports stay on its edges, an outline shows while it is selected, and
+  the scene's name, gear and grip still show under the pointer. Collapsed, it has its card again.
 - **Open in a window**: the picture in a window of its own (its own generative state, the same sound),
   for a second display or a projector. Double-click it for full screen (the pointer hides while it rests),
   Esc leaves full screen, then closes the window. It keeps playing when the node is off the view or
   collapsed.
 
-The scene, the knobs, the size and the look are saved with the project (the scene by name); the window is
-not. A scene costs the UI about 0.1 to 2.4 ms a frame at full detail; the board redraws at full rate while an
-Iris is in view.
+The scene, the knobs, the size, the look, the frame, the layers, the modulators and the matrix are saved
+with the project (the scene by name, so projects keep their scene as new ones are added; a project saved
+before the layers opens with layer 1 alone, as it was); the window is not. A scene costs the UI about 0.1 to
+3.5 ms a frame at full detail (the Attractor the most); a layer with echoes and a mirror up to about 3 ms
+more, and four such layers together about 12 ms. The board redraws at full rate while an Iris is in view.
 
 ### Settings
 
@@ -1145,7 +1375,8 @@ one of the inputs; a status line shows the tempo received, whether it plays and 
 what it is waiting for. **Send clock** has a switch for each MIDI output. See *External MIDI sync* above.
 
 **Plugins** shows the VST3 folders and how many plugins they hold, switches for listing Audio Units and
-Apple's own, with how many there are (AUv3 and AU), and **Rescan plugins**.
+Apple's own, with how many there are (AUv3 and AU), the plugin nodes' folders and the libraries loaded from
+them, and **Rescan plugins** (which rescans plugin nodes too).
 
 ### Audio buffer, load and limiter
 
@@ -1289,7 +1520,7 @@ turns itself off as soon as you zoom or move the view by hand.
 ## Palette
 
 The panel on the left (shown and hidden with the button next to the project name) lists all nodes by
-category and the library modules, with a search field. Click a category's heading to fold or unfold it
+category, the plugin nodes and plugins by maker, and the library modules, with a search field. Click a category's heading to fold or unfold it
 (a folded one shows how many entries it holds); while searching, every category with matches opens. Drag an entry onto the canvas to place it where you
 want (an outline shows where it lands), or click it to add it in the middle of the view. On library
 entries, the × removes the module from the library.
@@ -1354,8 +1585,9 @@ empties the list.
 A dot next to the name, and "(edited)" in the window title, flag unsaved changes: before creating a new
 project, opening another one or closing the window, AudioBoard asks whether to save them.
 A project (`.audioboard`) is a JSON file with nodes and parameters, positions, colors, collapsed nodes,
-cables and modules, and the board's stickers and background (images inside, base64); parameters are saved by
-name. The demo patch always opens on launch.
+cables and modules, the board's stickers and background (images inside, base64) and Splitter's samples (16-bit
+PCM inside, base64); parameters are saved by
+name, built-in modules by name and plugin nodes by their stable id. The demo patch always opens on launch.
 
 **Module library.** Right-click a module's header → **Save to library** saves it under its name (if it
 already exists, it asks whether to replace it). Saved modules appear in the **Library** section of the
@@ -1364,20 +1596,177 @@ settings as a new module, already **collapsed** to a card. The × next to the na
 library, and **Open library folder** opens the folder of `.abmodule` files
 (`~/Library/Application Support/AudioBoard/Library` on macOS), useful for copying or sharing them.
 
+## Writing nodes: SDK, plugins and UI Kit
+
+AudioBoard is a Cargo workspace. Besides the app it holds three crates:
+
+```
+crates/audioboard-node   the node SDK (the "foundation"): what a node is and how it runs; no dependencies
+crates/audioboard-ui     the UI Kit: theme, controls, node card, displays and the generic panel's layout (egui)
+plugins/example-nodes    an example plugin library: Glass (instrument), Haze (effect), Pulse (MIDI)
+```
+
+`cargo build` and `cargo test` work on the app alone (they build the two crates it uses); add `--workspace`
+to build and test everything, plugins included.
+
+### The node SDK (`audioboard-node`)
+
+Every node, built-in or plugin, is written in the SDK's terms; the app re-exports them where its modules
+always found them (`audio::params`, `audio::engine`, `audio::fastmath`, `audio::modules`), so built-in
+modules already run on the SDK's types. Built-in modules keep their own `Processor` for now; a plugin node,
+or a new module, implements the SDK's `Node` trait.
+
+- **Description.** `NodeDef`: name, title prefix, menu hint, audio inputs and outputs, MIDI in and out,
+  knobs (`ParamSpec`: range, `Taper` linear or log, `Unit` for how the value reads, bipolar arc), CV depth
+  knobs, mode labels, a switch, extra saved values (`data`, a sequencer's steps), the display's height and
+  how many display values the node publishes. A plugin node adds a `Descriptor`: a **stable id** (reverse-DNS,
+  saved in projects; never change it), its maker, and its `Panel` (below).
+- **Processing.** `Node::new(&Init)` runs on the UI thread (sample rate, the node's settings): allocate
+  everything there. `Node::process(&ProcessCtx, &mut Io)` runs on the audio thread, one block of at most 64
+  stereo frames (`BLOCK`, `Buf = [[f32; 64]; 2]`) at a time. `Io` hands it its inputs (`input(i)`, `cv(i)`,
+  unpatched as `None`), its outputs (`output(i)`, or `through(i, j)` for an effect), the MIDI that arrived
+  (`midi()`: `MidiMsg` with the frame offset within the block) and `send_midi(frame, bytes)` for its MIDI
+  output. `ProcessCtx` gives the sample rate, the ~10 ms smoothing coefficient, the transport's beat at the
+  block's start, beats per sample (`tempo()`, `beat_at(i)`), whether the transport plays, and `restart`
+  (rewound to beat 0: start over, end held notes).
+- **Settings, lock-free.** The app owns a node's `Params` (knob values, mode, switch, data in atomics; the
+  output meter and display values coming back). The node reads them through `Shared`: `get(i)`, `mode()`,
+  `toggled()`, `data(i)` / `set_data(i, v)`, `set_viz(i, v)`. Out-of-range indexes read 0 and write nothing.
+- **DSP helpers** (`dsp`, `fastmath`): `Rng` (xorshift), `Wander` (smooth random drift), `DelayLine`
+  (fractional reads), `Quiet` (tells when an effect may rest), `Smoothed`, `OnePole`, `pan_gains`,
+  `mix_gains`, `soft_limit`, `soft_ceiling`, `time_coeff`, `note_hz`, `peak`; fast `sin_turns`, `exp2`,
+  `log2`, `tanh`.
+
+**On the audio thread**, `process` must not allocate, lock, wait or do I/O; everything it needs is made in
+`new`. A panic is caught at the plugin boundary: the node stops and stays silent.
+
+A whole effect, from `crates/audioboard-node/src/lib.rs`:
+
+```rust
+use audioboard_node::prelude::*;
+
+const PARAMS: &[ParamSpec] = &[ParamSpec::lin("GAIN", 0.0, 2.0, 1.0, Unit::Percent)];
+
+pub struct Gain { params: Shared, gain: Smoothed }
+
+impl Node for Gain {
+    const DESCRIPTOR: Descriptor = Descriptor {
+        id: "com.example.gain",
+        maker: "Example",
+        def: NodeDef { name: "Gain", prefix: "GAIN", hint: "louder · softer",
+                       inputs: &["IN"], outputs: &["OUT"], params: PARAMS, ..NodeDef::EMPTY },
+        panel: Panel { display: Display::Level, readout: Readout::Param(0) },
+    };
+
+    fn new(init: &Init) -> Self {
+        Gain { params: init.params, gain: Smoothed::new(1.0) }
+    }
+
+    fn process(&mut self, ctx: &ProcessCtx, io: &mut Io<'_>) {
+        let n = io.frames();
+        let target = self.params.get(0);
+        let (input, out) = io.through(0, 0);
+        for i in 0..n {
+            let g = self.gain.next(target, ctx.smooth);
+            for c in 0..2 {
+                out[c][i] = input.map_or(0.0, |b| b[c][i]) * g;
+            }
+        }
+    }
+}
+
+audioboard_node::export_nodes! { name: "Gain", maker: "Example", version: "1.0", nodes: [Gain] }
+```
+
+### Plugin format and ABI versioning
+
+A plugin is a `cdylib` crate that depends on `audioboard-node` and ends with `export_nodes!` (any number of
+nodes in one library). Rust has no stable ABI, so the app and a plugin, possibly built by different compilers
+and SDK versions, share only a C ABI (`audioboard_node::abi`): `#[repr(C)]` tables and `extern "C"` functions,
+no Rust types.
+
+- The library exports one symbol, `audioboard_node_entry(host_abi: u32) -> *const PluginInfo`. `PluginInfo`
+  stays valid for the life of the process; it carries the library's name, maker and version, the SDK version,
+  the block size and the nodes.
+- **The first field of `PluginInfo` is the ABI version (`u32`), at the same place in every version.** The app
+  reads it before anything else and refuses a library built for another version, with a message saying to
+  rebuild it ("built for node ABI v2, this AudioBoard loads v1: rebuild it with audioboard-node 0.1.0"). Any
+  change to the tables or functions bumps `abi::ABI_VERSION`; units and display kinds have stable numbers,
+  and unknown ones read as a plain number and no picture.
+- Each node is a description (text as UTF-8 pointer and length, arrays as pointer and length) and three
+  functions: `create` (UI thread; gets the sample rate and pointers to its settings' atomics, valid until
+  `destroy`), `process` (audio thread; one block: buffers, MIDI in and room for MIDI out, the transport) and
+  `destroy` (UI thread). The app copies the description at load and checks it (sizes, ranges, ids, what the
+  panel refers to); text that isn't UTF-8, an id already taken, or anything inconsistent refuses the library.
+- `export_nodes!` wraps each call in `catch_unwind`, so a panic becomes an error code instead of crossing the
+  boundary. Nothing crosses it per block but pointers: no allocation, no lock. (A plugin built with
+  `panic = "abort"` would take the app down with it: keep the default.)
+
+**Build and install** the example (macOS; `.so` and `~/.local/share/audioboard/Nodes` on Linux):
+
+```bash
+cargo build --release -p audioboard-example-nodes
+```
+
+```bash
+mkdir -p ~/Library/Application\ Support/AudioBoard/Nodes && cp target/release/libaudioboard_example_nodes.dylib ~/Library/Application\ Support/AudioBoard/Nodes/
+```
+
+then Rescan in the palette. A plugin of your own is the same: a crate with `crate-type = ["cdylib"]` and
+`audioboard-node` as a dependency (a path into this repository, or a git dependency), built in release.
+
+**[plugins/README.md](plugins/README.md) is the step-by-step guide**: creating the crate, writing a node
+(a complete Tremolo effect), building, installing (or `AUDIOBOARD_NODE_PATH` while developing), testing a
+node without the app, instruments, MIDI generators, CV inputs and several outputs, the generic panel, the
+audio-thread rules, keeping saved projects working across versions, universal macOS libraries and signing,
+and what each refusal message means.
+
+### The UI Kit (`audioboard-ui`)
+
+The parts every panel is drawn from, in the app's flat, line-art style:
+
+- `theme`: the colour palette, fonts (`font`, `mono`, `strong`, sized by the canvas zoom), the egui style.
+- `view::NodeView`: draws in node units at any zoom (`p`, `r`, `text`, `font`) and records the knobs and
+  faders drawn, so MIDI can be mapped to them.
+- `widgets`: knob, horizontal and vertical faders, toggle, peak meters (`MeterState`), ports, cables, shadow.
+- `controls`: `knob_cell` (label, knob, value as its unit reads), `segmented` selector, `pill`,
+  `port_labels`, `caption`.
+- `card`: the node card and header (collapse chevron, activity light, title, bypass, close), bypass veil.
+- `display`: the dark inset and its pictures (`Screen::bars`, `curve`, `trace`, `dot`, `level`, `area`,
+  `message`).
+- `panel`: the generic panel's layout from a `NodeDef` (columns, display, selector and knob rows, ports).
+
+Built-in panels use these parts directly (`ui/nodes.rs` and `ui/modules.rs` take `NodeView`, `knob_cell`,
+`segmented`, the card and the panel layout from the kit). **A plugin node can't**: egui's types change from
+one version to the next and can't cross the C ABI. Its panel is therefore described, not drawn: the generic
+panel from its `NodeDef`, plus a `Panel` saying which picture its display shows (`Display::Level`, `Bars`,
+`Curve`, `Trace` or `Dot`, fed by its display values) and what its readout line says (its name, a knob's
+value, a display value in a unit, or the mode). The app draws it with the kit (`ui/node_panel.rs`).
+
 ## Architecture
 
 ```
+crates/
+├── audioboard-node/src/   the node SDK: def (NodeDef, Params, Descriptor, Panel), node (Node, Init, Io,
+│                          Shared), buffer (BLOCK, Buf, MidiBuf, ProcessCtx), param (ParamSpec, Taper, Unit,
+│                          AtomicF32, formatting), dsp, fastmath, abi (the C ABI, export_nodes!)
+└── audioboard-ui/src/     the UI Kit: theme, view (NodeView), widgets, controls, card, display, panel
+plugins/
+├── README.md              writing, building, testing and distributing a node plugin, step by step
+└── example-nodes/         an example plugin library (cdylib): glass, haze, pulse
 src/
 ├── audio/
-│   ├── params.rs   parameters shared lock-free (atomics) between the UI and the audio thread
+│   ├── params.rs   parameters shared lock-free (atomics) between the UI and the audio thread (the
+│   │               vocabulary, ParamSpec, units and formatting, comes from the node SDK)
 │   ├── engine.rs   audio-side graph: one pass per device buffer (built-ins in 64-frame stereo blocks,
 │   │               plugins in one call), per-block MIDI events, global clock in beats, precomputed
 │   │               topological order, lookahead limiter, denormals flushed to zero
-│   ├── fastmath.rs fast sine, exp2, log2 and tanh for per-sample DSP (error < 1e-6)
+│   ├── fastmath.rs fast sine, exp2, log2 and tanh for per-sample DSP (error < 1e-6), from the node SDK
 │   ├── dsp.rs      Oscillator and Mixer (any number of channels, main and AUX outputs)
 │   ├── modules/    audio_in, drone, random, granular, resonator, filter, equalizer (after Waves F6), delay, pingpong,
 │   │               reverb, midi_cc, midi_note, sequencer, arpeggiator, midi_in, midicer (after Vermona's
-│   │               meloDICER), iris (passes IN through, hands the panel the sound it listens to)
+│   │               meloDICER), iris (passes IN through, hands the panel the sound it listens to, the MIDI it
+│   │               receives and the transport; the layers', modulators' and matrix's settings)
 │   │   ├── magma.rs    Magma (after FabFilter Volcano 3): parameters, routing, oversampling, slots
 │   │   ├── magma/      filter (non-linear SVF styles, responses), modulation (XLFO, EG, EF, MIDI, XY)
 │   │   ├── prism.rs    Prism (after FabFilter Pro-Q 4): the bands' knobs and settings, the minimum-phase cascade
@@ -1396,6 +1785,11 @@ src/
 │   │   ├── fjord/      voice (tone, noise and click, gates, sweeps, bend, punch, the tone's ADSRs, held notes,
 │   │   │               the channel), bank (the factory programs), trigger (the Trig inputs: scan, mask,
 │   │   │               falling threshold), alea (the dice: sounds bred from the bank, grooves by role)
+│   │   ├── splitter.rs Splitter: the slices' settings, the six animation modes on the grid, MIDI in (notes,
+│   │   │               LEARN, CHROMA) and out, ratchets, the voices and their mix
+│   │   ├── splitter/   voice (straight and granular playback, envelope, crusher), atoms (the eight built-in
+│   │   │               glitch sources, pure functions of position), slicing (grid, transients, random; what a
+│   │   │               slice sounds like), dice (throws by role, BACK)
 │   │   ├── nullpunkt.rs Nullpunkt: step patterns, synced stutter, glitch stage, built-in scenes
 │   │   ├── aether.rs   Aether: chords, FREE and keys, additive voices in vector banks, the motion's targets,
 │   │   │               RANDOM, built-in sounds
@@ -1416,13 +1810,21 @@ src/
 │   │   │               the CC lanes
 │   │   ├── colloid/    physics (the tank: molecules, atoms, gravity, liquid, strikes, stirring), chords
 │   │   │               (handpan layouts, chord shapes, colour tones, roles, spreading notes over the molecules)
+│   │   ├── orrery.rs   Orrery: the rings (steps, pulses, turns, hits), Euclidean rhythms, GRID and CYCLE,
+│   │   │               a note per ring on its channel, DICE, the pattern buttons and the built-in patterns,
+│   │   │               recalls on the LAUNCH grid, Program Change
 │   │   ├── looper.rs   MIDI Looper: scenes and their notes, transport, recording and overdub, playing
 │   │   │               forward, reversed or by random slices, launching and following scenes, MIDI control
 │   │   ├── looper/     clock (following a MIDI clock: ticks, Start, Stop, Continue, song position)
 │   │   ├── tape.rs     Tape: record EQ, magnetic curve, transport (wow, flutter, stop/start), playback head
 │   │   ├── oversample.rs 2× oversampling (half-band FIR) shared by Magma, Tape, Aether and Prism
 │   │   ├── steps.rs step grid on the global tempo, outgoing notes, held keys
-│   │   └── mod.rs  module descriptions (ModuleDef), generic parameters and DSP helpers
+│   │   └── mod.rs  ModuleKind (built-ins, and Ext for plugin nodes), their descriptions (the SDK's NodeDef),
+│   │               ModuleParams (the SDK's Params with the kind), the shared DSP helpers from the SDK
+│   ├── node_plugin.rs plugin nodes: scanning the Nodes folders, loading dylibs (libloading), checking the
+│   │               ABI version and descriptions, the lock-free registry behind ModuleKind::Ext, the processor
+│   │               that runs a plugin's node block by block (panics and bad samples contained)
+│   ├── node_plugin_tests.rs SDK nodes through the ABI, patches, projects, refusals; the example dylib
 │   ├── midi.rs     MIDI inputs (midir) and shared state read by the MIDI nodes (clock and transport too),
 │   │               activity per input, the clock source's follower
 │   ├── sync.rs     MIDI sync: timing an external clock (least-squares tempo, transport, song position),
@@ -1432,6 +1834,8 @@ src/
 │   ├── au.rs       Audio Units (macOS): listing, pseudo-paths, parameter ranges, the Rust face of au_host.m
 │   ├── au_host.m   the Objective-C host over AUAudioUnit (built by build.rs): AUv3 out of process, AU in
 │   │               process, render and MIDI blocks, host clock, parameters, state, the editor window
+│   ├── sample.rs   audio files a module holds (Splitter's): WAV/AIFF decoding, kept in the project as 16-bit
+│   │               PCM in base64, handed to the audio thread without locking it
 │   ├── record.rs   recording the output: a lock-free tap on the audio thread, a writer thread, takes
 │   ├── export.rs   takes to WAV/AIFF (written here), FLAC/ALAC/AAC (afconvert), MP3 (ffmpeg or lame)
 │   ├── device.rs   the audio setup (devices by id, channel pair, rate, buffer), listing what the system offers
@@ -1442,16 +1846,18 @@ src/
 ├── board.rs        the board's stickers, images (PNG/JPEG kept encoded, SVG kept as text) and background
 ├── project.rs      saving/loading projects and the module library (JSON)
 ├── presets.rs      named presets of a module (knobs, settings, mode, toggle), one file per kind in the app's
-│                   data folder
+│                   data folder (Orrery's patterns in a file of their own)
 ├── ui/
 │   ├── canvas.rs   canvas with pan/zoom, selection, cable drag & drop, context menus
 │   ├── groups.rs   modules: frame (expanded) and card with the boundary ports (collapsed)
 │   ├── layout.rs   auto layout by signal flow (columns, aligned ports, corridors for cables)
-│   ├── palette.rs  palette of nodes and library modules, with dragging onto the canvas
+│   ├── palette.rs  palette of nodes, plugin nodes, plugins and library modules, with dragging onto the canvas
 │   ├── plugin_node.rs panel of plugin nodes (editor, parameters, MIDI, knobs)
-│   ├── nodes.rs    layout and drawing of the oscillator and mixer, shared controls
+│   ├── nodes.rs    layout and drawing of the oscillator and mixer; NodeView, the card, knob cells and
+│   │               selectors from the UI Kit
 │   ├── console.rs  the Console's panel: horizontal (inputs on top) or vertical, 12 or 24 channels
-│   ├── modules.rs  common module panel and their displays
+│   ├── modules.rs  common module panel and their displays (layout from the UI Kit's panel)
+│   ├── node_panel.rs a plugin node's display (its Panel, drawn with the UI Kit) and readout
 │   ├── frakture.rs the Frakture node's panel: HEXAGON, EFFECTS, MUTATE (the grain cloud) and MOTION pages
 │   ├── equalizer.rs the Equalizer's panel: graph and band markers, analyzer (FFT), band controls
 │   ├── prism.rs    the Prism panel, flat: analyzer bar, the display (spectra, curves as outlines, band dots,
@@ -1469,23 +1875,35 @@ src/
 │   │               the chord lanes, the progression strip, knob groups
 │   ├── colloid.rs  the Colloid panel, flat and graphic: the tank (bands, dot matrix, wells, molecule icons, wakes,
 │   │               strikes, stirring), HANDPAN / CHORD and the shape, the notes' cells, knob groups, CC lanes
+│   ├── orrery.rs   the Orrery panel, flat and graphic: the orbits (steps, polygons, notches, planets and their
+│   │               wakes, pings, the CYCLE hand), turning rings by dragging, the pattern buttons (glyphs,
+│   │               STORE, LAUNCH, the PATTERNS ▾ library), the rings' table, the strip, knobs
 │   ├── settings.rs the Settings window: tabs Audio (output, input and its meters), MIDI (inputs and their
-│   │               lights), Sync (clock source, clock out), Plugins (VST3 folders, Audio Units)
-│   ├── iris.rs     the Iris panel: the analysis (spectrum, bands, onsets), the fourteen scenes, palettes, the
-│   │               scene's name, gear and grip, the settings popup, the window of its own
+│   │               lights), Sync (clock source, clock out), Plugins (VST3 folders, Audio Units, plugin
+│   │               nodes)
+│   ├── iris.rs     the Iris panel: the analysis (spectrum, bands, onsets), the nineteen scenes (the 3D ones
+│   │               projected in software), palettes, the scene's name, gear and grip, the frameless look, the
+│   │               settings popup (Picture tab), the window of its own
+│   ├── iris/synth.rs  Iris as a visual synth: the layers (blend, transform, hue, mirror, echoes) composited on
+│   │               the CPU, the LFOs, envelopes, audio and MIDI modulators, the matrix, the Layers and
+│   │               Modulation tabs
 │   ├── recent.rs   Open Recent: the list of recent projects and its submenu
 │   ├── board.rs    background presets and image, stickers on the canvas (drawing, moving, handles, menu,
 │   │               dropped files, textures), the built-in designs, the Stickers and Background submenus
 │   ├── pops.rs     the Pops 66 panel: MACHINE, MIXER and EDITOR detail levels (the node resizes), waveform preview
+│   ├── splitter.rs the Splitter panel: LOAD, CUT, VIEW, DICE; the display (the source, its slices, playheads
+│   │               and grains; cutting and moving slices), the slice keys; pages SLICE (SOUND, STUTTER,
+│   │               CRUSH, GRAINS, each drawn), SEQUENCE (the modes, the lane, PROB bars, Euclidean rings),
+│   │               MIDI (the keyboard, LEARN)
 │   ├── fjord.rs    the Fjord panel: the bank map of the 99 programs, channel keys and their lights, ALEA and
 │   │               its die; pages SOUND (the strike's outlines, NOISE, TONE, CLICK, MIXER, AMP and FILTER
 │   │               ENV) and SEQUENCER · MIDI (the lanes, SYSTEM); the node resizes with the page
-│   ├── widgets.rs  hand-drawn knobs, faders, meters, ports and cables
+│   ├── widgets.rs  hand-drawn knobs, faders, meters, ports and cables (the UI Kit's), waveform previews
 │   ├── monitor.rs  bottom panel: oscilloscope and spectrum (FFT)
 │   ├── tempo.rs    the toolbar's tempo: BPM field (drag or type), beat light, tap tempo; a MIDI clock's
 │   │               tempo while following one
 │   ├── macos.rs    native windows: toolbar controls don't drag the window; plugin editors float
-│   ├── theme.rs    colors, system fonts and style
+│   ├── theme.rs    colors, system fonts and style (the UI Kit's)
 │   └── app.rs      window, toolbar, panels, demo patch
 ├── tests.rs        tests of the graph, the modules and offline engine rendering
 └── perf.rs         benchmarks (audio per module, large patches, UI frames, auto layout)
@@ -1506,7 +1924,9 @@ waiting. Each buffer is processed as one pass: built-in nodes run through it in 
 timing and modulation stay fine-grained), while a plugin gets the whole buffer in a single call with its
 MIDI events placed at their exact offsets, since every plugin call has a fixed cost. Removed nodes and old
 processing orders are handed back to the UI thread to be freed: freeing memory (a delay line is megabytes)
-inside the audio callback could stall it into a click.
+inside the audio callback could stall it into a click. A sample loaded into a Splitter goes the same way
+(`audio/sample.rs`): the UI swaps it in under a lock and bumps a version, the processor takes it with
+`try_lock` (never waiting; it tries again next block) and hands back the one it let go, freed by the UI.
 
 **Performance.** Effects rest when they have gone quiet: with a silent input, once their own signal (echoes,
 tails) has stayed below −100 dB for as long as they can remember sound, they skip their work and output
@@ -1528,10 +1948,12 @@ and the grid is a single mesh. Auto layout and zoom transitions follow a spring 
 set off in a wave from left to right, and zoom proceeds on a logarithmic scale around the center, with no
 sideways drift.
 
-To add a new module: a file in `audio/modules/` with its `ModuleDef` (knobs, ports, modes, toggle) and a
-`Processor`, an entry in `ModuleKind` and, in `ui/modules.rs`, the readout and the display.
+To add a new module: a file in `audio/modules/` with its `ModuleDef` (the SDK's `NodeDef`: knobs, ports,
+modes, toggle) and a `Processor`, an entry in `ModuleKind` and, in `ui/modules.rs`, the readout and the display.
+A node that should ship on its own is a plugin instead (see [Writing nodes](#writing-nodes-sdk-plugins-and-ui-kit)):
+it needs no change to the app.
 The panel (ports, selector, knobs) is generated from the definition; Frakture, too large for the generic
-panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`), Prism (`ui/prism.rs`), Magma (`ui/magma.rs`), Tape (`ui/tape.rs`), Nullpunkt (`ui/nullpunkt.rs`), Aether (`ui/aether.rs`), Larsen (`ui/larsen.rs`), Vesper (`ui/vesper.rs`), the MIDI Looper (`ui/looper.rs`), Automa (`ui/automa.rs`), Colloid (`ui/colloid.rs`), Fjord (`ui/fjord.rs`), Iris (`ui/iris.rs`, sized by the user) and Pops 66
+panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`), Prism (`ui/prism.rs`), Magma (`ui/magma.rs`), Tape (`ui/tape.rs`), Nullpunkt (`ui/nullpunkt.rs`), Aether (`ui/aether.rs`), Larsen (`ui/larsen.rs`), Vesper (`ui/vesper.rs`), the MIDI Looper (`ui/looper.rs`), Automa (`ui/automa.rs`), Colloid (`ui/colloid.rs`), Orrery (`ui/orrery.rs`), Fjord (`ui/fjord.rs`), Splitter (`ui/splitter.rs`), Iris (`ui/iris.rs`, sized by the user) and Pops 66
 (`ui/pops.rs`; its size, like Fjord's and Iris's, follows its settings through `modules::size_of`). Frakture's hexagon runs on the audio thread, block by block: the panel
 hands it the mouse through the module's display values, so paths keep time even when the window doesn't
 redraw.
@@ -1540,6 +1962,20 @@ redraw.
 
 ```bash
 cargo test
+```
+
+With `--workspace`, the SDK's, the UI Kit's and the example plugin's own tests run too:
+
+```bash
+cargo test --workspace
+```
+
+Building the example plugin as a dynamic library (with cargo, into `target/node-plugin-test`), loading it
+from a folder as the app does, playing its nodes in a patch (Haze on an oscillator, Pulse playing Glass)
+and saving and restoring that patch is a test of its own, not run by default:
+
+```bash
+cargo test example_plugin_builds_loads_and_plays -- --ignored
 ```
 
 Loading and playing real Audio Units (Apple's, always installed, and a few others found on the Mac) is a

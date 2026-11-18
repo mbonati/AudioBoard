@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Node SDK · AudioBoard</title>
+<meta name="description" content="Write your own AudioBoard nodes in Rust: the node SDK, building a plugin into a dynamic library, installing and testing it, the panel it gets, ABI versioning and the UI Kit.">
+<meta name="theme-color" content="#141518">
+<script>document.documentElement.classList.add("js")</script>
+<link rel="icon" href="assets/img/logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://cdn.fontshare.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="assets/css/fonts.css">
+<link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="index.html" aria-label="AudioBoard home"><img src="assets/img/logo.svg" alt="" width="34" height="34">AudioBoard</a>
+    <button class="nav-toggle" aria-label="Menu" aria-expanded="false"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h14M3 10h14M3 14h14"/></svg></button>
+    <nav class="nav-links" aria-label="Main">
+      <a href="index.html">Home</a>
+      <a href="nodes.html">Nodes</a>
+      <a href="guide.html">Guide</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="sdk.html" aria-current="page">SDK</a>
+      <a class="gh" href="https://github.com/mbonati/AudioBoard"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>Source</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+<section class="page-hero">
+  <div class="wrap">
+    <span class="label">Node SDK</span>
+    <h1>Your own nodes, <span class="outline">precompiled.</span></h1>
+    <p class="lead">Write a node in Rust against a small SDK, build it into a dynamic library, drop it in a folder. AudioBoard loads it, lists it in the palette, patches it, maps it and saves it like one of its own.</p>
+  </div>
+</section>
+
+<div class="wrap doc">
+  <nav class="toc" aria-label="On this page">
+    <span class="label">On this page</span>
+    <a href="#what">Plugin nodes</a>
+    <a href="#crate">Create the crate</a>
+    <a href="#node">Write the node</a>
+    <a href="#build">Build and install</a>
+    <a href="#test">Test it</a>
+    <a href="#kinds">Other kinds of nodes</a>
+    <a href="#panel">The panel</a>
+    <a href="#rules">Audio-thread rules</a>
+    <a href="#versions">Versions and the ABI</a>
+    <a href="#ship">Distributing</a>
+    <a href="#refused">When it's refused</a>
+    <a href="#kit">The UI Kit</a>
+  </nav>
+
+  <article class="prose">
+    <section id="what">
+      <h2><span class="n">01</span>Plugin nodes</h2>
+      <p>A <strong>node plugin</strong> is a dynamic library (<code>.dylib</code> on macOS, <code>.so</code> on Linux, <code>.dll</code> on Windows) holding one or more nodes written against <code>audioboard-node</code>, the node SDK. Put it in AudioBoard's <strong>Nodes</strong> folder and press <strong>Rescan</strong>: its nodes appear under <strong>Plugin nodes</strong> in the palette and the right-click menu, by maker, and from there on they are nodes like the built-in ones: audio and MIDI cables, knobs a MIDI CC node can map, presets, bypass, modules, the library. A project saves them by a stable id, with their settings by name.</p>
+      <figure><img src="assets/shots/plugin-nodes.png" alt="The example plugin's three nodes on the board: Haze on an oscillator, Pulse playing Glass, both into a mixer" width="2264" height="1460" loading="lazy" data-title="Plugin nodes"><figcaption>The example library's nodes, rendered from the app: Haze (a chorus) on an oscillator, Pulse (a Euclidean rhythm) playing Glass (FM voices).</figcaption></figure>
+      <p>The repository is a Cargo workspace with the SDK and an example beside the app:</p>
+<div class="tree"><b class="d">crates/audioboard-node</b>   <i>the SDK: descriptions, the Node trait, buffers and MIDI, lock-free settings, DSP helpers, the C ABI</i>
+<b class="d">crates/audioboard-ui</b>     <i>the UI Kit the app draws panels with (egui)</i>
+<b class="d">plugins/example-nodes</b>    <i>an example library: Glass (instrument), Haze (effect), Pulse (MIDI)</i>
+<b>plugins/README.md</b>        <i>this guide, in the repository</i></div>
+      <p>The SDK has no dependencies, and a plugin needs nothing else: no egui, nothing of the app. You need Rust 1.88 or newer and, to build for a given computer, its operating system and processor architecture.</p>
+    </section>
+
+    <section id="crate">
+      <h2><span class="n">02</span>Create the crate</h2>
+      <p><strong>Inside the AudioBoard checkout</strong>, the simplest while learning: every folder in <code>plugins/</code> is a member of the workspace. <strong>Or anywhere else</strong>, as a crate of its own.</p>
+      <div class="code"><div class="code-head"><span class="label">Inside the checkout</span><button class="copy" data-copy="cargo new --lib plugins/tremolo">Copy</button></div><pre><code><span class="p">$ </span>cargo new --lib plugins/tremolo</code></pre></div>
+      <div class="code"><div class="code-head"><span class="label">Anywhere else</span><button class="copy" data-copy="cargo new --lib tremolo">Copy</button></div><pre><code><span class="p">$ </span>cargo new --lib tremolo</code></pre></div>
+      <p>Make it a dynamic library and add the SDK, in its <code>Cargo.toml</code>:</p>
+      <div class="code"><div class="code-head"><span class="label">Cargo.toml</span><button class="copy">Copy</button></div><pre><code>[package]
+name = "tremolo"
+version = "0.1.0"
+edition = "2024"
+
+<span class="c"># A C-compatible dynamic library: libtremolo.dylib, libtremolo.so or tremolo.dll.</span>
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+<span class="c"># Inside the checkout:</span>
+audioboard-node = { path = "../../crates/audioboard-node" }
+<span class="c"># Elsewhere, a path to the checkout instead:</span>
+<span class="c">#   audioboard-node = { path = "/path/to/AudioBoard/crates/audioboard-node" }</span>
+<span class="c"># or the repository:</span>
+<span class="c">#   audioboard-node = { git = "https://github.com/mbonati/AudioBoard" }</span></code></pre></div>
+      <p>The package name gives the file name: <code>tremolo</code> builds <code>libtremolo.dylib</code>, and <code>my-nodes</code> builds <code>libmy_nodes.dylib</code>. A crate outside the workspace may add a <code>[profile.release]</code> (<code>lto = true</code> makes it smaller and a little faster); inside, profiles come from the root. Never set <code>panic = "abort"</code>: AudioBoard relies on catching a node's panic.</p>
+    </section>
+
+    <section id="node">
+      <h2><span class="n">03</span>Write the node</h2>
+      <p><strong>Tremolo</strong> turns its input's volume up and down with an LFO: two knobs (RATE, DEPTH), a mode selector for the LFO's shape, a STEREO switch that moves the two channels in opposition, and a display tracing the LFO. This is all of <code>src/lib.rs</code>:</p>
+      <div class="code"><div class="code-head"><span class="label">src/lib.rs</span><button class="copy">Copy</button></div><pre><code><span class="c">//! Tremolo: an AudioBoard node plugin (the walkthrough in plugins/README.md).</span>
+
+use audioboard_node::prelude::*;
+
+<span class="c">// Knob indexes, in the order of PARAMS.</span>
+const RATE: usize = 0;
+const DEPTH: usize = 1;
+
+const PARAMS: &amp;[ParamSpec] = &amp;[
+    ParamSpec::log("RATE", 0.1, 20.0, 4.0, Unit::Hz),
+    ParamSpec::lin("DEPTH", 0.0, 1.0, 0.6, Unit::Percent),
+];
+
+<span class="c">/// The LFO's shapes: the mode selector.</span>
+const SHAPES: &amp;[&amp;str] = &amp;["SINE", "TRIANGLE"];
+
+pub struct Tremolo {
+    params: Shared,
+    sample_rate: f32,
+    <span class="c">/// The LFO's phase, in turns (0…1).</span>
+    phase: f32,
+    depth: Smoothed,
+}
+
+impl Node for Tremolo {
+    const DESCRIPTOR: Descriptor = Descriptor {
+        id: "com.example.tremolo",
+        maker: "Example",
+        def: NodeDef {
+            name: "Tremolo",
+            prefix: "TREM",
+            hint: "volume wobble",
+            inputs: &amp;["IN"],
+            outputs: &amp;["OUT"],
+            params: PARAMS,
+            modes: SHAPES,
+            toggle: Some("STEREO"),
+            display_h: 40.0,
+            viz: 1,
+            ..NodeDef::EMPTY
+        },
+        panel: Panel { display: Display::Trace { index: 0 }, readout: Readout::Param(RATE) },
+    };
+
+    fn new(init: &amp;Init) -&gt; Self {
+        Tremolo {
+            params: init.params,
+            sample_rate: init.sample_rate,
+            phase: 0.0,
+            depth: Smoothed::new(init.params.get(DEPTH)),
+        }
+    }
+
+    fn process(&amp;mut self, ctx: &amp;ProcessCtx, io: &amp;mut Io&lt;'_&gt;) {
+        let n = io.frames();
+        let p = self.params;
+        let step = p.get(RATE) / self.sample_rate;
+        let shape = p.mode();
+        <span class="c">// STEREO: the right channel's LFO half a turn behind the left's.</span>
+        let offset = if p.toggled() { 0.5 } else { 0.0 };
+        let depth = p.get(DEPTH);
+        let (input, out) = io.through(0, 0);
+        for i in 0..n {
+            let d = self.depth.next(depth, ctx.smooth);
+            for c in 0..2 {
+                let lfo = wave(shape, self.phase + offset * c as f32);
+                let gain = 1.0 - d * (0.5 - 0.5 * lfo);
+                out[c][i] = input.map_or(0.0, |b| b[c][i]) * gain;
+            }
+            self.phase = (self.phase + step).fract();
+        }
+        <span class="c">// For the display: the LFO now.</span>
+        p.set_viz(0, wave(shape, self.phase));
+    }
+}
+
+<span class="c">/// The LFO, −1…1, at a phase in turns.</span>
+fn wave(shape: usize, t: f32) -&gt; f32 {
+    match shape {
+        1 =&gt; 1.0 - 4.0 * (t.fract() - 0.5).abs(),
+        _ =&gt; fastmath::sin_turns(t),
+    }
+}
+
+audioboard_node::export_nodes! {
+    name: "Tremolo",
+    maker: "Example",
+    version: env!("CARGO_PKG_VERSION"),
+    nodes: [Tremolo],
+}</code></pre></div>
+      <h3>What each part does</h3>
+      <ul>
+        <li><strong><code>DESCRIPTOR</code></strong> is everything AudioBoard knows before the node runs. The <code>id</code> is unique and <strong>stable forever</strong>: projects find the node by it, so pick a reverse-DNS name you own and never change it. The <code>maker</code> groups it in the palette.</li>
+        <li><strong><code>NodeDef</code></strong>: <code>name</code> (in menus), <code>prefix</code> (titles: “TREM 1”), <code>hint</code>, the audio <code>inputs</code> and <code>outputs</code> (each a stereo cable), <code>params</code>, <code>modes</code>, <code>toggle</code>, <code>display_h</code> (the display's height; 0 hides it) and <code>viz</code> (how many display values the node publishes). <code>..NodeDef::EMPTY</code> leaves the rest empty: no MIDI, no extra data.</li>
+        <li><strong><code>ParamSpec</code></strong> describes a knob: <code>lin</code> or <code>log</code> (log for frequencies and times), the range, the default (where a double-click resets it) and the <code>Unit</code> its value reads in (“4.00 Hz”, “60%”). <code>.bipolar()</code> draws the arc from the centre.</li>
+        <li><strong><code>new</code></strong> runs on the UI thread when the node is added: allocate everything here.</li>
+        <li><strong><code>process</code></strong> runs on the audio thread, one block of at most 64 frames at a time. <code>io.through(0, 0)</code> hands over input 0 (<code>None</code> when unpatched) and output 0; every output must be written for all <code>io.frames()</code> frames. <code>self.params</code> reads the knobs, the mode and the switch without locks while the UI changes them; <code>Smoothed</code> glides the depth over about 10 ms so turning the knob never clicks; <code>set_viz</code> publishes a number for the display.</li>
+        <li><strong><code>export_nodes!</code></strong> makes the library a plugin: it exports the <code>audioboard_node_entry</code> symbol AudioBoard looks for. List every node type of the library in <code>nodes</code>.</li>
+      </ul>
+    </section>
+
+    <section id="build">
+      <h2><span class="n">04</span>Build and install</h2>
+      <div class="code"><div class="code-head"><span class="label">Build (inside the checkout)</span><button class="copy" data-copy="cargo build --release -p tremolo">Copy</button></div><pre><code><span class="p">$ </span>cargo build --release -p tremolo</code></pre></div>
+      <p>The library is <code>target/release/libtremolo.dylib</code> (<code>libtremolo.so</code> on Linux, <code>tremolo.dll</code> on Windows); a crate of its own builds it in its own <code>target/release/</code>. To check it is a plugin, look for its entry point (<code>nm -D</code> on Linux):</p>
+      <div class="code"><div class="code-head"><span class="label">Check</span><button class="copy" data-copy="nm -gU target/release/libtremolo.dylib | grep audioboard_node_entry">Copy</button></div><pre><code><span class="p">$ </span>nm -gU target/release/libtremolo.dylib | grep audioboard_node_entry</code></pre></div>
+      <p>Then copy it into the Nodes folder:</p>
+      <div class="table-wrap"><table class="keys"><thead><tr><th>System</th><th>Nodes folder</th></tr></thead><tbody><tr><td>macOS</td><td><code>~/Library/Application Support/AudioBoard/Nodes</code></td></tr><tr><td>Linux</td><td><code>$XDG_DATA_HOME/audioboard/Nodes</code> (usually <code>~/.local/share/audioboard/Nodes</code>)</td></tr><tr><td>Windows</td><td><code>%APPDATA%\AudioBoard\Nodes</code></td></tr></tbody></table></div>
+      <div class="code"><div class="code-head"><span class="label">Install (macOS)</span><button class="copy" data-copy="mkdir -p ~/Library/Application\ Support/AudioBoard/Nodes &amp;&amp; cp target/release/libtremolo.dylib ~/Library/Application\ Support/AudioBoard/Nodes/">Copy</button></div><pre><code><span class="p">$ </span>mkdir -p ~/Library/Application\ Support/AudioBoard/Nodes &amp;&amp; cp target/release/libtremolo.dylib ~/Library/Application\ Support/AudioBoard/Nodes/</code></pre></div>
+      <p>In AudioBoard, press <strong>Rescan</strong> under <strong>Plugin nodes</strong> in the palette (or <strong>Rescan plugins</strong> in Settings → Plugins), or restart it; the palette's <strong>Open Nodes folder</strong> link opens the folder. Tremolo is now under <strong>Plugin nodes → Example</strong>.</p>
+      <p><strong>While developing</strong>, skip the copying: AudioBoard also searches the folders in <code>AUDIOBOARD_NODE_PATH</code>. Run from a terminal, it prints what it loaded or refused, and a panicking node's message:</p>
+      <div class="code"><div class="code-head"><span class="label">Develop</span><button class="copy" data-copy="cargo build --release -p tremolo &amp;&amp; AUDIOBOARD_NODE_PATH=target/release cargo run --release">Copy</button></div><pre><code><span class="p">$ </span>cargo build --release -p tremolo &amp;&amp; AUDIOBOARD_NODE_PATH=target/release cargo run --release</code></pre></div>
+      <p>A library is never unloaded while AudioBoard runs (its nodes run its code): a <strong>new</strong> library loads on Rescan, a <strong>rebuilt</strong> one after a restart.</p>
+    </section>
+
+    <section id="test">
+      <h2><span class="n">05</span>Test it without the app</h2>
+      <p>A node is plain Rust: give it settings and buffers and call <code>process</code>. <code>Descriptor::problem()</code> runs the same checks AudioBoard runs when it loads the library, so a test catches a broken description before you install anything.</p>
+      <div class="code"><div class="code-head"><span class="label">src/lib.rs, at the end</span><button class="copy">Copy</button></div><pre><code>#[cfg(test)]
+mod tests {
+    use super::*;
+    use audioboard_node::Params;
+
+    #[test]
+    fn the_description_holds_together() {
+        assert_eq!(Tremolo::DESCRIPTOR.problem(), None);
+    }
+
+    #[test]
+    fn full_depth_takes_the_level_down_to_silence_and_back() {
+        <span class="c">// The settings the app would own, and the node's view of them.</span>
+        let params = Params::new(&amp;Tremolo::DESCRIPTOR.def);
+        params.set(DEPTH, 1.0);
+        <span class="c">// SAFETY: `params` outlives the node.</span>
+        let shared = unsafe { Shared::from_raw(params.raw()) };
+        let mut node = Tremolo::new(&amp;Init { sample_rate: 48_000.0, params: shared });
+
+        let ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 0.0, playing: true, restart: false };
+        let input = [[[1.0; BLOCK]; 2]];
+        let mut output = [[[0.0; BLOCK]; 2]];
+        let (mut low, mut high) = (f32::MAX, 0.0f32);
+        for _ in 0..750 {
+            <span class="c">// One second, block by block.</span>
+            let mut io = Io::new(BLOCK, &amp;input, &amp;[true], &amp;mut output, &amp;[], &amp;mut []);
+            node.process(&amp;ctx, &amp;mut io);
+            for s in output[0][0] {
+                low = low.min(s);
+                high = high.max(s);
+            }
+        }
+        assert!(low &lt; 0.05 &amp;&amp; high &gt; 0.95, "{low} … {high}");
+    }
+}</code></pre></div>
+      <div class="code"><div class="code-head"><span class="label">Run</span><button class="copy" data-copy="cargo test -p tremolo">Copy</button></div><pre><code><span class="p">$ </span>cargo test -p tremolo</code></pre></div>
+      <p><code>Io::new</code> takes MIDI in too (<code>MidiMsg { frame, data }</code>), and <code>io.midi_sent()</code> returns what the node sent: the example library's tests show both.</p>
+    </section>
+
+    <section id="kinds">
+      <h2><span class="n">06</span>Other kinds of nodes</h2>
+      <h3>An instrument (MIDI in)</h3>
+      <p>Set <code>midi_in: true</code> and no inputs. <code>io.midi()</code> holds the block's events in frame order; apply each at its frame. They borrow <code>io</code>, so copy them out before taking the output. <code>plugins/example-nodes/src/glass.rs</code> is a complete eight-voice instrument.</p>
+      <div class="code"><div class="code-head"><span class="label">Events at their frames</span><button class="copy">Copy</button></div><pre><code>let n = io.frames();
+let mut events = [MidiMsg::default(); audioboard_node::MIDI_CAP];
+let count = io.midi().len();
+events[..count].copy_from_slice(io.midi());
+let mut next = 0;
+let out = io.output(0);
+for i in 0..n {
+    while next &lt; count &amp;&amp; events[next].frame as usize &lt;= i {
+        if let Some((note, velocity)) = events[next].note_on() {
+            <span class="c">// start a voice</span>
+        } else if let Some(note) = events[next].note_off() {
+            <span class="c">// release it</span>
+        }
+        next += 1;
+    }
+    <span class="c">// out[0][i] = …; out[1][i] = …;</span>
+}</code></pre></div>
+      <h3>A MIDI generator (MIDI out)</h3>
+      <p>Set <code>midi_out: true</code>; it may have no audio outputs at all. Send with <code>io.send_midi(frame, [status, data1, data2])</code>, up to 128 events a block. Follow the transport through <code>ctx</code>: <code>ctx.beat_at(i)</code> is the beat at frame <code>i</code>, <code>ctx.playing</code> says whether it runs, and on <code>ctx.restart</code> (or when it stops) end the notes you hold. <code>pulse.rs</code> plays a Euclidean rhythm on the beat.</p>
+      <h3>Control inputs, several outputs, saved state, tempo</h3>
+      <p>Any input can carry a control signal: <code>io.cv(i)</code> is its left channel. A knob that sets how much an input modulates goes in <code>cv_depth</code> as <code>(knob, input)</code>, and the panel dims it while that input is unpatched:</p>
+      <div class="code"><div class="code-head"><span class="label">CV</span><button class="copy">Copy</button></div><pre><code>inputs: &amp;["IN", "RATE CV"],
+cv_depth: &amp;[(DEPTH, 1)],
+<span class="c">// in process: let cv = io.cv(1).map_or(0.0, |c| c[i]);</span></code></pre></div>
+      <p>With several outputs, copy the input first, then borrow the outputs together:</p>
+      <div class="code"><div class="code-head"><span class="label">Several outputs</span><button class="copy">Copy</button></div><pre><code>let input = io.input(0).copied();
+let outs = io.outputs();
+let (main, rest) = outs.split_at_mut(1);
+<span class="c">// main[0] is OUT, rest[0] the second output; input is an Option&lt;Buf&gt;</span></code></pre></div>
+      <p><code>data: &amp;[0.0; 16]</code> gives a node 16 extra values saved in the project (<code>params.data(i)</code>, <code>params.set_data(i, v)</code>, from <code>process</code> too) for what it keeps by itself. <code>ctx.tempo()</code> is the tempo in BPM: an LFO synced to the beat reads its phase from <code>ctx.beat_at(i)</code>.</p>
+    </section>
+
+    <section id="panel">
+      <h2><span class="n">07</span>The panel</h2>
+      <p>A plugin doesn't draw: egui's types change between versions and can't cross the plugin boundary. AudioBoard draws a generic panel from the description, with the UI Kit:</p>
+<div class="tree"> ┌──────────────────────────────┐
+ │ ▾ ● TREM 1              ○  × │  header: title from `prefix`; bypass on effects
+ │ IN       4.00 Hz         OUT │  ports down the sides, the readout in the middle
+ │          SINE      [STEREO]  │  the mode (or the hint), the switch
+ │ ┌──────────────────────────┐ │
+ │ │     display (Trace)      │ │  `display_h` tall
+ │ └──────────────────────────┘ │
+ │ [   SINE   |   TRIANGLE   ]  │  the mode selector
+ │      RATE        DEPTH       │  knobs, three to a row (four for 4 or 7+)
+ └──────────────────────────────┘</div>
+      <p>The display shows one of a few pictures, fed by the values the node publishes with <code>set_viz</code>:</p>
+      <div class="table-wrap"><table class="keys"><thead><tr><th>Display</th><th>Shows</th><th>Values</th></tr></thead><tbody><tr><td><code>None</code></td><td>nothing</td><td></td></tr><tr><td><code>Level</code></td><td>the output level, as a meter</td><td>measured by AudioBoard</td></tr><tr><td><code>Bars {{ from, count }}</code></td><td>vertical bars</td><td><code>count</code> values, 0…1</td></tr><tr><td><code>Curve {{ from, count }}</code></td><td>a line, left to right</td><td><code>count</code> values, −1…1</td></tr><tr><td><code>Trace {{ index }}</code></td><td>the value's recent history, scrolling</td><td>one value, −1…1</td></tr><tr><td><code>Dot {{ x, y }}</code></td><td>a dot with cross-hairs</td><td>two values, 0…1</td></tr></tbody></table></div>
+      <p>The readout line is the node's name (<code>Readout::Name</code>), a knob's value (<code>Param(i)</code>), a display value in a unit (<code>Viz { index, unit }</code>, say <code>Unit::Note</code> for “C4”) or the mode's label (<code>Mode</code>); the line under it shows the mode, or the hint.</p>
+      <figure><img src="assets/shots/plugin-glass.png" alt="Glass, a plugin node: readout C2, a curve display of its timbre, a mode selector and five knobs" width="608" height="652" loading="lazy" data-title="Glass" style="max-width: 304px"><figcaption>Glass: a curve display and a readout naming the last note.</figcaption></figure>
+    </section>
+
+    <section id="rules">
+      <h2><span class="n">08</span>Audio-thread rules</h2>
+      <p><code>process</code> runs on the audio thread, which must deliver every block on time. In it:</p>
+      <ul>
+        <li><strong>Don't allocate</strong>: no <code>Box::new</code>, no growing <code>Vec</code>, no <code>String</code> or <code>format!</code>. Make buffers in <code>new</code>.</li>
+        <li><strong>Don't lock, wait or sleep</strong>, and do no I/O: no files, no printing.</li>
+        <li>Write <strong>every output</strong> for all <code>io.frames()</code> frames.</li>
+        <li>Keep the output finite and in range: NaN, infinities and absurd levels are muted, and <code>dsp::soft_limit</code> keeps a level under ±1 smoothly.</li>
+      </ul>
+      <p>A panic in <code>new</code> or <code>process</code> is caught at the boundary: the node falls silent and its display says “Stopped: the plugin crashed” while the rest of the patch plays on. The SDK's helpers are all safe here: <code>Smoothed</code>, <code>OnePole</code>, <code>DelayLine</code> (allocated in <code>new</code>), <code>Rng</code>, <code>Wander</code>, <code>Quiet</code>, <code>pan_gains</code>, <code>mix_gains</code>, <code>soft_limit</code>, <code>note_hz</code>, and the fast <code>sin_turns</code>, <code>exp2</code>, <code>log2</code> and <code>tanh</code>.</p>
+    </section>
+
+    <section id="versions">
+      <h2><span class="n">09</span>Versions and the ABI</h2>
+      <p>A project stores a plugin node by its id, its knobs <strong>by name</strong>, its mode <strong>by label</strong>, its switch and its data values by position. From one version of your plugin to the next: never change the id; adding or reordering knobs is fine (a new one starts at its default), renaming one loses its saved value; renaming a mode resets saved nodes to the first; add new data values at the end.</p>
+      <p>Rust has no stable ABI, so AudioBoard and a plugin share only a C ABI: <code>#[repr(C)]</code> tables and <code>extern "C"</code> functions, generated by <code>export_nodes!</code>. The library exports <code>audioboard_node_entry</code>, which returns a table whose <strong>first field is the ABI version</strong>, in the same place in every version. AudioBoard reads it before anything else and refuses a library built for another version, saying to rebuild it against the matching <code>audioboard-node</code>; rebuilding is all it takes. Per block, only pointers cross the boundary: no allocation, no lock.</p>
+    </section>
+
+    <section id="ship">
+      <h2><span class="n">10</span>Distributing</h2>
+      <p>Ship the one library file, built in release. On macOS a library loads only into an AudioBoard of the same architecture; a universal library serves Apple silicon and Intel Macs alike:</p>
+      <div class="code"><div class="code-head"><span class="label">Targets</span><button class="copy" data-copy="rustup target add aarch64-apple-darwin x86_64-apple-darwin">Copy</button></div><pre><code><span class="p">$ </span>rustup target add aarch64-apple-darwin x86_64-apple-darwin</code></pre></div>
+      <div class="code"><div class="code-head"><span class="label">Build both</span><button class="copy" data-copy="cargo build --release --target aarch64-apple-darwin &amp;&amp; cargo build --release --target x86_64-apple-darwin">Copy</button></div><pre><code><span class="p">$ </span>cargo build --release --target aarch64-apple-darwin &amp;&amp; cargo build --release --target x86_64-apple-darwin</code></pre></div>
+      <div class="code"><div class="code-head"><span class="label">Join them</span><button class="copy" data-copy="lipo -create -output libtremolo.dylib target/aarch64-apple-darwin/release/libtremolo.dylib target/x86_64-apple-darwin/release/libtremolo.dylib">Copy</button></div><pre><code><span class="p">$ </span>lipo -create -output libtremolo.dylib target/aarch64-apple-darwin/release/libtremolo.dylib target/x86_64-apple-darwin/release/libtremolo.dylib</code></pre></div>
+      <p>macOS marks a library downloaded from the internet as quarantined, and may refuse unsigned code from it. Sign what you distribute (<code>codesign --sign "Developer ID Application: …"</code>, then notarize); a user who trusts an unsigned plugin can clear the mark with <code>xattr -d com.apple.quarantine libtremolo.dylib</code>. On Linux ship the <code>.so</code>, on Windows the <code>.dll</code>, each built for that system.</p>
+    </section>
+
+    <section id="refused">
+      <h2><span class="n">11</span>When it's refused</h2>
+      <p>AudioBoard checks a library before using any of its nodes. A refusal shows in a notice at launch or after Rescan, and is printed when it runs from a terminal:</p>
+      <div class="table-wrap"><table class="keys"><thead><tr><th>Message</th><th>Cause, and what to do</th></tr></thead><tbody><tr><td><code>could not be loaded (…)</code></td><td>Not a library for this system or architecture, a missing dependency, or macOS quarantine.</td></tr><tr><td><code>not an AudioBoard node plugin (no audioboard_node_entry)</code></td><td><code>export_nodes!</code> is missing, or <code>crate-type</code> isn't <code>["cdylib"]</code>.</td></tr><tr><td><code>built for node ABI vN, this AudioBoard loads vM: rebuild it…</code></td><td>Built against another SDK generation: rebuild with the one named.</td></tr><tr><td><code>built for N-frame blocks, AudioBoard uses 64</code></td><td>Same: rebuild against the matching SDK.</td></tr><tr><td><code>its node id … is already taken</code></td><td>Two libraries offer the same id: often two copies of one plugin in the folder.</td></tr><tr><td><code>a node is not usable: &lt;id&gt;: …</code></td><td>The description doesn't hold together: an empty or non-finite range, a log taper reaching zero, a default out of range, a CV depth or a display naming something the node doesn't have, too many ports or knobs. <code>Descriptor::problem()</code> finds these in a test.</td></tr></tbody></table></div>
+      <p>In a node's display, <strong>Stopped: the plugin crashed</strong> means it panicked (run AudioBoard from a terminal to read the panic); <strong>Muted bad samples from the plugin</strong> means it output NaN, infinities or levels over 10 000.</p>
+    </section>
+
+    <section id="kit">
+      <h2><span class="n">12</span>The UI Kit</h2>
+      <p><code>audioboard-ui</code> holds the parts every panel in the app is drawn from, in its flat line-art style: the theme (colours, fonts, the egui style), <code>NodeView</code> (drawing in node units at any zoom, and recording controls for MIDI mapping), knobs, faders, toggles, meters, ports and cables, labelled knob cells, segmented selectors, pills, the node card, the display primitives above, and the generic panel's layout computed from a <code>NodeDef</code>.</p>
+      <p>Built-in panels use these parts directly. Plugin nodes are drawn with them by the app, from their description: that is how a plugin gets a panel without crossing the ABI with egui types. The full reference, with more examples, is <code>plugins/README.md</code> in the repository and the SDK's own documentation (<code>cargo doc -p audioboard-node --open</code>).</p>
+      <p style="margin-top: 28px"><a class="btn ghost" href="https://github.com/mbonati/AudioBoard/tree/main/plugins" style="--c: var(--green)">The example plugin and the guide on GitHub →</a></p>
+    </section>
+  </article>
+</div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div>
+      <a class="brand" href="index.html"><img src="assets/img/logo.svg" alt="" width="30" height="30"> AudioBoard</a>
+      <p class="dim" style="margin-top: 12px">A node-based modular synthesizer in Rust. Built with egui and eframe, cpal, midir and vst3-host. Every panel on this site is rendered from the app.</p>
+    </div>
+    <nav aria-label="Footer">
+      <a href="index.html">Home</a><a href="nodes.html">Nodes</a><a href="guide.html">Guide</a><a href="architecture.html">Architecture</a><a href="sdk.html">SDK</a><a href="https://github.com/mbonati/AudioBoard">Source</a>
+    </nav>
+  </div>
+</footer>
+
+<script src="assets/js/site.js"></script>
+</body>
+</html>

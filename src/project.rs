@@ -119,6 +119,9 @@ enum KindData {
         /// MIDI nodes: the control they drive.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         target: Option<TargetData>,
+        /// The audio file the module plays (Splitter's sample), embedded.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sample: Option<crate::audio::sample::Saved>,
     },
     /// A plugin: where it lives (a VST3 bundle, or an Audio Unit's
     /// pseudo-path) and its complete state.
@@ -211,7 +214,8 @@ fn node_data(graph: &Graph, n: &Node, numbers: &HashMap<NodeId, u32>, origin: Ve
             let p = &m.params;
             let def = p.kind.def();
             KindData::Module {
-                module: def.name.to_owned(),
+                // Built-in modules by name, plugin nodes by their stable id.
+                module: p.kind.key().to_owned(),
                 params: def
                     .params
                     .iter()
@@ -228,6 +232,7 @@ fn node_data(graph: &Graph, n: &Node, numbers: &HashMap<NodeId, u32>, origin: Ve
                         param: graph.node(t.node)?.param_name(t.param)?,
                     })
                 }),
+                sample: p.sample.get().map(|s| s.saved()),
             }
         }
     };
@@ -386,10 +391,10 @@ fn instantiate(
                 }
                 id
             }
-            KindData::Module { module, params, mode, toggle, data: extra, .. } => {
+            KindData::Module { module, params, mode, toggle, data: extra, sample, .. } => {
                 // Frakture was first called Fractal.
                 let module = if module == "Fractal" { "Frakture" } else { module.as_str() };
-                let Some(kind) = ModuleKind::ALL.iter().copied().find(|k| k.def().name == module) else {
+                let Some(kind) = ModuleKind::from_key(module) else {
                     continue;
                 };
                 let def = kind.def();
@@ -403,6 +408,9 @@ fn instantiate(
                 p.set_toggle(*toggle);
                 for (dst, v) in p.data.iter().zip(extra) {
                     dst.set(*v);
+                }
+                if let Some(s) = sample.as_ref().and_then(crate::audio::sample::Sample::from_saved) {
+                    p.sample.set(Some(Arc::new(s)));
                 }
                 graph.add_module_with(pos, Arc::new(p), audio)
             }
@@ -431,6 +439,21 @@ fn instantiate(
         }
     }
     ids
+}
+
+/// The modules in `project` this app can't make, each once in file order:
+/// an unknown name, or a node plugin (by its id) that isn't installed.
+pub fn missing_modules(project: &Project) -> Vec<String> {
+    let mut missing: Vec<String> = Vec::new();
+    for data in &project.nodes {
+        if let KindData::Module { module, .. } = &data.kind {
+            let known = module == "Fractal" || ModuleKind::from_key(module).is_some();
+            if !known && !missing.contains(module) {
+                missing.push(module.clone());
+            }
+        }
+    }
+    missing
 }
 
 /// Replaces the patch with the project's. Returns how many nodes could not

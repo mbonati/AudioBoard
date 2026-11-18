@@ -185,6 +185,13 @@ impl AudioBoardApp {
         let _ = std::thread::Builder::new().name("au-scan".into()).spawn(move || {
             let _ = au_tx.send(crate::audio::plugin::scan_au());
         });
+        // Node plugins (dylibs built with the node SDK), before any project
+        // that uses them is opened.
+        let node_scan = crate::audio::node_plugin::scan();
+        let (scan_text, scan_error) = node_scan.summary();
+        if !scan_text.is_empty() {
+            eprintln!("Node plugins: {scan_text}");
+        }
         let mut midi = MidiInputs::new();
         midi.set_sync_source(settings.sync.source.clone(), &shared.sync);
         let clock_out = ClockOut::start(shared.clone());
@@ -207,7 +214,7 @@ impl AudioBoardApp {
             plugin_catalog,
             audio_units: Vec::new(),
             au_scan: Some(au_scan),
-            toast: None,
+            toast: (!scan_text.is_empty()).then(|| Toast { text: scan_text, error: scan_error, until: 8.0 }),
             window_title: String::new(),
             midi,
             clock_out,
@@ -476,7 +483,11 @@ impl AudioBoardApp {
                 self.editor.reset();
                 self.remember_recent(&path);
                 self.doc = Document::new(Some(path), project::snapshot(&self.graph));
-                if skipped > 0 {
+                let missing = project::missing_modules(&p);
+                if skipped > 0 && !missing.is_empty() {
+                    // Plugin nodes are saved by id: name what to install.
+                    self.notify(now, format!("Opened {name}: {skipped} node(s) skipped, not installed: {}", missing.join(", ")), true);
+                } else if skipped > 0 {
                     self.notify(now, format!("Opened {name}: {skipped} unknown node(s) skipped"), true);
                 } else {
                     self.notify(now, format!("Opened {name}"), false);
@@ -583,7 +594,18 @@ impl AudioBoardApp {
                 self.refresh_plugins();
                 let counts = plugin_counts(&self.editor.plugins);
                 let au = if counts.au > 0 { format!(", {} Audio Unit(s)", counts.au) } else { String::new() };
-                self.notify(now, format!("{} VST3 plugin(s){au} found", counts.vst3), false);
+                // Node plugins too: new libraries in the Nodes folder load now.
+                let nodes = crate::audio::node_plugin::scan();
+                let (detail, refused) = nodes.summary();
+                let detail = if detail.is_empty() { String::new() } else { format!(" · {detail}") };
+                self.notify(now, format!("{} VST3 plugin(s){au}, {} plugin node(s) found{detail}", counts.vst3, nodes.total), refused);
+            }
+            Request::RevealNodePlugins => {
+                if let Some(dir) = crate::audio::node_plugin::folder() {
+                    if let Err(e) = reveal(&dir) {
+                        self.notify(now, format!("Could not open {}: {e}", dir.display()), true);
+                    }
+                }
             }
             Request::RevealLibrary => {
                 let dir = &self.library.dir;
@@ -1648,6 +1670,19 @@ fn save_catalog(catalog: &BTreeMap<String, PluginInfo>) {
 /// (a device that sends clock and hears it back would loop).
 fn clock_outputs(sync: &SyncSettings) -> Vec<String> {
     sync.clock_out.iter().filter(|o| sync.source.as_ref() != Some(*o)).cloned().collect()
+}
+
+/// Creates `dir` if needed and opens it in the file manager.
+fn reveal(dir: &std::path::Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dir)?;
+    let opener = if cfg!(target_os = "macos") {
+        "open"
+    } else if cfg!(target_os = "windows") {
+        "explorer"
+    } else {
+        "xdg-open"
+    };
+    std::process::Command::new(opener).arg(dir).spawn().map(|_| ())
 }
 
 fn plugin_counts(plugins: &[PluginEntry]) -> PluginCounts {

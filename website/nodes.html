@@ -27,6 +27,7 @@
       <a href="nodes.html" aria-current="page">Nodes</a>
       <a href="guide.html">Guide</a>
       <a href="architecture.html">Architecture</a>
+      <a href="sdk.html">SDK</a>
       <a class="gh" href="https://github.com/mbonati/AudioBoard"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>Source</a>
     </nav>
   </div>
@@ -35,7 +36,7 @@
 <main id="main">
 <section class="page-hero">
   <div class="wrap">
-    <span class="label">Catalogue · 33 built-in nodes + plugins</span>
+    <span class="label">Catalogue · 35 built-in nodes + plugins</span>
     <h1>Every node, <span class="outline" style="--accent: var(--teal)">on the board.</span></h1>
     <p class="lead">Sources make sound, textures and effects shape it, MIDI nodes play and move it, mixers bring it home, and Iris turns it into pictures. Every cable is stereo; mono sources write the same signal to both sides. Click a node for its full description; every picture is its real panel, rendered from the app while the board plays.</p>
   </div>
@@ -43,13 +44,13 @@
 
 <div class="filters">
   <div class="wrap">
-    <button class="chip" data-filter="all" aria-pressed="true" style="--c: var(--text)"><i></i>All <small>34</small></button>
-    <button class="chip" data-filter="sources" aria-pressed="false" style="--c: var(--blue)"><i></i>Sources <small>10</small></button>
+    <button class="chip" data-filter="all" aria-pressed="true" style="--c: var(--text)"><i></i>All <small>37</small></button>
+    <button class="chip" data-filter="sources" aria-pressed="false" style="--c: var(--blue)"><i></i>Sources <small>11</small></button>
     <button class="chip" data-filter="texture" aria-pressed="false" style="--c: var(--teal)"><i></i>Texture <small>3</small></button>
     <button class="chip" data-filter="effects" aria-pressed="false" style="--c: var(--orange)"><i></i>Effects <small>8</small></button>
     <button class="chip" data-filter="midi" aria-pressed="false" style="--c: var(--violet)"><i></i>MIDI <small>2</small></button>
-    <button class="chip" data-filter="sequences" aria-pressed="false" style="--c: var(--rose)"><i></i>MIDI sequences <small>7</small></button>
-    <button class="chip" data-filter="plugins" aria-pressed="false" style="--c: var(--green)"><i></i>Plugins <small>1</small></button>
+    <button class="chip" data-filter="sequences" aria-pressed="false" style="--c: var(--rose)"><i></i>MIDI sequences <small>8</small></button>
+    <button class="chip" data-filter="plugins" aria-pressed="false" style="--c: var(--green)"><i></i>Plugins <small>2</small></button>
     <button class="chip" data-filter="output" aria-pressed="false" style="--c: var(--amber)"><i></i>Output <small>2</small></button>
     <button class="chip" data-filter="visual" aria-pressed="false" style="--c: var(--yellow)"><i></i>Visual <small>1</small></button>
     <label class="search">
@@ -200,6 +201,27 @@
           <li><b>STEPS.</b> A lane per channel, up to 32 steps of 1/8, 1/16, 1/16T or 1/32, with soft, medium and accent steps, SWING and GATE.</li>
           <li><b>SYSTEM.</b> MIDI channel and notes with LRN, LOCAL OFF, program change, and four Trig audio inputs that play the channels (a pad, or a drum loop for drum replacement).</li>
           <li><b>Outputs.</b> OUT carries the mix; CH 1–4 each channel on its own.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="card" id="node-splitter" tabindex="0" role="button" data-group="sources" data-group-label="Sources" data-name="Splitter" data-shots="assets/shots/splitter.png|SLICE,assets/shots/splitter-seq.png|SEQUENCE,assets/shots/splitter-midi.png|MIDI" data-keys="slicer sampler sample granular grains glitch stutter ratchet euclid wav aiff dice minimal" style="--accent: var(--blue)">
+      <div class="thumb"><img src="assets/shots/splitter.png" width="2016" height="1304" loading="lazy" alt="Splitter panel"></div>
+      <div class="meta"><div class="row"><h3>Splitter</h3><span class="label">Slicer · grains</span></div>
+        <p>A sample slicer and granular glitch engine on the board's grid: up to 32 slices, each with its own stutter, crusher and grains, eight built-in glitch atoms, six animation modes and DICE.</p></div>
+      <div class="more">
+        <p>For fractured, minimal, very digital music: sine tones and pings, clicks, data noise, stuttering micro-loops, frozen grains, sub pulses. <b>LOAD</b> a WAV or AIFF (up to 30 s, kept inside the project), cut it by hand on the display or in one go: an equal grid, at the transients, or into random fragments. With nothing loaded, eight <b>atoms</b> play instead: SINE, PING, CLICK, SUB, NOISE, DATA, PULSE and CRACK, read like a sample.</p>
+        <table><tr><th>Section</th><th>Per slice</th></tr>
+          <tr><td>SOURCE</td><td>SAMPLE or an atom · ONE, GATE, LOOP · REV · PLAY</td></tr>
+          <tr><td>SOUND</td><td>PITCH · GAIN · PAN · ATTACK · RELEASE · the region</td></tr>
+          <tr><td>STUTTER</td><td>REPEAT 1×–16× at 1/8 to 1/128 · FALL · RAMP</td></tr>
+          <tr><td>CRUSH</td><td>BITS 16 to 2 · DOWN (sample-and-hold)</td></tr>
+          <tr><td>GRAINS</td><td>SIZE · DENSITY · POS · SPRAY · JITTER · FREEZE · SYNC to the grid</td></tr></table>
+        <ul>
+          <li><b>Animation.</b> On the board's grid while it plays: ORDER, RANDOM, PATTERN (a slice or a rest per step), PROB (each slice rolls its own dice), EUCLID (a rhythm per slice, on its own length, drawn as a ring) and STUTTER (the steps rolled into ratchets). FILL, CHAOS, SWING, LOCK.</li>
+          <li><b>DICE</b> throws new slice settings, new rhythms or both, as far as CHANCE says, following what each slice sounds like; BACK takes a throw back.</li>
+          <li><b>MIDI.</b> A note per slice, set on the keyboard or with LEARN; note-offs end GATE and LOOP slices. CHROMA plays the selected slice in pitch. The steps go out as notes.</li>
+          <li><b>Grains.</b> The playhead moves in real time, so the pitch no longer changes the length; FREEZE holds it still, SYNC locks the grains to the beat.</li>
         </ul>
       </div>
     </article>
@@ -449,7 +471,7 @@
   <header>
     <span class="label">05 · MIDI sequences</span>
     <h2>MIDI sequences</h2>
-    <p>Notes travel on MIDI cables: square ports and dashed cables, joining a MIDI output to a MIDI input. Start and Stop drive the transport, and every sequencer and arpeggiator is locked to the board's global tempo, so they always stay in time with each other. Try <i>Automa → VST instrument</i>, <i>MIDI In → Arpeggiator → VST instrument</i>, or <i>MIDI In → Colloid → VST instrument</i> to have the atoms play your chords.</p>
+    <p>Notes travel on MIDI cables: square ports and dashed cables, joining a MIDI output to a MIDI input. Start and Stop drive the transport, and every sequencer and arpeggiator is locked to the board's global tempo, so they always stay in time with each other. Try <i>Automa → VST instrument</i>, <i>MIDI In → Arpeggiator → VST instrument</i>, <i>MIDI In → Colloid → VST instrument</i> to have the atoms play your chords, or <i>Orrery → Pops 66</i> for Euclidean grooves.</p>
   </header>
   <div class="cards">
     <article class="card" id="node-sequencer" tabindex="0" role="button" data-group="sequences" data-group-label="MIDI sequences" data-name="Step Sequencer" data-shots="assets/shots/sequencer.png" data-keys="steps scale melody" style="--accent: var(--rose)">
@@ -513,6 +535,24 @@
       </div>
     </article>
 
+    <article class="card" id="node-orrery" tabindex="0" role="button" data-group="sequences" data-group-label="MIDI sequences" data-name="Orrery" data-after="Euclidean rhythms on concentric rings" data-shots="assets/shots/orrery.png|GRID,assets/shots/orrery-cycle.png|CYCLE" data-keys="euclid euclidean bjorklund rhythm drums polyrhythm polymeter rings rotate twist channel patterns presets recall program change" style="--accent: var(--rose)">
+      <div class="thumb"><img src="assets/shots/orrery.png" width="1896" height="1200" loading="lazy" alt="Orrery panel"></div>
+      <div class="meta"><div class="row"><h3>Orrery</h3><span class="label">Euclid</span></div>
+        <p>Eight concentric rings, each a Euclidean rhythm with a note on a MIDI channel of its own: a whole drum kit in one node.</p></div>
+      <div class="more">
+        <p>The panel is an orrery, drawn flat and graphic: each ring an orbit with its steps round it, hits joined into the rhythm's polygon, and a planet that plays the hits it passes. Click a step to make it a hit or a rest, right-click to accent it, drag a ring round to turn it.</p>
+        <ul>
+          <li><b>The rings.</b> A row per ring: ON, STEPS (1–32), PULSES spread over them as evenly as they go (3 over 8 is the tresillo), ROT, NOTE (with its General MIDI drum) and CH, the MIDI channel.</li>
+          <li><b>Every step by hand.</b> On the orbits or in the selected ring's strip (drag to paint), with EUCLID, INVERT, CLEAR and DICE; VELOCITY, GATE and CHANCE per ring, ACCENT for accented steps.</li>
+          <li><b>Turning.</b> Drag a ring to shift its rhythm against the others, by steps or (with Shift) by any part of one; <b>TWIST</b> turns each ring further than the one outside it, so they all fall out of phase.</li>
+          <li><b>GRID or CYCLE.</b> On the board's grid (RATE, SWING) rings of different lengths drift apart (polymeter); in CYCLE each goes round once in 1 beat to 8 bars, 3 against 4 against 5 (polyrhythm), under one sweeping hand.</li>
+          <li><b>Patterns.</b> Eight buttons hold patterns (everything but the notes and channels): click to recall, Shift-click or STORE to keep the rings, right-click to name or clear. <b>LAUNCH</b> brings a recall in now, on the next beat or on the next bar, so it lands in time; Program Change 1–8 recalls them from a controller.</li>
+          <li><b>The library.</b> PATTERNS ▾ saves named patterns for every project and puts any of them on a button; eight are built in, from Four floor and Tresillo to Shuffle, Poly 3:4:5 and Drift.</li>
+          <li>It starts as a General MIDI groove on channel 10, so it plays Pops 66 at once; <b>DICE</b> throws new rhythms on every ring that plays.</li>
+        </ul>
+      </div>
+    </article>
+
     <article class="card" id="node-looper" tabindex="0" role="button" data-group="sequences" data-group-label="MIDI sequences" data-name="MIDI Looper" data-shots="assets/shots/looper.png" data-keys="loop record overdub scenes clock" style="--accent: var(--rose)">
       <div class="thumb"><img src="assets/shots/looper.png" width="1696" height="1060" loading="lazy" alt="MIDI Looper panel"></div>
       <div class="meta"><div class="row"><h3>MIDI Looper</h3><span class="label">Eight scenes</span></div>
@@ -559,8 +599,8 @@
 <section class="cat-group" id="plugins" style="--accent: var(--green)">
   <header>
     <span class="label">06 · Plugins</span>
-    <h2>VST3 and Audio Units</h2>
-    <p>Installed plugins, VST3 and Audio Units (AUv3 and AU), appear in the Plugins section of the palette and of the right-click menu, grouped by maker, and are added like any other node.</p>
+    <h2>VST3, Audio Units, plugin nodes</h2>
+    <p>Installed plugins, VST3 and Audio Units (AUv3 and AU), appear in the Plugins section of the palette and of the right-click menu, grouped by maker, and are added like any other node. Plugin nodes, built with AudioBoard's own <a href="sdk.html">Rust SDK</a>, have a section of their own.</p>
   </header>
   <div class="cards">
     <article class="card" id="node-plugin" tabindex="0" role="button" data-group="plugins" data-group-label="Plugins" data-name="Plugin node" data-keys="vst vst3 au auv3 audio unit instrument effect editor" style="--accent: var(--green)">
@@ -593,6 +633,21 @@
           <li>A stereo input (effects), a stereo output and, for instruments, a MIDI input. The project saves the plugin's complete state; on another computer a VST3 is found by name, an Audio Unit by its component code.</li>
           <li>A plugin is called once per audio buffer, as in a DAW; extra outputs are switched off at load, and a plugin with nothing coming in rests after a second of silence.</li>
           <li>VST3 and Audio Units (not VST2 or CLAP). VST3 plugins and AU components run inside AudioBoard, so a faulty one can make it quit; <b>AUv3</b> extensions run in a process of their own, as in Logic, so a crash leaves the board playing.</li>
+        </ul>
+      </div>
+    </article>
+    <article class="card" id="node-plugin-node" tabindex="0" role="button" data-group="plugins" data-group-label="Plugins" data-name="Plugin nodes" data-after="your own nodes, built with the Rust SDK" data-shots="assets/shots/plugin-glass.png|GLASS,assets/shots/plugin-nodes.png|THE EXAMPLE LIBRARY" data-keys="sdk rust dylib plugin node own custom build example glass haze pulse" style="--accent: var(--green)">
+      <div class="thumb"><img src="assets/shots/plugin-glass.png" width="608" height="652" loading="lazy" alt="Glass, a node from the example plugin, on the generic panel"></div>
+      <div class="meta"><div class="row"><h3>Plugin nodes</h3><span class="label">SDK</span></div>
+        <p>Nodes written in Rust with AudioBoard's SDK and built into a dynamic library: drop it in the Nodes folder, Rescan, and they join the palette like built-in nodes.</p></div>
+      <div class="more">
+        <p>A plugin library (<code>.dylib</code>, <code>.so</code> or <code>.dll</code>) holds any number of nodes. Install it in <code>~/Library/Application Support/AudioBoard/Nodes</code> (the palette's <b>Open Nodes folder</b>) and press <b>Rescan</b>: its nodes appear under <b>Plugin nodes</b>, by maker. <a href="sdk.html">The SDK page</a> shows how to write and build one.</p>
+        <ul>
+          <li><b>Like built-in nodes.</b> Audio and MIDI cables, knobs a MIDI CC node can MAP, presets, bypass, modules and the library.</li>
+          <li><b>The generic panel</b>, laid out from the node's description: ports, a readout, a switch, a mode selector, knobs, and a display showing its level, bars, a curve, a trace or an XY dot.</li>
+          <li><b>Saved by a stable id</b>, with its settings by name. A project whose plugin isn't installed opens without that node and says which id is missing.</li>
+          <li><b>Checked before use.</b> A library built for another version of the plugin interface, or with a description that doesn't hold together, is refused with the reason. A node that panics stops alone, and samples that aren't finite are muted.</li>
+          <li><b>The example library</b> in <code>plugins/example-nodes</code>: Glass (FM voices played over MIDI), Haze (a stereo chorus) and Pulse (a Euclidean rhythm on the MIDI output).</li>
         </ul>
       </div>
     </article>
@@ -643,19 +698,23 @@
     <p>Pictures that react to sound, right on the board, in its flat graphic style: line art, dot matrices, coloured outlines.</p>
   </header>
   <div class="cards">
-    <article class="card" id="node-iris" tabindex="0" role="button" data-group="visual" data-group-label="Visual" data-name="Iris" data-after="fourteen scenes: geometric, mathematical, generative" data-shots="assets/shots/iris-mandala.png|MANDALA,assets/shots/iris-ridges.png|RIDGES,assets/shots/iris-harmonograph.png|HARMONOGRAPH,assets/shots/iris-spiro.png|SPIRO,assets/shots/iris-tunnel.png|TUNNEL,assets/shots/iris-flow.png|FLOW,assets/shots/iris-life.png|LIFE,assets/shots/iris-automaton.png|AUTOMATON,assets/shots/iris-truchet.png|TRUCHET,assets/shots/iris-moire.png|MOIRE,assets/shots/iris-attractor.png|ATTRACTOR,assets/shots/iris-phase.png|PHASE,assets/shots/iris-dots.png|DOTS,assets/shots/iris-orbits.png|ORBITS" data-keys="video visuals visualizer vj scope spectrum mandala tunnel truchet moire attractor life automaton harmonograph spirograph" style="--accent: var(--yellow)">
+    <article class="card" id="node-iris" tabindex="0" role="button" data-group="visual" data-group-label="Visual" data-name="Iris" data-after="a visual synth: nineteen scenes in four layers, LFOs, envelopes and a modulation matrix" data-shots="assets/shots/iris-mandala.png|MANDALA,assets/shots/iris-ridges.png|RIDGES,assets/shots/iris-harmonograph.png|HARMONOGRAPH,assets/shots/iris-spiro.png|SPIRO,assets/shots/iris-tunnel.png|TUNNEL,assets/shots/iris-flow.png|FLOW,assets/shots/iris-life.png|LIFE,assets/shots/iris-automaton.png|AUTOMATON,assets/shots/iris-truchet.png|TRUCHET,assets/shots/iris-moire.png|MOIRE,assets/shots/iris-attractor.png|ATTRACTOR,assets/shots/iris-phase.png|PHASE,assets/shots/iris-dots.png|DOTS,assets/shots/iris-orbits.png|ORBITS,assets/shots/iris-halo.png|HALO,assets/shots/iris-globe.png|GLOBE,assets/shots/iris-terrain.png|TERRAIN,assets/shots/iris-flight.png|FLIGHT,assets/shots/iris-scope.png|SCOPE,assets/shots/iris-layers.png|LAYERS,assets/shots/iris-ui-mod.png|MODULATION,assets/shots/iris-frameless.png|NO FRAME" data-keys="video visuals visualizer vj scope spectrum mandala tunnel truchet moire attractor life automaton harmonograph spirograph halo halftone 3d globe sphere torus knot terrain wireframe flight frameless oscilloscope scope visual synth synthesizer layers blend lfo envelope modulation matrix midi feedback kaleidoscope mirror" style="--accent: var(--yellow)">
       <div class="thumb"><img src="assets/shots/iris-mandala.png" width="1136" height="772" loading="lazy" alt="Iris showing its Mandala scene"></div>
       <div class="meta"><div class="row"><h3>Iris</h3><span class="label">Video</span></div>
-        <p>A screen on the board with fourteen scenes that follow the node on its IN, or the main mix while IN is free. Resize it from its corner; set it up in a popup beside it.</p></div>
+        <p>A visual synthesizer on the board: nineteen scenes, 3D among them, in up to four layers moved by LFOs, envelopes, the sound and MIDI. It follows the node on its IN, or the main mix while IN is free. Resize it from its corner, hide its frame so the picture sits right on the board; set it up in a popup beside it.</p></div>
       <div class="more">
-        <p>It listens to the node patched into its <b>IN</b>, and only that one, or to the <b>main mix</b> while IN is free (<b>Auto</b>); the settings can force <b>IN</b> or <b>Main mix</b>. <b>THRU</b> passes IN on unchanged, so Iris can sit inside a chain. It keeps running, with the nodes feeding it, even when THRU goes nowhere.</p>
+        <p>It listens to the node patched into its <b>IN</b>, and only that one, or to the <b>main mix</b> while IN is free (<b>Auto</b>); the settings can force <b>IN</b> or <b>Main mix</b>. <b>THRU</b> passes IN on unchanged, so Iris can sit inside a chain. It keeps running, with the nodes feeding it, even when THRU goes nowhere. MIDI notes and CCs come in on its <b>MIDI</b> input, or from the keyboards while it is free.</p>
         <ul>
-          <li><b>Geometric.</b> Mandala (rings of petals, 5- to 16-fold symmetry), Tunnel (polygons flying out of a vanishing point), Truchet (tiles flipping in waves on onsets), Moiré (overprinted rings), Dots (a dot-matrix spectrum), Orbits (planets in a polyrhythm).</li>
-          <li><b>Mathematical.</b> Harmonograph (a damped pendulum drawing), Spiro (nested hypotrochoids), Attractor (a Clifford attractor drifting with the sound), Phase (the sound against itself: a tone draws a circle), Ridges (pulsar lines scrolling up).</li>
+          <li><b>Geometric.</b> Mandala (rings of petals, 5- to 16-fold symmetry), Halo (a halftone ring of dots on rays that turns, pulses and changes colour), Tunnel (polygons flying out of a vanishing point), Truchet (tiles flipping in waves on onsets), Moiré (overprinted rings), Dots (a dot-matrix spectrum), Orbits (planets in a polyrhythm).</li>
+          <li><b>Mathematical.</b> Harmonograph (a damped pendulum drawing), Spiro (nested hypotrochoids), Attractor (a Clifford attractor drifting with the sound), Phase (the sound against itself: a tone draws a circle), Scope (an oscilloscope held still on the pitch), Ridges (pulsar lines scrolling up).</li>
           <li><b>Generative.</b> Flow (particles on a flow field, bursting on onsets), Life (Conway's Game of Life seeded by the spectrum), Automaton (an elementary cellular automaton the spectrum writes into, changing rule on onsets).</li>
+          <li><b>3D.</b> Globe (dots on a sphere, a torus or a trefoil knot, turning and morphing on onsets), Terrain (the spectrum as a wireframe landscape moving into the distance), Flight (through a field of dots, at the speed of the bass). Projected in software, in the same flat dots and lines.</li>
+          <li><b>Layers.</b> Up to four scenes on top of each other, each with Normal or Add blend, opacity, zoom, rotation, spin, position, hue, its own speed, a mirror (Mirror, Quad, ×3, ×6) and up to eight echoes of past frames that grow or shrink by a feedback amount: trails and endless zooms. Solo any of them.</li>
+          <li><b>Modulation.</b> Four LFOs (five shapes, free or synced to the transport from 1/16 to 8 bars), two ADSR envelopes fired by MIDI notes or onsets, four audio band followers, velocity, note, mod wheel and two CCs, routed by a twelve-slot matrix with bipolar amounts to the speed, detail and trail and to every layer's opacity, zoom, rotation, position, hue and speed.</li>
           <li><b>Analysis.</b> A 2048-point spectrum in 32 bands, level, bass, mids, highs, pitch and onsets, all on the UI thread: the audio thread only copies samples.</li>
           <li><b>The screen.</b> Drag the picture to move the node, the corner grip to resize it (Shift keeps its shape). The scene's name, the gear and the grip show only under the pointer.</li>
-          <li><b>Settings</b> in a popup beside the node: scene, source (Auto, IN, Main mix), seven palettes (Board, Mono, Paper, Riso, Ember, Ice, Acid), REACT, SPEED, DETAIL, SMOOTH, TRAIL, a new scene every 1 to 16 bars, the screen's shape, a new seed.</li>
+          <li><b>Settings</b> in a popup beside the node, in three tabs (Picture, Layers, Modulation): scene, source (Auto, IN, Main mix), eight palettes (Board, Mono, Paper, Riso, Ember, Ice, Acid, Lagoon), REACT, SPEED, DETAIL, SMOOTH, TRAIL, a new scene every 1 to 16 bars, frame or no frame, the screen's shape, a new seed.</li>
+          <li><b>No frame.</b> The card goes and the picture fills the node, as if stuck on the board; the ports stay on its edges and the name, gear and grip still show under the pointer.</li>
           <li><b>Open in a window</b> for a second display or a projector; double-click for full screen.</li>
         </ul>
       </div>
@@ -694,7 +753,7 @@
       <p class="dim" style="margin-top: 12px">A node-based modular synthesizer in Rust. Built with egui and eframe, cpal, midir and vst3-host. Every panel on this site is rendered from the app.</p>
     </div>
     <nav aria-label="Footer">
-      <a href="index.html">Home</a><a href="nodes.html">Nodes</a><a href="guide.html">Guide</a><a href="architecture.html">Architecture</a><a href="https://github.com/mbonati/AudioBoard">Source</a>
+      <a href="index.html">Home</a><a href="nodes.html">Nodes</a><a href="guide.html">Guide</a><a href="architecture.html">Architecture</a><a href="sdk.html">SDK</a><a href="https://github.com/mbonati/AudioBoard">Source</a>
     </nav>
   </div>
 </footer>

@@ -317,6 +317,72 @@ mod site_snap {
         }
     }
 
+    /// A two-bar glitch loop made here (sub kicks, clicks, hiss, pings),
+    /// loaded into a Splitter and cut at its transients, a few slices
+    /// dressed: a ratchet, a frozen cloud, a crushed hit.
+    fn splitter_sample(p: &md::ModuleParams) {
+        use md::splitter::{self as sp, slice, slicing};
+        let sr = 48_000.0f32;
+        let n = (sr * 2.0) as usize;
+        let mut l = vec![0.0f32; n];
+        let mut r = vec![0.0f32; n];
+        let step = (sr * 0.125) as usize;
+        let mut seed = 0x1234_5678u32;
+        let mut noise = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            (seed >> 8) as f32 / (1u32 << 23) as f32 - 1.0
+        };
+        let pattern = "K.c.H.p.K.cHc.pHK..cH.p.KcH.c.pH";
+        for (i, ch) in pattern.chars().enumerate() {
+            let at = i * step / 2;
+            let len = match ch {
+                'K' => (sr * 0.22) as usize,
+                'c' => (sr * 0.01) as usize,
+                'H' => (sr * 0.04) as usize,
+                'p' => (sr * 0.12) as usize,
+                _ => 0,
+            };
+            for k in 0..len.min(n - at) {
+                let t = k as f32 / sr;
+                let y = match ch {
+                    'K' => (std::f32::consts::TAU * (48.0 * t + 1.6 * (1.0 - (-t / 0.02).exp()))).sin() * (-t / 0.09).exp() * 0.9,
+                    'c' => if k == 0 { 0.9 } else { (std::f32::consts::TAU * 3200.0 * t).sin() * (-t / 0.0015).exp() * 0.5 },
+                    'H' => noise() * (-t / 0.012).exp() * 0.35,
+                    _ => (std::f32::consts::TAU * 1760.0 * t).sin() * (-t / 0.03).exp() * 0.4,
+                };
+                let pan = if ch == 'H' { 0.3 } else if ch == 'p' { -0.3 } else { 0.0 };
+                l[at + k] += y * (1.0 - pan);
+                r[at + k] += y * (1.0 + pan);
+            }
+        }
+        let sample = std::sync::Arc::new(crate::audio::sample::Sample::new("glitch-loop.wav", sr, l, r));
+        p.sample.set(Some(sample.clone()));
+        let regions = slicing::transients(&sample, 0.5, 16);
+        slicing::apply(p, &regions, 0);
+        sp::set(p, 1, slice::REPEAT, 4.0);
+        sp::set(p, 1, slice::RAMP, 7.0);
+        sp::set(p, 1, slice::FALL, 25.0);
+        sp::set(p, 2, slice::BITS, 4.0);
+        sp::set(p, 2, slice::DOWN, 6.0);
+        sp::set(p, 3, slice::GRAIN, 1.0);
+        sp::set(p, 3, slice::FREEZE, 1.0);
+        sp::set(p, 3, slice::POS, 0.3);
+        sp::set(p, 3, slice::SPRAY, 0.4);
+        sp::set(p, 3, slice::JITTER, 12.0);
+        sp::set(p, 3, slice::PLAY, 2.0);
+        sp::set(p, 3, slice::REPEAT, 3.0);
+        sp::set(p, 3, slice::REP_RATE, 2.0);
+        sp::set(p, 3, slice::RAMP, 12.0);
+        sp::set(p, 3, slice::FALL, 30.0);
+        sp::set(p, 3, slice::BITS, 8.0);
+        sp::set(p, 3, slice::DOWN, 3.0);
+        sp::set(p, 3, slice::RELEASE, 120.0);
+        sp::set(p, 5, slice::REVERSE, 1.0);
+        p.data[sp::data::SELECTED].set(3.0);
+    }
+
     const FRAMES: usize = 300;
 
     fn only() -> Option<String> {
@@ -368,6 +434,39 @@ mod site_snap {
                 }
             });
         }
+        // Orrery: every ring brought in, two of them turned; then CYCLE, a
+        // polyrhythm of eight ring lengths under one hand, kept on a button.
+        for (name, cycle) in [("orrery", false), ("orrery-cycle", true)] {
+            if !want(name) {
+                continue;
+            }
+            use md::orrery::{self as or, ring};
+            let mut s = scene(104.0);
+            let id = add(&mut s, ModuleKind::Orrery, 0.0, 0.0);
+            let p = module_params(&s.g, id);
+            for r in 0..or::RINGS {
+                or::set(&p, r, ring::ON, 1.0);
+            }
+            if cycle {
+                p.set_mode(or::CYCLE_MODE);
+                p.set(or::CYCLE, 8.0);
+                for (r, (n, k)) in [(16, 7), (12, 5), (10, 4), (8, 3), (7, 3), (6, 2), (5, 2), (3, 1)].into_iter().enumerate() {
+                    or::set_steps(&p, r, n);
+                    or::set_pulses(&p, r, k);
+                    or::set_rotation(&p, r, 0.0);
+                }
+                p.set(or::TWIST, 0.35);
+                or::select(&p, 1);
+                // Kept on button 7, under a name of its own.
+                or::rename_slot(&p, 6, "Eight rings");
+                or::store(&p, 6);
+            } else {
+                or::set_rotation(&p, 5, 1.5);
+                or::set_step(&p, 0, 0, or::ACCENTED);
+                or::select(&p, 2);
+            }
+            node_shot(name, FRAMES, &mut s, id);
+        }
         if want("patch-midi") {
             let mut s = scene(96.0);
             let automa = add(&mut s, ModuleKind::Automa, 0.0, 0.0);
@@ -413,6 +512,27 @@ mod site_snap {
             let mut s = scene(112.0);
             let id = add(&mut s, ModuleKind::Fjord, 0.0, 0.0);
             module_params(&s.g, id).data[md::fjord::data::TAB].set(tab);
+            node_shot(name, FRAMES, &mut s, id);
+        }
+
+        // Splitter: a loop of its own cut at its transients (SLICE, MIDI),
+        // and the built-in kit on its Euclidean rings (SEQUENCE).
+        for (name, tab, mode, loaded) in [
+            ("splitter", 0.0, md::splitter::PATTERN, true),
+            ("splitter-seq", 1.0, md::splitter::EUCLID, false),
+            ("splitter-midi", 2.0, md::splitter::PATTERN, true),
+        ] {
+            if !want(name) {
+                continue;
+            }
+            let mut s = scene(118.0);
+            let id = add(&mut s, ModuleKind::Splitter, 0.0, 0.0);
+            let p = module_params(&s.g, id);
+            p.data[md::splitter::data::TAB].set(tab);
+            p.data[md::splitter::data::MODE].set(mode as f32);
+            if loaded {
+                splitter_sample(&p);
+            }
             node_shot(name, FRAMES, &mut s, id);
         }
 
@@ -534,8 +654,8 @@ mod site_snap {
             p.set_mode(k);
             // A palette for each scene, to show them all (SNAP_IRIS_PALETTE
             // picks one for every scene): Board, Mono, Paper, Riso, Ember,
-            // Ice, Acid.
-            const LOOKS: [f32; 14] = [0.0, 0.0, 5.0, 3.0, 4.0, 6.0, 0.0, 2.0, 2.0, 3.0, 4.0, 1.0, 5.0, 0.0];
+            // Ice, Acid, Lagoon.
+            const LOOKS: [f32; 19] = [0.0, 0.0, 5.0, 3.0, 4.0, 6.0, 0.0, 2.0, 2.0, 3.0, 4.0, 1.0, 5.0, 0.0, 7.0, 0.0, 5.0, 6.0, 4.0];
             let look = std::env::var("SNAP_IRIS_PALETTE").ok().and_then(|v| v.parse().ok()).unwrap_or(LOOKS[k]);
             p.data[md::iris::data::PALETTE].set(look);
             let mix = s.g.add_mixer(pos2(0.0, 520.0), &s.a);
@@ -546,6 +666,70 @@ mod site_snap {
             node_shot(&name, FRAMES, &mut s, id);
         }
 
+        // Iris as a visual synth: two layers, echoes, a mirror and the matrix.
+        let synth = |p: &ModuleParams| {
+            use md::iris::data::{self, layer, slot};
+            let l = |k: usize, j: usize, v: f32| p.data[data::LAYER + k * data::LAYER_LEN + j].set(v);
+            p.set_mode(5);
+            l(0, layer::ECHO, 6.0);
+            l(0, layer::FEEDBACK, 1.08);
+            l(0, layer::MIRROR, 2.0);
+            l(1, layer::ON, 1.0);
+            l(1, layer::SCENE, 14.0);
+            l(1, layer::ZOOM, 0.72);
+            l(1, layer::HUE, 0.12);
+            l(1, layer::OPACITY, 0.55);
+            // LFO 1 swells layer 2, the bass fades it in, envelope 1 turns
+            // layer 1's colours.
+            for (s, (src, dst, amount)) in [(1.0, 12.0, 0.3), (7.0, 11.0, 0.4), (5.0, 9.0, 0.25)].into_iter().enumerate() {
+                let b = data::MATRIX + s * data::SLOT_LEN;
+                p.data[b + slot::SOURCE].set(src);
+                p.data[b + slot::DEST].set(dst);
+                p.data[b + slot::AMOUNT].set(amount);
+            }
+        };
+        if want("iris-layers") {
+            let mut s = scene(118.0);
+            let id = add(&mut s, ModuleKind::Iris, 0.0, 0.0);
+            synth(&module_params(&s.g, id));
+            let mix = s.g.add_mixer(pos2(0.0, 520.0), &s.a);
+            let drone = add(&mut s, ModuleKind::Drone, -420.0, 420.0);
+            let pops = add(&mut s, ModuleKind::Pops, -420.0, 760.0);
+            link(&mut s, drone, 0, mix, 0);
+            link(&mut s, pops, 0, mix, 1);
+            node_shot("iris-layers", FRAMES, &mut s, id);
+        }
+        for (tab, name) in [(1u8, "iris-ui-layers"), (2u8, "iris-ui-mod")] {
+            if !want(name) {
+                continue;
+            }
+            let mut s = scene(118.0);
+            let id = add(&mut s, ModuleKind::Iris, 0.0, 0.0);
+            synth(&module_params(&s.g, id));
+            let f = feeder(&mut s, ModuleKind::Drone, 0.0);
+            link(&mut s, f, 0, id, 0);
+            crate::ui::iris::SHOW_CONTROLS.store(true, Ordering::Relaxed);
+            crate::ui::iris::SHOW_TAB.store(tab, Ordering::Relaxed);
+            full_shot(name, FRAMES, &mut s, vec2(2000.0, 1010.0), PPP);
+            crate::ui::iris::SHOW_TAB.store(0, Ordering::Relaxed);
+            crate::ui::iris::SHOW_CONTROLS.store(false, Ordering::Relaxed);
+        }
+
+        if want("iris-frameless") {
+            // No frame: the Halo on the Board palette, right on the board.
+            let mut s = scene(118.0);
+            let id = add(&mut s, ModuleKind::Iris, 0.0, 0.0);
+            let p = module_params(&s.g, id);
+            p.set_mode(14);
+            p.data[md::iris::data::FRAMELESS].set(1.0);
+            let mix = s.g.add_mixer(pos2(0.0, 520.0), &s.a);
+            let drone = add(&mut s, ModuleKind::Drone, -420.0, 420.0);
+            let pops = add(&mut s, ModuleKind::Pops, -420.0, 760.0);
+            link(&mut s, drone, 0, mix, 0);
+            link(&mut s, pops, 0, mix, 1);
+            node_shot("iris-frameless", FRAMES, &mut s, id);
+        }
+
         if want("iris-ui") {
             // The scene's name, the gear and the grip, with the settings open.
             let mut s = scene(118.0);
@@ -554,7 +738,7 @@ mod site_snap {
             let f = feeder(&mut s, ModuleKind::Drone, 0.0);
             link(&mut s, f, 0, id, 0);
             crate::ui::iris::SHOW_CONTROLS.store(true, Ordering::Relaxed);
-            full_shot("iris-ui", FRAMES, &mut s, vec2(1700.0, 940.0), PPP);
+            full_shot("iris-ui", FRAMES, &mut s, vec2(2000.0, 1160.0), PPP);
             crate::ui::iris::SHOW_CONTROLS.store(false, Ordering::Relaxed);
         }
 
@@ -625,6 +809,55 @@ mod site_snap {
             link(&mut s, eq, 0, console, 3);
             arrange(&mut s);
             full_shot("patch-hero", FRAMES, &mut s, vec2(2400.0, 1350.0), PPP);
+        }
+
+        // --- Plugin nodes (the SDK page) ---------------------------------
+        // The example plugin, built as a dylib and loaded as the app does.
+        if want("plugin-") {
+            use crate::audio::node_plugin as np;
+            let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            let target = root.join("target/node-plugin-test");
+            let ok = std::process::Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
+                .args(["build", "-p", "audioboard-example-nodes", "--target-dir"])
+                .arg(&target)
+                .current_dir(&root)
+                .status()
+                .is_ok_and(|s| s.success());
+            assert!(ok, "the example plugin builds");
+            let scan = np::scan_dirs(&[target.join("debug")]);
+            assert!(scan.refused.is_empty(), "{:?}", scan.refused);
+            let kind = |id: &str| ModuleKind::Ext(np::find(id).expect("example node loaded"));
+            let (haze, glass, pulse) =
+                (kind("dev.audioboard.example.haze"), kind("dev.audioboard.example.glass"), kind("dev.audioboard.example.pulse"));
+            // Meters and traces update as in the app (Haze traces its LFO).
+            let meters = |g: &mut Graph, _: usize| {
+                for node in &mut g.nodes {
+                    node.update_meters(1.0 / 60.0);
+                }
+            };
+            if want("plugin-nodes") {
+                let mut s = scene(120.0);
+                let osc = s.g.add_osc(pos2(-300.0, 0.0), &s.a);
+                let h = add(&mut s, haze, 0.0, 0.0);
+                let p = add(&mut s, pulse, -300.0, 320.0);
+                let gl = add(&mut s, glass, 0.0, 320.0);
+                let mix = s.g.add_mixer(pos2(300.0, 100.0), &s.a);
+                link(&mut s, osc, 0, h, 0);
+                link(&mut s, h, 0, mix, 0);
+                link(&mut s, p, MIDI_PORT, gl, MIDI_PORT);
+                link(&mut s, gl, 0, mix, 1);
+                arrange(&mut s);
+                let size = bounds(&s.g).size() + vec2(160.0, 160.0);
+                let (img, w, h) = shoot(&mut s, size, PPP, FRAMES, meters);
+                save("plugin-nodes", &img, w, (0, 0, w, h));
+            }
+            if want("plugin-glass") {
+                let mut s = scene(120.0);
+                let gl = add(&mut s, glass, 0.0, 0.0);
+                let p = feeder(&mut s, pulse, 0.0);
+                link(&mut s, p, MIDI_PORT, gl, MIDI_PORT);
+                node_shot_with("plugin-glass", FRAMES, &mut s, gl, meters);
+            }
         }
     }
 }

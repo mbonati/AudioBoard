@@ -442,11 +442,14 @@ dependencies = [
 name = "audioboard"
 version = "0.1.0"
 dependencies = [
+ "audioboard-node",
+ "audioboard-ui",
  "cc",
  "cpal",
  "eframe",
  "egui",
  "image",
+ "libloading 0.8.9",
  "midir",
  "objc2 0.6.5",
  "objc2-app-kit 0.3.2",
@@ -456,6 +459,25 @@ dependencies = [
  "serde",
  "serde_json",
  "vst3-host",
+]
+
+[[package]]
+name = "audioboard-example-nodes"
+version = "0.1.0"
+dependencies = [
+ "audioboard-node",
+]
+
+[[package]]
+name = "audioboard-node"
+version = "0.1.0"
+
+[[package]]
+name = "audioboard-ui"
+version = "0.1.0"
+dependencies = [
+ "audioboard-node",
+ "egui",
 ]
 
 [[package]]
