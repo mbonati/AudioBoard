@@ -504,4 +504,278 @@
     }, { rootMargin: "-20% 0px -70% 0px" });
     Object.keys(map).forEach(function (id) { var s = document.getElementById(id); if (s) seen.observe(s); });
   }
+
+  /* ----------------------------------------- example tracks and the films */
+  var film = $("#film");
+  var deck = $(".deck");
+  var player = null;
+
+  // One thing plays at a time: a track, a film or the drone sketch.
+  function quiet(keep) {
+    if (film && keep !== film && !film.paused) film.pause();
+    if (player && keep !== player && !player.paused) player.pause();
+    if (keep && startBtn && startBtn.getAttribute("aria-pressed") === "true") startBtn.click();
+  }
+  if (startBtn) startBtn.addEventListener("click", function () {
+    if (startBtn.getAttribute("aria-pressed") === "true") quiet(null);
+  });
+  function playSafely(media) {
+    var p = media.play();
+    if (p && p.catch) p.catch(function () {});
+  }
+  function accentOf(el) { return getComputedStyle(el).getPropertyValue("--c").trim() || "#debc56"; }
+
+  /* The films: a click on a thumbnail puts that film on the screen. */
+  if (film) {
+    var reel = $$(".reel-item");
+    var caption = $(".film-caption");
+    film.addEventListener("play", function () { quiet(film); });
+    film.style.setProperty("--c", reel.length ? accentOf(reel[0]) : "");
+    reel.forEach(function (item) {
+      item.addEventListener("click", function (e) {
+        e.preventDefault();
+        if (item.classList.contains("on")) {
+          if (film.paused) playSafely(film); else film.pause();
+          return;
+        }
+        reel.forEach(function (o) {
+          o.classList.toggle("on", o === item);
+          if (o === item) o.setAttribute("aria-current", "true"); else o.removeAttribute("aria-current");
+        });
+        film.pause();
+        film.poster = item.getAttribute("data-poster");
+        film.src = item.getAttribute("href");
+        if (caption) {
+          caption.style.setProperty("--c", accentOf(item));
+          $("b", caption).textContent = $(".reel-text b", item).textContent;
+          $("span", caption).textContent = $(".reel-desc", item).textContent;
+        }
+        playSafely(film);
+      });
+    });
+  }
+
+  /* The tracks: what plays on top, with its waveform; the list below. */
+  if (deck) {
+    var rows = $$(".playlist .row");
+    var now = $(".now", deck);
+    var bigPlay = $(".big-play", now);
+    var wave = $(".now-wave", now);
+    var tip = $(".wave-tip", wave);
+    var prevBtn = $(".track-skip.prev", now), nextBtn = $(".track-skip.next", now);
+    var waves = window.TRACK_PEAKS || {};
+    var current = rows[0], fresh = true, loading = false, hover = -1;
+    player = new Audio();
+    player.preload = "none";
+
+    var fmt = function (s) { s = Math.max(0, Math.floor(s || 0)); return Math.floor(s / 60) + ":" + ("0" + (s % 60)).slice(-2); };
+    var length = function () { return player.duration && isFinite(player.duration) ? player.duration : 60; };
+    var at = function (row) { return row === current && !fresh ? player.currentTime / length() : 0; };
+    var rgba = function (hex, a) {
+      var h = hex.replace("#", "");
+      if (h.length === 3) h = h.replace(/(.)/g, "$1$1");
+      var n = parseInt(h, 16);
+      return "rgba(" + (n >> 16 & 255) + "," + (n >> 8 & 255) + "," + (n & 255) + "," + a + ")";
+    };
+    // `n` bars from the slices, each the loudest of the slices it covers.
+    var resample = function (v, n) {
+      var out = [], len = v.length;
+      for (var i = 0; i < n; i++) {
+        var a = Math.floor(i * len / n), b = Math.max(a + 1, Math.floor((i + 1) * len / n)), m = 0;
+        for (var k = a; k < b && k < len; k++) m = Math.max(m, v[k]);
+        out.push(m / 100);
+      }
+      return out;
+    };
+    var fit = function (c) {
+      var w = c.clientWidth, h = c.clientHeight, dpr = window.devicePixelRatio || 1;
+      if (!w || !h) return null;
+      if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+      var g = c.getContext("2d");
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.clearRect(0, 0, w, h);
+      return { g: g, w: w, h: h };
+    };
+    // Mirrored bars: the peak lighter, the RMS solid; played in the
+    // track's colour, the rest grey.
+    var drawWave = function (c, data, pos, opts) {
+      var f = fit(c);
+      if (!f || !data) return;
+      var g = f.g, w = f.w, h = f.h, step = opts.step, n = Math.max(8, Math.floor(w / step));
+      var peak = resample(data.peak || [], n), rms = resample(data.rms || [], n);
+      var col = opts.color, bar = Math.max(1, step - opts.gap);
+      for (var i = 0; i < n; i++) {
+        var played = (i + 0.5) / n <= pos;
+        var ph = Math.max(2, peak[i] * h * 0.98);
+        g.fillStyle = played ? rgba(col, 0.42) : opts.peakOff;
+        g.fillRect(i * step, (h - ph) / 2, bar, ph);
+        if (opts.rms) {
+          var rh = Math.max(2, Math.min(peak[i], rms[i] * 1.6) * h * 0.98);
+          g.fillStyle = played ? col : opts.rmsOff;
+          g.fillRect(i * step, (h - rh) / 2, bar, rh);
+        }
+      }
+      if (opts.hover >= 0) {
+        g.fillStyle = "rgba(226,228,232,0.85)";
+        g.fillRect(Math.round(opts.hover * w), 0, 1, h);
+      }
+      if (pos > 0) {
+        g.fillStyle = col;
+        g.fillRect(Math.round(pos * w) - 1, 0, 2, h);
+      }
+    };
+    var drawBig = function () {
+      drawWave($("canvas", wave), waves[current.getAttribute("data-peaks")], at(current), {
+        step: 4, gap: 1.5, rms: true, color: accentOf(current), peakOff: "#2c2e34", rmsOff: "#50535b", hover: hover
+      });
+    };
+    var drawRow = function (row) {
+      var col = accentOf(row);
+      drawWave($(".row-wave canvas", row), waves[row.getAttribute("data-peaks")], at(row), {
+        step: 3, gap: 1, rms: false, color: col, peakOff: rgba(col, row === current ? 0.5 : 0.36), hover: -1
+      });
+    };
+    var drawAll = function () { drawBig(); rows.forEach(drawRow); };
+
+    var times = function () {
+      var t = fresh ? 0 : player.currentTime;
+      $(".t-now", now).textContent = fmt(t);
+      $(".t-end", now).textContent = fmt(length());
+      wave.setAttribute("aria-valuenow", String(Math.floor(t)));
+      wave.setAttribute("aria-valuemax", String(Math.round(length())));
+      wave.setAttribute("aria-valuetext", fmt(t) + " of " + fmt(length()));
+    };
+    var tick = function () {
+      drawBig();
+      drawRow(current);
+      times();
+      if (!player.paused) requestAnimationFrame(tick);
+    };
+    var playing = function (on) {
+      deck.classList.toggle("playing", on);
+      rows.forEach(function (r) { r.classList.toggle("playing", on && r === current); });
+      var title = $(".row-title", current).textContent;
+      bigPlay.setAttribute("aria-label", (on ? "Pause " : "Play ") + title);
+      rows.forEach(function (r) {
+        var t = $(".row-title", r).textContent;
+        $(".row-play", r).setAttribute("aria-label", (on && r === current ? "Pause " : "Play ") + t);
+      });
+    };
+    // Puts `row` on top (without playing it).
+    var select = function (row) {
+      if (row === current && !fresh) return;
+      var old = current;
+      current = row;
+      fresh = true;
+      var src = row.getAttribute("data-src");
+      if (player.getAttribute("src") !== src) { player.src = src; loading = true; }
+      else if (player.readyState >= 1) player.currentTime = 0;
+      var i = rows.indexOf(row);
+      now.style.setProperty("--c", accentOf(row));
+      $(".now-index", now).textContent = ("0" + (i + 1)).slice(-2) + " / " + ("0" + rows.length).slice(-2);
+      $(".now-genre", now).textContent = $(".row-genre", row).textContent;
+      $(".now-title", now).textContent = $(".row-title", row).textContent;
+      $(".now-desc", now).textContent = $(".row-desc", row).textContent;
+      $(".now-chain", now).innerHTML = $(".row-chain", row).innerHTML;
+      prevBtn.disabled = i === 0;
+      nextBtn.disabled = i === rows.length - 1;
+      rows.forEach(function (r) { r.classList.toggle("on", r === row); });
+      if (old && old !== row) drawRow(old);
+      playing(false);
+      drawAll();
+      times();
+      if ("mediaSession" in navigator && window.MediaMetadata) {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: $(".row-title", row).textContent,
+          artist: "AudioBoard",
+          album: "Example tracks"
+        });
+      }
+    };
+    // Plays `row`, from `pos` (0–1) when given.
+    var play = function (row, pos) {
+      if (row !== current || fresh) select(row);
+      fresh = false;
+      if (pos != null) {
+        var seek = function () { player.currentTime = pos * length(); tick(); };
+        // A new src's readyState still tells of the old file for a moment.
+        if (!loading && player.readyState >= 1) seek();
+        else player.addEventListener("loadedmetadata", seek, { once: true });
+      }
+      quiet(player);
+      playSafely(player);
+    };
+    var toggle = function () { if (player.paused || fresh) play(current, null); else player.pause(); };
+    var step = function (d) {
+      var i = rows.indexOf(current) + d;
+      if (i < 0 || i >= rows.length) return;
+      var wasPlaying = !player.paused;
+      select(rows[i]);
+      if (wasPlaying) play(rows[i], 0);
+    };
+    var posOf = function (el, e) {
+      var r = el.getBoundingClientRect();
+      return Math.min(0.995, Math.max(0, (e.clientX - r.left) / r.width));
+    };
+
+    select(rows[0]);
+    bigPlay.addEventListener("click", toggle);
+    prevBtn.addEventListener("click", function () { step(-1); });
+    nextBtn.addEventListener("click", function () { step(1); });
+    wave.addEventListener("click", function (e) { play(current, posOf(wave, e)); });
+    wave.addEventListener("pointermove", function (e) {
+      hover = posOf(wave, e);
+      wave.classList.add("hover");
+      tip.textContent = fmt(hover * length());
+      tip.style.left = (hover * 100) + "%";
+      drawBig();
+    });
+    wave.addEventListener("pointerleave", function () { hover = -1; wave.classList.remove("hover"); drawBig(); });
+    wave.addEventListener("keydown", function (e) {
+      var d = e.key === "ArrowRight" ? 5 : e.key === "ArrowLeft" ? -5 : 0;
+      if (d) {
+        e.preventDefault();
+        play(current, Math.min(0.995, Math.max(0, ((fresh ? 0 : player.currentTime) + d) / length())));
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        play(current, 0);
+      } else if (e.key === " " || e.key === "Enter") {
+        e.preventDefault();
+        toggle();
+      }
+    });
+    rows.forEach(function (row) {
+      $(".row-play", row).addEventListener("click", function () {
+        if (row === current) toggle(); else play(row, null);
+      });
+      $(".row-title", row).addEventListener("click", function (e) {
+        e.preventDefault();
+        if (row === current) toggle(); else play(row, null);
+      });
+      var rw = $(".row-wave", row);
+      rw.addEventListener("click", function (e) { play(row, posOf(rw, e)); });
+    });
+    player.addEventListener("play", function () { playing(true); tick(); });
+    player.addEventListener("pause", function () { playing(false); tick(); });
+    player.addEventListener("loadedmetadata", function () { loading = false; times(); });
+    player.addEventListener("ended", function () {
+      // On to the next track, as an album would; after the last, back to its start.
+      var i = rows.indexOf(current);
+      if (i + 1 < rows.length) play(rows[i + 1], 0);
+      else { fresh = true; playing(false); drawAll(); times(); }
+    });
+    if ("mediaSession" in navigator) {
+      try {
+        navigator.mediaSession.setActionHandler("play", function () { play(current, null); });
+        navigator.mediaSession.setActionHandler("pause", function () { player.pause(); });
+        navigator.mediaSession.setActionHandler("previoustrack", function () { step(-1); });
+        navigator.mediaSession.setActionHandler("nexttrack", function () { step(1); });
+      } catch (err) { /* an action this browser doesn't know */ }
+    }
+    window.addEventListener("resize", drawAll);
+    if ("IntersectionObserver" in window) {
+      // Drawn again once in view, in case the fonts moved the layout.
+      new IntersectionObserver(function (e) { if (e[0].isIntersecting) drawAll(); }).observe(deck);
+    }
+  }
 })();
