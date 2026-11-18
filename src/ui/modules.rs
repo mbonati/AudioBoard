@@ -12,7 +12,7 @@ use crate::audio::engine::NodeId;
 use crate::audio::midi::note_hz;
 use crate::audio::modules::{
     ModuleDef, ModuleKind, ModuleParams, aether, arpeggiator, fjord, iris, larsen, looper, vesper, audio_in, automa, colloid, delay, drone, equalizer, filter, frakture, magma, pops, granular, midi_cc, midi_in, midi_note,
-    midicer, nullpunkt, pingpong, prism, random, resonator, reverb, sequencer, steps, tape,
+    midicer, nullpunkt, pingpong, prism, random, resonator, reverb, sequencer, splitter, steps, tape,
 };
 use crate::audio::params::{
     DIVISIONS, NOTE_NAMES, NOTE_VALUES, format_hz, format_seconds, note_label, sync_division,
@@ -31,6 +31,7 @@ pub fn size_of(p: &ModuleParams) -> Vec2 {
     match p.kind {
         ModuleKind::Pops => super::pops::size(p),
         ModuleKind::Fjord => super::fjord::size(p),
+        ModuleKind::Splitter => super::splitter::size(p),
         ModuleKind::Tape => super::tape::size(p),
         ModuleKind::Iris => super::iris::size(p),
         kind => size(kind.def()),
@@ -43,6 +44,9 @@ pub fn size(def: &ModuleDef) -> Vec2 {
     }
     if std::ptr::eq(def, &fjord::DEF) {
         return super::fjord::SIZE;
+    }
+    if std::ptr::eq(def, &splitter::DEF) {
+        return super::splitter::SIZE;
     }
     if std::ptr::eq(def, &frakture::DEF) {
         return super::frakture::SIZE;
@@ -138,6 +142,10 @@ pub fn draw(
     }
     if kind == ModuleKind::Fjord {
         super::fjord::draw(v, id, accent, m, (inputs, outputs), midi);
+        return MapButton::default();
+    }
+    if kind == ModuleKind::Splitter {
+        super::splitter::draw(v, id, accent, m, outputs.first().copied().unwrap_or(false), midi);
         return MapButton::default();
     }
     if kind == ModuleKind::Magma {
@@ -256,7 +264,7 @@ pub fn draw(
         ModuleKind::AudioIn => audio_in_display(&screen, p),
         ModuleKind::Random | ModuleKind::MidiCc | ModuleKind::MidiNote => trace_display(&screen, m),
         ModuleKind::Granular => granular_display(&screen, p),
-        ModuleKind::Frakture | ModuleKind::Equalizer | ModuleKind::Prism | ModuleKind::Magma | ModuleKind::Pops | ModuleKind::Fjord | ModuleKind::Tape | ModuleKind::Nullpunkt | ModuleKind::Aether | ModuleKind::Larsen | ModuleKind::Vesper | ModuleKind::Automa | ModuleKind::Colloid | ModuleKind::Looper | ModuleKind::Iris => {}
+        ModuleKind::Frakture | ModuleKind::Equalizer | ModuleKind::Prism | ModuleKind::Magma | ModuleKind::Pops | ModuleKind::Fjord | ModuleKind::Splitter | ModuleKind::Tape | ModuleKind::Nullpunkt | ModuleKind::Aether | ModuleKind::Larsen | ModuleKind::Vesper | ModuleKind::Automa | ModuleKind::Colloid | ModuleKind::Looper | ModuleKind::Iris => {}
         ModuleKind::Resonator => resonator_display(&screen, p),
         ModuleKind::Filter => filter_display(&screen, p),
         ModuleKind::Delay => delay_display(&screen, p, echo_seconds(p, v.tempo)),
@@ -475,6 +483,7 @@ fn readout(kind: ModuleKind, p: &ModuleParams, tempo: f32) -> (String, String) {
         ModuleKind::Magma => super::magma::readout(p),
         ModuleKind::Pops => super::pops::readout(p),
         ModuleKind::Fjord => super::fjord::readout(p),
+        ModuleKind::Splitter => super::splitter::readout(p),
         ModuleKind::Tape => super::tape::readout(p),
         ModuleKind::Nullpunkt => super::nullpunkt::readout(p),
         ModuleKind::Aether => super::aether::readout(p),

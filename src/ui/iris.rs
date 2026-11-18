@@ -11,7 +11,7 @@
 
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
-use std::f32::consts::{PI, TAU};
+use std::f32::consts::{FRAC_1_SQRT_2, PI, TAU};
 
 use egui::epaint::Mesh;
 use egui::{
@@ -1333,7 +1333,7 @@ fn phase(c: &Ctx, s: &mut Scenes) {
     let point = |i: usize| {
         let x = c.a.wave[base + i] * g;
         let y = c.a.wave[base + i + tau] * g;
-        vec2((x - y) * 0.7071, -(x + y) * 0.7071)
+        vec2((x - y) * FRAC_1_SQRT_2, -(x + y) * FRAC_1_SQRT_2)
     };
     let pts: Vec<Vec2> = (0..n).map(point).collect();
     // Graticule.
@@ -2049,12 +2049,10 @@ pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, (input, _
         );
     }
 
-    // The gear: the settings popup, next to the node.
+    // The gear: the settings popup, next to the node. Whether it is open is
+    // Iris's own (see `settings_open`), not egui's.
     let popup_id = Id::unique(("iris-settings", id));
-    if show_controls() && !egui::Popup::is_id_open(v.ui.ctx(), popup_id) {
-        egui::Popup::open_id(v.ui.ctx(), popup_id);
-    }
-    let open = egui::Popup::is_id_open(v.ui.ctx(), popup_id);
+    let open = show_controls() || settings_open(v.ui.ctx(), popup_id);
     if hovered || open {
         let c = screen.right_top() + vec2(-16.0, 16.0) * z;
         let r = Rect::from_center_size(c, Vec2::splat(22.0 * z));
@@ -2068,16 +2066,22 @@ pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, (input, _
         if resp.hovered() {
             v.ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
         }
-        let node_rect = v.r(0.0, 0.0, size.x, size.y);
-        egui::Popup::from_toggle_button_response(&resp)
-            .id(popup_id)
-            .anchor(node_rect)
-            .align(RectAlign::RIGHT_START)
-            .align_alternatives(&[RectAlign::LEFT_START, RectAlign::BOTTOM_START, RectAlign::TOP_START])
-            .gap(10.0)
-            .close_behavior(PopupCloseBehavior::CloseOnClickOutside)
-            .width(380.0)
-            .show(|ui| settings(ui, id, p, accent, input));
+        let ctx = v.ui.ctx();
+        let open = if resp.clicked() { !open } else { open && !settings_close(ctx, popup_id, r) };
+        if open {
+            let node_rect = v.r(0.0, 0.0, size.x, size.y);
+            egui::Popup::from_response(&resp)
+                .id(popup_id)
+                .open(true)
+                .anchor(node_rect)
+                .align(RectAlign::RIGHT_START)
+                .align_alternatives(&[RectAlign::LEFT_START, RectAlign::BOTTOM_START, RectAlign::TOP_START])
+                .gap(10.0)
+                .close_behavior(PopupCloseBehavior::IgnoreClicks)
+                .width(380.0)
+                .show(|ui| settings(ui, id, p, accent, input));
+        }
+        set_settings_open(ctx, popup_id, open);
     }
 
     // The grip: drag to resize (Shift keeps the shape).
@@ -2266,6 +2270,53 @@ pub fn tick(ctx: &egui::Context, id: NodeId, title: &str, accent: Color32, p: &M
 // ---------------------------------------------------------------------------
 // The settings popup
 // ---------------------------------------------------------------------------
+
+// egui keeps one popup open at a time, so a combobox in the settings that
+// opens its list takes egui's open popup from them, and a click on that
+// list falls outside them. So the settings keep whether they are open
+// themselves, and close on a click outside both them and their lists.
+// While no list is open they also hold egui's open popup, for the board:
+// it picks nothing on the click that closes a menu, and shows no tips.
+
+fn settings_open(ctx: &egui::Context, popup_id: Id) -> bool {
+    // Shown last frame too: a node no longer drawn has no settings open.
+    ctx.data(|d| d.get_temp::<bool>(popup_id.with("open"))).unwrap_or(false) && ctx.read_response(popup_id).is_some()
+}
+
+fn set_settings_open(ctx: &egui::Context, popup_id: Id, open: bool) {
+    ctx.data_mut(|d| {
+        d.insert_temp(popup_id.with("open"), open);
+        if !open {
+            d.remove::<bool>(popup_id.with("pressed-outside"));
+        }
+    });
+    if !open {
+        egui::Popup::close_id(ctx, popup_id);
+    } else if !egui::Popup::is_any_open(ctx) || egui::Popup::is_id_open(ctx, popup_id) {
+        egui::Popup::open_id(ctx, popup_id);
+    }
+}
+
+/// Whether this frame's input closes the open settings: Esc (unless it is
+/// closing one of their lists), or a click that went down on neither them,
+/// one of their lists nor the gear (whose clicks open and close them).
+fn settings_close(ctx: &egui::Context, popup_id: Id, gear: Rect) -> bool {
+    // egui's one open popup, when it is not the settings, is a list opened
+    // from them: anything opened from elsewhere took a click outside them.
+    let list_open = egui::Popup::is_any_open(ctx) && !egui::Popup::is_id_open(ctx, popup_id);
+    let (pressed, origin, clicked, esc) =
+        ctx.input(|i| (i.pointer.any_pressed(), i.pointer.press_origin(), i.pointer.any_click(), i.key_pressed(egui::Key::Escape)));
+    let key = popup_id.with("pressed-outside");
+    if pressed {
+        let inside = origin.is_some_and(|pos| {
+            gear.contains(pos)
+                || ctx.layer_id_at(pos).is_some_and(|l| l.id == popup_id || (l.order == egui::Order::Foreground && egui::Popup::is_id_open(ctx, l.id)))
+        });
+        ctx.data_mut(|d| d.insert_temp(key, !inside));
+    }
+    let outside = clicked && ctx.data_mut(|d| d.remove_temp::<bool>(key)).unwrap_or(false);
+    outside || (esc && !list_open)
+}
 
 fn heading(ui: &mut Ui, text: &str) {
     ui.add_space(6.0);

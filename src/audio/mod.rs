@@ -10,6 +10,7 @@ pub mod node_plugin;
 pub mod params;
 pub mod plugin;
 pub mod record;
+pub mod sample;
 pub mod sync;
 pub mod export;
 

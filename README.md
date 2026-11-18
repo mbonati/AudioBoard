@@ -342,6 +342,98 @@ OS update and the demo are left out: programs are saved with the node (save it t
 bank to other projects), and the sequencer's starting beat plays the part of the demo. Local stays as set
 instead of returning to On; the tone's envelopes, the channel outputs, the steps and ALEA are new.
 
+**Splitter**: a sample slicer and granular glitch engine on the board's grid, for fractured, minimal, very digital
+music in the spirit of Alva Noto's live sets: sine tones and pings, clicks, data noise, stuttering micro-loops,
+frozen grains, sub pulses, strict grids. Load a sound, cut it into up to 32 slices, give each its own pitch,
+stutter, crusher and grains, and let the animation play them in time, or play them from MIDI.
+
+- **Sources.** **LOAD** takes a WAV or AIFF file (8 to 32-bit integer or float, mono or stereo; more channels:
+  the first two), up to 30 s. The sample is kept **inside the project** (and the library), as 16-bit PCM, so a
+  project carries its sounds; **EJECT** lets it go. With nothing loaded, Splitter still plays: eight built-in
+  glitch **atoms** stand in, each a second long: **SINE** (880 Hz at pitch 0), **PING** (a sine dying in 200 ms),
+  **CLICK** (an impulse with a short ring), **SUB** (a 50 Hz pulse falling onto its pitch), **NOISE**
+  (sample-and-hold noise at 8× the pitch: hiss to data bursts), **DATA** (random bits in packets: modem and
+  fax chatter), **PULSE** (a narrow pulse wave) and **CRACK** (sparse impulses: crackle and dust). It starts
+  with a kit of eight slices of them on Euclidean rhythms, so it plays as soon as the board does.
+- **Cutting.** The display shows the selected slice's source, the sample or the atom it reads, with every
+  slice of that source outlined in its own colour, the playheads and the grains moving over them; a strip
+  above shows the whole source and the part shown (**VIEW**: ALL, or zoomed on the selected **SLICE**). Drag
+  across empty space to cut a new slice, drag a slice's edge to move it, drag inside the selected slice to move
+  it whole; a click selects, a double-click plays, a right-click deletes. **CUT** does it in one go: an equal
+  grid (**÷4**, **÷8**, **÷16**, **÷32**), at the **TRANSIENT**s (**SENS**: how readily; cuts land on the zero
+  crossing before each strike), or **RANDOM** fragments of 8 to 400 ms. A freshly loaded sample with no slices
+  of its own is cut at its transients. The keys 1–32 under the display pick the slice to edit (and flash when
+  it plays); **+** adds a copy of the selected slice, **DEL** deletes it, **CLEAR** deletes them all.
+
+The **SLICE** page edits the selected slice:
+
+| Section | Settings |
+|---------|----------|
+| SOURCE  | SAMPLE or an atom · **ONE** (plays once, through its release), **GATE** (while held: a key, a step's GATE, PLAY), **LOOP** (loops while held: micro-loops) · **REV** · **M** (left out of the animation) · ▶ **PLAY** · COPY, PASTE, ↺ |
+| SOUND   | PITCH ±48 st · GAIN −40…+12 dB · PAN · ATTACK 0–2 s · RELEASE 1 ms – 4 s · FROM / TO (the region, to the millisecond) |
+| STUTTER | REPEAT 1×–16× · RATE 1/8 … 1/128 (on the grid) · FALL (each repeat quieter) · RAMP ±12 st (each repeat higher or lower) |
+| CRUSH   | BITS 16 … 2 · DOWN (each value held for up to 64 samples) · CRUSH ALL (the node's: every slice further) |
+| GRAINS  | GRAIN · FREEZE · SYNC · SIZE 2–500 ms · DENSITY 1–400 a second · POS · SPRAY · JITTER ±12 st · SPREAD (the node's) |
+
+- A sample slice's pitch is its speed, as on a sampler (an octave up plays twice as fast); an atom keeps its
+  timing and changes its frequency. The node's **PITCH** transposes every slice.
+- **RELEASE** is the fade after a key or a step's GATE, and on a ONE slice the fade before its end (at most
+  its second half). The display under the knobs draws the envelope over the slice's length.
+- **REPEAT** turns each strike into a ratchet: that many strikes at RATE of the board's tempo, each restarting
+  the slice. A note-off takes a GATE or LOOP slice's remaining repeats with it.
+- **GRAIN** plays the slice as a cloud of Hann-windowed grains read at its pitch around a playhead that moves
+  through the slice in real time (so the pitch no longer changes its length), from **POS**; **FREEZE** stops
+  the playhead at POS. **SPRAY** scatters where grains start, **JITTER** their pitch, the node's **SPREAD**
+  their place in the stereo field (and every hit's). **SYNC** puts the grains on the board's grid, DENSITY
+  snapped to the nearest note value (1/4 to 1/256, triplets included). A ONE slice's cloud lasts as long as
+  the slice would; a GATE or LOOP slice's, as long as it is held.
+- The crusher comes last: the hold, then the bits.
+
+The **SEQUENCE** page: while **RUN** is on and the board plays, steps of 1/2 to 1/64 (**RATE**, with
+**SWING**) on the board's grid play the slices, in one of six modes:
+
+- **ORDER**: the next slice each step (muted ones skipped).
+- **RANDOM**: a slice at random (never the same twice running, unless LOCK is on).
+- **PATTERN**: the lane's slice on each step, or a rest. Click a step to put the selected slice there (again:
+  a rest), right-click for a rest, drag to paint; **IN ORDER** fills it with the slices in turn.
+- **PROB**: every step, each slice rolls its own dice (its bar, dragged up or down).
+- **EUCLID**: each slice plays its own Euclidean rhythm (**HITS** over **STEPS**, turned by **ROTATE**), drawn
+  as a ring of its steps with its hits joined. Each counts on its own length, so rhythms of 7, 11 or 13 steps
+  drift against the bar. Drag a ring up or down for more or fewer hits.
+- **STUTTER**: the lane's slices (or the slices in order, with an empty lane) rolled into ratchets of 2 to 12
+  strikes at 1/32 to 1/128, rising or falling now and then, and now and then the last slice held instead.
+
+**LENGTH** (1–32 steps) wraps the lane. **FILL** is the chance a step (or a slice's hit) plays at all, in every
+mode. **CHAOS** varies hits now and then: reversed, an octave or a fifth away, skipped into, softer, or
+doubled into a short ratchet (in STUTTER it also makes the rolls longer and the holds more frequent).
+**LOCK** makes the random choices (RANDOM, PROB, STUTTER, CHAOS) repeat every LENGTH steps; **NEW** draws
+others. **GATE** (5–100% of a step) sets how long a step holds a GATE or LOOP slice.
+
+**DICE** throws new settings: **SLICES** (pitches by pure intervals, reversals, ratchets, crushing, grain
+clouds, and a sample slice's region shifted or stretched now and then; with Shift, the selected slice only),
+**RHYTHM** (each slice's Euclidean rhythm and chance, and the lane) or **ALL**. **CHANCE** sets how far a
+throw goes: a little nudges what is there, 100% starts afresh. Throws follow what each slice sounds like
+(shown under its number: low, hit, tone, noise or texture, from the atom, or from a sample slice's length
+and how often it crosses zero): lows land on the strong beats, hits on busy Euclidean patterns, tones sparse
+and on odd lengths so they drift, noise on the offbeats, textures rarely and often as grain clouds. **BACK**
+takes back the last throw (or CLEAR, DEL, PASTE, ↺, a right-click delete).
+
+The **MIDI** page: **CH** (OMNI, or 1–16) is the channel heard and sent on. Each slice can have a note: click
+a key on the keyboard (C1–C7) to give it to the selected slice (again: take it back), or **LEARN** (or a
+slice's **LRN**) to take the next note played; **MAP FROM C2** maps the slices to notes from C2 up, **UNMAP**
+clears them (a freshly cut sample's slices start from C2). A note plays every slice mapped to it, at its
+velocity; its note-off ends a GATE or LOOP slice. **CHROMA** makes the notes no slice is mapped to play the
+selected slice in pitch (C4, note 60: as it is). With **MIDI OUT**, the steps' hits go out as notes (each slice's
+note, or C2 up by slice), held for the step's GATE, to drive other nodes. Sixteen voices play at once; a
+slice struck again cuts its last strike short in 2 ms.
+
+**What differs from Nullpunkt.** Nullpunkt synthesizes four fixed micro-voices on step lanes and works on
+its whole output (stutter, skip, warp, static); Splitter cuts sounds of your own into up to 32 slices, each
+with its own pitch, envelope, ratchet, crusher and grains, plays them from six kinds of animation or from
+MIDI note by note, and its built-in sources are a second of each atom, read like a sample (backwards, in
+grains, looped). Splitter's sample lives in the project: a project with a 30 s stereo sample grows by about
+7 MB.
+
 **Audio In**: the audio interface's inputs on a cable: a microphone, a guitar, a synth, another app through
 a loopback device. **INPUT** picks the channel. **STEREO** takes it and the next as left and right (INPUT 3:
 inputs 3–4); **MONO** puts it on both sides. **GAIN** goes from −24 to +24 dB. The display has a meter per
@@ -1428,7 +1520,8 @@ empties the list.
 A dot next to the name, and "(edited)" in the window title, flag unsaved changes: before creating a new
 project, opening another one or closing the window, AudioBoard asks whether to save them.
 A project (`.audioboard`) is a JSON file with nodes and parameters, positions, colors, collapsed nodes,
-cables and modules, and the board's stickers and background (images inside, base64); parameters are saved by
+cables and modules, the board's stickers and background (images inside, base64) and Splitter's samples (16-bit
+PCM inside, base64); parameters are saved by
 name, built-in modules by name and plugin nodes by their stable id. The demo patch always opens on launch.
 
 **Module library.** Right-click a module's header → **Save to library** saves it under its name (if it
@@ -1627,6 +1720,11 @@ src/
 │   │   ├── fjord/      voice (tone, noise and click, gates, sweeps, bend, punch, the tone's ADSRs, held notes,
 │   │   │               the channel), bank (the factory programs), trigger (the Trig inputs: scan, mask,
 │   │   │               falling threshold), alea (the dice: sounds bred from the bank, grooves by role)
+│   │   ├── splitter.rs Splitter: the slices' settings, the six animation modes on the grid, MIDI in (notes,
+│   │   │               LEARN, CHROMA) and out, ratchets, the voices and their mix
+│   │   ├── splitter/   voice (straight and granular playback, envelope, crusher), atoms (the eight built-in
+│   │   │               glitch sources, pure functions of position), slicing (grid, transients, random; what a
+│   │   │               slice sounds like), dice (throws by role, BACK)
 │   │   ├── nullpunkt.rs Nullpunkt: step patterns, synced stutter, glitch stage, built-in scenes
 │   │   ├── aether.rs   Aether: chords, FREE and keys, additive voices in vector banks, the motion's targets,
 │   │   │               RANDOM, built-in sounds
@@ -1668,6 +1766,8 @@ src/
 │   ├── au.rs       Audio Units (macOS): listing, pseudo-paths, parameter ranges, the Rust face of au_host.m
 │   ├── au_host.m   the Objective-C host over AUAudioUnit (built by build.rs): AUv3 out of process, AU in
 │   │               process, render and MIDI blocks, host clock, parameters, state, the editor window
+│   ├── sample.rs   audio files a module holds (Splitter's): WAV/AIFF decoding, kept in the project as 16-bit
+│   │               PCM in base64, handed to the audio thread without locking it
 │   ├── record.rs   recording the output: a lock-free tap on the audio thread, a writer thread, takes
 │   ├── export.rs   takes to WAV/AIFF (written here), FLAC/ALAC/AAC (afconvert), MP3 (ffmpeg or lame)
 │   ├── device.rs   the audio setup (devices by id, channel pair, rate, buffer), listing what the system offers
@@ -1720,6 +1820,10 @@ src/
 │   ├── board.rs    background presets and image, stickers on the canvas (drawing, moving, handles, menu,
 │   │               dropped files, textures), the built-in designs, the Stickers and Background submenus
 │   ├── pops.rs     the Pops 66 panel: MACHINE, MIXER and EDITOR detail levels (the node resizes), waveform preview
+│   ├── splitter.rs the Splitter panel: LOAD, CUT, VIEW, DICE; the display (the source, its slices, playheads
+│   │               and grains; cutting and moving slices), the slice keys; pages SLICE (SOUND, STUTTER,
+│   │               CRUSH, GRAINS, each drawn), SEQUENCE (the modes, the lane, PROB bars, Euclidean rings),
+│   │               MIDI (the keyboard, LEARN)
 │   ├── fjord.rs    the Fjord panel: the bank map of the 99 programs, channel keys and their lights, ALEA and
 │   │               its die; pages SOUND (the strike's outlines, NOISE, TONE, CLICK, MIXER, AMP and FILTER
 │   │               ENV) and SEQUENCER · MIDI (the lanes, SYSTEM); the node resizes with the page
@@ -1749,7 +1853,9 @@ waiting. Each buffer is processed as one pass: built-in nodes run through it in 
 timing and modulation stay fine-grained), while a plugin gets the whole buffer in a single call with its
 MIDI events placed at their exact offsets, since every plugin call has a fixed cost. Removed nodes and old
 processing orders are handed back to the UI thread to be freed: freeing memory (a delay line is megabytes)
-inside the audio callback could stall it into a click.
+inside the audio callback could stall it into a click. A sample loaded into a Splitter goes the same way
+(`audio/sample.rs`): the UI swaps it in under a lock and bumps a version, the processor takes it with
+`try_lock` (never waiting; it tries again next block) and hands back the one it let go, freed by the UI.
 
 **Performance.** Effects rest when they have gone quiet: with a silent input, once their own signal (echoes,
 tails) has stayed below −100 dB for as long as they can remember sound, they skip their work and output
@@ -1776,7 +1882,7 @@ modes, toggle) and a `Processor`, an entry in `ModuleKind` and, in `ui/modules.r
 A node that should ship on its own is a plugin instead (see [Writing nodes](#writing-nodes-sdk-plugins-and-ui-kit)):
 it needs no change to the app.
 The panel (ports, selector, knobs) is generated from the definition; Frakture, too large for the generic
-panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`), Prism (`ui/prism.rs`), Magma (`ui/magma.rs`), Tape (`ui/tape.rs`), Nullpunkt (`ui/nullpunkt.rs`), Aether (`ui/aether.rs`), Larsen (`ui/larsen.rs`), Vesper (`ui/vesper.rs`), the MIDI Looper (`ui/looper.rs`), Automa (`ui/automa.rs`), Colloid (`ui/colloid.rs`), Fjord (`ui/fjord.rs`), Iris (`ui/iris.rs`, sized by the user) and Pops 66
+panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`), Prism (`ui/prism.rs`), Magma (`ui/magma.rs`), Tape (`ui/tape.rs`), Nullpunkt (`ui/nullpunkt.rs`), Aether (`ui/aether.rs`), Larsen (`ui/larsen.rs`), Vesper (`ui/vesper.rs`), the MIDI Looper (`ui/looper.rs`), Automa (`ui/automa.rs`), Colloid (`ui/colloid.rs`), Fjord (`ui/fjord.rs`), Splitter (`ui/splitter.rs`), Iris (`ui/iris.rs`, sized by the user) and Pops 66
 (`ui/pops.rs`; its size, like Fjord's and Iris's, follows its settings through `modules::size_of`). Frakture's hexagon runs on the audio thread, block by block: the panel
 hands it the mouse through the module's display values, so paths keep time even when the window doesn't
 redraw.

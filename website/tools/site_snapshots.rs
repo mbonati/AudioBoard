@@ -317,6 +317,72 @@ mod site_snap {
         }
     }
 
+    /// A two-bar glitch loop made here (sub kicks, clicks, hiss, pings),
+    /// loaded into a Splitter and cut at its transients, a few slices
+    /// dressed: a ratchet, a frozen cloud, a crushed hit.
+    fn splitter_sample(p: &md::ModuleParams) {
+        use md::splitter::{self as sp, slice, slicing};
+        let sr = 48_000.0f32;
+        let n = (sr * 2.0) as usize;
+        let mut l = vec![0.0f32; n];
+        let mut r = vec![0.0f32; n];
+        let step = (sr * 0.125) as usize;
+        let mut seed = 0x1234_5678u32;
+        let mut noise = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            (seed >> 8) as f32 / (1u32 << 23) as f32 - 1.0
+        };
+        let pattern = "K.c.H.p.K.cHc.pHK..cH.p.KcH.c.pH";
+        for (i, ch) in pattern.chars().enumerate() {
+            let at = i * step / 2;
+            let len = match ch {
+                'K' => (sr * 0.22) as usize,
+                'c' => (sr * 0.01) as usize,
+                'H' => (sr * 0.04) as usize,
+                'p' => (sr * 0.12) as usize,
+                _ => 0,
+            };
+            for k in 0..len.min(n - at) {
+                let t = k as f32 / sr;
+                let y = match ch {
+                    'K' => (std::f32::consts::TAU * (48.0 * t + 1.6 * (1.0 - (-t / 0.02).exp()))).sin() * (-t / 0.09).exp() * 0.9,
+                    'c' => if k == 0 { 0.9 } else { (std::f32::consts::TAU * 3200.0 * t).sin() * (-t / 0.0015).exp() * 0.5 },
+                    'H' => noise() * (-t / 0.012).exp() * 0.35,
+                    _ => (std::f32::consts::TAU * 1760.0 * t).sin() * (-t / 0.03).exp() * 0.4,
+                };
+                let pan = if ch == 'H' { 0.3 } else if ch == 'p' { -0.3 } else { 0.0 };
+                l[at + k] += y * (1.0 - pan);
+                r[at + k] += y * (1.0 + pan);
+            }
+        }
+        let sample = std::sync::Arc::new(crate::audio::sample::Sample::new("glitch-loop.wav", sr, l, r));
+        p.sample.set(Some(sample.clone()));
+        let regions = slicing::transients(&sample, 0.5, 16);
+        slicing::apply(p, &regions, 0);
+        sp::set(p, 1, slice::REPEAT, 4.0);
+        sp::set(p, 1, slice::RAMP, 7.0);
+        sp::set(p, 1, slice::FALL, 25.0);
+        sp::set(p, 2, slice::BITS, 4.0);
+        sp::set(p, 2, slice::DOWN, 6.0);
+        sp::set(p, 3, slice::GRAIN, 1.0);
+        sp::set(p, 3, slice::FREEZE, 1.0);
+        sp::set(p, 3, slice::POS, 0.3);
+        sp::set(p, 3, slice::SPRAY, 0.4);
+        sp::set(p, 3, slice::JITTER, 12.0);
+        sp::set(p, 3, slice::PLAY, 2.0);
+        sp::set(p, 3, slice::REPEAT, 3.0);
+        sp::set(p, 3, slice::REP_RATE, 2.0);
+        sp::set(p, 3, slice::RAMP, 12.0);
+        sp::set(p, 3, slice::FALL, 30.0);
+        sp::set(p, 3, slice::BITS, 8.0);
+        sp::set(p, 3, slice::DOWN, 3.0);
+        sp::set(p, 3, slice::RELEASE, 120.0);
+        sp::set(p, 5, slice::REVERSE, 1.0);
+        p.data[sp::data::SELECTED].set(3.0);
+    }
+
     const FRAMES: usize = 300;
 
     fn only() -> Option<String> {
@@ -413,6 +479,27 @@ mod site_snap {
             let mut s = scene(112.0);
             let id = add(&mut s, ModuleKind::Fjord, 0.0, 0.0);
             module_params(&s.g, id).data[md::fjord::data::TAB].set(tab);
+            node_shot(name, FRAMES, &mut s, id);
+        }
+
+        // Splitter: a loop of its own cut at its transients (SLICE, MIDI),
+        // and the built-in kit on its Euclidean rings (SEQUENCE).
+        for (name, tab, mode, loaded) in [
+            ("splitter", 0.0, md::splitter::PATTERN, true),
+            ("splitter-seq", 1.0, md::splitter::EUCLID, false),
+            ("splitter-midi", 2.0, md::splitter::PATTERN, true),
+        ] {
+            if !want(name) {
+                continue;
+            }
+            let mut s = scene(118.0);
+            let id = add(&mut s, ModuleKind::Splitter, 0.0, 0.0);
+            let p = module_params(&s.g, id);
+            p.data[md::splitter::data::TAB].set(tab);
+            p.data[md::splitter::data::MODE].set(mode as f32);
+            if loaded {
+                splitter_sample(&p);
+            }
             node_shot(name, FRAMES, &mut s, id);
         }
 

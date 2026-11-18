@@ -32,6 +32,7 @@ pub mod random;
 pub mod resonator;
 pub mod reverb;
 pub mod sequencer;
+pub mod splitter;
 pub mod steps;
 pub mod tape;
 pub mod vesper;
@@ -58,6 +59,7 @@ pub enum ModuleKind {
     Random,
     Pops,
     Fjord,
+    Splitter,
     Nullpunkt,
     AudioIn,
     Granular,
@@ -86,7 +88,7 @@ pub enum ModuleKind {
 }
 
 impl ModuleKind {
-    pub const ALL: [ModuleKind; 30] = [
+    pub const ALL: [ModuleKind; 31] = [
         ModuleKind::Drone,
         ModuleKind::Aether,
         ModuleKind::Larsen,
@@ -94,6 +96,7 @@ impl ModuleKind {
         ModuleKind::Random,
         ModuleKind::Pops,
         ModuleKind::Fjord,
+        ModuleKind::Splitter,
         ModuleKind::Nullpunkt,
         ModuleKind::AudioIn,
         ModuleKind::Granular,
@@ -128,6 +131,7 @@ impl ModuleKind {
             ModuleKind::Random => &random::DEF,
             ModuleKind::Pops => &pops::DEF,
             ModuleKind::Fjord => &fjord::DEF,
+            ModuleKind::Splitter => &splitter::DEF,
             ModuleKind::Nullpunkt => &nullpunkt::DEF,
             ModuleKind::AudioIn => &audio_in::DEF,
             ModuleKind::Granular => &granular::DEF,
@@ -183,6 +187,7 @@ impl ModuleKind {
             ModuleKind::Random => Box::new(random::Random::new(params, sample_rate)),
             ModuleKind::Pops => Box::new(pops::Pops::new(params, sample_rate)),
             ModuleKind::Fjord => Box::new(fjord::Fjord::new(params, sample_rate)),
+            ModuleKind::Splitter => Box::new(splitter::Splitter::new(params, sample_rate)),
             ModuleKind::Nullpunkt => Box::new(nullpunkt::Nullpunkt::new(params, sample_rate)),
             ModuleKind::AudioIn => Box::new(audio_in::AudioIn::new(params, audio.shared.clone(), sample_rate)),
             ModuleKind::Granular => Box::new(granular::Granular::new(params, sample_rate)),
@@ -213,21 +218,27 @@ impl ModuleKind {
 
 /// Settings shared lock-free between the UI and a module's processor: the
 /// node SDK's `Params` (knobs, mode, switch, data, meter, display values),
-/// tagged with the module's kind. Derefs to the `Params`.
+/// tagged with the module's kind, and the sample it holds, if any (Splitter).
+/// Derefs to the `Params`.
 pub struct ModuleParams {
     pub kind: ModuleKind,
     params: audioboard_node::Params,
+    /// An audio file the module plays (empty for most modules).
+    pub sample: crate::audio::sample::SampleSlot,
 }
 
 impl ModuleParams {
     pub fn new(kind: ModuleKind) -> Self {
-        Self { kind, params: audioboard_node::Params::new(kind.def()) }
+        Self { kind, params: audioboard_node::Params::new(kind.def()), sample: Default::default() }
     }
 
-    /// A fresh copy of the settings (not the meters).
+    /// A fresh copy of the settings (not the meters), sharing the sample.
     pub fn duplicate(&self) -> Self {
         let p = Self::new(self.kind);
         p.params.copy_from(&self.params);
+        if let Some(s) = self.sample.get() {
+            p.sample.set(Some(s));
+        }
         p
     }
 }

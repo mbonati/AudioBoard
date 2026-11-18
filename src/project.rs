@@ -119,6 +119,9 @@ enum KindData {
         /// MIDI nodes: the control they drive.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         target: Option<TargetData>,
+        /// The audio file the module plays (Splitter's sample), embedded.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sample: Option<crate::audio::sample::Saved>,
     },
     /// A plugin: where it lives (a VST3 bundle, or an Audio Unit's
     /// pseudo-path) and its complete state.
@@ -229,6 +232,7 @@ fn node_data(graph: &Graph, n: &Node, numbers: &HashMap<NodeId, u32>, origin: Ve
                         param: graph.node(t.node)?.param_name(t.param)?,
                     })
                 }),
+                sample: p.sample.get().map(|s| s.saved()),
             }
         }
     };
@@ -387,7 +391,7 @@ fn instantiate(
                 }
                 id
             }
-            KindData::Module { module, params, mode, toggle, data: extra, .. } => {
+            KindData::Module { module, params, mode, toggle, data: extra, sample, .. } => {
                 // Frakture was first called Fractal.
                 let module = if module == "Fractal" { "Frakture" } else { module.as_str() };
                 let Some(kind) = ModuleKind::from_key(module) else {
@@ -404,6 +408,9 @@ fn instantiate(
                 p.set_toggle(*toggle);
                 for (dst, v) in p.data.iter().zip(extra) {
                     dst.set(*v);
+                }
+                if let Some(s) = sample.as_ref().and_then(crate::audio::sample::Sample::from_saved) {
+                    p.sample.set(Some(Arc::new(s)));
                 }
                 graph.add_module_with(pos, Arc::new(p), audio)
             }

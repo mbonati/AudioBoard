@@ -28,6 +28,7 @@ pub mod preset_menu;
 pub mod prism;
 pub mod recent;
 pub mod settings;
+pub mod splitter;
 pub mod tape;
 pub mod tempo;
 pub mod theme;

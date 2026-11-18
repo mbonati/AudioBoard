@@ -104,7 +104,7 @@
         <path d="M346 190C346 270 300 300 300 352" stroke="#d6a65c" stroke-width="2.5"/>
       </svg>
       <p>The UI never blocks the audio thread. <strong>Knob values travel through atomics</strong>, read by the engine as it runs. <strong>Structural changes</strong> (nodes added or removed, a new processing order) reach the engine as commands on a channel.</p>
-      <p>Buffers that take memory (a delay line, a reverb, a granular loop) are allocated on the UI thread when the node is created. Removed nodes and old processing orders are handed back to the UI thread to be freed: freeing memory inside the audio callback (a delay line is megabytes) could stall it into a click.</p>
+      <p>Buffers that take memory (a delay line, a reverb, a granular loop) are allocated on the UI thread when the node is created. Removed nodes and old processing orders are handed back to the UI thread to be freed: freeing memory inside the audio callback (a delay line is megabytes) could stall it into a click. A sample loaded into a Splitter goes the same way (<code>audio/sample.rs</code>): the UI swaps it in under a lock and bumps a version; the processor takes it with <code>try_lock</code>, never waiting (it tries again next block), and hands back the one it let go, to be freed by the UI.</p>
       <p>On the UI side, <code>graph.rs</code> holds the patch model (nodes, cables, modules) and orders it with Kahn's algorithm; on the audio side, <code>engine.rs</code> runs the precomputed topological order.</p>
     </section>
 
@@ -164,6 +164,7 @@
 │   │   ├── <b>frakture/</b>     <i>grains, gate and repeat, hall, hexagon and motion paths</i>
 │   │   ├── <b>pops/</b>         <i>the fifteen synthesized instruments, the twenty rhythms</i>
 │   │   ├── <b>fjord/</b>        <i>voice (tone, noise, click), bank, Trig inputs, ALEA</i>
+│   │   ├── <b>splitter/</b>     <i>voices (straight and granular, crusher), glitch atoms, slicing, DICE</i>
 │   │   ├── <b>aether/</b>       <i>fractal motion, tuned glitches, warm space</i>
 │   │   ├── <b>larsen/</b>       <i>strings, drive, filters, echo, keys</i>
 │   │   ├── <b>vesper/</b>       <i>harmony, sound recipes, rendering thread, layers, fx</i>
@@ -180,6 +181,7 @@
 │   ├── <b>node_plugin.rs</b> <i>plugin nodes: scanning, loading, ABI checks, registry, the processor</i>
 │   ├── <b>au.rs</b>         <i>Audio Units: listing, pseudo-paths, the Rust face of au_host.m</i>
 │   ├── <b>au_host.m</b>     <i>Objective-C host over AUAudioUnit (built by build.rs)</i>
+│   ├── <b>sample.rs</b>     <i>WAV/AIFF decoding, samples kept in the project, handed over lock-free</i>
 │   ├── <b>record.rs</b>     <i>lock-free tap, writer thread, takes</i>
 │   ├── <b>export.rs</b>     <i>WAV/AIFF, FLAC/ALAC/AAC via afconvert, MP3 via ffmpeg or lame</i>
 │   ├── <b>device.rs</b>     <i>devices, channel pair, rate, buffer</i>
@@ -196,7 +198,7 @@
 │   ├── <b>palette.rs</b>    <i>nodes and library modules</i>
 │   ├── <b>modules.rs</b>    <i>the generic panel, readouts, displays</i>
 │   ├── <b>node_panel.rs</b> <i>a plugin node's display and readout, drawn with the UI Kit</i>
-│   ├── fjord, pops, colloid, automa, vesper, aether, larsen, nullpunkt,
+│   ├── fjord, splitter, pops, colloid, automa, vesper, aether, larsen, nullpunkt,
 │   │   magma, equalizer, prism, tape, frakture, looper, console … <i>custom panels</i>
 │   ├── <b>board.rs</b>      <i>backgrounds, stickers on the canvas, built-in designs, their menus</i>
 │   ├── <b>iris.rs</b>       <i>Iris: analysis, nineteen scenes (3D in software), palettes, frameless look, settings popup, its window</i>
@@ -219,7 +221,7 @@
         <li>An entry in <code>ModuleKind</code>.</li>
         <li>In <code>ui/modules.rs</code>, the readout and the display.</li>
       </ol>
-      <p>The panel (ports, selector, knobs) is generated from the definition. Larger instruments draw their own: Frakture, the Equalizer, Prism, Magma, Tape, Nullpunkt, Aether, Larsen, Vesper, the MIDI Looper, Automa, Colloid, Fjord, Iris (sized by the user) and Pops 66, whose sizes, like Fjord's, follow their settings through <code>modules::size_of</code>. Frakture's hexagon runs on the audio thread, block by block: the panel hands it the mouse through the module's display values, so paths keep time even when the window doesn't redraw.</p>
+      <p>The panel (ports, selector, knobs) is generated from the definition. Larger instruments draw their own: Frakture, the Equalizer, Prism, Magma, Tape, Nullpunkt, Aether, Larsen, Vesper, the MIDI Looper, Automa, Colloid, Fjord, Splitter, Iris (sized by the user) and Pops 66, whose sizes, like Fjord's, follow their settings through <code>modules::size_of</code>. Frakture's hexagon runs on the audio thread, block by block: the panel hands it the mouse through the module's display values, so paths keep time even when the window doesn't redraw.</p>
       <p>A node that should ship on its own is a <strong>plugin node</strong> instead, and needs no change to the app: see <a href="sdk.html">the SDK page</a>.</p>
     </section>
 

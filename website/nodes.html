@@ -36,7 +36,7 @@
 <main id="main">
 <section class="page-hero">
   <div class="wrap">
-    <span class="label">Catalogue · 33 built-in nodes + plugins</span>
+    <span class="label">Catalogue · 34 built-in nodes + plugins</span>
     <h1>Every node, <span class="outline" style="--accent: var(--teal)">on the board.</span></h1>
     <p class="lead">Sources make sound, textures and effects shape it, MIDI nodes play and move it, mixers bring it home, and Iris turns it into pictures. Every cable is stereo; mono sources write the same signal to both sides. Click a node for its full description; every picture is its real panel, rendered from the app while the board plays.</p>
   </div>
@@ -44,8 +44,8 @@
 
 <div class="filters">
   <div class="wrap">
-    <button class="chip" data-filter="all" aria-pressed="true" style="--c: var(--text)"><i></i>All <small>35</small></button>
-    <button class="chip" data-filter="sources" aria-pressed="false" style="--c: var(--blue)"><i></i>Sources <small>10</small></button>
+    <button class="chip" data-filter="all" aria-pressed="true" style="--c: var(--text)"><i></i>All <small>36</small></button>
+    <button class="chip" data-filter="sources" aria-pressed="false" style="--c: var(--blue)"><i></i>Sources <small>11</small></button>
     <button class="chip" data-filter="texture" aria-pressed="false" style="--c: var(--teal)"><i></i>Texture <small>3</small></button>
     <button class="chip" data-filter="effects" aria-pressed="false" style="--c: var(--orange)"><i></i>Effects <small>8</small></button>
     <button class="chip" data-filter="midi" aria-pressed="false" style="--c: var(--violet)"><i></i>MIDI <small>2</small></button>
@@ -201,6 +201,27 @@
           <li><b>STEPS.</b> A lane per channel, up to 32 steps of 1/8, 1/16, 1/16T or 1/32, with soft, medium and accent steps, SWING and GATE.</li>
           <li><b>SYSTEM.</b> MIDI channel and notes with LRN, LOCAL OFF, program change, and four Trig audio inputs that play the channels (a pad, or a drum loop for drum replacement).</li>
           <li><b>Outputs.</b> OUT carries the mix; CH 1–4 each channel on its own.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="card" id="node-splitter" tabindex="0" role="button" data-group="sources" data-group-label="Sources" data-name="Splitter" data-shots="assets/shots/splitter.png|SLICE,assets/shots/splitter-seq.png|SEQUENCE,assets/shots/splitter-midi.png|MIDI" data-keys="slicer sampler sample granular grains glitch stutter ratchet euclid wav aiff dice minimal" style="--accent: var(--blue)">
+      <div class="thumb"><img src="assets/shots/splitter.png" width="2016" height="1304" loading="lazy" alt="Splitter panel"></div>
+      <div class="meta"><div class="row"><h3>Splitter</h3><span class="label">Slicer · grains</span></div>
+        <p>A sample slicer and granular glitch engine on the board's grid: up to 32 slices, each with its own stutter, crusher and grains, eight built-in glitch atoms, six animation modes and DICE.</p></div>
+      <div class="more">
+        <p>For fractured, minimal, very digital music: sine tones and pings, clicks, data noise, stuttering micro-loops, frozen grains, sub pulses. <b>LOAD</b> a WAV or AIFF (up to 30 s, kept inside the project), cut it by hand on the display or in one go: an equal grid, at the transients, or into random fragments. With nothing loaded, eight <b>atoms</b> play instead: SINE, PING, CLICK, SUB, NOISE, DATA, PULSE and CRACK, read like a sample.</p>
+        <table><tr><th>Section</th><th>Per slice</th></tr>
+          <tr><td>SOURCE</td><td>SAMPLE or an atom · ONE, GATE, LOOP · REV · PLAY</td></tr>
+          <tr><td>SOUND</td><td>PITCH · GAIN · PAN · ATTACK · RELEASE · the region</td></tr>
+          <tr><td>STUTTER</td><td>REPEAT 1×–16× at 1/8 to 1/128 · FALL · RAMP</td></tr>
+          <tr><td>CRUSH</td><td>BITS 16 to 2 · DOWN (sample-and-hold)</td></tr>
+          <tr><td>GRAINS</td><td>SIZE · DENSITY · POS · SPRAY · JITTER · FREEZE · SYNC to the grid</td></tr></table>
+        <ul>
+          <li><b>Animation.</b> On the board's grid while it plays: ORDER, RANDOM, PATTERN (a slice or a rest per step), PROB (each slice rolls its own dice), EUCLID (a rhythm per slice, on its own length, drawn as a ring) and STUTTER (the steps rolled into ratchets). FILL, CHAOS, SWING, LOCK.</li>
+          <li><b>DICE</b> throws new slice settings, new rhythms or both, as far as CHANCE says, following what each slice sounds like; BACK takes a throw back.</li>
+          <li><b>MIDI.</b> A note per slice, set on the keyboard or with LEARN; note-offs end GATE and LOOP slices. CHROMA plays the selected slice in pitch. The steps go out as notes.</li>
+          <li><b>Grains.</b> The playhead moves in real time, so the pitch no longer changes the length; FREEZE holds it still, SYNC locks the grains to the beat.</li>
         </ul>
       </div>
     </article>
