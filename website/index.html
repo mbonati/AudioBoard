@@ -32,6 +32,7 @@
     </button>
     <nav class="nav-links" aria-label="Main">
       <a href="index.html" aria-current="page">Home</a>
+      <a href="#listen">Listen</a>
       <a href="nodes.html">Nodes</a>
       <a href="guide.html">Guide</a>
       <a href="architecture.html">Architecture</a>
@@ -61,6 +62,11 @@
           </a>
           <a class="btn ghost" href="nodes.html">Browse the 35 nodes</a>
         </div>
+        <a class="listen-chip" href="#listen">
+          <span class="eq on" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+          <span>Hear it first: <b>5 tracks</b> and <b>3 films</b> made on the board</span>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3v10M4 9l4 4 4-4"/></svg>
+        </a>
       </div>
 
       <!-- A tiny playable sketch of the demo patch, drawn like a node. -->
@@ -425,11 +431,120 @@
   </div>
 </section>
 
+<!-- ============================================================== LISTEN -->
+<section class="section listen" id="listen" style="padding-top: 0">
+  <div class="wrap">
+    <div class="listen-inner">
+    <div class="section-head reveal" style="--accent: var(--yellow)">
+      <span class="label">04 · Listen</span>
+      <h2>Five minutes <span class="outline">straight off the board.</span></h2>
+      <p class="lead">Five one-minute pieces, each played by a patch of built-in nodes and recorded from the engine as it plays: no plugins, no recorded samples, nothing edited afterwards but the level and a fade. Three of the patches are filmed too, the camera gliding from panel to panel.</p>
+    </div>
+
+    <div class="theater reveal">
+      <div class="screen">
+        <video id="film" controls preload="metadata" playsinline poster="assets/media/film-orbits-poster.jpg" width="1920" height="1080" aria-label="A patch filmed on the board while it plays">
+          <source src="assets/media/film-orbits.mp4" type="video/mp4">
+        </video>
+      </div>
+      <p class="film-caption" aria-live="polite"><b>Orbits</b><span>Orrery's rings drive Pops 66, which flashes a pad on every hit, through a Tape deck, over Vesper's landscape. The rings switch pattern on the bar.</span></p>
+      <nav class="reel" aria-label="Films">
+        <a class="reel-item on" aria-current="true" href="assets/media/film-orbits.mp4" data-poster="assets/media/film-orbits-poster.jpg" style="--c: var(--rose)">
+          <span class="thumb"><img src="assets/media/film-orbits-thumb.jpg" width="480" height="270" alt="" loading="lazy"><span class="thumb-play" aria-hidden="true"><svg class="i-play" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z"/></svg></span><span class="dur">0:40</span></span>
+          <span class="reel-text"><b>Orbits</b><span>Orrery · Pops 66 · Vesper</span></span>
+          <span class="reel-desc" hidden>Orrery's rings drive Pops 66, which flashes a pad on every hit, through a Tape deck, over Vesper's landscape. The rings switch pattern on the bar.</span>
+        </a>
+        <a class="reel-item" href="assets/media/film-aurora.mp4" data-poster="assets/media/film-aurora-poster.jpg" style="--c: var(--violet)">
+          <span class="thumb"><img src="assets/media/film-aurora-thumb.jpg" width="480" height="270" alt="" loading="lazy"><span class="thumb-play" aria-hidden="true"><svg class="i-play" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z"/></svg></span><span class="dur">0:40</span></span>
+          <span class="reel-text"><b>Aurora</b><span>Vesper · Granular · Reverb</span></span>
+          <span class="reel-desc" hidden>Vesper writes the chords and draws them as a landscape; the moon crosses once for each chord. Granular takes grains of it an octave up.</span>
+        </a>
+        <a class="reel-item" href="assets/media/film-raster.mp4" data-poster="assets/media/film-raster-poster.jpg" style="--c: var(--yellow)">
+          <span class="thumb"><img src="assets/media/film-raster-thumb.jpg" width="480" height="270" alt="" loading="lazy"><span class="thumb-play" aria-hidden="true"><svg class="i-play" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z"/></svg></span><span class="dur">0:40</span></span>
+          <span class="reel-text"><b>Raster</b><span>Nullpunkt · Splitter · Drone</span></span>
+          <span class="reel-desc" hidden>Nullpunkt's micro-voices on their Euclidean lanes, glitches lighting up in the header; Splitter slicing a loop; a Drone under a wandering Filter.</span>
+        </a>
+      </nav>
+    </div>
+
+    <article class="deck node reveal" style="--accent: var(--yellow)" aria-label="Example tracks">
+      <header class="node-head"><span class="led"></span>Example tracks<span class="x">5 tracks · 5:00</span></header>
+      <div class="now" style="--c: var(--violet)">
+        <button class="big-play" type="button" aria-label="Play Aurora"><svg class="i-play" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z"/></svg><svg class="i-pause" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 3h3v10H4zM9 3h3v10H9z"/></svg></button>
+        <div class="now-meta">
+          <span class="now-kicker"><span class="now-index">01 / 05</span><span class="now-genre">Ambient · 68 BPM</span></span>
+          <b class="now-title">Aurora</b>
+        </div>
+        <div class="now-nav">
+          <button class="track-skip prev" type="button" aria-label="Previous track"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3h2v10H3zM13 3v10L6 8z"/></svg></button>
+          <button class="track-skip next" type="button" aria-label="Next track"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11 3h2v10h-2zM3 3v10l7-5z"/></svg></button>
+        </div>
+        <div class="now-wave" role="slider" tabindex="0" aria-label="Position in the track" aria-valuemin="0" aria-valuemax="60" aria-valuenow="0" aria-valuetext="0:00 of 1:00">
+          <canvas aria-hidden="true"></canvas>
+          <span class="wave-tip" aria-hidden="true">0:00</span>
+        </div>
+        <div class="now-times"><span class="t-now">0:00</span><span class="t-end">1:00</span></div>
+        <p class="now-desc">Vesper's Aurora scene writes the chords and plays its five layers; a Granular cloud of it, an octave up, fades in through a long shimmering Reverb.</p>
+        <p class="now-chain">Vesper → Mixer · Vesper → Granular +12 → Reverb → Mixer</p>
+      </div>
+      <ol class="playlist">
+        <li class="row on" data-src="assets/media/aurora.m4a" data-peaks="aurora" style="--c: var(--violet)">
+          <button class="row-play" type="button" aria-label="Play Aurora"><span class="num">01</span><span class="eq" aria-hidden="true"><i></i><i></i><i></i></span><svg class="i-play" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z"/></svg><svg class="i-pause" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 3h3v10H4zM9 3h3v10H9z"/></svg></button>
+          <a class="row-title" href="assets/media/aurora.m4a">Aurora</a>
+          <span class="row-genre">Ambient · 68 BPM</span>
+          <span class="row-wave"><canvas aria-hidden="true"></canvas></span>
+          <span class="row-time">1:00</span>
+          <span class="row-desc" hidden>Vesper's Aurora scene writes the chords and plays its five layers; a Granular cloud of it, an octave up, fades in through a long shimmering Reverb.</span>
+          <span class="row-chain" hidden>Vesper → Mixer · Vesper → Granular +12 → Reverb → Mixer</span>
+        </li>
+        <li class="row" data-src="assets/media/orbits.m4a" data-peaks="orbits" style="--c: var(--rose)">
+          <button class="row-play" type="button" aria-label="Play Orbits"><span class="num">02</span><span class="eq" aria-hidden="true"><i></i><i></i><i></i></span><svg class="i-play" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z"/></svg><svg class="i-pause" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 3h3v10H4zM9 3h3v10H9z"/></svg></button>
+          <a class="row-title" href="assets/media/orbits.m4a">Orbits</a>
+          <span class="row-genre">Euclidean groove · 104 BPM</span>
+          <span class="row-wave"><canvas aria-hidden="true"></canvas></span>
+          <span class="row-time">1:00</span>
+          <span class="row-desc" hidden>Orrery's rings play Pops 66's instruments through a Tape deck, over Vesper's Neon Rain. Every eight bars the rings recall another pattern button, on the bar: Groove, Breaks, Four floor.</span>
+          <span class="row-chain" hidden>Orrery <span class="midi" title="MIDI cable">⇢</span> Pops 66 → Tape → Mixer · Vesper → Mixer</span>
+        </li>
+        <li class="row" data-src="assets/media/phases.m4a" data-peaks="phases" style="--c: var(--orange)">
+          <button class="row-play" type="button" aria-label="Play Phases"><span class="num">03</span><span class="eq" aria-hidden="true"><i></i><i></i><i></i></span><svg class="i-play" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z"/></svg><svg class="i-pause" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 3h3v10H4zM9 3h3v10H9z"/></svg></button>
+          <a class="row-title" href="assets/media/phases.m4a">Phases</a>
+          <span class="row-genre">Polyrhythm · 84 BPM</span>
+          <span class="row-wave"><canvas aria-hidden="true"></canvas></span>
+          <span class="row-time">1:00</span>
+          <span class="row-desc" hidden>Four rings in CYCLE (3 in 8, 5 in 12, 7 in 16, 4 in 10, over one bar) play Fjord's Marimba Box, over a Drone in fifths. TWIST turns the rings slowly apart, the way a phase piece drifts.</span>
+          <span class="row-chain" hidden>Orrery <span class="midi" title="MIDI cable">⇢</span> Fjord → Ping Pong → Reverb → Mixer · Drone → Mixer</span>
+        </li>
+        <li class="row" data-src="assets/media/raster.m4a" data-peaks="raster" style="--c: var(--yellow)">
+          <button class="row-play" type="button" aria-label="Play Raster"><span class="num">04</span><span class="eq" aria-hidden="true"><i></i><i></i><i></i></span><svg class="i-play" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z"/></svg><svg class="i-pause" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 3h3v10H4zM9 3h3v10H9z"/></svg></button>
+          <a class="row-title" href="assets/media/raster.m4a">Raster</a>
+          <span class="row-genre">Glitch · 120 BPM</span>
+          <span class="row-wave"><canvas aria-hidden="true"></canvas></span>
+          <span class="row-time">1:00</span>
+          <span class="row-desc" hidden>Nullpunkt's Raster scene bounces in a Ping Pong, a Drone in octaves hums under a Filter moved by Random, and Splitter's sliced loop comes in. Halfway, Nullpunkt turns to its Pulse scene.</span>
+          <span class="row-chain" hidden>Nullpunkt → Ping Pong → Mixer · Splitter → Mixer · Drone → Filter ← Random → Mixer</span>
+        </li>
+        <li class="row" data-src="assets/media/golden-hour.m4a" data-peaks="golden-hour" style="--c: var(--amber)">
+          <button class="row-play" type="button" aria-label="Play Golden Hour"><span class="num">05</span><span class="eq" aria-hidden="true"><i></i><i></i><i></i></span><svg class="i-play" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z"/></svg><svg class="i-pause" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 3h3v10H4zM9 3h3v10H9z"/></svg></button>
+          <a class="row-title" href="assets/media/golden-hour.m4a">Golden Hour</a>
+          <span class="row-genre">Rhythm box · 96 BPM</span>
+          <span class="row-wave"><canvas aria-hidden="true"></canvas></span>
+          <span class="row-time">1:00</span>
+          <span class="row-desc" hidden>Pops 66's Bossanova through a worn Tape, coming in after two bars of Vesper's Golden Hour scene.</span>
+          <span class="row-chain" hidden>Pops 66 → Tape → Mixer · Vesper → Mixer</span>
+        </li>
+      </ol>
+      <p class="tracks-note">Recorded offline by the engine that plays live, 48 kHz, AAC 192 kb/s. <span class="midi" title="MIDI cable">⇢</span> is a MIDI cable, → an audio one. Splitter slices a loop the recording script synthesizes.</p>
+    </article>
+    </div>
+  </div>
+</section>
+
 <!-- ================================================================ MIDI -->
 <section class="section" id="midi" style="padding-top: 0">
   <div class="wrap">
     <div class="section-head reveal" style="--accent: var(--violet)">
-      <span class="label">04 · MIDI</span>
+      <span class="label">05 · MIDI</span>
       <h2>Notes travel on <span class="outline">cables too.</span></h2>
       <p class="lead">Generators write melodies and chords; arpeggiators and loopers reshape them; instruments, Aether, Larsen and your VST3 and Audio Unit plugins play them. Every MIDI device is connected automatically, even one plugged in after launch, the transport can follow an external MIDI clock or send its own, and any MIDI node can drive a knob directly with <strong>MAP</strong>.</p>
     </div>
@@ -456,7 +571,7 @@
 <section class="section" id="features" style="padding-top: 0">
   <div class="wrap">
     <div class="section-head reveal" style="--accent: var(--orange)">
-      <span class="label">05 · The board</span>
+      <span class="label">06 · The board</span>
       <h2>Built like an instrument, <span class="outline">not a toy.</span></h2>
     </div>
     <div class="features">
@@ -528,7 +643,7 @@
 <section class="section" id="catalogue" style="padding-top: 0">
   <div class="wrap">
     <div class="section-head reveal" style="--accent: var(--teal)">
-      <span class="label">06 · Catalogue</span>
+      <span class="label">07 · Catalogue</span>
       <h2>Thirty-five nodes, <span class="outline">eight groups.</span></h2>
       <p class="lead">Plus every VST3 and Audio Unit plugin on your machine, and the nodes you <a href="sdk.html">build yourself</a>. Browse them all with a picture and the details of each.</p>
     </div>
@@ -549,7 +664,7 @@
 <section class="section" id="start" style="padding-top: 0">
   <div class="wrap">
     <div class="section-head reveal" style="--accent: var(--green)">
-      <span class="label">07 · Getting started</span>
+      <span class="label">08 · Getting started</span>
       <h2>One command <span class="outline">to the first drone.</span></h2>
       <p class="lead">AudioBoard is a native Rust app (egui and eframe for the interface, cpal for audio, midir for MIDI). With a Rust toolchain installed, build and run it from the repository:</p>
     </div>
@@ -581,7 +696,7 @@
 <section class="section" id="architecture" style="padding-top: 0">
   <div class="wrap">
     <div class="section-head reveal" style="--accent: var(--blue)">
-      <span class="label">08 · Under the hood</span>
+      <span class="label">09 · Under the hood</span>
       <h2>Two threads <span class="outline">that never wait.</span></h2>
     </div>
     <div class="arch">
@@ -683,6 +798,7 @@
   </div>
 </footer>
 
+<script src="assets/media/peaks.js"></script>
 <script src="assets/js/site.js"></script>
 </body>
 </html>
