@@ -7,6 +7,7 @@ use egui::{Align2, Color32, CursorIcon, FontId, Id, LayerId, Order, Rect, RichTe
 
 use super::canvas::Request;
 use super::theme::{self, alpha};
+use crate::audio::modules::ModuleKind;
 use crate::graph::NodeType;
 use crate::project::Preset;
 
@@ -128,6 +129,66 @@ impl Palette {
                 });
             }
 
+            // Plugin nodes (dylibs built with the node SDK), by maker.
+            let makers = crate::audio::node_plugin::by_maker();
+            let node_groups: Vec<(&str, Vec<NodeType>)> = makers
+                .iter()
+                .map(|(maker, list)| {
+                    let types = list.iter().map(|e| NodeType::Module(ModuleKind::Ext(*e)));
+                    (*maker, types.filter(|t| matches(t.name(), t.hint()) || matches(maker, "")).collect::<Vec<_>>())
+                })
+                .filter(|(_, types)| !types.is_empty())
+                .collect();
+            let node_count: usize = node_groups.iter().map(|(_, t)| t.len()).sum();
+            if node_count > 0 || !searching {
+                section(ui, "Plugin nodes", node_count, searching, |ui| {
+                    if makers.is_empty() && !searching {
+                        ui.label(
+                            RichText::new("Node plugins you install in the Nodes folder show here.")
+                                .size(10.5)
+                                .color(theme::TEXT_FAINT),
+                        );
+                    }
+                    for (maker, types) in node_groups {
+                        node_maker_section(ui, maker, types.len(), searching, |ui| {
+                            let mut rows = ui.available_rect_before_wrap();
+                            rows.min.x += 10.0;
+                            ui.scope_builder(egui::UiBuilder::new().max_rect(rows), |ui| {
+                                for ty in types {
+                                    let entry = Entry {
+                                        name: ty.name(),
+                                        hint: ty.hint(),
+                                        color: theme::OSC_ACCENTS[2],
+                                        spawn: Spawn::Node(ty),
+                                        removable: false,
+                                    };
+                                    if row(ui, &entry).clicked {
+                                        picked = Some(entry.spawn);
+                                    }
+                                }
+                            });
+                        });
+                    }
+                    if !searching {
+                        ui.add_space(6.0);
+                        ui.horizontal(|ui| {
+                            let link = |ui: &mut Ui, text: &str| {
+                                ui.add(egui::Label::new(RichText::new(text).size(10.5).color(theme::TEXT_DIM)).sense(Sense::click()))
+                                    .on_hover_cursor(CursorIcon::PointingHand)
+                                    .clicked()
+                            };
+                            if link(ui, "Rescan") {
+                                requests.push(Request::RescanPlugins);
+                            }
+                            ui.label(RichText::new("·").size(10.5).color(theme::TEXT_FAINT));
+                            if link(ui, "Open Nodes folder") {
+                                requests.push(Request::RevealNodePlugins);
+                            }
+                        });
+                    }
+                });
+            }
+
             // Plugins, by maker; a search also matches the maker's name.
             let shown: Vec<usize> = (0..plugins.len())
                 .filter(|&i| matches(&plugins[i].name, &plugins[i].hint) || matches(&plugins[i].vendor, ""))
@@ -245,17 +306,22 @@ enum Level {
 /// first; folded ones show how many entries they hold). While searching,
 /// every category with matches is open, and the folds are kept for later.
 fn section(ui: &mut Ui, name: &str, count: usize, searching: bool, body: impl FnOnce(&mut Ui)) {
-    fold(ui, Level::Category, name, count, searching, body);
+    fold(ui, Level::Category, "", name, count, searching, body);
 }
 
 /// A plugin maker inside Plugins: folds like a category, one step in.
 fn vendor_section(ui: &mut Ui, name: &str, count: usize, searching: bool, body: impl FnOnce(&mut Ui)) {
-    fold(ui, Level::Vendor, name, count, searching, body);
+    fold(ui, Level::Vendor, "", name, count, searching, body);
 }
 
-fn fold(ui: &mut Ui, level: Level, name: &str, count: usize, searching: bool, body: impl FnOnce(&mut Ui)) {
+/// A maker inside Plugin nodes (folds apart from the same maker's plugins).
+fn node_maker_section(ui: &mut Ui, name: &str, count: usize, searching: bool, body: impl FnOnce(&mut Ui)) {
+    fold(ui, Level::Vendor, "nodes", name, count, searching, body);
+}
+
+fn fold(ui: &mut Ui, level: Level, group: &str, name: &str, count: usize, searching: bool, body: impl FnOnce(&mut Ui)) {
     let vendor = level == Level::Vendor;
-    let id = Id::unique(("palette_section", vendor, name));
+    let id = Id::unique(("palette_section", vendor, group, name));
     let mut state = CollapsingState::load_with_default_open(ui.ctx(), id, true);
     ui.add_space(if vendor { 2.0 } else { 6.0 });
     let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), if vendor { 22.0 } else { 24.0 }), Sense::click());

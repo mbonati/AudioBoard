@@ -58,7 +58,8 @@ impl ModulePreset {
 
 /// Where a kind's presets live.
 pub fn file(dir: &Path, kind: ModuleKind) -> PathBuf {
-    dir.join(format!("{}.json", kind.def().name))
+    // Built-in modules by name, plugin nodes by their stable id.
+    dir.join(format!("{}.json", kind.key()))
 }
 
 /// The app's preset folder.
@@ -68,13 +69,25 @@ pub fn dir() -> Option<PathBuf> {
 
 /// A kind's saved presets (none if the file is missing or unreadable).
 pub fn load(dir: &Path, kind: ModuleKind) -> Vec<ModulePreset> {
-    std::fs::read_to_string(file(dir, kind)).ok().and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default()
+    load_file(&file(dir, kind))
 }
 
 pub fn save(dir: &Path, kind: ModuleKind, presets: &[ModulePreset]) -> Result<(), String> {
-    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    save_file(&file(dir, kind), presets)
+}
+
+/// Presets kept in a file of their own (Orrery's patterns: `data` holds a
+/// pattern, not the whole module); none if it is missing or unreadable.
+pub fn load_file(path: &Path) -> Vec<ModulePreset> {
+    std::fs::read_to_string(path).ok().and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default()
+}
+
+pub fn save_file(path: &Path, presets: &[ModulePreset]) -> Result<(), String> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
     let json = serde_json::to_string_pretty(presets).map_err(|e| e.to_string())?;
-    std::fs::write(file(dir, kind), json).map_err(|e| e.to_string())
+    std::fs::write(path, json).map_err(|e| e.to_string())
 }
 
 /// Adds `preset`, replacing one of the same name.

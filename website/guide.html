@@ -27,6 +27,7 @@
       <a href="nodes.html">Nodes</a>
       <a href="guide.html" aria-current="page">Guide</a>
       <a href="architecture.html">Architecture</a>
+      <a href="sdk.html">SDK</a>
       <a class="gh" href="https://github.com/mbonati/AudioBoard"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>Source</a>
     </nav>
   </div>
@@ -102,7 +103,7 @@
 
     <section id="transport">
       <h2><span class="n">04</span>Transport and tempo</h2>
-      <p><strong>Start / Stop</strong> (the toolbar, or <kbd>Space</kbd>) drive the transport, not the audio. Stop ends the sound's generation but lets it die away: sequencers, arpeggiators, MIDIcer, Automa and Colloid end the notes they were holding, oscillators and Drones fade out in a few milliseconds, while effects and plugins keep running so their tails ring on. Stop also goes back to the start: the next Start begins every node from its first step. The MIDI keyboard keeps playing plugins while stopped.</p>
+      <p><strong>Start / Stop</strong> (the toolbar, or <kbd>Space</kbd>) drive the transport, not the audio. Stop ends the sound's generation but lets it die away: sequencers, arpeggiators, MIDIcer, Automa, Colloid and Orrery end the notes they were holding, oscillators and Drones fade out in a few milliseconds, while effects and plugins keep running so their tails ring on. Stop also goes back to the start: the next Start begins every node from its first step. The MIDI keyboard keeps playing plugins while stopped.</p>
       <p>The <strong>tempo</strong> is global: the <strong>BPM</strong> field in the toolbar. Drag it (Shift for fine steps), click it to type a value (“97,5” works too), Alt+click to go back to 90. <strong>TAP</strong> (or <kbd>T</kbd>) sets it from your taps; a pause of two seconds starts a new count. Sequencers and arpeggiators are locked to the same grid, and the tempo is passed to plugins for their synced LFOs and delays.</p>
       <p><strong>External MIDI sync.</strong> In <strong>Settings → Sync</strong> the transport can follow a <strong>MIDI clock</strong> from one of the MIDI inputs (a drum machine, a DAW, a hardware sequencer) instead of keeping its own time:</p>
       <ul>
@@ -175,6 +176,7 @@
     <section id="palette">
       <h2><span class="n">08</span>Palette</h2>
       <p>The panel on the left lists all nodes by category and the library modules, with a search field. Click a category's heading to fold it; while searching, every category with matches opens. Drag an entry onto the canvas (an outline shows where it lands), or click it to add it in the middle of the view. Installed plugins, VST3 and Audio Units (AUv3 and AU), are grouped by maker, and the search matches makers too.</p>
+      <p><strong>Plugin nodes</strong>, nodes built with AudioBoard's own Rust SDK, have a section of their own, by maker as well. Put a plugin's library (<code>.dylib</code>) in <code>~/Library/Application Support/AudioBoard/Nodes</code> (the section's <strong>Open Nodes folder</strong> link opens it) and press <strong>Rescan</strong>. They work like built-in nodes, with the generic panel, and a project saves them by a stable id: one whose plugin isn't installed opens without that node and says which is missing. <a href="sdk.html">The SDK page</a> shows how to make one.</p>
     </section>
 
     <section id="board">
@@ -196,15 +198,22 @@
     <section id="iris">
       <h2><span class="n">10</span>Visuals: Iris</h2>
       <figure>
-        <img src="assets/shots/iris-ui-1x.png" srcset="assets/shots/iris-ui-1x.png 1380w, assets/shots/iris-ui.png 2760w" sizes="(max-width: 900px) 100vw, 820px" width="1380" height="650" loading="lazy" alt="A Drone patched into Iris, which shows its Mandala scene; the settings popup is open beside the node, with the scenes, the source, the palettes and the motion sliders." data-zoom="assets/shots/iris-ui.png" data-title="Iris and its settings">
+        <img src="assets/shots/iris-ui-1x.png" srcset="assets/shots/iris-ui-1x.png 1440w, assets/shots/iris-ui.png 2880w" sizes="(max-width: 900px) 100vw, 820px" width="1440" height="757" loading="lazy" alt="A Drone patched into Iris, which shows its Mandala scene; the settings popup is open beside the node on its Picture tab, with the scenes, the source, the palettes, the motion sliders and the frame." data-zoom="assets/shots/iris-ui.png" data-title="Iris and its settings">
         <figcaption>Iris following a Drone on its IN, with its settings open beside it</figcaption>
       </figure>
-      <p><strong>Iris</strong> (in the <strong>Visual</strong> group) is a screen on the board where visuals react to the sound. Patch a node into its <strong>IN</strong> and it follows that node only; with IN free it follows the <strong>main mix</strong>, everything the board plays. The settings can force either one (<strong>Auto</strong>, <strong>IN</strong>, <strong>Main mix</strong>). <strong>THRU</strong> passes the sound on unchanged, so Iris can sit inside a chain.</p>
+      <p><strong>Iris</strong> (in the <strong>Visual</strong> group) is a screen on the board where visuals react to the sound. Patch a node into its <strong>IN</strong> and it follows that node only; with IN free it follows the <strong>main mix</strong>, everything the board plays. The settings can force either one (<strong>Auto</strong>, <strong>IN</strong>, <strong>Main mix</strong>). <strong>THRU</strong> passes the sound on unchanged, so Iris can sit inside a chain. Its <strong>MIDI</strong> input takes notes and controllers (with it free, the keyboards play it).</p>
       <ul>
         <li><strong>Move and resize</strong>: drag the picture to move the node; while the pointer is over it, a grip appears in the bottom right corner: drag it to resize the screen (<kbd>Shift</kbd> keeps its shape). The scene's name shows at the top left.</li>
-        <li><strong>Settings</strong>: the gear at the top right opens them in a popup <em>beside</em> the node, so the picture stays in view: the scene (fourteen: geometric, mathematical, generative), Auto, IN or Main mix, seven palettes, React, Speed, Detail, Smooth, Trail, a new scene every 1 to 16 bars, the screen's shape and a new seed.</li>
+        <li><strong>Settings</strong>: the gear at the top right opens them in a popup <em>beside</em> the node, so the picture stays in view: in three tabs. <strong>Picture</strong>: the scene (nineteen: geometric, mathematical, generative, 3D), Auto, IN or Main mix, eight palettes, React, Speed, Detail, Smooth, Trail, a new scene every 1 to 16 bars, frame or no frame, the screen's shape and a new seed. <strong>Layers</strong> and <strong>Modulation</strong>: below.</li>
+        <li><strong>Layers</strong>: up to four scenes on top of each other (layer 1 is the scene above). Tick a layer to show it, pick its scene and its blend (<strong>Add</strong> makes light add up, best on dark palettes), <strong>S</strong> to solo it, and click its number to edit it: opacity, zoom, rotate, spin, X and Y, hue, its own speed, a <strong>Mirror</strong> (Mirror, Quad, ×3, ×6) and up to eight <strong>Echoes</strong> of past frames, each grown by <strong>Feedback</strong> for trails and endless zooms. <strong>Reset</strong> takes it back to plain.</li>
+        <li><strong>Modulation</strong>: the matrix routes a source to a setting by a bipolar amount; pick a source and a destination in its free row to add one, × to remove it. The sources: four LFOs (free in Hz, or <strong>Sync</strong>ed to the transport from 1/16 to 8 bars), two envelopes fired by MIDI notes, onsets or both, four audio bands, the onset beat, velocity, note, mod wheel and two CCs. A small meter next to each shows what it does now.</li>
+        <li><strong>No frame</strong>: the node's card goes and the picture fills the whole node, as if stuck on the board. The ports stay on its edges, an outline shows while it is selected, and the scene's name, gear and grip still show under the pointer.</li>
         <li><strong>Open in a window</strong>: the picture in a window of its own, for a second display or a projector. Double-click it for full screen; <kbd>Esc</kbd> leaves full screen, then closes it. It keeps playing when the node is off the view.</li>
       </ul>
+      <figure>
+        <img src="assets/shots/iris-ui-mod-1x.png" srcset="assets/shots/iris-ui-mod-1x.png 970w, assets/shots/iris-ui-mod.png 1940w" sizes="(max-width: 900px) 100vw, 640px" width="970" height="620" loading="lazy" alt="Iris with two layers, Flow mirrored into four with echoes and the Halo on top; its Modulation tab is open beside it, with three matrix slots, the four LFOs and the envelopes." data-zoom="assets/shots/iris-ui-mod.png" data-title="Iris: the Modulation tab">
+        <figcaption>Two layers moved by an LFO, the bass and an envelope, with the Modulation tab open</figcaption>
+      </figure>
       <p>Every scene is in the <a href="nodes.html#node-iris">catalogue</a>, with a picture of each.</p>
     </section>
 
@@ -221,7 +230,7 @@
       </ul>
       <p><strong>MIDI</strong> lists the inputs connected (all are used, and one plugged in is picked up within seconds), each with a <strong>notes</strong> light and a <strong>clock</strong> light; the one followed as the clock is marked SYNC SOURCE.</p>
       <p><strong>Sync</strong> chooses the transport's clock, <strong>Internal</strong> or <strong>MIDI clock</strong> from one of the inputs, with a status line for the tempo received and where it plays; <strong>Send clock</strong> has a switch for each MIDI output (see <a href="#transport">Transport and tempo</a>).</p>
-      <p><strong>Plugins</strong> shows the VST3 folders and how many plugins they hold, switches for listing Audio Units and Apple's own, and <strong>Rescan plugins</strong>.</p>
+      <p><strong>Plugins</strong> shows the VST3 folders and how many plugins they hold, switches for listing Audio Units and Apple's own, the plugin nodes' folders and the libraries loaded from them, and <strong>Rescan plugins</strong>, which rescans plugin nodes too.</p>
     </section>
 
     <section id="load">
@@ -250,7 +259,7 @@
     <section id="projects">
       <h2><span class="n">14</span>Projects and library</h2>
       <p>The project name in the toolbar opens the File menu: New project, Open…, <strong>Open Recent</strong>, Save, Save as…. Open Recent lists the last ten projects opened or saved, newest first, with their folder, and is kept between launches; a project that is no longer there is greyed out, and <strong>Clear menu</strong> empties the list.</p>
-      <p>A dot next to the name, and “(edited)” in the window title, flag unsaved changes; AudioBoard asks before discarding them. A project (<code>.audioboard</code>) is a JSON file with nodes and parameters, positions, colours, collapsed nodes, cables and modules, and the board's stickers and background (images inside, base64); parameters are saved by name.</p>
+      <p>A dot next to the name, and “(edited)” in the window title, flag unsaved changes; AudioBoard asks before discarding them. A project (<code>.audioboard</code>) is a JSON file with nodes and parameters, positions, colours, collapsed nodes, cables and modules, the board's stickers and background (images inside, base64) and Splitter's samples (16-bit PCM inside, base64, so a project carries its sounds); parameters are saved by name, built-in modules by name and plugin nodes by their stable id.</p>
       <p><strong>Module library.</strong> Right-click a module's header → <strong>Save to library</strong>. Saved modules appear in the Library section of the palette and of the right-click menu: inserting one adds the nodes, their cables and settings as a new module, already collapsed to a card. <strong>Open library folder</strong> opens the folder of <code>.abmodule</code> files (<code>~/Library/Application Support/AudioBoard/Library</code> on macOS), handy for sharing them.</p>
       <p>Named presets of Nullpunkt, Aether, Larsen and Vesper are kept in the app's data folder too, so every project sees them.</p>
     </section>
@@ -275,7 +284,7 @@
       <p class="dim" style="margin-top: 12px">A node-based modular synthesizer in Rust. Built with egui and eframe, cpal, midir and vst3-host. Every panel on this site is rendered from the app.</p>
     </div>
     <nav aria-label="Footer">
-      <a href="index.html">Home</a><a href="nodes.html">Nodes</a><a href="guide.html">Guide</a><a href="architecture.html">Architecture</a><a href="https://github.com/mbonati/AudioBoard">Source</a>
+      <a href="index.html">Home</a><a href="nodes.html">Nodes</a><a href="guide.html">Guide</a><a href="architecture.html">Architecture</a><a href="sdk.html">SDK</a><a href="https://github.com/mbonati/AudioBoard">Source</a>
     </nav>
   </div>
 </footer>

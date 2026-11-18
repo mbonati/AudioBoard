@@ -33,7 +33,13 @@
   /* ----------------------------------------------------------- copy code */
   $$(".copy").forEach(function (b) {
     b.addEventListener("click", function () {
+      // A one-line command says what to copy; a listing copies its text.
       var text = b.getAttribute("data-copy");
+      if (text === null) {
+        var block = b.closest(".code");
+        var pre = block && block.querySelector("pre");
+        text = pre ? pre.textContent : "";
+      }
       var done = function () {
         b.textContent = "Copied"; b.classList.add("done");
         setTimeout(function () { b.textContent = "Copy"; b.classList.remove("done"); }, 1400);

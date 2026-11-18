@@ -1921,7 +1921,7 @@ fn palette_categories_fold() {
         texts = run(&mut palette, vec![]);
     }
     assert!(!shows(&texts, "Oscillator") && shows(&texts, "SOURCES"), "folded");
-    assert!(shows(&texts, "10"), "a folded category shows its count");
+    assert!(shows(&texts, "11"), "a folded category shows its count");
     assert!(shows(&texts, "Reverb"), "the others stay open");
 
     // Searching opens what matches; clearing it folds it again.
@@ -7721,6 +7721,8 @@ fn iris_draws_every_scene_and_resizes() {
         p.set_mode(scene);
         p.data[data::PALETTE].set((scene % crate::ui::iris::PALETTES.len()) as f32);
         p.set(crate::audio::modules::iris::DETAIL, (scene % 3) as f32 * 0.5);
+        // Every other scene with no frame.
+        p.data[data::FRAMELESS].set((scene % 2) as f32);
         for _ in 0..8 {
             render_buf(&mut e, 800);
             let input = egui::RawInput { time: Some(frame as f64 / 60.0), ..Default::default() };
@@ -7770,4 +7772,1271 @@ fn iris_is_saved_with_its_scene_size_and_look() {
     for i in [data::SOURCE, data::PALETTE, data::CYCLE] {
         assert_eq!(q.data[i].get(), p.data[i].get());
     }
+}
+
+#[test]
+fn iris_hears_midi_notes_and_the_transport() {
+    use crate::audio::modules::iris::viz;
+    use crate::graph::MIDI_PORT;
+    let (mut g, a, mut e) = setup();
+    let seq = g.add_module(ModuleKind::Sequencer, pos2(-600.0, 0.0), &a);
+    let iris = g.add_module(ModuleKind::Iris, pos2(0.0, 0.0), &a);
+    assert!(g.connect(port(seq, MIDI_PORT), port(iris, MIDI_PORT), &a), "Iris takes MIDI");
+    let p = module_params(&g, iris);
+    render_buf(&mut e, 4800);
+    let beat = p.viz[viz::BEAT].get();
+    for _ in 0..20 {
+        render_buf(&mut e, 4800);
+    }
+    assert!(p.viz[viz::NOTES].get() > 0.0, "notes from the sequencer");
+    assert!(p.viz[viz::VELOCITY].get() > 0.0 && p.viz[viz::NOTE].get() > 0.0);
+    assert_eq!(p.viz[viz::PLAYING].get(), 1.0);
+    assert!(p.viz[viz::BEAT].get() > beat, "the transport moves on: {beat} → {}", p.viz[viz::BEAT].get());
+}
+
+/// Iris's settings popup stays open while its comboboxes are used: their
+/// lists are popups of their own, and a click on one is not a click
+/// outside the settings. A click on the board, or Esc, still closes it.
+#[test]
+fn iris_settings_stay_open_while_a_combobox_is_used() {
+    use crate::audio::modules::iris::data::{self, layer, slot};
+    use egui::{Modifiers, PointerButton};
+    let (mut g, a, _e) = setup();
+    let iris = g.add_module(ModuleKind::Iris, pos2(40.0, 60.0), &a);
+    let p = module_params(&g, iris);
+    // No frame: the screen is the whole node, its gear 16 in from the top right.
+    p.data[data::FRAMELESS].set(1.0);
+    let mut c = Canvas::new();
+    c.frame(&mut g, &a, Modifiers::NONE, vec![]);
+    let node = g.node(iris).unwrap();
+    let gear = (c.editor.pan + (node.pos + egui::vec2(node.size().x - 16.0, 16.0)).to_vec2() * c.editor.zoom).to_pos2();
+    let click = |c: &mut Canvas, g: &mut Graph, at: egui::Pos2| c.click(g, &a, at, PointerButton::Primary, Modifiers::NONE);
+    // Clicks the widget `find` finds, looked up again with the pointer
+    // over it: a popup just opened may still move into place.
+    let click_found = |c: &mut Canvas, g: &mut Graph, what: &str, find: &dyn Fn(&Canvas) -> Option<egui::Pos2>| {
+        let at = find(c).unwrap_or_else(|| panic!("no {what} on screen"));
+        c.frame(g, &a, Modifiers::NONE, vec![egui::Event::PointerMoved(at)]);
+        c.frame(g, &a, Modifiers::NONE, vec![]);
+        let at = find(c).unwrap_or_else(|| panic!("no {what} on screen"));
+        c.click(g, &a, at, PointerButton::Primary, Modifiers::NONE);
+    };
+    let click_on = |c: &mut Canvas, g: &mut Graph, text: &str| click_found(c, g, text, &|c| c.find(text));
+    // The topmost, then leftmost, widget reading `text` (a combobox reads its value).
+    let first = |c: &Canvas, text: &str| {
+        c.labels.iter().filter(|(l, _)| l == text).map(|(_, p)| *p).min_by_key(|p| (p.y.round() as i32, p.x.round() as i32))
+    };
+    let count = |c: &Canvas, text: &str| c.labels.iter().filter(|(l, _)| l == text).count();
+    let open = |c: &Canvas| c.find("Modulation").is_some();
+
+    click(&mut c, &mut g, gear);
+    assert!(open(&c), "the gear opens the settings");
+    assert!(c.menu_open(), "the board knows a menu is open (a click that closes it picks nothing)");
+    click_on(&mut c, &mut g, "Modulation");
+    assert!(c.find("MATRIX").is_some(), "on the Modulation tab");
+
+    // The matrix: the source of its first slot, then its destination.
+    click_found(&mut c, &mut g, "the first slot's source", &|c| first(c, "—"));
+    assert!(open(&c), "the settings stay open with the source list open");
+    click_on(&mut c, &mut g, "LFO 2");
+    assert_eq!(p.data[data::MATRIX + slot::SOURCE].get(), 2.0, "LFO 2 picked");
+    assert!(open(&c), "the settings stay open after picking a source");
+    assert_eq!(count(&c, "LFO 2"), 1, "the list closes on a pick");
+
+    click_found(&mut c, &mut g, "the first slot's destination", &|c| first(c, "—"));
+    assert!(open(&c), "the settings stay open with the destination list open");
+    click_on(&mut c, &mut g, "Detail");
+    assert_eq!(p.data[data::MATRIX + slot::DEST].get(), 2.0, "Detail picked");
+    assert!(open(&c), "the settings stay open after picking a destination");
+
+    // Esc with a list open closes the list; again, the settings.
+    click_on(&mut c, &mut g, "LFO 2");
+    assert_eq!(count(&c, "LFO 2"), 2, "the source list is open again");
+    c.escape(&mut g, &a);
+    assert!(open(&c), "Esc closes the list, not the settings");
+    assert_eq!(count(&c, "LFO 2"), 1);
+    c.escape(&mut g, &a);
+    assert!(!open(&c), "Esc closes the settings");
+    assert!(!c.menu_open());
+
+    // The Layers tab's selectors too: layer 1's blend.
+    click(&mut c, &mut g, gear);
+    assert!(open(&c), "the gear opens the settings again");
+    click_on(&mut c, &mut g, "Layers");
+    click_found(&mut c, &mut g, "layer 1's blend", &|c| first(c, "Normal"));
+    assert!(open(&c), "the settings stay open with the blend list open");
+    click_on(&mut c, &mut g, "Add");
+    assert_eq!(p.data[data::LAYER + layer::BLEND].get(), 1.0, "Add picked");
+    assert!(open(&c), "the settings stay open after picking a blend");
+
+    // A click on the board closes them.
+    click(&mut c, &mut g, egui::pos2(1350.0, 860.0));
+    assert!(!open(&c), "a click outside closes the settings");
+    assert!(!c.menu_open());
+}
+
+// ---------------------------------------------------------------------------
+// Splitter
+// ---------------------------------------------------------------------------
+
+fn splitter_params() -> Arc<ModuleParams> {
+    Arc::new(ModuleParams::new(ModuleKind::Splitter))
+}
+
+/// What a Splitter run produced: both sides, and the MIDI it sent
+/// (absolute frames).
+#[derive(Default)]
+struct SplitterRun {
+    left: Vec<f32>,
+    right: Vec<f32>,
+    sent: Vec<(usize, [u8; 3])>,
+}
+
+impl SplitterRun {
+    fn note_ons(&self) -> Vec<(usize, u8)> {
+        self.sent.iter().filter(|(_, m)| m[0] & 0xF0 == 0x90 && m[2] > 0).map(|(f, m)| (*f, m[1])).collect()
+    }
+
+    fn note_offs(&self) -> Vec<(usize, u8)> {
+        self.sent.iter().filter(|(_, m)| m[0] & 0xF0 == 0x80).map(|(f, m)| (*f, m[1])).collect()
+    }
+
+    /// RMS of the left side over [from, to) seconds.
+    fn rms(&self, from: f32, to: f32) -> f32 {
+        let (a, b) = ((from * 48_000.0) as usize, ((to * 48_000.0) as usize).min(self.left.len()));
+        rms_of(&self.left[a..b])
+    }
+}
+
+/// A Splitter processor at 120 BPM, kept across runs (frames count on).
+struct SplitterRig {
+    proc: crate::audio::modules::splitter::Splitter,
+    ctx: crate::audio::engine::ProcessCtx,
+    inputs: Box<crate::audio::engine::Inputs>,
+    outputs: Vec<crate::audio::engine::Buf>,
+    frame: usize,
+}
+
+impl SplitterRig {
+    fn new(p: &Arc<ModuleParams>, playing: bool) -> Self {
+        use crate::audio::engine::{Inputs, MAX_INPUTS, MidiBuf, ProcessCtx};
+        SplitterRig {
+            proc: crate::audio::modules::splitter::Splitter::new(p.clone(), 48_000.0),
+            ctx: ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing, restart: false },
+            inputs: Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: true }),
+            outputs: vec![[[0.0f32; 64]; 2]; 1],
+            frame: 0,
+        }
+    }
+
+    /// Runs `blocks`, with `midi` arriving at (absolute frame, message).
+    fn run(&mut self, blocks: usize, midi: &[(usize, [u8; 3])]) -> SplitterRun {
+        use crate::audio::engine::Processor;
+        let mut run = SplitterRun::default();
+        for _ in 0..blocks {
+            let at = self.frame;
+            self.inputs.midi.clear();
+            for (f, m) in midi.iter().filter(|(f, _)| (at..at + 64).contains(f)) {
+                self.inputs.midi.push(f - at, *m);
+            }
+            self.proc.process(&self.ctx, &self.inputs, &mut self.outputs, 64);
+            run.left.extend_from_slice(&self.outputs[0][0]);
+            run.right.extend_from_slice(&self.outputs[0][1]);
+            run.sent.extend(self.proc.midi_out().unwrap().events().iter().map(|e| (at + e.frame as usize, e.data)));
+            if self.ctx.playing {
+                self.ctx.beat += self.ctx.beats_per_sample * 64.0;
+            }
+            self.frame += 64;
+        }
+        run
+    }
+}
+
+fn run_splitter(p: &Arc<ModuleParams>, blocks: usize, playing: bool, midi: &[(usize, [u8; 3])]) -> SplitterRun {
+    SplitterRig::new(p, playing).run(blocks, midi)
+}
+
+/// A Splitter that plays only what MIDI asks (the animation off, no CHAOS).
+fn splitter_quiet() -> Arc<ModuleParams> {
+    use crate::audio::modules::splitter::{CHAOS, data};
+    let p = splitter_params();
+    p.data[data::RUN].set(0.0);
+    p.set(CHAOS, 0.0);
+    p
+}
+
+/// A second of silence with 50 ms pings (1 kHz, falling) at `hits` seconds.
+fn splitter_test_sample(hits: &[f32], seconds: f32) -> crate::audio::sample::Sample {
+    let n = (48_000.0 * seconds) as usize;
+    let mut l = vec![0.0f32; n];
+    for &h in hits {
+        let at = (h * 48_000.0) as usize;
+        for k in 0..2_400.min(n - at) {
+            let t = k as f32 / 48_000.0;
+            l[at + k] += (std::f32::consts::TAU * 1000.0 * t).sin() * (-t / 0.012).exp() * 0.8;
+        }
+    }
+    crate::audio::sample::Sample::new("test.wav", 48_000.0, l, Vec::new())
+}
+
+#[test]
+fn splitter_cuts_its_sample_by_grid_transients_and_chance() {
+    use crate::audio::modules::splitter::{self as sp, data, slice, slicing};
+    let grid = slicing::grid(8);
+    assert_eq!(grid.len(), 8);
+    assert_eq!(grid[3], (0.375, 0.5));
+
+    // Transients: where each ping starts, back to a zero crossing.
+    let sample = splitter_test_sample(&[0.1, 0.35, 0.6, 0.85], 1.0);
+    let regions = slicing::transients(&sample, 0.5, 32);
+    assert_eq!(regions.len(), 4, "one slice per ping, the silence before left out: {regions:?}");
+    for (r, want) in regions.iter().zip([0.1, 0.35, 0.6, 0.85]) {
+        assert!((r.0 - want).abs() < 0.008, "a cut at {} for a ping at {want}", r.0);
+    }
+    assert_eq!(regions[3].1, 1.0);
+    // The strongest are kept when asked for fewer.
+    assert_eq!(slicing::transients(&sample, 0.5, 2).len(), 2);
+
+    // Random fragments: 8 to 400 ms, in order.
+    let random = slicing::random(16, 99, 10.0);
+    assert_eq!(random.len(), 16);
+    for w in random.windows(2) {
+        assert!(w[0].0 <= w[1].0);
+    }
+    for &(a, b) in &random {
+        let ms = (b - a) * 10_000.0;
+        assert!((7.9..=400.1).contains(&ms) && a >= 0.0 && b <= 1.0, "{ms} ms at {a}");
+    }
+
+    // Applied: the slices, their notes from C2, the pattern in order.
+    let p = splitter_params();
+    slicing::apply(&p, &regions, 0);
+    assert_eq!(sp::count(&p), 4);
+    for s in 0..4 {
+        assert_eq!(sp::get(&p, s, slice::SOURCE), 0.0);
+        assert_eq!(sp::note(&p, s), Some(36 + s as u8));
+    }
+    assert_eq!((0..6).map(|i| sp::step(&p, i)).collect::<Vec<_>>(), vec![Some(0), Some(1), Some(2), Some(3), Some(0), Some(1)]);
+
+    // Cut by hand, then deleted: the pattern follows.
+    let new = sp::add_slice(&p, 0.2, 0.1, 3).unwrap();
+    assert_eq!((new, sp::count(&p), sp::selected(&p)), (4, 5, 4));
+    assert_eq!((sp::get(&p, 4, slice::START), sp::get(&p, 4, slice::END)), (0.1, 0.2));
+    sp::set_step(&p, 7, Some(4));
+    sp::delete_slice(&p, 1);
+    assert_eq!(sp::count(&p), 4);
+    assert_eq!(sp::step(&p, 1), None, "steps on the deleted slice rest");
+    assert_eq!(sp::step(&p, 2), Some(1), "later slices move down");
+    assert_eq!(sp::step(&p, 7), Some(3));
+    assert_eq!(sp::get(&p, 3, slice::SOURCE), 3.0);
+    for _ in 0..40 {
+        sp::add_slice(&p, 0.0, 0.1, 1);
+    }
+    assert_eq!(sp::count(&p), 32, "no more than 32");
+    assert_eq!(p.data[data::COUNT].get(), 32.0);
+}
+
+#[test]
+fn splitter_plays_its_atoms_on_the_grid_with_nothing_loaded() {
+    let p = splitter_params();
+    assert!(p.sample.get().is_none());
+    let run = run_splitter(&p, 750, true, &[]);
+    assert!(run.left.iter().chain(&run.right).all(|y| y.is_finite() && y.abs() <= 1.0));
+    assert!(peak_of(&run.left) > 0.05, "the kit plays: {}", peak_of(&run.left));
+    assert!(!run.note_ons().is_empty(), "the steps go out on MIDI");
+    // Stopped, nothing plays.
+    let still = run_splitter(&p, 300, false, &[]);
+    assert_eq!(peak_of(&still.left), 0.0);
+    assert!(still.sent.is_empty());
+    assert_eq!(p.viz[crate::audio::modules::splitter::viz::STEP].get(), -1.0);
+}
+
+#[test]
+fn splitter_steps_follow_the_board_grid() {
+    use crate::audio::modules::splitter::{self as sp, CHAOS, data, slice, viz};
+    let p = splitter_params();
+    p.set(CHAOS, 0.0);
+    p.data[data::MODE].set(sp::ORDER as f32);
+    p.data[data::RATE].set(4.0); // 1/16: 6000 frames at 120 BPM
+    sp::set(&p, 4, slice::REPEAT, 1.0);
+    let run = run_splitter(&p, 400, true, &[]);
+    let ons = run.note_ons();
+    assert_eq!(ons, vec![(0, 36), (6000, 37), (12000, 38), (18000, 39), (24000, 40)], "a slice per step, in order, on the grid");
+    // Each held for GATE (50% of a step).
+    let offs = run.note_offs();
+    assert!(offs.iter().take(4).zip(&ons).all(|(off, on)| off.0 == on.0 + 3000 && off.1 == on.1), "{offs:?}");
+    assert!(p.viz[viz::STEP].get() >= 0.0);
+    assert_eq!(p.viz[viz::STEP_SLICE + 2].get(), 2.0, "the lane shows what each step played");
+
+    // Faster steps, swing, and a shorter pattern.
+    p.data[data::RATE].set(6.0); // 1/32: 3000 frames
+    p.data[data::LENGTH].set(3.0);
+    let ons: Vec<u8> = run_splitter(&p, 200, true, &[]).note_ons().iter().map(|o| o.1).collect();
+    assert_eq!(&ons[..5], &[36, 37, 38, 36, 37], "the pattern wraps at LENGTH");
+    p.data[data::LENGTH].set(16.0);
+    p.set(sp::SWING, 1.0);
+    let frames: Vec<usize> = run_splitter(&p, 200, true, &[]).note_ons().iter().map(|o| o.0).collect();
+    assert_eq!(&frames[..4], &[0, 4500, 6000, 10500], "every other step half a step late");
+
+    // RUN off, or the board stopped: nothing.
+    p.data[data::RUN].set(0.0);
+    assert!(run_splitter(&p, 200, true, &[]).sent.is_empty());
+}
+
+#[test]
+fn splitter_midi_notes_strike_their_slices_and_note_offs_end_held_ones() {
+    use crate::audio::modules::splitter::{self as sp, data, slice, viz};
+    let p = splitter_quiet();
+    // Note 38 is the kit's PING (slice 3).
+    let run = run_splitter(&p, 300, true, &[(640, [0x90, 38, 110])]);
+    assert_eq!(peak_of(&run.left[..640]), 0.0);
+    assert!(peak_of(&run.left[640..]) > 0.01);
+    assert_eq!(p.viz[viz::HITS + 2].get(), 1.0);
+    assert!(run.sent.is_empty(), "notes from MIDI do not go back out");
+
+    // A channel set: others are not heard.
+    p.data[data::MIDI_CH].set(3.0);
+    assert_eq!(peak_of(&run_splitter(&p, 100, true, &[(0, [0x90, 38, 110])]).left), 0.0);
+    assert!(peak_of(&run_splitter(&p, 100, true, &[(0, [0x92, 38, 110])]).left) > 0.01);
+    p.data[data::MIDI_CH].set(0.0);
+
+    // A LOOP slice ends with its note-off; a ONE slice plays on.
+    sp::set(&p, 0, slice::END, 1.0);
+    sp::set(&p, 0, slice::RELEASE, 20.0);
+    sp::set(&p, 0, slice::PLAY, 2.0);
+    let held = run_splitter(&p, 450, true, &[(0, [0x90, 36, 120]), (9600, [0x80, 36, 0])]);
+    assert!(held.rms(0.05, 0.15) > 0.05, "it plays while held");
+    assert!(held.rms(0.3, 0.45) < 1e-4, "and stops after its note-off: {}", held.rms(0.3, 0.45));
+    sp::set(&p, 0, slice::PLAY, 0.0);
+    let once = run_splitter(&p, 450, true, &[(0, [0x90, 36, 120]), (9600, [0x80, 36, 0])]);
+    assert!(once.rms(0.3, 0.45) > 0.05, "a ONE slice ignores the note-off");
+
+    // LEARN takes the next note; CHROMA plays the selected slice.
+    p.data[data::LEARN].set(3.0);
+    run_splitter(&p, 4, true, &[(0, [0x90, 70, 100])]);
+    assert_eq!(sp::note(&p, 2), Some(70));
+    assert_eq!(p.data[data::LEARN].get(), 0.0);
+    assert_eq!(p.viz[viz::NOTE_IN].get(), 70.0);
+    let hits = p.viz[viz::HITS + 5].get();
+    p.data[data::SELECTED].set(5.0);
+    run_splitter(&p, 4, true, &[(0, [0x90, 90, 100])]);
+    assert_eq!(p.viz[viz::HITS + 5].get(), hits, "unmapped notes do nothing");
+    p.data[data::CHROMA].set(1.0);
+    run_splitter(&p, 4, true, &[(0, [0x90, 90, 100])]);
+    assert_eq!(p.viz[viz::HITS + 5].get(), hits + 1.0, "with CHROMA they play the selected slice");
+}
+
+#[test]
+fn splitter_euclidean_and_probability_modes() {
+    use crate::audio::modules::splitter::{self as sp, CHAOS, data, slice};
+    // The tresillo: three over eight, at 0, 3 and 6.
+    let hits: Vec<usize> = (0..8).filter(|&i| sp::euclid(3, 8, 0, i)).collect();
+    assert_eq!(hits, vec![0, 3, 6]);
+    assert_eq!((0..16).filter(|&i| sp::euclid(5, 16, 1, i)).count(), 5);
+    assert!(!sp::euclid(0, 16, 0, 0) && sp::euclid(1, 1, 0, 5));
+    assert_eq!((0..8).filter(|&i| sp::euclid(3, 8, 1, i)).collect::<Vec<_>>(), vec![1, 4, 7], "ROTATE turns it");
+
+    let p = splitter_params();
+    p.set(CHAOS, 0.0);
+    p.data[data::COUNT].set(2.0);
+    p.data[data::MODE].set(sp::EUCLID as f32);
+    p.data[data::RATE].set(4.0);
+    for (s, (k, n, rot)) in [(3.0, 8.0, 0.0), (5.0, 16.0, 1.0)].into_iter().enumerate() {
+        sp::set(&p, s, slice::HITS, k);
+        sp::set(&p, s, slice::STEPS, n);
+        sp::set(&p, s, slice::ROTATE, rot);
+        sp::set(&p, s, slice::REPEAT, 1.0);
+    }
+    // Sixteen steps of 1/16: four beats.
+    let ons = run_splitter(&p, 1500, true, &[]).note_ons();
+    assert_eq!(ons.iter().filter(|o| o.1 == 36).count(), 6);
+    assert_eq!(ons.iter().filter(|o| o.1 == 37).count(), 5);
+    assert!(ons.iter().any(|o| o == &(6000 * 3, 36)), "slice 1 on step 3");
+
+    p.data[data::MODE].set(sp::PROB as f32);
+    sp::set(&p, 0, slice::PROB, 100.0);
+    sp::set(&p, 1, slice::PROB, 0.0);
+    let ons = run_splitter(&p, 1500, true, &[]).note_ons();
+    assert_eq!((ons.iter().filter(|o| o.1 == 36).count(), ons.iter().filter(|o| o.1 == 37).count()), (16, 0));
+    // FILL thins every mode out.
+    p.set(sp::FILL, 0.0);
+    assert!(run_splitter(&p, 1500, true, &[]).note_ons().is_empty());
+    p.set(sp::FILL, 1.0);
+
+    // LOCK: RANDOM picks the same slices every LENGTH steps.
+    p.data[data::COUNT].set(8.0);
+    p.data[data::MODE].set(sp::RANDOM as f32);
+    p.data[data::LOCK].set(1.0);
+    p.data[data::LENGTH].set(4.0);
+    for s in 0..8 {
+        sp::set(&p, s, slice::REPEAT, 1.0);
+    }
+    let notes: Vec<u8> = run_splitter(&p, 1500, true, &[]).note_ons().iter().map(|o| o.1).collect();
+    assert_eq!(notes.len(), 16);
+    assert_eq!(&notes[..4], &notes[4..8]);
+    assert_eq!(&notes[..4], &notes[12..16]);
+}
+
+#[test]
+fn splitter_ratchets_strike_on_the_grid() {
+    use crate::audio::modules::splitter::{self as sp, CHAOS, data, slice, viz};
+    let p = splitter_params();
+    p.set(CHAOS, 0.0);
+    p.data[data::COUNT].set(1.0);
+    p.data[data::MODE].set(sp::ORDER as f32);
+    p.data[data::RATE].set(1.0); // 1/4
+    sp::set(&p, 0, slice::REPEAT, 4.0);
+    sp::set(&p, 0, slice::REP_RATE, 3.0); // 1/32: 3000 frames
+    let ons: Vec<usize> = run_splitter(&p, 300, true, &[]).note_ons().iter().map(|o| o.0).collect();
+    assert_eq!(ons, vec![0, 3000, 6000, 9000]);
+
+    // Each repeat FALLs quieter.
+    sp::set(&p, 0, slice::FALL, 50.0);
+    sp::set(&p, 0, slice::END, 0.02);
+    let run = run_splitter(&p, 300, true, &[]);
+    let peaks: Vec<f32> = (0..4).map(|k| peak_of(&run.left[k * 3000..k * 3000 + 1500])).collect();
+    assert!(peaks.windows(2).all(|w| w[1] < w[0] * 0.8), "{peaks:?}");
+
+    // A key let go takes a held slice's remaining repeats with it.
+    let p = splitter_quiet();
+    sp::set(&p, 0, slice::PLAY, 1.0);
+    sp::set(&p, 0, slice::REPEAT, 8.0);
+    sp::set(&p, 0, slice::REP_RATE, 3.0);
+    run_splitter(&p, 300, true, &[(0, [0x90, 36, 100]), (7000, [0x80, 36, 0])]);
+    assert_eq!(p.viz[viz::HITS].get(), 3.0, "strikes at 0, 3000 and 6000, then the key is let go");
+    sp::set(&p, 0, slice::PLAY, 0.0);
+    run_splitter(&p, 600, true, &[(0, [0x90, 36, 100]), (7000, [0x80, 36, 0])]);
+    assert_eq!(p.viz[viz::HITS].get(), 8.0, "a ONE slice's repeats all play");
+}
+
+#[test]
+fn splitter_grains_lock_to_the_grid_with_sync() {
+    use crate::audio::modules::splitter::voice::{Clock, Holder, Settings, Src, Variation, Voice, nearest_density, window};
+    assert_eq!(nearest_density(3.6), 4.0);
+    assert_eq!(nearest_density(0.2), 1.0);
+    let ones = vec![1.0f32; 48_000];
+    let src = Src::Sample { l: &ones, r: &ones, rate: 48_000.0 };
+    // 8 grains a second at 120 BPM: four a beat, on the sixteenths.
+    let s = Settings { end: 1.0, gain: 1.0, play: 1, attack: 0.0, release: 0.01, bits: 16.0, down: 1.0, grain: true, size: 0.002, density: 8.0, sync: true, freeze: true, ..Settings::default() };
+    let bps = 2.0 / 48_000.0;
+    let mut voice = Voice::new(5);
+    let start = 0.1;
+    voice.start(0, &s, &src, 48_000.0, 1.0, Holder::Panel, &Variation::NONE, &Clock { beat: start, beats_per_sample: bps, playing: true }, 1);
+    let w = window();
+    let mut out = vec![0.0f32; 4 * 6000 + 64 * 10];
+    let (mut l, mut r) = (vec![0.0f32; 64], vec![0.0f32; 64]);
+    for (b, chunk) in out.chunks_mut(64).enumerate() {
+        let beat = start + bps * (b * 64) as f64;
+        voice.update(&s, &src, 48_000.0);
+        voice.sync_grains(&Clock { beat, beats_per_sample: bps, playing: true }, 48_000.0);
+        l.iter_mut().for_each(|x| *x = 0.0);
+        r.iter_mut().for_each(|x| *x = 0.0);
+        voice.render(&src, &mut l[..chunk.len()], &mut r[..chunk.len()], &w);
+        chunk.copy_from_slice(&l[..chunk.len()]);
+    }
+    // Each grain peaks half its length (48 frames) after its grid line.
+    let peaks: Vec<usize> = (1..out.len() - 1).filter(|&i| out[i] > 0.01 && out[i] >= out[i - 1] && out[i] > out[i + 1]).collect();
+    let lines: Vec<usize> = (0..4).map(|k| ((0.25 * (k + 1) as f64 - start) / bps).round() as usize).collect();
+    assert!(peaks.len() >= 4, "{peaks:?}");
+    for (pk, line) in peaks.iter().zip(&lines) {
+        assert!((*pk as i64 - (*line as i64 + 48)).abs() <= 2, "a grain at {pk}, its line at {line}");
+    }
+}
+
+#[test]
+fn splitter_grains_crushing_and_extremes_stay_finite() {
+    use crate::audio::modules::splitter::{self as sp, PITCH, SPREAD, data, slice, viz};
+    let p = splitter_quiet();
+    p.sample.set(Some(Arc::new(splitter_test_sample(&[0.0, 0.2, 0.5], 1.0))));
+    sp::set(&p, 0, slice::SOURCE, 0.0);
+    sp::set(&p, 0, slice::END, 1.0);
+    let sets: [&[(usize, f32)]; 5] = [
+        &[(slice::GRAIN, 1.0), (slice::SIZE, 2.0), (slice::DENSITY, 400.0), (slice::SPRAY, 1.0), (slice::JITTER, 12.0), (slice::PLAY, 2.0)],
+        &[(slice::GRAIN, 1.0), (slice::FREEZE, 1.0), (slice::SYNC, 1.0), (slice::SIZE, 500.0), (slice::DENSITY, 1.0), (slice::REVERSE, 1.0), (slice::PITCH, 48.0)],
+        &[(slice::GRAIN, 1.0), (slice::PITCH, -48.0), (slice::BITS, 1.0), (slice::DOWN, 64.0), (slice::GAIN, 12.0), (slice::PLAY, 1.0)],
+        &[(slice::PLAY, 2.0), (slice::START, 0.5), (slice::END, 0.5), (slice::REPEAT, 16.0), (slice::REP_RATE, 6.0), (slice::RAMP, 12.0)],
+        &[(slice::REVERSE, 1.0), (slice::PITCH, 48.0), (slice::ATTACK, 0.0), (slice::RELEASE, 1.0), (slice::BITS, 2.0)],
+    ];
+    p.set(SPREAD, 1.0);
+    for (i, set) in sets.iter().enumerate() {
+        for s in 0..8 {
+            sp::reset_slice(&p, s);
+            for &(k, v) in *set {
+                sp::set(&p, s, k, v);
+            }
+        }
+        for pitch in [-24.0, 0.0, 24.0] {
+            p.set(PITCH, pitch);
+            let midi: Vec<(usize, [u8; 3])> = (0..8).map(|s| (s * 700, [0x90, 36 + s as u8, 127])).collect();
+            let mut rig = SplitterRig::new(&p, true);
+            let run = rig.run(400, &midi);
+            assert!(run.left.iter().chain(&run.right).all(|y| y.is_finite() && y.abs() <= 1.0), "set {i} at pitch {pitch}");
+            assert!(peak_of(&run.left) > 1e-3, "set {i} at pitch {pitch} is heard");
+            if set.contains(&(slice::GRAIN, 1.0)) && set.contains(&(slice::PLAY, 2.0)) {
+                let grains = (0..viz::SHOWN_GRAINS).filter(|&g| p.viz[viz::GRAINS + 2 * g + 1].get() >= 0.0).count();
+                assert!(grains > 0, "set {i}: grains shown");
+            }
+        }
+    }
+    // Every voice at once, and more strikes than voices.
+    let p = splitter_quiet();
+    p.data[data::COUNT].set(8.0);
+    let midi: Vec<(usize, [u8; 3])> = (0..40).map(|k| (k * 64, [0x90, 36 + (k % 8) as u8, 127])).collect();
+    let run = run_splitter(&p, 200, true, &midi);
+    assert!(run.left.iter().all(|y| y.is_finite() && y.abs() <= 1.0));
+    assert!(p.viz[viz::VOICES_ON].get() <= sp::VOICES as f32);
+}
+
+#[test]
+fn splitter_reads_wav_and_aiff() {
+    use crate::audio::sample::decode;
+    fn wav(tag: u16, channels: u16, rate: u32, bits: u16, data: &[u8], extensible: bool) -> Vec<u8> {
+        let mut b = Vec::new();
+        let fmt_len: u32 = if extensible { 40 } else { 16 };
+        b.extend_from_slice(b"RIFF");
+        b.extend_from_slice(&(4 + 8 + fmt_len + 8 + data.len() as u32).to_le_bytes());
+        b.extend_from_slice(b"WAVE");
+        // A chunk to skip first.
+        b.extend_from_slice(b"LIST");
+        b.extend_from_slice(&3u32.to_le_bytes());
+        b.extend_from_slice(&[1, 2, 3, 0]);
+        b.extend_from_slice(b"fmt ");
+        b.extend_from_slice(&fmt_len.to_le_bytes());
+        b.extend_from_slice(&(if extensible { 0xFFFE } else { tag }).to_le_bytes());
+        b.extend_from_slice(&channels.to_le_bytes());
+        b.extend_from_slice(&rate.to_le_bytes());
+        b.extend_from_slice(&(rate * channels as u32 * bits as u32 / 8).to_le_bytes());
+        b.extend_from_slice(&(channels * bits / 8).to_le_bytes());
+        b.extend_from_slice(&bits.to_le_bytes());
+        if extensible {
+            b.extend_from_slice(&22u16.to_le_bytes());
+            b.extend_from_slice(&bits.to_le_bytes());
+            b.extend_from_slice(&3u32.to_le_bytes());
+            b.extend_from_slice(&tag.to_le_bytes());
+            b.extend_from_slice(&[0; 14]);
+        }
+        b.extend_from_slice(b"data");
+        b.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        b.extend_from_slice(data);
+        b
+    }
+    fn extended(rate: f64) -> [u8; 10] {
+        let exp = rate.log2().floor() as i32;
+        let mant = (rate / 2f64.powi(exp - 63)) as u64;
+        let mut out = [0u8; 10];
+        out[..2].copy_from_slice(&((exp + 16383) as u16).to_be_bytes());
+        out[2..].copy_from_slice(&mant.to_be_bytes());
+        out
+    }
+    fn aiff(kind: Option<&[u8; 4]>, channels: u16, rate: f64, bits: u16, frames: u32, data: &[u8]) -> Vec<u8> {
+        let comm_len: u32 = if kind.is_some() { 24 } else { 18 };
+        let mut b = Vec::new();
+        b.extend_from_slice(b"FORM");
+        b.extend_from_slice(&(4 + 8 + comm_len + 16 + data.len() as u32).to_be_bytes());
+        b.extend_from_slice(if kind.is_some() { b"AIFC" } else { b"AIFF" });
+        b.extend_from_slice(b"COMM");
+        b.extend_from_slice(&comm_len.to_be_bytes());
+        b.extend_from_slice(&channels.to_be_bytes());
+        b.extend_from_slice(&frames.to_be_bytes());
+        b.extend_from_slice(&bits.to_be_bytes());
+        b.extend_from_slice(&extended(rate));
+        if let Some(k) = kind {
+            b.extend_from_slice(k);
+            b.extend_from_slice(&[0, 0]);
+        }
+        b.extend_from_slice(b"SSND");
+        b.extend_from_slice(&(8 + data.len() as u32).to_be_bytes());
+        b.extend_from_slice(&[0; 8]);
+        b.extend_from_slice(data);
+        b
+    }
+    let near = |a: f32, b: f32| (a - b).abs() < 1.0 / 16_000.0;
+    // 16-bit stereo.
+    let frames: [[i16; 2]; 3] = [[16384, -16384], [32767, 0], [-32768, 8192]];
+    let data: Vec<u8> = frames.iter().flat_map(|f| f.iter().flat_map(|v| v.to_le_bytes())).collect();
+    let s = decode(&wav(1, 2, 44_100, 16, &data, false), "a.wav").unwrap();
+    assert_eq!((s.frames(), s.channels(), s.rate), (3, 2, 44_100.0));
+    assert!(near(s.left[0], 0.5) && near(s.right()[0], -0.5) && near(s.left[2], -1.0) && near(s.right()[2], 0.25));
+    // 24-bit mono, as WAVE_FORMAT_EXTENSIBLE too.
+    let data: Vec<u8> = [0x40_0000i32, -0x20_0000].iter().flat_map(|v| v.to_le_bytes()[..3].to_vec()).collect();
+    for ext in [false, true] {
+        let s = decode(&wav(1, 1, 48_000, 24, &data, ext), "b.wav").unwrap();
+        assert_eq!((s.frames(), s.channels()), (2, 1));
+        assert!(near(s.left[0], 0.5) && near(s.left[1], -0.25), "{:?}", s.left);
+    }
+    // 32-bit float, and 8-bit (unsigned).
+    let data: Vec<u8> = [0.25f32, -0.75].iter().flat_map(|v| v.to_le_bytes()).collect();
+    let s = decode(&wav(3, 1, 48_000, 32, &data, false), "c.wav").unwrap();
+    assert!(near(s.left[0], 0.25) && near(s.left[1], -0.75));
+    let s = decode(&wav(1, 1, 8_000, 8, &[192, 64], false), "d.wav").unwrap();
+    assert!(near(s.left[0], 0.5) && near(s.left[1], -0.5));
+    // AIFF: 16-bit big-endian at 44.1 kHz; AIFF-C little-endian and float.
+    let data: Vec<u8> = [16384i16, -8192].iter().flat_map(|v| v.to_be_bytes()).collect();
+    let s = decode(&aiff(None, 1, 44_100.0, 16, 2, &data), "e.aif").unwrap();
+    assert_eq!(s.rate, 44_100.0);
+    assert!(near(s.left[0], 0.5) && near(s.left[1], -0.25));
+    let data: Vec<u8> = [16384i16, -8192].iter().flat_map(|v| v.to_le_bytes()).collect();
+    let s = decode(&aiff(Some(b"sowt"), 1, 22_050.0, 16, 2, &data), "f.aifc").unwrap();
+    assert!(near(s.left[0], 0.5) && near(s.left[1], -0.25) && s.rate == 22_050.0);
+    let data: Vec<u8> = [0.5f32, -0.125].iter().flat_map(|v| v.to_be_bytes()).collect();
+    let s = decode(&aiff(Some(b"fl32"), 1, 96_000.0, 32, 2, &data), "g.aifc").unwrap();
+    assert!(near(s.left[0], 0.5) && near(s.left[1], -0.125));
+    // Not audio; too long (cut at 30 s).
+    assert!(decode(b"hello world, this is not audio", "x").is_err());
+    assert!(decode(&wav(1, 1, 8_000, 16, &[], false), "empty.wav").is_err());
+    let long: Vec<u8> = vec![0; 2 * 1_000 * 31];
+    let s = decode(&wav(1, 1, 1_000, 16, &long, false), "long.wav").unwrap();
+    assert!(s.trimmed && s.frames() == 30_000);
+}
+
+#[test]
+fn splitter_keeps_its_sample_in_the_project() {
+    use crate::audio::modules::splitter::{data, slice};
+    let (mut g, a, _e) = setup();
+    let id = g.add_module(ModuleKind::Splitter, pos2(0.0, 0.0), &a);
+    let p = module_params(&g, id);
+    let mut l: Vec<f32> = (0..9_000).map(|i| ((i as f32) * 0.01).sin() * 0.7).collect();
+    l[5] = 1.0;
+    let r: Vec<f32> = l.iter().map(|x| -x * 0.5).collect();
+    p.sample.set(Some(Arc::new(crate::audio::sample::Sample::new("loop.aif", 44_100.0, l, r))));
+    crate::audio::modules::splitter::set(&p, 2, slice::PITCH, 7.0);
+    p.data[data::MODE].set(3.0);
+    let project = crate::project::snapshot(&g);
+    assert_eq!(project, crate::project::snapshot_cached(&g), "a sample compares equal to itself");
+    let json = serde_json::to_string(&project).unwrap();
+    assert!(json.contains("\"pcm\"") && json.contains("loop.aif"));
+    let project: crate::project::Project = serde_json::from_str(&json).unwrap();
+    let (mut g2, a2, _e2) = setup();
+    crate::project::restore(&mut g2, &project, &a2);
+    let id2 = g2.nodes.iter().find(|n| matches!(&n.kind, NodeKind::Module(m) if m.params.kind == ModuleKind::Splitter)).unwrap().id;
+    let q = module_params(&g2, id2);
+    let (a_s, b_s) = (p.sample.get().unwrap(), q.sample.get().unwrap());
+    assert_eq!((b_s.name.as_str(), b_s.rate, b_s.channels(), b_s.frames()), ("loop.aif", 44_100.0, 2, 9_000));
+    assert_eq!(a_s.left, b_s.left, "16-bit exact both ways");
+    assert_eq!(a_s.right, b_s.right);
+    assert_eq!(crate::audio::modules::splitter::get(&q, 2, slice::PITCH), 7.0);
+    assert_eq!(q.data[data::MODE].get(), 3.0);
+    // A copy of the node shares the sample; one without keeps none.
+    let copy = g2.duplicate(id2, &a2).unwrap();
+    assert!(Arc::ptr_eq(&module_params(&g2, copy).sample.get().unwrap(), &b_s));
+    let none = g2.add_module(ModuleKind::Splitter, pos2(900.0, 0.0), &a2);
+    assert!(module_params(&g2, none).sample.get().is_none());
+    let json = serde_json::to_string(&crate::project::snapshot(&g2)).unwrap();
+    assert_eq!(json.matches("\"pcm\"").count(), 2);
+}
+
+#[test]
+fn splitter_plays_a_loaded_sample_and_lets_it_go() {
+    use crate::audio::modules::splitter::{self as sp, slice, slicing};
+    let p = splitter_quiet();
+    let sample = Arc::new(splitter_test_sample(&[0.0, 0.25, 0.5, 0.75], 1.0));
+    p.sample.set(Some(sample.clone()));
+    slicing::apply(&p, &slicing::transients(&sample, 0.5, 32), 0);
+    assert_eq!(sp::count(&p), 4);
+    let mut rig = SplitterRig::new(&p, true);
+    let run = rig.run(100, &[(0, [0x90, 37, 127])]);
+    assert!(peak_of(&run.left) > 0.2, "slice 2 plays its ping");
+    // Reversed, it rises instead of falling.
+    sp::set(&p, 1, slice::REVERSE, 1.0);
+    sp::set(&p, 1, slice::RELEASE, 1.0);
+    let run = rig.run(200, &[(rig.frame, [0x90, 37, 127])]);
+    let first = peak_of(&run.left[..2000]);
+    let last = peak_of(&run.left[10_000..12_000]);
+    assert!(last > first * 4.0, "reversed: {first} then {last}");
+    // Up an octave its 50 ms ping is over in half the time.
+    sp::set(&p, 1, slice::REVERSE, 0.0);
+    let length = |rig: &mut SplitterRig| {
+        let run = rig.run(300, &[(rig.frame, [0x90, 37, 127])]);
+        run.left.iter().rposition(|y| y.abs() > 1e-4).unwrap()
+    };
+    let plain = length(&mut rig);
+    sp::set(&p, 1, slice::PITCH, 12.0);
+    let up = length(&mut rig);
+    assert!((2_300..2_500).contains(&plain) && (1_100..1_300).contains(&up), "{plain} frames, an octave up {up}");
+    // Let go: its slices fall silent, the atoms play on.
+    p.sample.set(None);
+    let run = rig.run(100, &[(rig.frame, [0x90, 37, 127])]);
+    assert_eq!(peak_of(&run.left), 0.0);
+    sp::set(&p, 1, slice::SOURCE, 1.0);
+    let run = rig.run(100, &[(rig.frame, [0x90, 37, 127])]);
+    assert!(peak_of(&run.left) > 0.05, "an atom needs no sample");
+    assert!(p.sample.get().is_none());
+}
+
+#[test]
+fn splitter_dice_throws_and_back_restores() {
+    use crate::audio::modules::splitter::dice::{Before, throw_rhythm, throw_slices};
+    use crate::audio::modules::splitter::{count, data};
+    let p = splitter_params();
+    let all: Vec<usize> = (0..count(&p)).collect();
+    let snapshot = |p: &ModuleParams| (data::STEPS..data::LEN).map(|i| p.data[i].get()).collect::<Vec<f32>>();
+    let start = snapshot(&p);
+    throw_slices(&p, None, 7, 0.0, &all);
+    assert_eq!(snapshot(&p), start, "CHANCE near nothing changes nothing");
+    let before = Before::take(&p);
+    throw_slices(&p, None, 7, 1.0, &all);
+    let thrown = snapshot(&p);
+    assert_ne!(thrown, start);
+    throw_rhythm(&p, None, 8, 1.0);
+    assert_ne!(snapshot(&p), thrown);
+    for i in data::SLICES..data::LEN {
+        assert!(p.data[i].get().is_finite());
+    }
+    // Every slice stays in range after many throws, and still plays.
+    for seed in 0..20 {
+        throw_slices(&p, None, seed, 1.0, &all);
+        throw_rhythm(&p, None, seed, 1.0);
+    }
+    for s in 0..count(&p) {
+        for (k, f) in crate::audio::modules::splitter::FIELDS.iter().enumerate() {
+            let v = p.data[crate::audio::modules::splitter::at(s, k)].get();
+            assert!((f.lo..=f.hi).contains(&v), "slice {s} {} = {v}", f.name);
+        }
+    }
+    let run = run_splitter(&Arc::new(ModuleParams::new(ModuleKind::Splitter)), 10, true, &[]);
+    assert!(run.left.iter().all(|y| y.is_finite()));
+    before.restore(&p);
+    assert_eq!(snapshot(&p), start, "BACK takes it all back");
+}
+
+/// The panel draws through the canvas on each page, with and without a
+/// sample, zoomed, in each mode, the animation playing and the pointer
+/// over it.
+#[test]
+fn splitter_panel_draws() {
+    use crate::audio::modules::splitter::{self as sp, data, viz};
+    let shared = Arc::new(EngineShared::new());
+    shared.running.store(true, Ordering::Relaxed);
+    shared.tempo.set(120.0);
+    let (a, mut e) = audio::offline(shared, 48_000);
+    let mut g = Graph::default();
+    let id = g.add_module(ModuleKind::Splitter, pos2(0.0, 0.0), &a);
+    let p = module_params(&g, id);
+    assert_eq!(g.node(id).unwrap().size(), crate::ui::splitter::SIZE);
+    let mut editor = crate::ui::canvas::Editor::new();
+    let ctx = egui::Context::default();
+    let mut time = 0.0;
+    for k in 0..12 {
+        if k == 6 {
+            p.sample.set(Some(Arc::new(splitter_test_sample(&[0.0, 0.3, 0.6], 1.0))));
+            sp::slicing::apply(&p, &sp::slicing::grid(6), 0);
+        }
+        p.data[data::TAB].set((k % 3) as f32);
+        p.data[data::MODE].set((k % sp::MODES.len()) as f32);
+        p.data[data::ZOOM].set((k / 3 % 2) as f32);
+        p.data[data::SELECTED].set((k % 5) as f32);
+        sp::set(&p, k % 5, sp::slice::GRAIN, (k % 2) as f32);
+        for frame in 0..4 {
+            render_buf(&mut e, 4_800);
+            time += 0.1;
+            let pointer = egui::Event::PointerMoved(pos2(150.0 + 160.0 * frame as f32, 100.0 + 50.0 * k as f32));
+            let input = egui::RawInput { time: Some(time), events: vec![pointer], ..Default::default() };
+            let mut out = ctx.run_ui(input, |ui| editor.show(ui, &mut g, &a));
+            out.textures_delta.clear();
+        }
+    }
+    assert!(p.viz[viz::STEP].get() >= 0.0, "the steps played while drawn");
+    // No slices at all draws too.
+    p.data[data::COUNT].set(0.0);
+    for tab in 0..3 {
+        p.data[data::TAB].set(tab as f32);
+        let mut out = ctx.run_ui(egui::RawInput { time: Some(time + tab as f64), ..Default::default() }, |ui| editor.show(ui, &mut g, &a));
+        out.textures_delta.clear();
+    }
+    let (main, sub) = crate::ui::splitter::readout(&p);
+    assert_eq!(main, "test.wav");
+    assert!(sub.starts_with("0 slices"), "{sub}");
+}
+
+// ---------------------------------------------------------------------------
+// Orrery
+// ---------------------------------------------------------------------------
+
+/// Runs Orrery from frame `from` of a 120 BPM grid for `frames`, returning
+/// its MIDI (absolute frames).
+fn run_orrery(o: &mut crate::audio::modules::orrery::Orrery, from: usize, frames: usize, playing: bool, restart: bool) -> Vec<(usize, [u8; 3])> {
+    run_orrery_with(o, from, frames, playing, restart, &[])
+}
+
+/// The same, with `midi` arriving on its MIDI cable (absolute frames).
+fn run_orrery_with(o: &mut crate::audio::modules::orrery::Orrery, from: usize, frames: usize, playing: bool, restart: bool, midi: &[(usize, [u8; 3])]) -> Vec<(usize, [u8; 3])> {
+    use crate::audio::engine::{Inputs, MAX_INPUTS, MidiBuf, ProcessCtx, Processor};
+    const SR: f64 = 48_000.0;
+    let bps = 2.0 / SR;
+    let mut inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: true });
+    let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
+    let mut events = Vec::new();
+    for done in (0..frames).step_by(64) {
+        let at = from + done;
+        inputs.midi.clear();
+        for (f, m) in midi.iter().filter(|(f, _)| (at..at + 64).contains(f)) {
+            inputs.midi.push(f - at, *m);
+        }
+        let ctx = ProcessCtx { sample_rate: SR as f32, smooth: 0.01, beat: at as f64 * bps, beats_per_sample: bps, playing, restart: restart && done == 0 };
+        o.process(&ctx, &inputs, &mut outputs, 64);
+        for e in o.midi_out().expect("sends MIDI").events() {
+            events.push((at + e.frame as usize, e.data));
+        }
+    }
+    events
+}
+
+fn orrery(p: &Arc<ModuleParams>) -> crate::audio::modules::orrery::Orrery {
+    crate::audio::modules::orrery::Orrery::new(p.clone(), Arc::new(crate::audio::midi::MidiState::new()))
+}
+
+/// An Orrery with only the rings in `rings` playing.
+fn orrery_with(rings: &[usize]) -> (Arc<ModuleParams>, crate::audio::modules::orrery::Orrery) {
+    use crate::audio::modules::orrery::{self as or, ring};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Orrery));
+    for r in 0..or::RINGS {
+        or::set(&p, r, ring::ON, if rings.contains(&r) { 1.0 } else { 0.0 });
+    }
+    let o = orrery(&p);
+    (p, o)
+}
+
+/// The frames of the note-ons in `events` (on any channel).
+fn note_on_frames(events: &[(usize, [u8; 3])]) -> Vec<usize> {
+    events.iter().filter(|(_, m)| m[0] & 0xF0 == 0x90 && m[2] > 0).map(|(f, _)| *f).collect()
+}
+
+#[test]
+fn orrery_rhythms_are_euclidean() {
+    use crate::audio::modules::orrery::euclid;
+    let hits = |k: usize, n: usize| (0..n).filter(|&i| euclid(k, n, i)).collect::<Vec<_>>();
+    assert_eq!(hits(3, 8), vec![0, 3, 6], "the tresillo");
+    assert_eq!(hits(4, 16), vec![0, 4, 8, 12]);
+    assert_eq!(hits(5, 16), vec![0, 4, 7, 10, 13]);
+    assert!(hits(0, 12).is_empty());
+    assert_eq!(hits(7, 7).len(), 7);
+    assert_eq!(hits(40, 5).len(), 5, "pulses past the steps fill them");
+    for n in 1..=32 {
+        for k in 0..=n {
+            assert_eq!(hits(k, n).len(), k, "E({k},{n})");
+        }
+    }
+}
+
+#[test]
+fn orrery_plays_each_ring_on_its_channel_and_every_note_ends() {
+    use crate::audio::modules::orrery::{self as or, ring};
+    let (p, mut o) = orrery_with(&[0, 1]);
+    or::set(&p, 1, ring::CHANNEL, 3.0);
+    // Two bars at 120 BPM, 1/16: a step every 6 000 frames.
+    let mut events = run_orrery(&mut o, 0, 2 * 96_000, true, true);
+    events.extend(run_orrery(&mut o, 2 * 96_000, 4_800, false, false));
+    let kick: Vec<usize> = events.iter().filter(|(_, m)| m[0] == 0x99 && m[2] > 0).map(|(f, _)| f / 6_000).collect();
+    assert_eq!(kick, vec![0, 4, 7, 10, 13, 16, 20, 23, 26, 29], "E(5,16) on channel 10, twice");
+    let snare: Vec<usize> = events.iter().filter(|(_, m)| m[0] == 0x92 && m[2] > 0).map(|(f, _)| f / 6_000).collect();
+    assert_eq!(snare, vec![4, 12, 20, 28], "the backbeat, on channel 3");
+    assert!(events.iter().all(|(_, m)| matches!(m[0], 0x99 | 0x89 | 0x92 | 0x82)));
+    assert_eq!(note_lengths(&events).len(), note_on_frames(&events).len(), "every note ends");
+    // Events come out in order.
+    assert!(events.windows(2).all(|w| w[0].0 <= w[1].0));
+}
+
+#[test]
+fn orrery_steps_switched_by_hand_and_accents() {
+    use crate::audio::modules::orrery::{self as or, ACCENTED, OFF, ring};
+    let (p, mut o) = orrery_with(&[0]);
+    or::set_step(&p, 0, 4, OFF);
+    or::set_step(&p, 0, 1, ACCENTED);
+    or::set(&p, 0, ring::VELOCITY, 80.0);
+    p.set(or::ACCENT, 1.0);
+    let events = run_orrery(&mut o, 0, 96_000, true, true);
+    let ons: Vec<(usize, u8)> = events.iter().filter(|(_, m)| m[0] & 0xF0 == 0x90).map(|(f, m)| (f / 6_000, m[2])).collect();
+    assert_eq!(ons, vec![(0, 80), (1, 127), (7, 80), (10, 80), (13, 80)]);
+    // STEPS lays the rhythm again; the accent on a step that stays a hit stays.
+    or::set_step(&p, 0, 0, ACCENTED);
+    or::set_steps(&p, 0, 8);
+    assert_eq!(or::pulses(&p, 0), 5);
+    assert_eq!((0..8).map(|i| or::step(&p, 0, i)).collect::<Vec<_>>(), vec![2, 0, 1, 0, 1, 1, 0, 1]);
+    or::invert(&p, 0);
+    assert_eq!(or::hits(&p, 0), 3);
+    or::clear(&p, 0);
+    assert_eq!(or::hits(&p, 0), 0);
+}
+
+#[test]
+fn orrery_rings_turn_by_steps_and_parts_of_steps() {
+    use crate::audio::modules::orrery::{self as or, ring};
+    // A whole step: every hit a step later.
+    let (p, mut o) = orrery_with(&[1]);
+    or::set_rotation(&p, 1, 5.0);
+    let frames = note_on_frames(&run_orrery(&mut o, 0, 96_000, true, true));
+    assert_eq!(frames.iter().map(|f| f / 6_000).collect::<Vec<_>>(), vec![5, 13], "the backbeat (4 and 12) turned a step on");
+    // Half a step: every hit half a step later.
+    let (p, mut o) = orrery_with(&[1]);
+    or::set_rotation(&p, 1, 4.5);
+    assert!((or::rotation(&p, 1) - 4.5).abs() < 1e-6);
+    let frames = note_on_frames(&run_orrery(&mut o, 0, 96_000, true, true));
+    assert_eq!(frames, vec![27_000, 75_000]);
+    // Turning wraps round the ring.
+    or::set_rotation(&p, 1, -1.0);
+    assert_eq!(or::rotation(&p, 1), 15.0);
+    or::set_rotation(&p, 1, 16.0);
+    assert_eq!(or::get(&p, 1, ring::ROTATE), 0.0);
+    // TWIST turns each ring further than the one outside it.
+    let (p, mut o) = orrery_with(&[0, 2]);
+    for r in [0, 2] {
+        or::set(&p, r, ring::STEPS, 4.0);
+        or::set_pulses(&p, r, 1);
+    }
+    p.set(or::TWIST, 0.5);
+    assert_eq!(or::turn(&p, 2), 1.0);
+    let events = run_orrery(&mut o, 0, 48_000, true, true);
+    let at = |status: u8| events.iter().filter(|(_, m)| m[0] == status && m[2] > 0).map(|(f, _)| *f).collect::<Vec<_>>();
+    assert_eq!(at(0x99).len(), 4, "two rings, twice round");
+    let ring0: Vec<usize> = events.iter().filter(|(_, m)| m[0] == 0x99 && m[1] == or::note(&p, 0) && m[2] > 0).map(|(f, _)| *f).collect();
+    let ring2: Vec<usize> = events.iter().filter(|(_, m)| m[0] == 0x99 && m[1] == or::note(&p, 2) && m[2] > 0).map(|(f, _)| *f).collect();
+    assert_eq!(ring0, vec![0, 24_000]);
+    assert_eq!(ring2, vec![6_000, 30_000], "ring 3 a step later");
+}
+
+#[test]
+fn orrery_cycle_mode_plays_polyrhythms() {
+    use crate::audio::modules::orrery::{self as or, ring};
+    let (p, mut o) = orrery_with(&[0, 1]);
+    p.set_mode(or::CYCLE_MODE);
+    p.set(or::CYCLE, 4.0);
+    for (r, n) in [(0, 3), (1, 4)] {
+        or::set(&p, r, ring::STEPS, n as f32);
+        or::set_pulses(&p, r, n);
+        or::set_rotation(&p, r, 0.0);
+    }
+    or::set(&p, 1, ring::CHANNEL, 2.0);
+    // One bar (4 beats, 96 000 frames): 3 against 4.
+    let events = run_orrery(&mut o, 0, 96_000, true, true);
+    let at = |status: u8| events.iter().filter(|(_, m)| m[0] == status && m[2] > 0).map(|(f, _)| *f).collect::<Vec<_>>();
+    assert_eq!(at(0x99), vec![0, 32_000, 64_000], "three");
+    assert_eq!(at(0x91), vec![0, 24_000, 48_000, 72_000], "four");
+    assert!(p.viz[or::viz::PHASE].get() / 3.0 - p.viz[or::viz::PHASE + 1].get() / 4.0 < 1e-3, "one hand for every ring");
+}
+
+#[test]
+fn orrery_is_silent_while_stopped_and_ends_its_notes() {
+    use crate::audio::modules::orrery::{self as or, ring, viz};
+    let (p, mut o) = orrery_with(&[0, 1, 2, 3]);
+    assert!(run_orrery(&mut o, 0, 48_000, false, false).is_empty());
+    for r in 0..4 {
+        or::set(&p, r, ring::GATE, 1.0);
+    }
+    let mut events = run_orrery(&mut o, 0, 3_000, true, true);
+    assert!(!note_on_frames(&events).is_empty());
+    events.extend(run_orrery(&mut o, 3_000, 640, false, false));
+    assert_eq!(note_lengths(&events).len(), note_on_frames(&events).len(), "Stop ends the notes");
+    assert_eq!(p.viz[viz::STEP].get(), -1.0);
+    assert_eq!(p.viz[viz::LIVE].get(), 0.0);
+    // PLAY off is silent too.
+    p.set_toggle(false);
+    assert!(note_on_frames(&run_orrery(&mut o, 0, 48_000, true, true)).is_empty());
+}
+
+#[test]
+fn orrery_dice_keeps_steps_notes_and_channels() {
+    use crate::audio::modules::orrery::{self as or, ring};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Orrery));
+    or::set(&p, 0, ring::CHANNEL, 5.0);
+    let before: Vec<(usize, u8, u8)> = (0..or::RINGS).map(|r| (or::steps(&p, r), or::note(&p, r), or::channel(&p, r))).collect();
+    let muted: Vec<Vec<u8>> = (4..or::RINGS).map(|r| (0..32).map(|i| or::step(&p, r, i)).collect()).collect();
+    for seed in 1..20 {
+        or::dice(&p, seed, None);
+        for r in 0..4 {
+            let k = or::pulses(&p, r);
+            assert!(k >= 1 && k <= or::steps(&p, r));
+            assert_eq!(or::hits(&p, r), k);
+        }
+    }
+    let after: Vec<(usize, u8, u8)> = (0..or::RINGS).map(|r| (or::steps(&p, r), or::note(&p, r), or::channel(&p, r))).collect();
+    assert_eq!(before, after);
+    let still: Vec<Vec<u8>> = (4..or::RINGS).map(|r| (0..32).map(|i| or::step(&p, r, i)).collect()).collect();
+    assert_eq!(muted, still, "muted rings are left alone");
+    or::dice(&p, 7, Some(6));
+    assert!(or::hits(&p, 6) >= 1);
+}
+
+#[test]
+fn orrery_panel_draws() {
+    use crate::audio::modules::orrery::{self as or, viz};
+    let shared = Arc::new(EngineShared::new());
+    shared.running.store(true, Ordering::Relaxed);
+    shared.tempo.set(120.0);
+    let (a, mut e) = audio::offline(shared, 48_000);
+    let mut g = Graph::default();
+    let id = g.add_module(ModuleKind::Orrery, pos2(0.0, 0.0), &a);
+    let p = module_params(&g, id);
+    let mut editor = crate::ui::canvas::Editor::new();
+    let ctx = egui::Context::default();
+    let mut time = 0.0;
+    for mode in [or::GRID, or::CYCLE_MODE] {
+        p.set_mode(mode);
+        for frame in 0..8 {
+            or::select(&p, frame);
+            render_buf(&mut e, 4_800);
+            time += 0.1;
+            let pointer = egui::Event::PointerMoved(pos2(120.0 + 30.0 * frame as f32, 200.0 + 10.0 * frame as f32));
+            let input = egui::RawInput { time: Some(time), events: vec![pointer], ..Default::default() };
+            let mut out = ctx.run_ui(input, |ui| editor.show(ui, &mut g, &a));
+            out.textures_delta.clear();
+        }
+    }
+    assert!(p.viz[viz::HITS].get() > 0.0, "the rings played while drawn");
+    let (main, _) = crate::ui::orrery::readout(&p);
+    assert!(main.starts_with("4 rings"), "{main}");
+    // A recall while drawn: it comes in on the next bar.
+    or::recall(&p, 6);
+    for _ in 0..30 {
+        render_buf(&mut e, 4_800);
+        time += 0.1;
+        let mut out = ctx.run_ui(egui::RawInput { time: Some(time), ..Default::default() }, |ui| editor.show(ui, &mut g, &a));
+        out.textures_delta.clear();
+    }
+    assert_eq!(or::active(&p), Some(6));
+    assert_eq!(or::pending(&p), None);
+}
+
+/// Draws Orrery's panel at the origin for one frame with `events`.
+fn orrery_frame(ctx: &egui::Context, g: &Graph, id: u32, t: f64, events: Vec<egui::Event>) {
+    let NodeKind::Module(m) = &g.node(id).unwrap().kind else { panic!("a module") };
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1000.0, 600.0));
+    // The modifiers held: those of a button in this frame, else as they were.
+    let held = events.iter().find_map(|e| match e {
+        egui::Event::PointerButton { modifiers, .. } => Some(*modifiers),
+        _ => None,
+    });
+    let mut events = events;
+    if let Some(m) = held {
+        events.insert(0, egui::Event::ModifiersChanged(m));
+    }
+    let input = egui::RawInput { time: Some(t), events, screen_rect: Some(screen), ..Default::default() };
+    let mut out = ctx.run_ui(input, |ui| {
+        let painter = ui.painter().clone();
+        let hits = std::cell::RefCell::new(Vec::new());
+        let v = crate::ui::nodes::NodeView { ui, painter: &painter, min: pos2(0.0, 0.0), z: 1.0, node: id, hits: &hits, tempo: 120.0 };
+        crate::ui::orrery::draw(&v, id, egui::Color32::LIGHT_BLUE, m, (false, false));
+    });
+    out.textures_delta.clear();
+}
+
+/// Clicks on the orbits switch steps; dragging a ring round turns it, by
+/// whole steps, or freely with Shift.
+#[test]
+fn orrery_rings_turn_when_dragged() {
+    use crate::audio::modules::orrery::{self as or, OFF, ON, ACCENTED};
+    use egui::{Event, Modifiers, PointerButton};
+    let (mut g, a, _e) = setup();
+    let id = g.add_module(ModuleKind::Orrery, pos2(0.0, 0.0), &a);
+    let p = module_params(&g, id);
+    let ctx = egui::Context::default();
+    // The orbits' centre and ring r's radius (see ui::orrery).
+    let c = pos2(232.0, 312.0);
+    let radius = |r: usize| 184.0 - 122.0 * r as f32 / 7.0;
+    let at = |r: usize, deg: f32| c + egui::Vec2::angled(deg.to_radians()) * radius(r);
+    let mut t = 0.0;
+    let mut frame = |events: Vec<Event>, t: &mut f64| {
+        *t += 1.0 / 60.0;
+        orrery_frame(&ctx, &g, id, *t, events);
+    };
+    let button = |q: egui::Pos2, pressed: bool, modifiers: Modifiers| Event::PointerButton { pos: q, button: PointerButton::Primary, pressed, modifiers };
+    let click = |q: egui::Pos2, modifiers: Modifiers, frame: &mut dyn FnMut(Vec<Event>, &mut f64), t: &mut f64| {
+        frame(vec![Event::PointerMoved(q)], t);
+        frame(vec![button(q, true, modifiers)], t);
+        frame(vec![button(q, false, modifiers)], t);
+        frame(vec![button(q + egui::vec2(400.0, 0.0), false, Modifiers::NONE)], t);
+    };
+
+    // The kick's step 4 sits at 3 o'clock on the outer ring: a hit, clicked off.
+    frame(vec![], &mut t);
+    assert_eq!(or::step(&p, 0, 4), ON);
+    click(at(0, 0.0), Modifiers::NONE, &mut frame, &mut t);
+    assert_eq!(or::step(&p, 0, 4), OFF);
+    // Shift-click accents it.
+    click(at(0, 0.0), Modifiers::SHIFT, &mut frame, &mut t);
+    assert_eq!(or::step(&p, 0, 4), ACCENTED);
+
+    // Drag the snare's ring a quarter turn clockwise: four steps on.
+    let drag = |r: usize, from: f32, to: f32, modifiers: Modifiers, frame: &mut dyn FnMut(Vec<Event>, &mut f64), t: &mut f64| {
+        let q0 = at(r, from);
+        frame(vec![Event::PointerMoved(q0)], t);
+        frame(vec![button(q0, true, modifiers)], t);
+        for k in 1..=12 {
+            let q = at(r, from + (to - from) * k as f32 / 12.0);
+            frame(vec![Event::PointerMoved(q)], t);
+        }
+        let q1 = at(r, to);
+        frame(vec![button(q1, false, modifiers)], t);
+        frame(vec![button(q1 + egui::vec2(400.0, 0.0), false, Modifiers::NONE)], t);
+    };
+    assert_eq!(or::rotation(&p, 1), 4.0);
+    drag(1, -90.0, 0.0, Modifiers::NONE, &mut frame, &mut t);
+    assert_eq!(or::rotation(&p, 1), 8.0, "a quarter of 16 steps");
+    assert_eq!(or::selected(&p), 1, "the ring turned is selected");
+    // Back past the top: it wraps round.
+    drag(1, 0.0, -180.0, Modifiers::NONE, &mut frame, &mut t);
+    assert_eq!(or::rotation(&p, 1), 0.0);
+    // With Shift, by parts of a step.
+    drag(1, -90.0, -78.75, Modifiers::SHIFT, &mut frame, &mut t);
+    let turned = or::rotation(&p, 1);
+    assert!((turned - 0.5).abs() < 0.1, "half a step: {turned}");
+    // The pattern itself is untouched by turning.
+    assert_eq!((0..16).filter(|&i| or::step(&p, 1, i) != OFF).collect::<Vec<_>>(), vec![0, 8]);
+}
+
+#[test]
+fn orrery_patterns_keep_everything_but_notes_and_channels() {
+    use crate::audio::modules::orrery::{self as or, ACCENTED, OFF, ring, slot};
+    let p = Arc::new(ModuleParams::new(ModuleKind::Orrery));
+    // It starts on its first button, unedited, every button filled.
+    assert_eq!(or::active(&p), Some(0));
+    assert!(!or::edited(&p), "the rings are button 1's pattern");
+    assert!((0..or::SLOTS).all(|k| or::slot_used(&p, k)));
+    assert_eq!(or::slot_name(&p, 0), "Groove");
+    assert_eq!(or::slot_name(&p, 6), "Poly 3:4:5");
+    // The built-in patterns hold Euclidean rings.
+    for k in 0..or::SLOTS {
+        let s = or::factory(k);
+        for r in 0..or::RINGS {
+            let (n, pulses) = (or::pattern_ring(&s, r, slot::STEPS) as usize, or::pattern_ring(&s, r, slot::PULSES) as usize);
+            assert_eq!((0..n).filter(|&i| or::pattern_step(&s, r, i) != OFF).count(), pulses, "{} ring {}", or::FACTORY_NAMES[k], r + 1);
+        }
+    }
+    // Edit, keep it on button 3, change everything, recall it.
+    or::set_step(&p, 0, 2, ACCENTED);
+    or::set_rotation(&p, 1, 2.5);
+    p.set(or::TWIST, 0.75);
+    p.set_mode(or::CYCLE_MODE);
+    or::set(&p, 3, ring::CHANNEL, 4.0);
+    assert!(or::edited(&p));
+    or::rename_slot(&p, 2, "Verse");
+    or::store(&p, 2);
+    assert_eq!(or::slot_name(&p, 2), "Verse", "storing keeps the name");
+    assert_eq!(or::active(&p), Some(2));
+    assert!(!or::edited(&p));
+    let kept = or::capture(&p);
+    or::take(&p, 1);
+    assert_eq!(or::active(&p), Some(1));
+    assert_eq!(p.mode(), or::GRID);
+    assert_eq!(p.get(or::TWIST), 0.0);
+    or::set(&p, 0, ring::NOTE, 50.0);
+    or::take(&p, 2);
+    assert_eq!(or::capture(&p), kept, "everything comes back");
+    assert_eq!(or::step(&p, 0, 2), ACCENTED);
+    assert_eq!(or::rotation(&p, 1), 2.5);
+    assert_eq!(or::note(&p, 0), 50, "the notes stay");
+    assert_eq!(or::channel(&p, 3), 4, "and the channels");
+    // Names: three characters a value, twelve at most, ASCII.
+    let mut s = or::capture(&p);
+    or::set_name(&mut s, "A much longer name");
+    assert_eq!(or::name_of(&s), "A much longe");
+    or::set_name(&mut s, "Fill · 2");
+    assert_eq!(or::name_of(&s), "Fill ? 2");
+    or::clear_slot(&p, 2);
+    assert!(!or::slot_used(&p, 2));
+    assert_eq!(or::active(&p), None);
+    or::recall(&p, 2);
+    assert_eq!(or::pending(&p), None, "an empty button recalls nothing");
+}
+
+#[test]
+fn orrery_recalls_land_on_the_launch_grid() {
+    use crate::audio::modules::orrery::{self as or, BEAT, NOW};
+    // 120 BPM: a beat is 24 000 frames, a bar 96 000.
+    let kicks = |events: &[(usize, [u8; 3])]| events.iter().filter(|(_, m)| m[0] == 0x99 && m[1] == 36 && m[2] > 0).map(|(f, _)| *f).collect::<Vec<_>>();
+    let p = Arc::new(ModuleParams::new(ModuleKind::Orrery));
+    let mut o = orrery(&p);
+    run_orrery(&mut o, 0, 30_000, true, true);
+    // BAR (the default): asked for in beat 2, Four floor comes in on bar 2.
+    or::recall(&p, 1);
+    let events = run_orrery(&mut o, 30_000, 96_000 * 2 - 30_000, true, false);
+    assert_eq!(or::active(&p), Some(1));
+    let k = kicks(&events);
+    assert_eq!(k.iter().filter(|&&f| f < 96_000).copied().collect::<Vec<_>>(), vec![42_000, 60_000, 78_000], "Groove until the bar");
+    assert_eq!(k.iter().filter(|&&f| (96_000..192_000).contains(&f)).copied().collect::<Vec<_>>(), vec![96_000, 120_000, 144_000, 168_000], "then four on the floor");
+    // BEAT: the next beat.
+    p.data[or::data::LAUNCH].set(BEAT as f32);
+    run_orrery(&mut o, 192_000, 8_000, true, false);
+    or::recall(&p, 0);
+    run_orrery(&mut o, 200_000, 15_000, true, false);
+    assert_eq!(or::pending(&p), Some(0), "not before the beat");
+    run_orrery(&mut o, 215_000, 1_640, true, false);
+    assert_eq!(or::active(&p), Some(0), "on beat 9");
+    // NOW, and stopped: at once.
+    p.data[or::data::LAUNCH].set(NOW as f32);
+    or::recall(&p, 3);
+    run_orrery(&mut o, 216_640, 64, true, false);
+    assert_eq!(or::active(&p), Some(3));
+    p.data[or::data::LAUNCH].set(2.0);
+    or::recall(&p, 4);
+    run_orrery(&mut o, 0, 64, false, false);
+    assert_eq!(or::active(&p), Some(4));
+    // A pattern from the library waits in the cue; no button is lit then.
+    or::cue(&p, &or::factory(7));
+    run_orrery(&mut o, 0, 64, false, false);
+    assert_eq!(or::active(&p), None);
+    assert_eq!(p.get(or::TWIST), 0.25, "Drift came in");
+}
+
+#[test]
+fn orrery_program_changes_recall_the_buttons() {
+    use crate::audio::modules::orrery as or;
+    let p = Arc::new(ModuleParams::new(ModuleKind::Orrery));
+    let mut o = orrery(&p);
+    // Program 3 (2 on the wire) on any channel; 9 and up are ignored.
+    run_orrery_with(&mut o, 0, 640, false, false, &[(100, [0xC4, 2, 0]), (200, [0xC0, 12, 0])]);
+    assert_eq!(or::active(&p), Some(2));
+    // While playing it waits for the bar.
+    run_orrery_with(&mut o, 0, 24_000, true, true, &[(1_000, [0xC0, 5, 0])]);
+    assert_eq!(or::pending(&p), Some(5));
+    run_orrery(&mut o, 24_000, 72_000 + 640, true, false);
+    assert_eq!(or::active(&p), Some(5));
+}
+
+/// The pattern buttons: a click recalls (the panel takes it when the
+/// processor rests), Shift-click or STORE then a click keeps the rings.
+#[test]
+fn orrery_pattern_buttons_recall_and_store() {
+    use crate::audio::modules::orrery::{self as or, ON, OFF};
+    use egui::{Event, Modifiers, PointerButton};
+    let (mut g, a, _e) = setup();
+    let id = g.add_module(ModuleKind::Orrery, pos2(0.0, 0.0), &a);
+    let p = module_params(&g, id);
+    let ctx = egui::Context::default();
+    let slot = |k: usize| pos2(12.0 + 74.0 * k as f32 + 35.0, 71.0);
+    let mut t = 0.0;
+    let frame = |events: Vec<Event>, t: &mut f64| {
+        *t += 1.0 / 60.0;
+        orrery_frame(&ctx, &g, id, *t, events);
+    };
+    let click = |q: egui::Pos2, modifiers: Modifiers, t: &mut f64| {
+        let button = |pressed| Event::PointerButton { pos: q, button: PointerButton::Primary, pressed, modifiers };
+        frame(vec![Event::PointerMoved(q)], t);
+        frame(vec![button(true)], t);
+        frame(vec![button(false)], t);
+        frame(vec![Event::PointerButton { pos: pos2(900.0, 500.0), button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE }], t);
+    };
+    // Recall button 4 (Bossa): nothing processes here, so the panel takes it.
+    click(slot(3), Modifiers::NONE, &mut t);
+    assert_eq!(or::pending(&p), Some(3));
+    for _ in 0..30 {
+        click(pos2(900.0, 500.0), Modifiers::NONE, &mut t);
+    }
+    assert_eq!(or::active(&p), Some(3));
+    assert_eq!(or::pending(&p), None);
+    // Edit, then Shift-click button 8: the rings are kept there.
+    or::set_step(&p, 0, 1, if or::step(&p, 0, 1) == OFF { ON } else { OFF });
+    assert!(or::edited(&p));
+    click(slot(7), Modifiers::SHIFT, &mut t);
+    assert_eq!(or::active(&p), Some(7));
+    let unnamed = |mut s: or::Pattern| {
+        or::set_name(&mut s, "");
+        s
+    };
+    assert_eq!(unnamed(or::slot(&p, 7)), or::capture(&p));
+    assert_eq!(or::slot_name(&p, 7), "Drift", "the button keeps its name");
+    // STORE, then button 2.
+    click(pos2(631.0, 71.0), Modifiers::NONE, &mut t);
+    click(slot(1), Modifiers::NONE, &mut t);
+    assert_eq!(or::active(&p), Some(1));
+    assert_eq!(or::pending(&p), None, "storing does not recall");
+    assert!(!or::edited(&p));
 }

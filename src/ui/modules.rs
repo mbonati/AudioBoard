@@ -12,52 +12,18 @@ use crate::audio::engine::NodeId;
 use crate::audio::midi::note_hz;
 use crate::audio::modules::{
     ModuleDef, ModuleKind, ModuleParams, aether, arpeggiator, fjord, iris, larsen, looper, vesper, audio_in, automa, colloid, delay, drone, equalizer, filter, frakture, magma, pops, granular, midi_cc, midi_in, midi_note,
-    midicer, nullpunkt, pingpong, prism, random, resonator, reverb, sequencer, steps, tape,
+    midicer, nullpunkt, orrery, pingpong, prism, random, resonator, reverb, sequencer, splitter, steps, tape,
 };
 use crate::audio::params::{
     DIVISIONS, NOTE_NAMES, NOTE_VALUES, format_hz, format_seconds, note_label, sync_division,
 };
 use crate::graph::{ModuleNode, ParamRef};
 
-const PAD: f32 = 12.0;
-const COL_W: f32 = 64.0;
-const PORT_Y: f32 = 42.0;
-const PORT_DY: f32 = 18.0;
-const ROW_H: f32 = 58.0;
-
-fn columns(def: &ModuleDef) -> usize {
-    match def.params.len() {
-        4 => 4,
-        n if n >= 7 => 4,
-        _ => 3,
-    }
-}
-
-/// Node-local top of the display: below the port rows.
-fn display_top(def: &ModuleDef) -> f32 {
-    let rows = (def.inputs.len() + def.midi_in as usize).max(def.outputs.len() + def.midi_out as usize);
-    (PORT_Y + PORT_DY * rows.saturating_sub(1) as f32 + 12.0).max(72.0)
-}
-
-fn display_bottom(def: &ModuleDef) -> f32 {
-    display_top(def) + def.display_h
-}
-
-/// Node-local bottom of the extra controls under the display, if any.
-fn controls_bottom(def: &ModuleDef) -> f32 {
-    display_bottom(def) + if def.controls_h > 0.0 { 6.0 + def.controls_h } else { 0.0 }
-}
-
-/// Node-local top and bottom of the mode selector row.
-fn selector_y(def: &ModuleDef) -> [f32; 2] {
-    let d = controls_bottom(def);
-    [d + 6.0, d + 26.0]
-}
-
-/// Node-local y of the first knob row's labels.
-fn knobs_top(def: &ModuleDef) -> f32 {
-    controls_bottom(def) + if def.modes.is_empty() && !def.map { 18.0 } else { 42.0 }
-}
+// The generic panel's layout comes from the UI Kit (`audioboard_ui::panel`):
+// the same one plugin nodes are drawn with.
+use audioboard_ui::panel::{
+    COL_W, PAD, PORT_DY, PORT_Y, ROW_H, columns, display_bottom, display_top, knobs_top, selector_y,
+};
 
 /// A module node's size now: most only depend on their kind, some panels
 /// grow and shrink with their settings.
@@ -65,6 +31,7 @@ pub fn size_of(p: &ModuleParams) -> Vec2 {
     match p.kind {
         ModuleKind::Pops => super::pops::size(p),
         ModuleKind::Fjord => super::fjord::size(p),
+        ModuleKind::Splitter => super::splitter::size(p),
         ModuleKind::Tape => super::tape::size(p),
         ModuleKind::Iris => super::iris::size(p),
         kind => size(kind.def()),
@@ -77,6 +44,9 @@ pub fn size(def: &ModuleDef) -> Vec2 {
     }
     if std::ptr::eq(def, &fjord::DEF) {
         return super::fjord::SIZE;
+    }
+    if std::ptr::eq(def, &splitter::DEF) {
+        return super::splitter::SIZE;
     }
     if std::ptr::eq(def, &frakture::DEF) {
         return super::frakture::SIZE;
@@ -114,19 +84,17 @@ pub fn size(def: &ModuleDef) -> Vec2 {
     if std::ptr::eq(def, &colloid::DEF) {
         return super::colloid::SIZE;
     }
+    if std::ptr::eq(def, &orrery::DEF) {
+        return super::orrery::SIZE;
+    }
     if std::ptr::eq(def, &iris::DEF) {
         return Vec2::from(iris::DEFAULT_SIZE);
     }
-    let cols = columns(def);
-    let rows = def.params.len().div_ceil(cols);
-    vec2(
-        PAD * 2.0 + COL_W * cols as f32,
-        knobs_top(def) + ROW_H * rows as f32 - 4.0,
-    )
+    audioboard_ui::panel::size(def)
 }
 
 pub fn input_offset(i: usize) -> Vec2 {
-    vec2(0.0, PORT_Y + PORT_DY * i as f32)
+    audioboard_ui::panel::input_offset(i)
 }
 
 pub fn output_offset(def: &ModuleDef, i: usize) -> Vec2 {
@@ -179,6 +147,10 @@ pub fn draw(
         super::fjord::draw(v, id, accent, m, (inputs, outputs), midi);
         return MapButton::default();
     }
+    if kind == ModuleKind::Splitter {
+        super::splitter::draw(v, id, accent, m, outputs.first().copied().unwrap_or(false), midi);
+        return MapButton::default();
+    }
     if kind == ModuleKind::Magma {
         let out = outputs.first().copied().unwrap_or(false);
         super::magma::draw(v, id, accent, m, [patched(0), patched(1), out], midi.0);
@@ -210,6 +182,10 @@ pub fn draw(
     }
     if kind == ModuleKind::Colloid {
         super::colloid::draw(v, id, accent, m, midi);
+        return MapButton::default();
+    }
+    if kind == ModuleKind::Orrery {
+        super::orrery::draw(v, id, accent, m, midi);
         return MapButton::default();
     }
     if kind == ModuleKind::Iris {
@@ -295,7 +271,7 @@ pub fn draw(
         ModuleKind::AudioIn => audio_in_display(&screen, p),
         ModuleKind::Random | ModuleKind::MidiCc | ModuleKind::MidiNote => trace_display(&screen, m),
         ModuleKind::Granular => granular_display(&screen, p),
-        ModuleKind::Frakture | ModuleKind::Equalizer | ModuleKind::Prism | ModuleKind::Magma | ModuleKind::Pops | ModuleKind::Fjord | ModuleKind::Tape | ModuleKind::Nullpunkt | ModuleKind::Aether | ModuleKind::Larsen | ModuleKind::Vesper | ModuleKind::Automa | ModuleKind::Colloid | ModuleKind::Looper | ModuleKind::Iris => {}
+        ModuleKind::Frakture | ModuleKind::Equalizer | ModuleKind::Prism | ModuleKind::Magma | ModuleKind::Pops | ModuleKind::Fjord | ModuleKind::Splitter | ModuleKind::Tape | ModuleKind::Nullpunkt | ModuleKind::Aether | ModuleKind::Larsen | ModuleKind::Vesper | ModuleKind::Automa | ModuleKind::Colloid | ModuleKind::Orrery | ModuleKind::Looper | ModuleKind::Iris => {}
         ModuleKind::Resonator => resonator_display(&screen, p),
         ModuleKind::Filter => filter_display(&screen, p),
         ModuleKind::Delay => delay_display(&screen, p, echo_seconds(p, v.tempo)),
@@ -304,6 +280,7 @@ pub fn draw(
         ModuleKind::Sequencer => step_grid(v, id, &screen, p),
         ModuleKind::Arpeggiator | ModuleKind::MidiIn => keys_display(&screen, p),
         ModuleKind::Midicer => midicer_display(v, id, &screen, p),
+        ModuleKind::Ext(e) => super::node_panel::display(screen.p, screen.rect, accent, z, m, e),
     }
     if kind == ModuleKind::Midicer {
         midicer_controls(v, id, p, accent, display_bottom(def) + 6.0, w);
@@ -423,6 +400,7 @@ fn knob_unused(kind: ModuleKind, p: &ModuleParams, k: usize) -> bool {
 fn readout(kind: ModuleKind, p: &ModuleParams, tempo: f32) -> (String, String) {
     let mode = mode_name(kind, p.mode());
     match kind {
+        ModuleKind::Ext(e) => super::node_panel::readout(p, e),
         ModuleKind::MidiCc => {
             let (channel, number) = midi_cc::address(p);
             let learning = p.toggled();
@@ -512,6 +490,7 @@ fn readout(kind: ModuleKind, p: &ModuleParams, tempo: f32) -> (String, String) {
         ModuleKind::Magma => super::magma::readout(p),
         ModuleKind::Pops => super::pops::readout(p),
         ModuleKind::Fjord => super::fjord::readout(p),
+        ModuleKind::Splitter => super::splitter::readout(p),
         ModuleKind::Tape => super::tape::readout(p),
         ModuleKind::Nullpunkt => super::nullpunkt::readout(p),
         ModuleKind::Aether => super::aether::readout(p),
@@ -521,6 +500,7 @@ fn readout(kind: ModuleKind, p: &ModuleParams, tempo: f32) -> (String, String) {
         ModuleKind::Iris => super::iris::readout(p),
         ModuleKind::Automa => super::automa::readout(p),
         ModuleKind::Colloid => super::colloid::readout(p),
+        ModuleKind::Orrery => super::orrery::readout(p),
         ModuleKind::Granular => {
             let n = p.viz[granular::viz::COUNT].get() as usize;
             let state = if p.toggled() { "Frozen" } else { "Recording" };

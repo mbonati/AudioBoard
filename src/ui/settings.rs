@@ -813,4 +813,33 @@ fn plugins_card(ui: &mut Ui, cx: &SettingsContext, changes: &mut Vec<SettingsCha
             changes.push(SettingsChange::Plugins(p));
         }
     });
+    ui.add_space(12.0);
+    card(ui, "PLUGIN NODES", |ui| {
+        let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+        for dir in crate::audio::node_plugin::search_paths() {
+            item(ui, |ui| {
+                let there = dir.exists();
+                let text = match home.as_deref().and_then(|h| dir.strip_prefix(h).ok()) {
+                    Some(rest) => format!("~/{}", rest.display()),
+                    None => dir.display().to_string(),
+                };
+                ui.label(RichText::new(text).font(FontId::monospace(10.5)).color(if there { theme::TEXT } else { theme::TEXT_FAINT }));
+                if !there {
+                    ui.label(RichText::new("not there").size(10.0).color(theme::TEXT_FAINT));
+                }
+            });
+        }
+        let libraries = crate::audio::node_plugin::libraries();
+        for (file, name, version, nodes) in &libraries {
+            let s = if *nodes == 1 { "" } else { "s" };
+            line(ui, format!("{name} {version} · {nodes} node{s} · {file}"), theme::METER_GREEN);
+        }
+        if libraries.is_empty() {
+            line(ui, "No node plugins loaded", theme::TEXT_FAINT);
+        }
+        note(
+            ui,
+            "Precompiled nodes built with the AudioBoard node SDK, one dynamic library each. They run inside AudioBoard; a new one loads on Rescan, an updated one after a restart.",
+        );
+    });
 }

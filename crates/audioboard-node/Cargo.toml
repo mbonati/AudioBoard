@@ -1,0 +1,9 @@
+[package]
+name = "audioboard-node"
+version = "0.1.0"
+edition = "2024"
+description = "Foundation for AudioBoard nodes: descriptions, the processing interface, lock-free parameters, DSP helpers, and the versioned C ABI of node plugins."
+publish = false
+
+# No dependencies on purpose: plugins build against this crate alone.
+[dependencies]

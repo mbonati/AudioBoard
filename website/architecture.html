@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Architecture · AudioBoard</title>
-<meta name="description" content="How AudioBoard works inside: a lock-free UI and audio thread, block processing, VST3 and Audio Unit plugins, MIDI and clock sync, and the source tree.">
+<meta name="description" content="How AudioBoard works inside: a lock-free UI and audio thread, block processing, VST3 and Audio Unit plugins, node plugins with a versioned C ABI, MIDI and clock sync, and the source tree.">
 <meta name="theme-color" content="#141518">
 <script>document.documentElement.classList.add("js")</script>
 <link rel="icon" href="assets/img/logo.svg" type="image/svg+xml">
@@ -27,6 +27,7 @@
       <a href="nodes.html">Nodes</a>
       <a href="guide.html">Guide</a>
       <a href="architecture.html" aria-current="page">Architecture</a>
+      <a href="sdk.html">SDK</a>
       <a class="gh" href="https://github.com/mbonati/AudioBoard"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>Source</a>
     </nav>
   </div>
@@ -103,7 +104,7 @@
         <path d="M346 190C346 270 300 300 300 352" stroke="#d6a65c" stroke-width="2.5"/>
       </svg>
       <p>The UI never blocks the audio thread. <strong>Knob values travel through atomics</strong>, read by the engine as it runs. <strong>Structural changes</strong> (nodes added or removed, a new processing order) reach the engine as commands on a channel.</p>
-      <p>Buffers that take memory (a delay line, a reverb, a granular loop) are allocated on the UI thread when the node is created. Removed nodes and old processing orders are handed back to the UI thread to be freed: freeing memory inside the audio callback (a delay line is megabytes) could stall it into a click.</p>
+      <p>Buffers that take memory (a delay line, a reverb, a granular loop) are allocated on the UI thread when the node is created. Removed nodes and old processing orders are handed back to the UI thread to be freed: freeing memory inside the audio callback (a delay line is megabytes) could stall it into a click. A sample loaded into a Splitter goes the same way (<code>audio/sample.rs</code>): the UI swaps it in under a lock and bumps a version; the processor takes it with <code>try_lock</code>, never waiting (it tries again next block), and hands back the one it let go, to be freed by the UI.</p>
       <p>On the UI side, <code>graph.rs</code> holds the patch model (nodes, cables, modules) and orders it with Kahn's algorithm; on the audio side, <code>engine.rs</code> runs the precomputed topological order.</p>
     </section>
 
@@ -124,6 +125,7 @@
       <p>A plugin gets the <strong>whole buffer in a single call</strong>, with its MIDI events placed at their exact offsets, since every plugin call has a fixed cost. A heavy instrument costs the same whatever the patch around it.</p>
       <p>Plugins of both formats sit behind one lock, used with care: the UI calls into a plugin only between audio callbacks (when the audio thread has just finished and won't need it for most of a buffer), one call at a time, at most ten times a second. A plugin's complete state is read only when saving, so the audio thread is not kept waiting.</p>
       <p><strong>Audio Units</strong> are hosted through <code>audio/au_host.m</code>, a small Objective-C layer over <code>AUAudioUnit</code> that <code>build.rs</code> compiles with the <code>cc</code> crate on macOS. It uses manual reference counting, so nothing on the render path retains, releases or allocates; <code>audio/au.rs</code> is its Rust face. AUv3 extensions are opened out of process, as macOS does by default, so a crash there leaves the board playing; classic AU components run in process. An Audio Unit has no file, so it travels as a pseudo-path (<code>audiounit:&lt;type&gt;-&lt;subtype&gt;-&lt;maker&gt;</code>, in hex) wherever a plugin path goes. Its parameters are set from the UI directly (<code>AUParameter</code> is thread-safe), not through the audio thread.</p>
+      <p><strong>Plugin nodes</strong> (<code>audio/node_plugin.rs</code>) are AudioBoard's own format: nodes written against the node SDK (<code>crates/audioboard-node</code>) and built into a dynamic library. App and plugin share only a C ABI, since Rust has none of its own: <code>#[repr(C)]</code> tables and <code>extern "C"</code> functions, whose first field is a version the app checks before reading anything else. A library is opened with libloading, its description copied and checked, and each node registered, lock-free, as one more kind of module (<code>ModuleKind::Ext</code>): the generic panel, presets, MIDI mapping and projects (by a stable id) come with it. On the audio thread a plugin node is called once per 64-frame block with nothing but pointers: its buffers, its MIDI, its settings' atomics. A panic is caught at the boundary and silences only that node; non-finite samples are muted. Libraries are never unloaded, since live nodes run their code. <a href="sdk.html">The SDK page</a> shows how to write one.</p>
       <p>MIDI inputs (midir) connect automatically, even when plugged in after launch, and feed shared state read by the MIDI nodes, including a MIDI clock and transport for the MIDI Looper.</p>
       <p><strong>MIDI sync</strong> (<code>audio/sync.rs</code>): the chosen input's thread times the clock with a least-squares fit over the last beat of ticks, for the tempo and the phase, and publishes it lock-free (seqlocks). Each callback, the engine steers its beat onto the clock's, nudging its rate by a few percent and jumping only when far out or on Start, Continue and song position. To send a clock, the engine publishes its timeline every callback and a thread of its own sends ticks, Start, Stop and song position, timed to leave when their beat is heard.</p>
     </section>
@@ -142,13 +144,19 @@
 
     <section id="tree">
       <h2><span class="n">05</span>Source tree</h2>
-<div class="tree"><b class="d">src/</b>
+<div class="tree"><b class="d">crates/</b>
+├── <b class="d">audioboard-node/</b>   <i>the node SDK: descriptions, Node, buffers and MIDI, lock-free settings, DSP, the C ABI</i>
+└── <b class="d">audioboard-ui/</b>     <i>the UI Kit: theme, NodeView, controls, node card, displays, the generic panel's layout</i>
+<b class="d">plugins/</b>
+├── <b>README.md</b>          <i>writing, building and distributing a node plugin, step by step</i>
+└── <b class="d">example-nodes/</b>     <i>an example library: Glass, Haze, Pulse</i>
+<b class="d">src/</b>
 ├── <b class="d">audio/</b>
-│   ├── <b>params.rs</b>     <i>parameters shared lock-free (atomics) between UI and audio</i>
+│   ├── <b>params.rs</b>     <i>parameters shared lock-free (atomics) between UI and audio (vocabulary from the SDK)</i>
 │   ├── <b>engine.rs</b>     <i>audio-side graph: blocks, MIDI events, clock, topological order, limiter</i>
-│   ├── <b>fastmath.rs</b>   <i>fast sine, exp2, log2 and tanh for per-sample DSP</i>
+│   ├── <b>fastmath.rs</b>   <i>fast sine, exp2, log2 and tanh for per-sample DSP (from the SDK)</i>
 │   ├── <b>dsp.rs</b>        <i>Oscillator and Mixer (main and AUX outputs)</i>
-│   ├── <b class="d">modules/</b>      <i>every module: ModuleDef + Processor</i>
+│   ├── <b class="d">modules/</b>      <i>every module: ModuleDef (the SDK's NodeDef) + Processor</i>
 │   │   ├── drone, random, granular, resonator, filter, delay, pingpong, reverb …
 │   │   ├── <b>equalizer.rs</b>  <i>after Waves F6</i>
 │   │   ├── <b>prism/</b>        <i>after Pro-Q 4: ten shapes, linear phase, spectral dynamics, EQ Match</i>
@@ -156,21 +164,25 @@
 │   │   ├── <b>frakture/</b>     <i>grains, gate and repeat, hall, hexagon and motion paths</i>
 │   │   ├── <b>pops/</b>         <i>the fifteen synthesized instruments, the twenty rhythms</i>
 │   │   ├── <b>fjord/</b>        <i>voice (tone, noise, click), bank, Trig inputs, ALEA</i>
+│   │   ├── <b>splitter/</b>     <i>voices (straight and granular, crusher), glitch atoms, slicing, DICE</i>
 │   │   ├── <b>aether/</b>       <i>fractal motion, tuned glitches, warm space</i>
 │   │   ├── <b>larsen/</b>       <i>strings, drive, filters, echo, keys</i>
 │   │   ├── <b>vesper/</b>       <i>harmony, sound recipes, rendering thread, layers, fx</i>
 │   │   ├── <b>automa/</b>       <i>LIFE, CASCADE, TREE, JULIA; harmony rules</i>
 │   │   ├── <b>colloid/</b>      <i>the tank's physics, handpan layouts and chords</i>
+│   │   ├── <b>orrery.rs</b>     <i>eight Euclidean rings: turns, patterns, GRID and CYCLE, a channel each</i>
 │   │   ├── <b>looper/</b>       <i>scenes, recording, MIDI clock</i>
-│   │   ├── <b>iris.rs</b>       <i>passes IN through, hands the panel the sound it listens to</i>
+│   │   ├── <b>iris.rs</b>       <i>passes IN through, hands the panel the sound, the MIDI and the transport</i>
 │   │   ├── <b>tape.rs</b>       <i>record EQ, magnetic curve, transport, playback head</i>
 │   │   ├── <b>oversample.rs</b> <i>2× half-band FIR for Magma, Tape, Aether and Prism</i>
 │   │   └── <b>steps.rs</b>      <i>step grid on the global tempo, outgoing notes, held keys</i>
 │   ├── <b>midi.rs</b>       <i>MIDI inputs (midir), clock and transport, activity per input</i>
 │   ├── <b>sync.rs</b>       <i>MIDI sync: following an external clock, steering the beat, clock out</i>
 │   ├── <b>plugin.rs</b>     <i>VST3 and Audio Units behind one lock: loading, scanning, processing</i>
+│   ├── <b>node_plugin.rs</b> <i>plugin nodes: scanning, loading, ABI checks, registry, the processor</i>
 │   ├── <b>au.rs</b>         <i>Audio Units: listing, pseudo-paths, the Rust face of au_host.m</i>
 │   ├── <b>au_host.m</b>     <i>Objective-C host over AUAudioUnit (built by build.rs)</i>
+│   ├── <b>sample.rs</b>     <i>WAV/AIFF decoding, samples kept in the project, handed over lock-free</i>
 │   ├── <b>record.rs</b>     <i>lock-free tap, writer thread, takes</i>
 │   ├── <b>export.rs</b>     <i>WAV/AIFF, FLAC/ALAC/AAC via afconvert, MP3 via ffmpeg or lame</i>
 │   ├── <b>device.rs</b>     <i>devices, channel pair, rate, buffer</i>
@@ -186,16 +198,18 @@
 │   ├── <b>layout.rs</b>     <i>auto layout by signal flow</i>
 │   ├── <b>palette.rs</b>    <i>nodes and library modules</i>
 │   ├── <b>modules.rs</b>    <i>the generic panel, readouts, displays</i>
-│   ├── fjord, pops, colloid, automa, vesper, aether, larsen, nullpunkt,
+│   ├── <b>node_panel.rs</b> <i>a plugin node's display and readout, drawn with the UI Kit</i>
+│   ├── fjord, splitter, pops, colloid, orrery, automa, vesper, aether, larsen, nullpunkt,
 │   │   magma, equalizer, prism, tape, frakture, looper, console … <i>custom panels</i>
 │   ├── <b>board.rs</b>      <i>backgrounds, stickers on the canvas, built-in designs, their menus</i>
-│   ├── <b>iris.rs</b>       <i>Iris: analysis, fourteen scenes, palettes, settings popup, its window</i>
+│   ├── <b>iris.rs</b>       <i>Iris: analysis, nineteen scenes (3D in software), palettes, frameless look, settings popup, its window</i>
+│   ├── <b>iris/synth.rs</b> <i>Iris as a visual synth: layers composited on the CPU, LFOs, envelopes, audio and MIDI, the matrix</i>
 │   ├── <b>settings.rs</b>   <i>the Settings window: Audio, MIDI, Sync, Plugins</i>
 │   ├── <b>recent.rs</b>     <i>Open Recent</i>
 │   ├── <b>tempo.rs</b>      <i>BPM field, beat light, tap tempo; a MIDI clock's tempo</i>
-│   ├── <b>widgets.rs</b>    <i>hand-drawn knobs, faders, meters, ports, cables</i>
+│   ├── <b>widgets.rs</b>    <i>hand-drawn knobs, faders, meters, ports, cables (the UI Kit's)</i>
 │   ├── <b>monitor.rs</b>    <i>oscilloscope and spectrum</i>
-│   ├── <b>theme.rs</b>      <i>colours, system fonts, style</i>
+│   ├── <b>theme.rs</b>      <i>colours, system fonts, style (the UI Kit's)</i>
 │   └── <b>app.rs</b>        <i>window, toolbar, panels, demo patch</i>
 ├── <b>tests.rs</b>          <i>graph, modules, offline engine rendering</i>
 └── <b>perf.rs</b>           <i>benchmarks: audio per module, large patches, UI frames, layout</i></div>
@@ -208,13 +222,16 @@
         <li>An entry in <code>ModuleKind</code>.</li>
         <li>In <code>ui/modules.rs</code>, the readout and the display.</li>
       </ol>
-      <p>The panel (ports, selector, knobs) is generated from the definition. Larger instruments draw their own: Frakture, the Equalizer, Prism, Magma, Tape, Nullpunkt, Aether, Larsen, Vesper, the MIDI Looper, Automa, Colloid, Fjord, Iris (sized by the user) and Pops 66, whose sizes, like Fjord's, follow their settings through <code>modules::size_of</code>. Frakture's hexagon runs on the audio thread, block by block: the panel hands it the mouse through the module's display values, so paths keep time even when the window doesn't redraw.</p>
+      <p>The panel (ports, selector, knobs) is generated from the definition. Larger instruments draw their own: Frakture, the Equalizer, Prism, Magma, Tape, Nullpunkt, Aether, Larsen, Vesper, the MIDI Looper, Automa, Colloid, Orrery, Fjord, Splitter, Iris (sized by the user) and Pops 66, whose sizes, like Fjord's, follow their settings through <code>modules::size_of</code>. Frakture's hexagon runs on the audio thread, block by block: the panel hands it the mouse through the module's display values, so paths keep time even when the window doesn't redraw.</p>
+      <p>A node that should ship on its own is a <strong>plugin node</strong> instead, and needs no change to the app: see <a href="sdk.html">the SDK page</a>.</p>
     </section>
 
     <section id="stack">
       <h2><span class="n">07</span>Stack</h2>
-      <div class="pills"><span>Rust 2024</span><span>egui + eframe 0.37</span><span>cpal</span><span>midir</span><span>vst3-host</span><span>AUAudioUnit · Objective-C</span><span>serde · JSON</span><span>image · resvg</span><span>rfd</span></div>
+      <div class="pills"><span>Rust 2024</span><span>egui + eframe 0.37</span><span>cpal</span><span>midir</span><span>vst3-host</span><span>AUAudioUnit · Objective-C</span><span>serde · JSON</span><span>image · resvg</span><span>rfd</span><span>libloading</span></div>
       <div class="code"><div class="code-head"><span class="label">Tests</span><button class="copy" data-copy="cargo test">Copy</button></div><pre><span class="p">$ </span>cargo test</pre></div>
+      <div class="code"><div class="code-head"><span class="label">With the SDK, the UI Kit and the example plugin</span><button class="copy" data-copy="cargo test --workspace">Copy</button></div><pre><span class="p">$ </span>cargo test --workspace</pre></div>
+      <div class="code"><div class="code-head"><span class="label">Build, load and play the example plugin</span><button class="copy" data-copy="cargo test example_plugin_builds_loads_and_plays -- --ignored">Copy</button></div><pre><span class="p">$ </span>cargo test example_plugin_builds_loads_and_plays -- --ignored</pre></div>
       <div class="code"><div class="code-head"><span class="label">Benchmarks</span><button class="copy" data-copy="cargo test --release perf -- --ignored --nocapture --test-threads=1">Copy</button></div><pre><span class="p">$ </span>cargo test --release perf -- --ignored --nocapture --test-threads=1</pre></div>
       <p style="margin-top: 28px"><a class="btn ghost" href="nodes.html" style="--c: var(--teal)">Browse the nodes →</a></p>
     </section>
@@ -229,7 +246,7 @@
       <p class="dim" style="margin-top: 12px">A node-based modular synthesizer in Rust. Built with egui and eframe, cpal, midir and vst3-host. Every panel on this site is rendered from the app.</p>
     </div>
     <nav aria-label="Footer">
-      <a href="index.html">Home</a><a href="nodes.html">Nodes</a><a href="guide.html">Guide</a><a href="architecture.html">Architecture</a><a href="https://github.com/mbonati/AudioBoard">Source</a>
+      <a href="index.html">Home</a><a href="nodes.html">Nodes</a><a href="guide.html">Guide</a><a href="architecture.html">Architecture</a><a href="sdk.html">SDK</a><a href="https://github.com/mbonati/AudioBoard">Source</a>
     </nav>
   </div>
 </footer>

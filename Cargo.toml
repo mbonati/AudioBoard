@@ -3,11 +3,21 @@ name = "audioboard"
 version = "0.1.0"
 edition = "2024"
 
+# The node SDK and the UI Kit are their own crates (see README, "Node
+# plugins"); `plugins/` holds example node plugins built as dylibs. Plain
+# `cargo build`/`cargo test` work on the app alone; add `--workspace` for all.
+[workspace]
+members = ["crates/audioboard-node", "crates/audioboard-ui", "plugins/*"]
+
 [dependencies]
+audioboard-node = { path = "crates/audioboard-node" }
+audioboard-ui = { path = "crates/audioboard-ui" }
 cpal = "0.18.2"
 eframe = "0.37.0"
 egui = "0.37.0"
 # Stickers and background images (see board.rs).
+# Loads node plugins (dynamic libraries, see audio/node_plugin.rs).
+libloading = "0.8"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
 # SVG stickers, drawn at the size they are shown.
 resvg = "0.48"

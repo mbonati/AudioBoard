@@ -71,6 +71,7 @@ impl NodeType {
                 NodeType::Module(ModuleKind::Random),
                 NodeType::Module(ModuleKind::Pops),
                 NodeType::Module(ModuleKind::Fjord),
+                NodeType::Module(ModuleKind::Splitter),
                 NodeType::Module(ModuleKind::Nullpunkt),
                 NodeType::Module(ModuleKind::AudioIn),
             ],
@@ -103,6 +104,7 @@ impl NodeType {
                 NodeType::Module(ModuleKind::Midicer),
                 NodeType::Module(ModuleKind::Automa),
                 NodeType::Module(ModuleKind::Colloid),
+                NodeType::Module(ModuleKind::Orrery),
                 NodeType::Module(ModuleKind::Looper),
                 NodeType::Module(ModuleKind::Arpeggiator),
                 NodeType::Module(ModuleKind::MidiIn),
@@ -754,6 +756,7 @@ impl Node {
                     ModuleKind::Random => Some(m.params.viz[random::VALUE].get()),
                     ModuleKind::MidiCc => Some(m.params.viz[midi_cc::VALUE].get()),
                     ModuleKind::MidiNote => Some(m.params.viz[midi_note::ENV].get() * 2.0 - 1.0),
+                    ModuleKind::Ext(e) => crate::ui::node_panel::traced(e).and_then(|i| m.params.viz.get(i)).map(|v| v.get()),
                     _ => None,
                 };
                 if let Some(v) = traced {
