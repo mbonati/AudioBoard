@@ -72,15 +72,23 @@ mod site_snap {
 
     /// Rasterizes egui's triangles (premultiplied, blended in gamma space).
     fn raster(prims: &[ClippedPrimitive], texs: &HashMap<TextureId, Tex>, w: usize, h: usize, ppp: f32) -> Vec<[f32; 3]> {
+        raster_rows(prims, texs, w, (0, h), ppp)
+    }
+
+    /// The same, for the rows `rows.0..rows.1` only (a band, so that bands
+    /// can be drawn in parallel).
+    fn raster_rows(prims: &[ClippedPrimitive], texs: &HashMap<TextureId, Tex>, w: usize, rows: (usize, usize), ppp: f32) -> Vec<[f32; 3]> {
+        let (top, bottom) = rows;
+        let h = bottom - top;
         let bg = rgba(theme::BG);
         let mut img = vec![[bg[0], bg[1], bg[2]]; w * h];
         for cp in prims {
             let Primitive::Mesh(mesh) = &cp.primitive else { continue };
             let tex = texs.get(&mesh.texture_id);
             let cx0 = (cp.clip_rect.min.x * ppp).max(0.0).floor() as i64;
-            let cy0 = (cp.clip_rect.min.y * ppp).max(0.0).floor() as i64;
+            let cy0 = (cp.clip_rect.min.y * ppp).max(top as f32).floor() as i64;
             let cx1 = (cp.clip_rect.max.x * ppp).min(w as f32).ceil() as i64;
-            let cy1 = (cp.clip_rect.max.y * ppp).min(h as f32).ceil() as i64;
+            let cy1 = (cp.clip_rect.max.y * ppp).min(bottom as f32).ceil() as i64;
             for tri in mesh.indices.chunks_exact(3) {
                 let mut vs = [tri[0], tri[1], tri[2]].map(|i| &mesh.vertices[i as usize]);
                 let mut p = vs.map(|v| (v.pos.x * ppp, v.pos.y * ppp));
@@ -146,7 +154,7 @@ mod site_snap {
                         if src[3] <= 0.0 && src[0] <= 0.0 && src[1] <= 0.0 && src[2] <= 0.0 {
                             continue;
                         }
-                        let d = &mut img[y as usize * w + x as usize];
+                        let d = &mut img[(y as usize - top) * w + x as usize];
                         let k = 1.0 - src[3].clamp(0.0, 1.0);
                         for i in 0..3 {
                             d[i] = (src[i] + d[i] * k).clamp(0.0, 1.0);
@@ -159,6 +167,12 @@ mod site_snap {
     }
 
     fn save(name: &str, img: &[[f32; 3]], w: usize, crop: (usize, usize, usize, usize)) {
+        // SNAP_DIR: somewhere else than the site's pictures.
+        let dir = std::env::var("SNAP_DIR").unwrap_or_else(|_| DIR.to_owned());
+        save_in(&dir, name, img, w, crop);
+    }
+
+    fn save_in(dir: &str, name: &str, img: &[[f32; 3]], w: usize, crop: (usize, usize, usize, usize)) {
         let (cx, cy, cw, ch) = crop;
         let row = (cw * 3 + 3) & !3;
         let mut bmp = Vec::with_capacity(54 + row * ch);
@@ -189,9 +203,7 @@ mod site_snap {
                 bmp.push(0);
             }
         }
-        // SNAP_DIR: somewhere else than the site's pictures.
-        let dir = std::env::var("SNAP_DIR").unwrap_or_else(|_| DIR.to_owned());
-        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir).unwrap();
         let tmp = format!("{dir}/{name}.bmp");
         let png = format!("{dir}/{name}.png");
         std::fs::write(&tmp, bmp).unwrap();
@@ -228,6 +240,7 @@ mod site_snap {
         theme::apply(&ctx);
         ctx.set_pixels_per_point(ppp);
         ctx.options_mut(|o| o.warn_on_id_clash = false);
+        #[cfg(debug_assertions)]
         ctx.all_styles_mut(|st| st.debug.warn_if_rect_changes_id = false);
         let mut editor = Editor::new();
         let mut texs = HashMap::new();
@@ -860,4 +873,6 @@ mod site_snap {
             }
         }
     }
+
+    include!("site_media.rs");
 }
