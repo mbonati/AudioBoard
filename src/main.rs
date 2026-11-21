@@ -1,3 +1,6 @@
+// Optimized builds on Windows open no console window beside the app.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod audio;
 mod board;
 mod graph;

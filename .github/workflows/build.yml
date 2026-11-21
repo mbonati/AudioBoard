@@ -1,0 +1,112 @@
+# Builds and packages AudioBoard (the `dist` profile) for macOS (universal:
+# Apple Silicon + Intel), Linux x86_64 and Windows x86_64, and uploads each
+# package as a workflow artifact. Publishes nothing.
+#
+# - On pull requests to develop and main: checks that every platform builds.
+# - Called by release.yml with the new version, which it writes into
+#   Cargo.toml before building (the release job commits it afterwards).
+# - Started by hand (Actions → Build → Run workflow): packages of a branch
+#   without making a release.
+name: Build
+
+on:
+  pull_request:
+    branches: [develop, main]
+    paths-ignore:
+      - "website/**"
+      - "**/*.md"
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        description: "Version X.Y.Z to build as (empty: the one in Cargo.toml)"
+        type: string
+        default: ""
+      ref:
+        description: "Commit to build (empty: the one that started the run)"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos-universal
+            os: macos-15
+            platform: macos
+            targets: aarch64-apple-darwin x86_64-apple-darwin
+          - name: linux-x86_64
+            # The oldest supported Ubuntu: the binary needs this glibc or newer.
+            os: ubuntu-22.04
+            platform: linux
+            targets: ""
+          - name: windows-x86_64
+            os: windows-2025
+            platform: windows
+            targets: ""
+    defaults:
+      run:
+        shell: bash
+    env:
+      # The bundle's LSMinimumSystemVersion (scripts/macos/Info.plist).
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Set the version
+        if: inputs.version != ''
+        run: scripts/version.sh set "${{ inputs.version }}"
+
+      - name: Install Linux libraries
+        if: matrix.platform == 'linux'
+        # ALSA (cpal, midir), fontconfig (egui's system fonts), xcb (VST3
+        # editor windows), xkbcommon and wayland (winit, rfd).
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libasound2-dev libfontconfig1-dev libxcb1-dev \
+            libxkbcommon-dev libwayland-dev
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          for t in ${{ matrix.targets }}; do rustup target add "$t"; done
+          rustc --version
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.name }}
+
+      - name: Build
+        run: |
+          targets=()
+          for t in ${{ matrix.targets }}; do targets+=(--target "$t"); done
+          cargo build --locked --profile dist "${targets[@]}"
+
+      - name: Package
+        id: package
+        run: scripts/package.sh ${{ matrix.platform }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AudioBoard-${{ matrix.name }}
+          path: ${{ steps.package.outputs.file }}
+          if-no-files-found: error
+          retention-days: ${{ inputs.version != '' && 30 || 7 }}
