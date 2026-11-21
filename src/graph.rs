@@ -883,6 +883,9 @@ pub struct Graph {
     graveyard: Vec<Arc<PluginShared>>,
     /// The board's stickers and background.
     pub board: crate::board::Board,
+    /// The track view's layout: which view is shown, track order, open
+    /// panels (see `tracks`).
+    pub tracks: crate::tracks::Layout,
 }
 
 impl Default for Graph {
@@ -898,6 +901,7 @@ impl Default for Graph {
             plugin_host: None,
             graveyard: Vec::new(),
             board: crate::board::Board::default(),
+            tracks: crate::tracks::Layout::default(),
         }
     }
 }
@@ -936,6 +940,7 @@ impl Graph {
         self.accent_count = 0;
         self.tempo = DEFAULT_TEMPO;
         self.board = crate::board::Board::default();
+        self.tracks = crate::tracks::Layout::default();
     }
 
     fn alloc_id(&mut self) -> NodeId {
@@ -1261,6 +1266,7 @@ impl Graph {
             g.members.retain(|m| *m != id);
         }
         self.groups.retain(|g| !g.members.is_empty());
+        self.tracks.forget(id);
         for n in &mut self.nodes {
             if let NodeKind::Module(m) = &mut n.kind
                 && m.target.is_some_and(|t| t.node == id)
@@ -1575,6 +1581,13 @@ impl Graph {
 
     pub fn disconnect(&mut self, cable: Cable, audio: &AudioHandle) {
         self.cables.retain(|c| *c != cable);
+        self.sync(audio);
+    }
+
+    /// Puts back cables taken with `cables.clone()` (an edit that could not
+    /// be finished, see `tracks`).
+    pub fn set_cables(&mut self, cables: Vec<Cable>, audio: &AudioHandle) {
+        self.cables = cables;
         self.sync(audio);
     }
 

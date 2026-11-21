@@ -133,7 +133,7 @@ pub fn collapsed_port(i: usize, output: bool) -> Vec2 {
 }
 
 /// The node's main value, shown when it is collapsed.
-fn summary(node: &Node, tempo: f32) -> String {
+pub(super) fn summary(node: &Node, tempo: f32) -> String {
     match &node.kind {
         NodeKind::Osc(o) => {
             format_hz(o.params.get(osc::FREQ) * (o.params.get(osc::FINE) / 1200.0).exp2())

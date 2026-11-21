@@ -19,6 +19,7 @@ use super::settings::{
 };
 use super::tempo::TempoControl;
 use super::theme::{self, alpha};
+use super::tracks::TrackView;
 use crate::audio::device::{AudioConfig, BUFFER_SIZES};
 use crate::audio::engine::NodeId;
 use crate::audio::export::{self, FORMATS};
@@ -33,9 +34,11 @@ use crate::audio::sync::ClockOut;
 use crate::audio::{self, AudioHandle};
 use crate::graph::{Graph, NodeKind, PortRef};
 use crate::project::{self, Library, PROJECT_EXT, Project};
+use crate::tracks::View;
 
 const SHORTCUTS: &[(&str, &str)] = &[
     ("Cmd+N / Cmd+O", "New / open project"),
+    ("V", "Switch between the node view and the track view"),
     ("Cmd+S / Shift+Cmd+S", "Save / save as"),
     ("Drag from palette", "Add a node or library module"),
     ("Right-click", "Menu for what is under the pointer"),
@@ -134,6 +137,8 @@ pub struct AudioBoardApp {
     audio: AudioHandle,
     graph: Graph,
     editor: Editor,
+    /// The same patch as rows of tracks (see `tracks`).
+    tracks: TrackView,
     monitor: Monitor,
     show_monitor: bool,
     palette: Palette,
@@ -219,6 +224,7 @@ impl AudioBoardApp {
             doc: Document::new(None, project::snapshot(&graph)),
             graph,
             editor,
+            tracks: TrackView::new(),
             monitor: Monitor::new(),
             show_monitor: true,
             palette: Palette::new(),
@@ -509,8 +515,12 @@ impl AudioBoardApp {
         if !self.confirm_discard(now) {
             return;
         }
+        // A new project opens in the view in use.
+        let view = self.graph.tracks.view;
         self.graph.clear(&self.audio);
+        self.graph.tracks.view = view;
         self.editor.reset();
+        self.tracks.reset();
         self.doc = Document::new(None, project::snapshot(&self.graph));
     }
 
@@ -557,6 +567,7 @@ impl AudioBoardApp {
             Ok(p) => {
                 let skipped = project::restore(&mut self.graph, &p, &self.audio);
                 self.editor.reset();
+                self.tracks.reset();
                 self.remember_recent(&path);
                 self.doc = Document::new(Some(path), project::snapshot(&self.graph));
                 let missing = project::missing_modules(&p);
@@ -806,8 +817,15 @@ impl AudioBoardApp {
         }
     }
 
-    /// Adds a palette entry in the middle of the view.
+    /// Adds a palette entry in the middle of the view (in the track view:
+    /// after the selected device, or as a new track).
     fn add_spawn(&mut self, spawn: Spawn) {
+        if self.graph.tracks.view == View::Tracks {
+            let e = &self.editor;
+            self.tracks
+                .add_spawn(spawn, &mut self.graph, &self.audio, &e.library, &e.plugins);
+            return;
+        }
         match spawn {
             Spawn::Node(ty) => {
                 let p = self.editor.spawn_point(&self.graph, ty.size());
@@ -879,6 +897,25 @@ impl AudioBoardApp {
         }
     }
 
+    /// Switches between the node view and the track view (V): the same
+    /// patch, the selected node carried across.
+    fn toggle_view(&mut self) {
+        match self.graph.tracks.view {
+            View::Nodes => {
+                self.graph.tracks.view = View::Tracks;
+                if self.editor.selected.len() == 1 {
+                    self.tracks.selected = self.editor.selected.iter().next().copied();
+                }
+            }
+            View::Tracks => {
+                self.graph.tracks.view = View::Nodes;
+                if let Some(id) = self.tracks.selected {
+                    self.editor.select_only(id);
+                }
+            }
+        }
+    }
+
     fn toolbar(&mut self, ui: &mut Ui, now: f64) {
         // The bar doubles as the window title bar on macOS.
         let bar = ui.max_rect();
@@ -920,6 +957,24 @@ impl AudioBoardApp {
                 .and_then(|r| r.inner)
             {
                 self.run_file_command(cmd, now);
+            }
+            ui.add_space(8.0);
+            vsep(ui);
+            ui.add_space(8.0);
+            let tracks = self.graph.tracks.view == View::Tracks;
+            if icon_button(ui, Icon::Nodes, !tracks)
+                .on_hover_text("Node view: the patch on a free canvas (V)")
+                .clicked()
+                && tracks
+            {
+                self.toggle_view();
+            }
+            if icon_button(ui, Icon::Tracks, tracks)
+                .on_hover_text("Track view: each track's chain in a row (V)")
+                .clicked()
+                && !tracks
+            {
+                self.toggle_view();
             }
 
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -983,6 +1038,7 @@ impl AudioBoardApp {
                 {
                     self.show_monitor = !self.show_monitor;
                 }
+                let canvas = self.graph.tracks.view == View::Nodes;
                 let all_collapsed = !self.graph.nodes.is_empty()
                     && self.graph.nodes.iter().all(|n| n.collapsed)
                     && self.graph.groups.iter().all(|g| g.collapsed);
@@ -991,24 +1047,28 @@ impl AudioBoardApp {
                 } else {
                     "Collapse everything (Shift+C)"
                 };
-                if icon_button(ui, Icon::Compact, all_collapsed)
-                    .on_hover_text(tip)
-                    .clicked()
+                // Canvas tools: only in the node view.
+                if canvas
+                    && icon_button(ui, Icon::Compact, all_collapsed)
+                        .on_hover_text(tip)
+                        .clicked()
                 {
                     self.graph.set_all_collapsed(!all_collapsed);
                 }
                 let tip = "Auto-fit: keep the whole patch in view (A)";
-                if icon_button(ui, Icon::Fit, self.editor.auto_fit)
-                    .on_hover_text(tip)
-                    .clicked()
+                if canvas
+                    && icon_button(ui, Icon::Fit, self.editor.auto_fit)
+                        .on_hover_text(tip)
+                        .clicked()
                 {
                     self.editor
                         .set_auto_fit(!self.editor.auto_fit, &self.graph, now);
                 }
                 let tip = "Auto layout: arrange by signal flow (L)";
-                if icon_button(ui, Icon::Layout, false)
-                    .on_hover_text(tip)
-                    .clicked()
+                if canvas
+                    && icon_button(ui, Icon::Layout, false)
+                        .on_hover_text(tip)
+                        .clicked()
                 {
                     self.editor.auto_layout(&mut self.graph, now);
                 }
@@ -1086,7 +1146,12 @@ impl AudioBoardApp {
             let single = (selected.len() == 1)
                 .then(|| selected.iter().next().and_then(|id| self.graph.node(*id)))
                 .flatten();
-            let hint = if let Some(g) = self.editor.selected_group(&self.graph) {
+            let hint = if self.graph.tracks.view == View::Tracks {
+                match self.tracks.selected.and_then(|id| self.graph.node(id)) {
+                    Some(n) => format!("{} selected  ·  Del to remove (the chain closes up)  ·  C to open or close its panel  ·  Drag to move it", n.title),
+                    None => "Drag devices to reorder  ·  Drop from the palette between two devices to insert  ·  Drag a track's name to move it  ·  V for the node view".to_owned(),
+                }
+            } else if let Some(g) = self.editor.selected_group(&self.graph) {
                 format!(
                     "{} selected  ·  C to {}  ·  Cmd+D to duplicate  ·  Cmd+Shift+G to ungroup",
                     g.title,
@@ -1117,12 +1182,14 @@ impl AudioBoardApp {
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 20.0;
                 let item = |text: String| RichText::new(text).size(10.0).monospace().color(theme::TEXT_DIM);
-                let auto = if self.editor.auto_fit { "  auto" } else { "" };
-                let zoom = ui
-                    .add(egui::Label::new(item(format!("{:.0}%{auto}", self.editor.zoom * 100.0))).sense(Sense::click()))
-                    .on_hover_cursor(CursorIcon::PointingHand);
-                if let Some(cmd) = egui::Popup::menu(&zoom).show(view_menu).and_then(|r| r.inner) {
-                    self.run_view_command(cmd, now);
+                if self.graph.tracks.view == View::Nodes {
+                    let auto = if self.editor.auto_fit { "  auto" } else { "" };
+                    let zoom = ui
+                        .add(egui::Label::new(item(format!("{:.0}%{auto}", self.editor.zoom * 100.0))).sense(Sense::click()))
+                        .on_hover_cursor(CursorIcon::PointingHand);
+                    if let Some(cmd) = egui::Popup::menu(&zoom).show(view_menu).and_then(|r| r.inner) {
+                        self.run_view_command(cmd, now);
+                    }
                 }
                 let devices: Vec<&str> = self.midi.names().collect();
                 let active = now - self.midi_events.1 < 0.15;
@@ -1284,6 +1351,9 @@ impl eframe::App for AudioBoardApp {
             if ui.input(|i| i.key_pressed(Key::R) && !i.modifiers.any()) {
                 self.toggle_recording(now);
             }
+            if ui.input(|i| i.key_pressed(Key::V) && !i.modifiers.any()) {
+                self.toggle_view();
+            }
         }
 
         let bar_frame = |margin: Margin| Frame::NONE.fill(theme::PANEL).inner_margin(margin);
@@ -1319,8 +1389,16 @@ impl eframe::App for AudioBoardApp {
         }
         CentralPanel::default()
             .frame(Frame::NONE.fill(theme::BG))
-            .show(ui, |ui| self.editor.show(ui, &mut self.graph, &self.audio));
-        for notice in std::mem::take(&mut self.editor.notices) {
+            .show(ui, |ui| match self.graph.tracks.view {
+                View::Nodes => self.editor.show(ui, &mut self.graph, &self.audio),
+                View::Tracks => {
+                    let e = &self.editor;
+                    self.tracks
+                        .show(ui, &mut self.graph, &self.audio, &e.library, &e.plugins)
+                }
+            });
+        let notices = std::mem::take(&mut self.editor.notices);
+        for notice in notices.into_iter().chain(std::mem::take(&mut self.tracks.notices)) {
             self.notify(now, notice, false);
         }
         self.export_window(ui.ctx(), now);
@@ -1354,7 +1432,8 @@ impl eframe::App for AudioBoardApp {
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(100));
         }
-        for request in std::mem::take(&mut self.editor.requests) {
+        let requests = std::mem::take(&mut self.editor.requests);
+        for request in requests.into_iter().chain(std::mem::take(&mut self.tracks.requests)) {
             self.handle_request(request, now);
         }
         self.graph.service_plugins(now);
@@ -1424,6 +1503,7 @@ impl AudioBoardApp {
         self.graph.release_plugin_host();
         project::restore(&mut self.graph, &snapshot, &self.audio);
         self.editor.reset();
+        self.tracks.reset();
         // The same patch: still saved if it was (its nodes have new ids).
         if clean {
             self.doc.saved = project::snapshot(&self.graph);
@@ -1625,6 +1705,10 @@ fn vsep(ui: &mut Ui) {
 
 enum Icon {
     Sidebar,
+    /// The node view: blocks joined by a cable.
+    Nodes,
+    /// The track view: rows of devices.
+    Tracks,
     Layout,
     Fit,
     Monitor,
@@ -1659,6 +1743,29 @@ fn icon_button(ui: &mut Ui, icon: Icon, active: bool) -> Response {
             let r = Rect::from_center_size(c, vec2(13.0, 11.0));
             p.rect_stroke(r, 2.0, Stroke::new(1.2, col), StrokeKind::Inside);
             p.vline(r.left() + 4.5, r.y_range(), Stroke::new(1.2, col));
+        }
+        Icon::Nodes => {
+            // Two blocks joined by a curved cable.
+            let stroke = Stroke::new(1.2, col);
+            let a = Rect::from_center_size(c + vec2(-4.0, -3.0), vec2(5.0, 5.0));
+            let b = Rect::from_center_size(c + vec2(4.0, 3.0), vec2(5.0, 5.0));
+            p.rect_stroke(a, 1.0, stroke, StrokeKind::Inside);
+            p.rect_stroke(b, 1.0, stroke, StrokeKind::Inside);
+            p.add(egui::epaint::CubicBezierShape::from_points_stroke(
+                [a.right_center(), a.right_center() + vec2(3.0, 0.0), b.left_center() - vec2(3.0, 0.0), b.left_center()],
+                false,
+                Color32::TRANSPARENT,
+                stroke,
+            ));
+        }
+        Icon::Tracks => {
+            // Three rows, each a header and a chain of devices.
+            let stroke = Stroke::new(1.2, col);
+            for dy in [-4.5, 0.0, 4.5] {
+                let y = c.y + dy;
+                p.rect_filled(Rect::from_center_size(pos2(c.x - 5.5, y), vec2(2.5, 2.5)), 0.5, col);
+                p.hline((c.x - 2.5)..=(c.x + 6.5), y, stroke);
+            }
         }
         Icon::Layout => {
             // One block feeding two: a patch arranged left to right.

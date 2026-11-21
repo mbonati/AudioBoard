@@ -271,6 +271,40 @@ mod site_snap {
         (raster(&prims, &texs, w, h, ppp), w, h)
     }
 
+    /// The same as `shoot`, through the track view (README, "Track view").
+    fn shoot_tracks(s: &mut Scene, size: Vec2, ppp: f32, frames: usize) -> (Vec<[f32; 3]>, usize, usize) {
+        let ctx = egui::Context::default();
+        theme::apply(&ctx);
+        ctx.set_pixels_per_point(ppp);
+        ctx.options_mut(|o| o.warn_on_id_clash = false);
+        #[cfg(debug_assertions)]
+        ctx.all_styles_mut(|st| st.debug.warn_if_rect_changes_id = false);
+        let mut view = crate::ui::tracks::TrackView::new();
+        let mut texs = HashMap::new();
+        let mut prims = Vec::new();
+        for f in 0..frames {
+            render_buf(&mut s.e, 800);
+            for node in &mut s.g.nodes {
+                node.update_meters(1.0 / 60.0);
+            }
+            let input = egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)),
+                time: Some(f as f64 / 60.0),
+                ..Default::default()
+            };
+            let (g, a) = (&mut s.g, &s.a);
+            let mut out = ctx.run_ui(input, |ui| view.show(ui, g, a, &[], &[]));
+            apply(&mut texs, &out.textures_delta);
+            out.textures_delta.clear();
+            if f + 1 == frames {
+                prims = ctx.tessellate(out.shapes, out.pixels_per_point);
+            }
+        }
+        let w = (size.x * ppp).round() as usize;
+        let h = (size.y * ppp).round() as usize;
+        (raster(&prims, &texs, w, h, ppp), w, h)
+    }
+
     fn bounds(g: &Graph) -> Rect {
         g.nodes.iter().map(|n| Rect::from_min_size(n.pos, n.size())).reduce(|a, b| a.union(b)).unwrap()
     }
@@ -409,6 +443,49 @@ mod site_snap {
     #[test]
     #[ignore]
     fn site_snapshots() {
+        // --- The track view ----------------------------------------------
+        if want("tracks") {
+            use crate::tracks::{TrackKey, View};
+            let mut s = scene(112.0);
+            let console = s.g.add_console(pos2(1600.0, 0.0), &s.a);
+            // An instrument played by a sequencer through an arpeggiator.
+            let seq = add(&mut s, ModuleKind::Sequencer, 0.0, 0.0);
+            let arp = add(&mut s, ModuleKind::Arpeggiator, 300.0, 0.0);
+            let synth = add(&mut s, ModuleKind::Sibyl, 600.0, 0.0);
+            let delay = add(&mut s, ModuleKind::Delay, 1300.0, 0.0);
+            link(&mut s, seq, MIDI_PORT, arp, MIDI_PORT);
+            link(&mut s, arp, MIDI_PORT, synth, MIDI_PORT);
+            link(&mut s, synth, 0, delay, 0);
+            link(&mut s, delay, 0, console, 0);
+            // A drone through a wandering filter, split into a reverb and grains.
+            let random = add(&mut s, ModuleKind::Random, 0.0, 800.0);
+            let drone = add(&mut s, ModuleKind::Drone, 0.0, 1000.0);
+            let filter = add(&mut s, ModuleKind::Filter, 300.0, 900.0);
+            let reverb = add(&mut s, ModuleKind::Reverb, 600.0, 900.0);
+            let grains = add(&mut s, ModuleKind::Granular, 600.0, 1200.0);
+            link(&mut s, random, 0, filter, 1);
+            link(&mut s, drone, 0, filter, 0);
+            link(&mut s, filter, 0, reverb, 0);
+            link(&mut s, filter, 0, grains, 0);
+            link(&mut s, reverb, 0, console, 1);
+            link(&mut s, grains, 0, console, 2);
+            // Drums into tape, its panel open.
+            let drums = add(&mut s, ModuleKind::Fjord, 0.0, 1600.0);
+            let tape = add(&mut s, ModuleKind::Tape, 900.0, 1600.0);
+            link(&mut s, drums, 0, tape, 0);
+            link(&mut s, tape, 0, console, 3);
+            if let crate::graph::NodeKind::Mixer(m) = &s.g.node(console).unwrap().kind {
+                m.params.fader[2].set(0.6);
+                m.params.mute[3].store(false, Ordering::Relaxed);
+                m.params.solo[0].store(false, Ordering::Relaxed);
+            }
+            s.g.tracks.view = View::Tracks;
+            s.g.tracks.set_open(tape, true);
+            s.g.tracks.set_folded(TrackKey::Channel(crate::graph::PortRef { node: console, port: 2 }), false);
+            let (img, w, h) = shoot_tracks(&mut s, vec2(1500.0, 900.0), PPP, FRAMES);
+            save("tracks", &img, w, (0, 0, w, h));
+        }
+
         // --- Sources -----------------------------------------------------
         if want("osc") {
             let mut s = scene(110.0);

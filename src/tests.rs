@@ -13090,3 +13090,503 @@ fn sibyl_presets_keep_the_sound_not_the_programs_or_the_master() {
     assert_eq!(library::category(list.iter().find(|x| x.name == "Second").unwrap()), 6, "same name: replaced");
     let _ = std::fs::remove_dir_all(dir);
 }
+
+// ---------------------------------------------------------------------------
+// Track view: graph → tracks, and the edits made there
+// ---------------------------------------------------------------------------
+
+mod track_view {
+    use super::*;
+    use crate::audio::engine::NodeId;
+    use crate::graph::{Cable, MIDI_PORT, NodeType, ParamRef, Target};
+    use crate::tracks::{self, Input, Shown, TrackKey, TrackMap, View};
+    use std::collections::HashSet;
+
+    fn titles(g: &Graph, ids: &[NodeId]) -> Vec<String> {
+        ids.iter().map(|id| g.node(*id).unwrap().title.clone()).collect()
+    }
+
+    fn chain(g: &Graph, key: TrackKey) -> Vec<String> {
+        let map = TrackMap::build(g);
+        titles(g, &map.find(key).expect("track").chain_nodes())
+    }
+
+    fn slots(g: &Graph, key: TrackKey) -> Vec<String> {
+        let map = TrackMap::build(g);
+        let ids: Vec<NodeId> = map.find(key).expect("track").slots.iter().map(|s| s.node).collect();
+        titles(g, &ids)
+    }
+
+    fn cable_set(g: &Graph) -> HashSet<(NodeId, usize, NodeId, usize)> {
+        g.cables.iter().map(|c| (c.from.node, c.from.port, c.to.node, c.to.port)).collect()
+    }
+
+    fn has(g: &Graph, from: (NodeId, usize), to: (NodeId, usize)) -> bool {
+        g.cables.contains(&Cable { from: port(from.0, from.1), to: port(to.0, to.1) })
+    }
+
+    /// Every node sits in exactly one row, and every cable is shown: a
+    /// cable shown as a tag is tagged on both of its devices.
+    fn assert_complete(g: &Graph) {
+        let map = TrackMap::build(g);
+        let mut seen = HashSet::new();
+        for row in &map.rows {
+            for s in &row.slots {
+                assert!(seen.insert(s.node), "{} shown twice", g.node(s.node).unwrap().title);
+            }
+        }
+        for n in &g.nodes {
+            assert!(seen.contains(&n.id), "{} not shown", n.title);
+        }
+        for c in &g.cables {
+            if map.shown(c) == Shown::Tag {
+                let at_from = map.tags(g, c.from.node).iter().any(|t| !t.incoming && t.other == c.to.node);
+                let at_to = map.tags(g, c.to.node).iter().any(|t| t.incoming && t.other == c.from.node);
+                assert!(at_from && at_to, "cable {c:?} tagged on both ends");
+            }
+        }
+    }
+
+    /// The demo's shape: Random → Filter (CUT), Drone → Filter, which
+    /// splits into Reverb → channel 1 and Granular → Delay → channel 2.
+    fn split_patch(g: &mut Graph, a: &AudioHandle) -> [NodeId; 7] {
+        let random = g.add_module(ModuleKind::Random, pos2(0.0, 0.0), a);
+        let drone = g.add_module(ModuleKind::Drone, pos2(0.0, 230.0), a);
+        let filter = g.add_module(ModuleKind::Filter, pos2(340.0, 150.0), a);
+        let grains = g.add_module(ModuleKind::Granular, pos2(680.0, 0.0), a);
+        let reverb = g.add_module(ModuleKind::Reverb, pos2(712.0, 310.0), a);
+        let delay = g.add_module(ModuleKind::Delay, pos2(1020.0, 12.0), a);
+        let mixer = g.add_mixer(pos2(1300.0, 200.0), a);
+        g.connect(port(random, 0), port(filter, 1), a);
+        g.connect(port(drone, 0), port(filter, 0), a);
+        g.connect(port(filter, 0), port(grains, 0), a);
+        g.connect(port(filter, 0), port(reverb, 0), a);
+        g.connect(port(grains, 0), port(delay, 0), a);
+        g.connect(port(reverb, 0), port(mixer, 0), a);
+        g.connect(port(delay, 0), port(mixer, 1), a);
+        [random, drone, filter, grains, reverb, delay, mixer]
+    }
+
+    #[test]
+    fn tracks_follow_chains_back_from_their_channels() {
+        let (mut g, a, _e) = setup();
+        let [random, drone, filter, grains, reverb, delay, mixer] = split_patch(&mut g, &a);
+        let ch1 = TrackKey::Channel(port(mixer, 0));
+        let ch2 = TrackKey::Channel(port(mixer, 1));
+        let map = TrackMap::build(&g);
+        let keys: Vec<TrackKey> = map.rows.iter().map(|t| t.key).collect();
+        assert_eq!(keys, [ch1, ch2, TrackKey::Node(mixer)], "two tracks, then the mixer's master row");
+
+        // Channel 1 holds the shared devices; Random sits before the filter it modulates.
+        let t1 = map.find(ch1).unwrap();
+        assert_eq!(t1.input, Input::Source);
+        assert_eq!(t1.dest, Some(port(mixer, 0)));
+        assert_eq!(t1.chain_nodes(), [drone, filter, reverb]);
+        assert_eq!(slots(&g, ch1), ["DRONE 1", "RANDOM 1", "FILTER 1", "REVERB 1"]);
+        assert_eq!(t1.slots[1].serves, Some(filter));
+        // Channel 2 branches off the filter.
+        let t2 = map.find(ch2).unwrap();
+        assert_eq!(t2.input, Input::Branch(port(filter, 0)));
+        assert_eq!(t2.chain_nodes(), [grains, delay]);
+
+        let shown = |from: (NodeId, usize), to: (NodeId, usize)| {
+            map.shown(&Cable { from: port(from.0, from.1), to: port(to.0, to.1) })
+        };
+        assert_eq!(shown((drone, 0), (filter, 0)), Shown::Link);
+        assert_eq!(shown((filter, 0), (reverb, 0)), Shown::Link);
+        assert_eq!(shown((reverb, 0), (mixer, 0)), Shown::Dest);
+        assert_eq!(shown((filter, 0), (grains, 0)), Shown::Input);
+        assert_eq!(shown((grains, 0), (delay, 0)), Shown::Link);
+        assert_eq!(shown((delay, 0), (mixer, 1)), Shown::Dest);
+        assert_eq!(shown((random, 0), (filter, 1)), Shown::Attach);
+
+        let tags: Vec<String> = map.tags(&g, filter).into_iter().map(|t| t.text).collect();
+        assert_eq!(tags, ["CUT ◂ RANDOM 1", "▸ GRAINS 1"]);
+        assert_eq!(map.tags(&g, random)[0].text, "▸ FILTER 1 · CUT");
+        assert_complete(&g);
+
+        // Channel 2 first: it now holds the shared devices, channel 1 branches.
+        tracks::reorder(&mut g, 1, 0);
+        assert_eq!(g.tracks.order, [ch2, ch1]);
+        assert_eq!(chain(&g, ch2), ["DRONE 1", "FILTER 1", "GRAINS 1", "DELAY 1"]);
+        assert_eq!(TrackMap::build(&g).find(ch1).unwrap().input, Input::Branch(port(filter, 0)));
+        assert_eq!(chain(&g, ch1), ["REVERB 1"]);
+        assert_complete(&g);
+        // The patch itself is untouched.
+        assert_eq!(g.cables.len(), 7);
+    }
+
+    #[test]
+    fn midi_buses_returns_mappings_and_loose_nodes_all_show() {
+        let (mut g, a, _e) = setup();
+        let console = g.add_console(pos2(1200.0, 0.0), &a);
+        let mixer = g.add_mixer(pos2(800.0, 0.0), &a);
+        let seq = g.add_module(ModuleKind::Sequencer, pos2(0.0, 0.0), &a);
+        let arp = g.add_module(ModuleKind::Arpeggiator, pos2(200.0, 0.0), &a);
+        let synth = g.add_module(ModuleKind::Sibyl, pos2(400.0, 0.0), &a);
+        let osc = g.add_osc(pos2(0.0, 500.0), &a);
+        let reverb = g.add_module(ModuleKind::Reverb, pos2(1000.0, 400.0), &a);
+        let cc = g.add_module(ModuleKind::MidiCc, pos2(800.0, 400.0), &a);
+        let drone = g.add_module(ModuleKind::Drone, pos2(0.0, 900.0), &a);
+        let delay = g.add_module(ModuleKind::Delay, pos2(400.0, 900.0), &a);
+        g.add_module(ModuleKind::MidiIn, pos2(0.0, 1200.0), &a);
+        let magma = g.add_module(ModuleKind::Magma, pos2(700.0, 900.0), &a);
+        g.connect(port(seq, MIDI_PORT), port(arp, MIDI_PORT), &a);
+        g.connect(port(arp, MIDI_PORT), port(synth, MIDI_PORT), &a);
+        g.connect(port(synth, 0), port(console, 0), &a);
+        g.connect(port(osc, 0), port(mixer, 0), &a);
+        g.connect(port(mixer, 1), port(reverb, 0), &a); // AUX → return
+        g.connect(port(reverb, 0), port(console, 1), &a);
+        g.connect(port(mixer, 0), port(console, 2), &a); // OUT → bus
+        g.connect(port(synth, 0), port(magma, 1), &a); // sidechain
+        g.connect(port(magma, 0), port(console, 3), &a);
+        g.set_target(cc, Some(Target { node: reverb, param: ParamRef::Module(0) }));
+
+        let map = TrackMap::build(&g);
+        let ch = |m, p| TrackKey::Channel(port(m, p));
+        let keys: Vec<TrackKey> = map.rows.iter().map(|t| t.key).collect();
+        assert_eq!(
+            keys,
+            [
+                ch(console, 0),
+                ch(console, 1),
+                ch(console, 2),
+                ch(console, 3),
+                ch(mixer, 0),
+                TrackKey::Node(drone),
+                TrackKey::Node(delay),
+                TrackKey::Node(console),
+                TrackKey::Node(mixer),
+                TrackKey::Loose,
+            ]
+        );
+        // MIDI devices in front of the instrument, in playing order.
+        assert_eq!(slots(&g, ch(console, 0)), ["SEQ 1", "ARP 1", "SIBYL 1"]);
+        assert_eq!(map.find(ch(console, 0)).unwrap().input, Input::Source);
+        // A return track from the mixer's AUX, its MIDI CC (mapped) attached.
+        let ret = map.find(ch(console, 1)).unwrap();
+        assert_eq!(ret.input, Input::Bus(port(mixer, 1)));
+        assert_eq!(slots(&g, ch(console, 1)), ["CC 1", "REVERB 1"]);
+        // A bus with no devices: the mixer's OUT straight into a channel.
+        let bus = map.find(ch(console, 2)).unwrap();
+        assert_eq!(bus.input, Input::Bus(port(mixer, 0)));
+        assert!(bus.slots.is_empty());
+        // Magma's sidechain is a tag on both ends; its track has no source.
+        assert_eq!(map.find(ch(console, 3)).unwrap().input, Input::Empty);
+        assert_eq!(map.shown(&Cable { from: port(synth, 0), to: port(magma, 1) }), Shown::Tag);
+        assert!(map.tags(&g, magma).iter().any(|t| t.text == "SC ◂ SIBYL 1"));
+        assert!(map.tags(&g, synth).iter().any(|t| t.text == "▸ MAGMA 1 · SC"));
+        assert!(map.tags(&g, cc).iter().any(|t| t.text.starts_with("MAP ▸ REVERB 1")));
+        assert!(map.tags(&g, mixer).iter().any(|t| t.text == "AUX ▸ REVERB 1"));
+        // Unrouted: a source, and an effect fed by nothing.
+        let lone = map.find(TrackKey::Node(drone)).unwrap();
+        assert_eq!((lone.input, lone.dest), (Input::Source, None));
+        assert_eq!(map.find(TrackKey::Node(delay)).unwrap().input, Input::Empty);
+        // MIDI In plays nothing: not in a track, but shown.
+        assert_eq!(slots(&g, TrackKey::Loose), ["MIDI IN 1"]);
+        assert_eq!(map.find(TrackKey::Loose).unwrap().input, Input::Loose);
+        assert_complete(&g);
+    }
+
+    #[test]
+    fn inserting_moving_and_removing_devices_rewires_the_chain() {
+        let (mut g, a, _e) = setup();
+        let osc = g.add_osc(pos2(0.0, 0.0), &a);
+        let mixer = g.add_mixer(pos2(900.0, 0.0), &a);
+        g.connect(port(osc, 0), port(mixer, 0), &a);
+        let key = TrackKey::Channel(port(mixer, 0));
+        let fx = |k| NodeType::Module(k);
+
+        let filter = tracks::insert_new(&mut g, key, 1, fx(ModuleKind::Filter), &a).unwrap();
+        assert!(has(&g, (osc, 0), (filter, 0)) && has(&g, (filter, 0), (mixer, 0)));
+        assert_eq!(g.cables.len(), 2, "the old Osc → Mixer cable is replaced");
+        let reverb = tracks::insert_new(&mut g, key, 1, fx(ModuleKind::Reverb), &a).unwrap();
+        let delay = tracks::insert_new(&mut g, key, 3, fx(ModuleKind::Delay), &a).unwrap();
+        assert_eq!(chain(&g, key), ["OSC 1", "REVERB 1", "FILTER 1", "DELAY 1"]);
+        assert_eq!(g.cables.len(), 4);
+        // Nothing goes before a source, and only effects go in a chain.
+        let count = g.nodes.len();
+        assert!(tracks::insert_new(&mut g, key, 0, fx(ModuleKind::Tape), &a).is_none());
+        assert!(tracks::insert_new(&mut g, key, 2, fx(ModuleKind::Drone), &a).is_none());
+        assert_eq!(g.nodes.len(), count, "a refused insert leaves no node behind");
+        // New nodes land between their neighbours on the canvas, left to right.
+        let x = |id| g.node(id).unwrap().pos.x;
+        assert!(x(osc) < x(reverb) && x(reverb) < x(filter) && x(filter) < x(delay));
+
+        assert!(tracks::move_device(&mut g, delay, key, 1, &a));
+        assert_eq!(chain(&g, key), ["OSC 1", "DELAY 1", "REVERB 1", "FILTER 1"]);
+        let want: HashSet<_> = [(osc, 0, delay, 0), (delay, 0, reverb, 0), (reverb, 0, filter, 0), (filter, 0, mixer, 0)].into();
+        assert_eq!(cable_set(&g), want);
+        assert!(tracks::move_device(&mut g, reverb, key, 4, &a));
+        assert_eq!(chain(&g, key), ["OSC 1", "DELAY 1", "FILTER 1", "REVERB 1"]);
+        assert!(has(&g, (reverb, 0), (mixer, 0)));
+        assert!(!tracks::move_device(&mut g, reverb, key, 0, &a), "not before the source");
+
+        // A split off the filter into channel 2, with a device of its own.
+        g.connect(port(filter, 0), port(mixer, 1), &a);
+        let branch = TrackKey::Channel(port(mixer, 1));
+        assert_eq!(TrackMap::build(&g).find(branch).unwrap().input, Input::Branch(port(filter, 0)));
+        let tape = tracks::insert_new(&mut g, branch, 0, fx(ModuleKind::Tape), &a).unwrap();
+        assert!(has(&g, (filter, 0), (tape, 0)) && has(&g, (tape, 0), (mixer, 1)));
+        assert!(has(&g, (filter, 0), (reverb, 0)), "the main chain keeps going");
+
+        // Removing the filter closes the gap in both tracks.
+        tracks::remove(&mut g, filter, &a);
+        assert_eq!(chain(&g, key), ["OSC 1", "DELAY 1", "REVERB 1"]);
+        assert!(has(&g, (delay, 0), (reverb, 0)) && has(&g, (delay, 0), (tape, 0)));
+        assert_complete(&g);
+
+        // Across tracks: Tape leaves the branch (which closes up) for the main chain.
+        assert!(tracks::move_device(&mut g, tape, key, 1, &a));
+        assert_eq!(chain(&g, key), ["OSC 1", "TAPE 1", "DELAY 1", "REVERB 1"]);
+        assert!(has(&g, (delay, 0), (mixer, 1)), "channel 2 still branches off DELAY 1");
+        assert_eq!(TrackMap::build(&g).find(branch).unwrap().input, Input::Branch(port(delay, 0)));
+        assert_complete(&g);
+    }
+
+    #[test]
+    fn a_move_that_would_loop_changes_nothing() {
+        let (mut g, a, _e) = setup();
+        let osc = g.add_osc(pos2(0.0, 0.0), &a);
+        let filter = g.add_module(ModuleKind::Filter, pos2(300.0, 0.0), &a);
+        let drone = g.add_module(ModuleKind::Drone, pos2(0.0, 400.0), &a);
+        let magma = g.add_module(ModuleKind::Magma, pos2(300.0, 400.0), &a);
+        let mixer = g.add_mixer(pos2(900.0, 0.0), &a);
+        g.connect(port(osc, 0), port(filter, 0), &a);
+        g.connect(port(filter, 0), port(mixer, 0), &a);
+        g.connect(port(drone, 0), port(magma, 0), &a);
+        g.connect(port(magma, 0), port(mixer, 1), &a);
+        g.connect(port(filter, 0), port(magma, 1), &a); // the filter keys Magma
+        let before = cable_set(&g);
+        // Magma before the filter would feed what keys it.
+        assert!(!tracks::move_device(&mut g, magma, TrackKey::Channel(port(mixer, 0)), 1, &a));
+        assert_eq!(cable_set(&g), before);
+        // After it is fine.
+        assert!(tracks::move_device(&mut g, magma, TrackKey::Channel(port(mixer, 0)), 2, &a));
+        assert_eq!(chain(&g, TrackKey::Channel(port(mixer, 0))), ["OSC 1", "FILTER 1", "MAGMA 1"]);
+        assert!(has(&g, (drone, 0), (mixer, 1)) && has(&g, (filter, 0), (magma, 1)));
+    }
+
+    #[test]
+    fn new_tracks_routing_and_midi_devices() {
+        let (mut g, a, _e) = setup();
+        let mixer = g.add_mixer(pos2(900.0, 0.0), &a);
+        let osc = g.add_osc(pos2(0.0, 0.0), &a);
+        g.connect(port(osc, 0), port(mixer, 0), &a);
+
+        // A new track takes the first free channel, below the patch.
+        let drone = tracks::new_track(&mut g, NodeType::Module(ModuleKind::Drone), &a);
+        assert!(has(&g, (drone, 0), (mixer, 1)));
+        assert!(g.node(drone).unwrap().pos.y > g.node(osc).unwrap().pos.y + 100.0);
+        let key = TrackKey::Channel(port(mixer, 1));
+        g.tracks.set_folded(key, true);
+
+        // Routing moves it; a channel in use is refused; unrouting keeps its folding.
+        assert!(!tracks::route(&mut g, key, Some(port(mixer, 0)), &a));
+        assert!(tracks::route(&mut g, key, Some(port(mixer, 3)), &a));
+        assert!(has(&g, (drone, 0), (mixer, 3)) && !has(&g, (drone, 0), (mixer, 1)));
+        assert!(g.tracks.is_folded(TrackKey::Channel(port(mixer, 3))));
+        assert!(tracks::route(&mut g, TrackKey::Channel(port(mixer, 3)), None, &a));
+        assert!(!g.cables.iter().any(|c| c.from.node == drone));
+        assert!(g.tracks.is_folded(TrackKey::Node(drone)));
+        // Appending to the unrouted track keeps its name pointing at its end.
+        let tape = tracks::insert_new(&mut g, TrackKey::Node(drone), 1, NodeType::Module(ModuleKind::Tape), &a).unwrap();
+        assert!(g.tracks.is_folded(TrackKey::Node(tape)));
+        tracks::remove(&mut g, tape, &a);
+        assert!(g.tracks.is_folded(TrackKey::Node(drone)));
+
+        // MIDI in front of an instrument, keeping what played it.
+        let synth = tracks::new_track(&mut g, NodeType::Module(ModuleKind::Sibyl), &a);
+        let seq = g.add_module(ModuleKind::Sequencer, pos2(0.0, 0.0), &a);
+        g.connect(port(seq, MIDI_PORT), port(synth, MIDI_PORT), &a);
+        let arp = tracks::insert_midi_new(&mut g, synth, NodeType::Module(ModuleKind::Arpeggiator), &a).unwrap();
+        assert!(has(&g, (seq, MIDI_PORT), (arp, MIDI_PORT)) && has(&g, (arp, MIDI_PORT), (synth, MIDI_PORT)));
+        let count = g.nodes.len();
+        assert!(
+            tracks::insert_midi_new(&mut g, synth, NodeType::Module(ModuleKind::Sequencer), &a).is_none(),
+            "a second sequencer would unplug the first"
+        );
+        assert_eq!(g.nodes.len(), count);
+        let key = TrackMap::build(&g).tracks().find(|t| t.head() == Some(synth)).unwrap().key;
+        assert_eq!(slots(&g, key), ["SEQ 1", "ARP 1", "SIBYL 1"]);
+        // Removing a MIDI effect keeps the notes flowing.
+        tracks::remove(&mut g, arp, &a);
+        assert!(has(&g, (seq, MIDI_PORT), (synth, MIDI_PORT)));
+        assert_complete(&g);
+    }
+
+    #[test]
+    fn the_track_layout_is_saved_and_old_projects_still_load() {
+        use crate::project::{self, Project};
+        let (mut g, a, _e) = setup();
+        let [_, _, filter, _, _, _, mixer] = split_patch(&mut g, &a);
+        // Untouched, a project has no track-view data at all.
+        let plain = serde_json::to_value(project::snapshot(&g)).unwrap();
+        assert!(plain.get("tracks").is_none());
+
+        g.tracks.view = View::Tracks;
+        tracks::reorder(&mut g, 1, 0);
+        g.tracks.set_folded(TrackKey::Channel(port(mixer, 0)), true);
+        g.tracks.set_open(filter, true);
+        let positions: Vec<_> = g.nodes.iter().map(|n| (n.title.clone(), n.pos)).collect();
+        let json = serde_json::to_string(&project::snapshot(&g)).unwrap();
+
+        let (mut h, b, _f) = setup();
+        let p: Project = serde_json::from_str(&json).unwrap();
+        project::restore(&mut h, &p, &b);
+        let id = |title: &str| h.nodes.iter().find(|n| n.title == title).unwrap().id;
+        assert_eq!(h.tracks.view, View::Tracks);
+        let m = id("MIXER 1");
+        assert_eq!(h.tracks.order, [TrackKey::Channel(port(m, 1)), TrackKey::Channel(port(m, 0))]);
+        assert!(h.tracks.is_folded(TrackKey::Channel(port(m, 0))));
+        assert_eq!(h.tracks.open, [id("FILTER 1")]);
+        assert_eq!(chain(&h, TrackKey::Channel(port(m, 1))), ["DRONE 1", "FILTER 1", "GRAINS 1", "DELAY 1"]);
+        // Switching views is not an edit: the canvas is as it was.
+        let after: Vec<_> = h.nodes.iter().map(|n| (n.title.clone(), n.pos)).collect();
+        assert_eq!(after, positions);
+        assert_eq!(project::snapshot(&h), p);
+
+        // A project saved before the track view opens in the node view.
+        let mut old = plain;
+        old.as_object_mut().unwrap().remove("tracks");
+        let p: Project = serde_json::from_value(old).unwrap();
+        project::restore(&mut h, &p, &b);
+        assert_eq!(h.tracks, tracks::Layout::default());
+        assert_eq!(h.cables.len(), 7);
+    }
+
+    /// The track view on its own, 1400×900, 50 ms per frame.
+    struct TrackUi {
+        ctx: egui::Context,
+        view: crate::ui::tracks::TrackView,
+        time: f64,
+    }
+
+    impl TrackUi {
+        fn new() -> Self {
+            Self { ctx: egui::Context::default(), view: crate::ui::tracks::TrackView::new(), time: 0.0 }
+        }
+
+        fn frame(&mut self, g: &mut Graph, a: &AudioHandle, events: Vec<egui::Event>) {
+            self.time += 0.05;
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 900.0))),
+                time: Some(self.time),
+                events,
+                ..Default::default()
+            };
+            let view = &mut self.view;
+            let mut out = self.ctx.run_ui(input, |ui| view.show(ui, g, a, &[], &[]));
+            out.textures_delta.clear();
+        }
+
+        fn at(&mut self, g: &mut Graph, a: &AudioHandle, p: egui::Pos2) {
+            self.frame(g, a, vec![egui::Event::PointerMoved(p)]);
+        }
+
+        fn button(&mut self, g: &mut Graph, a: &AudioHandle, p: egui::Pos2, pressed: bool) {
+            let e = egui::Event::PointerButton { pos: p, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE };
+            self.frame(g, a, vec![egui::Event::PointerMoved(p), e]);
+        }
+
+        fn key(&mut self, g: &mut Graph, a: &AudioHandle, key: egui::Key) {
+            let e = |pressed| egui::Event::Key { key, physical_key: None, pressed, repeat: false, modifiers: egui::Modifiers::NONE };
+            self.frame(g, a, vec![e(true), e(false)]);
+        }
+    }
+
+    #[test]
+    fn track_view_panel_draws() {
+        let (mut g, a, mut e) = setup();
+        let console = g.add_console(pos2(0.0, 0.0), &a);
+        // One track per node type, every panel open.
+        for (_, types) in NodeType::MENU {
+            for &ty in types {
+                if !matches!(ty, NodeType::Mixer | NodeType::Console) {
+                    tracks::new_track(&mut g, ty, &a);
+                }
+            }
+        }
+        let [_, _, filter, ..] = split_patch(&mut g, &a);
+        let seq = g.nodes.iter().find(|n| n.title == "SEQ 1").unwrap().id;
+        let synth = g.nodes.iter().find(|n| n.title == "SIBYL 1").unwrap().id;
+        g.connect(port(seq, MIDI_PORT), port(synth, MIDI_PORT), &a);
+        g.connect(port(console, 0), port(filter, 1), &a);
+        assert_complete(&g);
+        let ids: Vec<NodeId> = g.nodes.iter().map(|n| n.id).collect();
+        let mut ui = TrackUi::new();
+        g.tracks.view = View::Tracks;
+        for frame in 0..8 {
+            // Closed, then every panel open, then a few rows folded.
+            for &id in &ids {
+                g.tracks.set_open(id, frame >= 2);
+            }
+            for t in TrackMap::build(&g).tracks().map(|t| t.key).collect::<Vec<_>>().into_iter().step_by(3) {
+                g.tracks.set_folded(t, frame >= 5);
+            }
+            render_buf(&mut e, 4800);
+            for node in &mut g.nodes {
+                node.update_meters(1.0 / 60.0);
+            }
+            // Scroll down as it goes, the pointer over the lanes.
+            let p = pos2(300.0 + 120.0 * frame as f32, 120.0 + 80.0 * frame as f32);
+            let scroll = egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: egui::vec2(-40.0, -300.0), modifiers: egui::Modifiers::NONE, phase: egui::TouchPhase::Move, source: egui::MouseWheelSource::Unknown };
+            ui.frame(&mut g, &a, vec![egui::Event::PointerMoved(p), scroll]);
+        }
+        assert_eq!(g.nodes.len(), ids.len(), "drawing changes nothing");
+    }
+
+    #[test]
+    fn devices_are_dragged_dropped_and_switched_in_the_track_view() {
+        use crate::ui::palette::Spawn;
+        use crate::ui::tracks::HEADER_W;
+        let (mut g, a, _e) = setup();
+        let osc = g.add_osc(pos2(0.0, 0.0), &a);
+        let filter = g.add_module(ModuleKind::Filter, pos2(300.0, 0.0), &a);
+        let reverb = g.add_module(ModuleKind::Reverb, pos2(600.0, 0.0), &a);
+        let mixer = g.add_mixer(pos2(900.0, 0.0), &a);
+        g.connect(port(osc, 0), port(filter, 0), &a);
+        g.connect(port(filter, 0), port(reverb, 0), &a);
+        g.connect(port(reverb, 0), port(mixer, 0), &a);
+        let key = TrackKey::Channel(port(mixer, 0));
+        let mut ui = TrackUi::new();
+        ui.frame(&mut g, &a, vec![]);
+
+        // Devices sit left to right after the header: 156 wide, 26 apart.
+        let lane = HEADER_W + 14.0;
+        let center = |i: f32| lane + 78.0 + 182.0 * i;
+        let gap = |i: f32| lane - 13.0 + 182.0 * i;
+        let y = 60.0;
+        // Reverb dragged in front of the filter.
+        ui.at(&mut g, &a, pos2(center(2.0), y));
+        ui.button(&mut g, &a, pos2(center(2.0), y), true);
+        for x in [center(2.0) - 30.0, center(1.0), gap(1.0)] {
+            ui.at(&mut g, &a, pos2(x, y));
+        }
+        ui.button(&mut g, &a, pos2(gap(1.0), y), false);
+        assert_eq!(chain(&g, key), ["OSC 1", "REVERB 1", "FILTER 1"]);
+        assert!(has(&g, (osc, 0), (reverb, 0)) && has(&g, (filter, 0), (mixer, 0)));
+
+        // A delay dropped from the palette at the end.
+        egui::DragAndDrop::set_payload(&ui.ctx, Spawn::Node(NodeType::Module(ModuleKind::Delay)));
+        ui.button(&mut g, &a, pos2(gap(3.0), y), false);
+        assert_eq!(chain(&g, key), ["OSC 1", "REVERB 1", "FILTER 1", "DELAY 1"]);
+        // A source dropped anywhere makes a track of its own, on the next channel.
+        egui::DragAndDrop::set_payload(&ui.ctx, Spawn::Node(NodeType::Module(ModuleKind::Drone)));
+        ui.button(&mut g, &a, pos2(center(1.0), 400.0), false);
+        let drone = g.nodes.iter().find(|n| n.title == "DRONE 1").unwrap().id;
+        assert!(has(&g, (drone, 0), (mixer, 1)));
+
+        // B bypasses the device under the pointer; click and C opens its panel.
+        ui.at(&mut g, &a, pos2(center(2.0), y));
+        ui.key(&mut g, &a, egui::Key::B);
+        assert!(g.node(filter).unwrap().bypassed());
+        ui.button(&mut g, &a, pos2(center(2.0), y), true);
+        ui.button(&mut g, &a, pos2(center(2.0), y), false);
+        assert_eq!(ui.view.selected, Some(filter));
+        ui.key(&mut g, &a, egui::Key::C);
+        assert!(g.tracks.is_open(filter));
+        ui.frame(&mut g, &a, vec![]);
+        assert!(!g.node(filter).unwrap().collapsed, "the canvas keeps its own folding");
+    }
+}

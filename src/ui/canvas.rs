@@ -2420,7 +2420,7 @@ fn canvas_menu(
 
 /// Asks before deleting nodes, which can't be undone: "Delete “FILTER 1”?"
 /// in a native dialog (Enter deletes, Esc cancels).
-fn confirm_removal(graph: &Graph, ids: &[NodeId]) -> bool {
+pub(super) fn confirm_removal(graph: &Graph, ids: &[NodeId]) -> bool {
     let names: Vec<&str> = ids
         .iter()
         .filter_map(|&id| graph.node(id).map(|n| n.title.as_str()))
@@ -2459,7 +2459,7 @@ fn confirm_removal(graph: &Graph, ids: &[NodeId]) -> bool {
 }
 
 /// Asks before going down to 12 channels unplugs `lost` cables.
-fn confirm_unplug(lost: usize) -> bool {
+pub(super) fn confirm_unplug(lost: usize) -> bool {
     let cables = if lost == 1 {
         "1 cable".to_owned()
     } else {

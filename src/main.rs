@@ -3,6 +3,7 @@ mod board;
 mod graph;
 mod presets;
 mod project;
+mod tracks;
 mod ui;
 
 #[cfg(test)]

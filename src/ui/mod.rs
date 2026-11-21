@@ -34,5 +34,6 @@ pub mod splitter;
 pub mod tape;
 pub mod tempo;
 pub mod theme;
+pub mod tracks;
 pub mod vesper;
 pub mod widgets;

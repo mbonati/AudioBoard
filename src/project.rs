@@ -18,6 +18,7 @@ use crate::audio::params::{
     OscParams, TEMPO_RANGE, Waveform,
 };
 use crate::graph::{Console, Graph, GroupId, Node, NodeKind, PortRef, Target};
+use crate::tracks::{Layout, TrackKey, View};
 use crate::ui::groups;
 use crate::ui::nodes::HEADER_H;
 
@@ -41,6 +42,98 @@ pub struct Project {
     /// Stickers and background (with their images).
     #[serde(default, skip_serializing_if = "crate::board::Board::is_default")]
     board: crate::board::Board,
+    /// The view shown (nodes or tracks) and the track view's layout.
+    #[serde(default, skip_serializing_if = "TracksData::is_default")]
+    tracks: TracksData,
+}
+
+/// The track view's layout, by node ids in the file (see `tracks::Layout`).
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug, Default)]
+struct TracksData {
+    #[serde(default, skip_serializing_if = "ViewData::is_nodes")]
+    view: ViewData,
+    /// Track order as the user left it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    order: Vec<KeyData>,
+    /// Tracks shown as a thin row.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    folded: Vec<KeyData>,
+    /// Devices with their panel open in the track view.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    open: Vec<u32>,
+}
+
+impl TracksData {
+    fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Debug, Default)]
+#[serde(rename_all = "lowercase")]
+enum ViewData {
+    #[default]
+    Nodes,
+    Tracks,
+}
+
+impl ViewData {
+    fn is_nodes(&self) -> bool {
+        *self == ViewData::Nodes
+    }
+}
+
+/// A track: the mixer channel it ends in (`[node, port]`), or the node it
+/// ends at.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Debug)]
+#[serde(rename_all = "lowercase")]
+enum KeyData {
+    Channel([u32; 2]),
+    Node(u32),
+}
+
+fn key_data(key: TrackKey, numbers: &HashMap<NodeId, u32>) -> Option<KeyData> {
+    match key {
+        TrackKey::Channel(p) => Some(KeyData::Channel([*numbers.get(&p.node)?, p.port as u32])),
+        TrackKey::Node(n) => Some(KeyData::Node(*numbers.get(&n)?)),
+        TrackKey::Loose => None,
+    }
+}
+
+fn track_key(key: KeyData, ids: &HashMap<u32, NodeId>) -> Option<TrackKey> {
+    match key {
+        KeyData::Channel([n, port]) => Some(TrackKey::Channel(PortRef {
+            node: *ids.get(&n)?,
+            port: port as usize,
+        })),
+        KeyData::Node(n) => Some(TrackKey::Node(*ids.get(&n)?)),
+    }
+}
+
+fn tracks_data(l: &Layout, numbers: &HashMap<NodeId, u32>) -> TracksData {
+    let keys = |list: &[TrackKey]| list.iter().filter_map(|k| key_data(*k, numbers)).collect();
+    TracksData {
+        view: match l.view {
+            View::Nodes => ViewData::Nodes,
+            View::Tracks => ViewData::Tracks,
+        },
+        order: keys(&l.order),
+        folded: keys(&l.folded),
+        open: l.open.iter().filter_map(|n| numbers.get(n).copied()).collect(),
+    }
+}
+
+fn layout(t: &TracksData, ids: &HashMap<u32, NodeId>) -> Layout {
+    let keys = |list: &[KeyData]| list.iter().filter_map(|k| track_key(*k, ids)).collect();
+    Layout {
+        view: match t.view {
+            ViewData::Nodes => View::Nodes,
+            ViewData::Tracks => View::Tracks,
+        },
+        order: keys(&t.order),
+        folded: keys(&t.folded),
+        open: t.open.iter().filter_map(|n| ids.get(n).copied()).collect(),
+    }
 }
 
 fn fader_unity() -> f32 {
@@ -328,6 +421,7 @@ fn snapshot_with(graph: &Graph, fresh: bool) -> Project {
         modules,
         tempo: graph.tempo,
         board: graph.board.clone(),
+        tracks: tracks_data(&graph.tracks, &numbers),
     }
 }
 
@@ -540,6 +634,7 @@ pub fn restore(graph: &mut Graph, project: &Project, audio: &AudioHandle) -> usi
             graph.set_group_collapsed(gid, m.collapsed);
         }
     }
+    graph.tracks = layout(&project.tracks, &ids);
     project.nodes.len() - ids.len()
 }
 
