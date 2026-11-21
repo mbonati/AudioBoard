@@ -54,7 +54,8 @@ case "$platform" in
         codesign --verify --strict "$app"
         file="$out/AudioBoard-v$version-macos-$arch.zip"
         rm -f "$file"
-        ditto -c -k --sequesterRsrc --keepParent "$app" "$file"
+        # Without the build machine's extended attributes (no __MACOSX entries).
+        ditto -c -k --norsrc --noextattr --noqtn --keepParent "$app" "$file"
         ;;
     linux)
         bin=$(first target/x86_64-unknown-linux-gnu/dist/audioboard target/dist/audioboard)
