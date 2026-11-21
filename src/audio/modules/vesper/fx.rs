@@ -47,7 +47,13 @@ pub struct Motion {
 impl Motion {
     pub fn new(seed: u32) -> Self {
         let mut rng = Rng::new(seed);
-        Self { ic1: [0.0; 2], ic2: [0.0; 2], phase: rng.unit(), wander: Wander::new(&mut rng), rng }
+        Self {
+            ic1: [0.0; 2],
+            ic2: [0.0; 2],
+            phase: rng.unit(),
+            wander: Wander::new(&mut rng),
+            rng,
+        }
     }
 
     /// Filters a block. Returns where the cutoff is now, 0…1 on a log scale
@@ -56,10 +62,15 @@ impl Motion {
         let advance = s.rate * n as f32 / sr;
         self.phase = (self.phase + advance).fract();
         let w = self.wander.tick(&mut self.rng, advance * 0.6);
-        let at = |phase: f32| s.hz * fastmath::exp2(s.depth * REACH * (0.7 * fastmath::sin_turns(phase.fract()) + 0.3 * w));
+        let at = |phase: f32| {
+            s.hz * fastmath::exp2(
+                s.depth * REACH * (0.7 * fastmath::sin_turns(phase.fract()) + 0.3 * w),
+            )
+        };
         let now = at(self.phase);
         let position = ((now / 20.0).log10() / 3.0).clamp(0.0, 1.0);
-        let idle = s.depth <= 0.0 && ((s.kind == LOW && s.hz >= WIDE_OPEN) || (s.kind == HIGH && s.hz <= SHUT_OFF));
+        let idle = s.depth <= 0.0
+            && ((s.kind == LOW && s.hz >= WIDE_OPEN) || (s.kind == HIGH && s.hz <= SHUT_OFF));
         if idle {
             return position;
         }
@@ -157,7 +168,11 @@ impl Strip {
     }
 
     pub fn note_activity(&mut self, sounding: bool) {
-        self.idle = if sounding { 0 } else { self.idle.saturating_add(1) };
+        self.idle = if sounding {
+            0
+        } else {
+            self.idle.saturating_add(1)
+        };
     }
 
     pub fn resting(&self) -> bool {
@@ -167,7 +182,14 @@ impl Strip {
     /// Shapes `x` in place and adds it to the buses. Returns its peak (before
     /// the level, so that a meter shows what's there).
     #[allow(clippy::needless_range_loop)] // the two sides and the buses at once
-    pub fn process(&mut self, x: &mut [[f32; BLOCK]; 2], s: &StripSettings, buses: &mut Buses, n: usize, sr: f32) -> (f32, f32, f32) {
+    pub fn process(
+        &mut self,
+        x: &mut [[f32; BLOCK]; 2],
+        s: &StripSettings,
+        buses: &mut Buses,
+        n: usize,
+        sr: f32,
+    ) -> (f32, f32, f32) {
         let secs = n as f32 / sr;
         if self.closing {
             self.shut += secs / BLOOM_CLOSE;
@@ -178,7 +200,10 @@ impl Strip {
         } else {
             self.shut *= (-secs / (0.15 + 0.7 * s.bloom_time)).exp();
         }
-        let first = Sweep { hz: s.first.hz * fastmath::exp2(-BLOOM_REACH * s.bloom * self.shut), ..s.first };
+        let first = Sweep {
+            hz: s.first.hz * fastmath::exp2(-BLOOM_REACH * s.bloom * self.shut),
+            ..s.first
+        };
         let f1 = self.first.process(x, n, &first, sr);
         let f2 = self.second.process(x, n, &s.second, sr);
         if s.drive > 1e-3 {
@@ -196,7 +221,11 @@ impl Strip {
             }
         }
         let inv = 1.0 / n as f32;
-        let (dl, de, dv) = ((s.level - self.level) * inv, (s.echo - self.echo) * inv, (s.verb - self.verb) * inv);
+        let (dl, de, dv) = (
+            (s.level - self.level) * inv,
+            (s.echo - self.echo) * inv,
+            (s.verb - self.verb) * inv,
+        );
         let side = s.width;
         let mut peak = 0.0f32;
         for i in 0..n {
@@ -252,22 +281,58 @@ pub const MIX_TYPES: [(&str, &str, MixShape); 4] = [
     (
         "CLEAN",
         "Neutral: the layers as they are",
-        MixShape { drive: 0.0, dark: 20_000.0, presence: 0.0, haze: 0.0, wow: 0.0, space: 0.0, air: 0.25, crush: 0.0 },
+        MixShape {
+            drive: 0.0,
+            dark: 20_000.0,
+            presence: 0.0,
+            haze: 0.0,
+            wow: 0.0,
+            space: 0.0,
+            air: 0.25,
+            crush: 0.0,
+        },
     ),
     (
         "DREAM",
         "Hazy and far away: a slow chorus over everything, softer highs, a longer and brighter tail",
-        MixShape { drive: 0.05, dark: 9000.0, presence: 0.0, haze: 0.6, wow: 0.15, space: 0.22, air: 0.6, crush: 0.0 },
+        MixShape {
+            drive: 0.05,
+            dark: 9000.0,
+            presence: 0.0,
+            haze: 0.6,
+            wow: 0.15,
+            space: 0.22,
+            air: 0.6,
+            crush: 0.0,
+        },
     ),
     (
         "DUST",
         "Worn tape: warm saturation, wow and flutter, the top rolled off",
-        MixShape { drive: 0.45, dark: 7000.0, presence: 0.0, haze: 0.0, wow: 0.8, space: 0.0, air: 0.12, crush: 0.0 },
+        MixShape {
+            drive: 0.45,
+            dark: 7000.0,
+            presence: 0.0,
+            haze: 0.0,
+            wow: 0.8,
+            space: 0.0,
+            air: 0.12,
+            crush: 0.0,
+        },
     ),
     (
         "EDGE",
         "Harder and closer: driven, lifted presence, a touch of bit grit, a shorter tail",
-        MixShape { drive: 0.8, dark: 20_000.0, presence: 0.5, haze: 0.0, wow: 0.0, space: -0.1, air: 0.35, crush: 0.28 },
+        MixShape {
+            drive: 0.8,
+            dark: 20_000.0,
+            presence: 0.5,
+            haze: 0.0,
+            wow: 0.0,
+            space: -0.1,
+            air: 0.35,
+            crush: 0.28,
+        },
     ),
 ];
 

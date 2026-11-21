@@ -3,8 +3,8 @@
 
 use egui::epaint::{CubicBezierShape, Shadow};
 use egui::{
-    Align2, Color32, CursorIcon, Id, Painter, Pos2, Rect, Response, Sense, Shape, Stroke,
-    Ui, emath, pos2, vec2,
+    Align2, Color32, CursorIcon, Id, Painter, Pos2, Rect, Response, Sense, Shape, Stroke, Ui,
+    emath, pos2, vec2,
 };
 
 use audioboard_node::param::{FADER_UNITY, gain_to_db};
@@ -65,8 +65,16 @@ pub fn meter_color(db: f32) -> Color32 {
 pub fn hmeter(p: &Painter, rect: Rect, m: &MeterState, z: f32) {
     p.rect_filled(rect, 1.0 * z, theme::INSET);
     let x_of = |t: f32| emath::lerp(rect.left()..=rect.right(), t);
-    let lvl = if m.level > 1e-4 { meter_norm(m.level) } else { 0.0 };
-    let zones = [(-9.0, theme::METER_GREEN), (-1.0, theme::METER_YELLOW), (METER_MAX_DB, theme::METER_RED)];
+    let lvl = if m.level > 1e-4 {
+        meter_norm(m.level)
+    } else {
+        0.0
+    };
+    let zones = [
+        (-9.0, theme::METER_GREEN),
+        (-1.0, theme::METER_YELLOW),
+        (METER_MAX_DB, theme::METER_RED),
+    ];
     let mut t0 = 0.0;
     for (db, color) in zones {
         let t1 = (db - METER_MIN_DB) / (METER_MAX_DB - METER_MIN_DB);
@@ -80,7 +88,10 @@ pub fn hmeter(p: &Painter, rect: Rect, m: &MeterState, z: f32) {
         let pk = meter_norm(m.peak);
         let x = x_of(pk);
         let db = METER_MIN_DB + pk * (METER_MAX_DB - METER_MIN_DB);
-        p.line_segment([pos2(x, rect.top()), pos2(x, rect.bottom())], Stroke::new(1.0 * z, meter_color(db)));
+        p.line_segment(
+            [pos2(x, rect.top()), pos2(x, rect.bottom())],
+            Stroke::new(1.0 * z, meter_color(db)),
+        );
     }
 }
 
@@ -171,7 +182,13 @@ pub fn knob(
     if resp.dragged() {
         let fine = ui.input(|i| i.modifiers.shift);
         let d = resp.drag_delta();
-        *norm = drag_position(ui, id, &resp, value, (d.x - d.y) * if fine { 0.0012 } else { 0.0055 });
+        *norm = drag_position(
+            ui,
+            id,
+            &resp,
+            value,
+            (d.x - d.y) * if fine { 0.0012 } else { 0.0055 },
+        );
     }
     if resp.double_clicked() {
         *norm = default;
@@ -187,7 +204,10 @@ pub fn knob(
     };
 
     let w = 2.2 * z;
-    p.add(Shape::line(arc(c, r, KNOB_START, KNOB_START + KNOB_SWEEP), Stroke::new(w, theme::CONTROL)));
+    p.add(Shape::line(
+        arc(c, r, KNOB_START, KNOB_START + KNOB_SWEEP),
+        Stroke::new(w, theme::CONTROL),
+    ));
     if a1 - a0 > 0.01 {
         p.add(Shape::line(arc(c, r, a0, a1), Stroke::new(w, accent)));
     }
@@ -196,7 +216,11 @@ pub fn knob(
     p.circle(
         c,
         body_r,
-        if active { theme::CONTROL_HI } else { theme::CONTROL },
+        if active {
+            theme::CONTROL_HI
+        } else {
+            theme::CONTROL
+        },
         Stroke::NONE,
     );
     let dir = vec2(a_val.cos(), a_val.sin());
@@ -215,8 +239,16 @@ pub fn knob(
 pub fn vmeter(p: &Painter, rect: Rect, m: &MeterState, z: f32) {
     p.rect_filled(rect, 1.0 * z, theme::INSET);
     let y_of = |t: f32| emath::lerp(rect.bottom()..=rect.top(), t);
-    let lvl = if m.level > 1e-4 { meter_norm(m.level) } else { 0.0 };
-    let zones = [(-9.0, theme::METER_GREEN), (-1.0, theme::METER_YELLOW), (METER_MAX_DB, theme::METER_RED)];
+    let lvl = if m.level > 1e-4 {
+        meter_norm(m.level)
+    } else {
+        0.0
+    };
+    let zones = [
+        (-9.0, theme::METER_GREEN),
+        (-1.0, theme::METER_YELLOW),
+        (METER_MAX_DB, theme::METER_RED),
+    ];
     let mut t0 = 0.0;
     for (db, color) in zones {
         let t1 = (db - METER_MIN_DB) / (METER_MAX_DB - METER_MIN_DB);
@@ -230,40 +262,80 @@ pub fn vmeter(p: &Painter, rect: Rect, m: &MeterState, z: f32) {
         let pk = meter_norm(m.peak);
         let y = y_of(pk);
         let db = METER_MIN_DB + pk * (METER_MAX_DB - METER_MIN_DB);
-        p.line_segment([pos2(rect.left(), y), pos2(rect.right(), y)], Stroke::new(1.0 * z, meter_color(db)));
+        p.line_segment(
+            [pos2(rect.left(), y), pos2(rect.right(), y)],
+            Stroke::new(1.0 * z, meter_color(db)),
+        );
     }
 }
 
 /// Vertical fader, bottom to top, on the same law as [`hfader`].
 #[allow(clippy::too_many_arguments)]
-pub fn vfader(ui: &Ui, p: &Painter, id: Id, rect: Rect, pos: &mut f32, accent: Color32, enabled: bool, z: f32) -> Response {
+pub fn vfader(
+    ui: &Ui,
+    p: &Painter,
+    id: Id,
+    rect: Rect,
+    pos: &mut f32,
+    accent: Color32,
+    enabled: bool,
+    z: f32,
+) -> Response {
     let resp = ui
-        .interact(rect.expand2(vec2(4.0 * z, 6.0 * z)), id, Sense::CLICK | Sense::DRAG)
+        .interact(
+            rect.expand2(vec2(4.0 * z, 6.0 * z)),
+            id,
+            Sense::CLICK | Sense::DRAG,
+        )
         .on_hover_cursor(CursorIcon::ResizeVertical);
     let value = pos.clamp(0.0, 1.0);
     if resp.dragged() {
         let fine = ui.input(|i| i.modifiers.shift);
         let k = if fine { 0.2 } else { 1.0 };
-        *pos = drag_position(ui, id, &resp, value, -resp.drag_delta().y / rect.height() * k);
+        *pos = drag_position(
+            ui,
+            id,
+            &resp,
+            value,
+            -resp.drag_delta().y / rect.height() * k,
+        );
     }
     if resp.double_clicked() {
         *pos = FADER_UNITY;
     }
 
     let cx = rect.center().x;
-    let track = Rect::from_min_max(pos2(cx - 1.5 * z, rect.top()), pos2(cx + 1.5 * z, rect.bottom()));
+    let track = Rect::from_min_max(
+        pos2(cx - 1.5 * z, rect.top()),
+        pos2(cx + 1.5 * z, rect.bottom()),
+    );
     p.rect_filled(track, 1.5 * z, theme::CONTROL);
     let y = emath::lerp(rect.bottom()..=rect.top(), shown_position(ui, id, value));
     let fill = if enabled { accent } else { theme::TEXT_FAINT };
-    p.rect_filled(Rect::from_min_max(pos2(track.min.x, y), track.max), 1.5 * z, fill);
+    p.rect_filled(
+        Rect::from_min_max(pos2(track.min.x, y), track.max),
+        1.5 * z,
+        fill,
+    );
 
     // Unity-gain tick.
     let uy = emath::lerp(rect.bottom()..=rect.top(), FADER_UNITY);
-    p.line_segment([pos2(cx - 7.0 * z, uy), pos2(cx - 4.0 * z, uy)], Stroke::new(1.0 * z, theme::TEXT_FAINT));
+    p.line_segment(
+        [pos2(cx - 7.0 * z, uy), pos2(cx - 4.0 * z, uy)],
+        Stroke::new(1.0 * z, theme::TEXT_FAINT),
+    );
 
     let hot = resp.dragged() || resp.hovered();
     let thumb = Rect::from_center_size(pos2(cx, y), vec2(14.0 * z, 6.0 * z));
-    p.rect_filled(thumb, 1.5 * z, if hot { theme::TEXT } else { Color32::from_rgb(188, 192, 200) });
+    p.rect_filled(
+        thumb,
+        1.5 * z,
+        if hot {
+            theme::TEXT
+        } else {
+            Color32::from_rgb(188, 192, 200)
+        },
+    );
     resp
 }
 
@@ -280,7 +352,11 @@ pub fn hfader(
     z: f32,
 ) -> Response {
     let resp = ui
-        .interact(rect.expand2(vec2(6.0 * z, 4.0 * z)), id, Sense::CLICK | Sense::DRAG)
+        .interact(
+            rect.expand2(vec2(6.0 * z, 4.0 * z)),
+            id,
+            Sense::CLICK | Sense::DRAG,
+        )
         .on_hover_cursor(CursorIcon::ResizeHorizontal);
     let value = pos.clamp(0.0, 1.0);
     if resp.dragged() {
@@ -293,22 +369,36 @@ pub fn hfader(
     }
 
     let cy = rect.center().y;
-    let track = Rect::from_min_max(pos2(rect.left(), cy - 1.5 * z), pos2(rect.right(), cy + 1.5 * z));
+    let track = Rect::from_min_max(
+        pos2(rect.left(), cy - 1.5 * z),
+        pos2(rect.right(), cy + 1.5 * z),
+    );
     p.rect_filled(track, 1.5 * z, theme::CONTROL);
     let x = emath::lerp(rect.left()..=rect.right(), shown_position(ui, id, value));
     let fill = if enabled { accent } else { theme::TEXT_FAINT };
-    p.rect_filled(Rect::from_min_max(track.min, pos2(x, track.max.y)), 1.5 * z, fill);
+    p.rect_filled(
+        Rect::from_min_max(track.min, pos2(x, track.max.y)),
+        1.5 * z,
+        fill,
+    );
 
     // Unity-gain tick.
     let ux = emath::lerp(rect.left()..=rect.right(), FADER_UNITY);
-    p.line_segment([pos2(ux, cy - 6.0 * z), pos2(ux, cy - 3.5 * z)], Stroke::new(1.0 * z, theme::TEXT_FAINT));
+    p.line_segment(
+        [pos2(ux, cy - 6.0 * z), pos2(ux, cy - 3.5 * z)],
+        Stroke::new(1.0 * z, theme::TEXT_FAINT),
+    );
 
     let hot = resp.dragged() || resp.hovered();
     let thumb = Rect::from_center_size(pos2(x, cy), vec2(6.0 * z, 12.0 * z));
     p.rect_filled(
         thumb,
         1.5 * z,
-        if hot { theme::TEXT } else { Color32::from_rgb(188, 192, 200) },
+        if hot {
+            theme::TEXT
+        } else {
+            Color32::from_rgb(188, 192, 200)
+        },
     );
     resp
 }
@@ -328,7 +418,9 @@ pub fn toggle(
     color: Color32,
     z: f32,
 ) -> Response {
-    let resp = ui.interact(rect, id, Sense::CLICK).on_hover_cursor(CursorIcon::PointingHand);
+    let resp = ui
+        .interact(rect, id, Sense::CLICK)
+        .on_hover_cursor(CursorIcon::PointingHand);
     let fill = if on {
         color
     } else if resp.hovered() {
@@ -350,12 +442,26 @@ pub fn toggle(
 /// A port: round for audio and CV, square for MIDI.
 pub fn port(p: &Painter, c: Pos2, connected: bool, hot: bool, color: Color32, midi: bool, z: f32) {
     let r = if hot { 5.5 } else { 4.5 } * z;
-    let ring = if connected || hot { color } else { theme::TEXT_FAINT };
+    let ring = if connected || hot {
+        color
+    } else {
+        theme::TEXT_FAINT
+    };
     if midi {
         let rect = Rect::from_center_size(c, vec2(r, r) * 1.8);
-        p.rect(rect, 1.5 * z, theme::NODE_BODY, Stroke::new(1.4 * z, ring), egui::StrokeKind::Middle);
+        p.rect(
+            rect,
+            1.5 * z,
+            theme::NODE_BODY,
+            Stroke::new(1.4 * z, ring),
+            egui::StrokeKind::Middle,
+        );
         if connected {
-            p.rect_filled(Rect::from_center_size(c, vec2(4.0, 4.0) * z), 0.5 * z, color);
+            p.rect_filled(
+                Rect::from_center_size(c, vec2(4.0, 4.0) * z),
+                0.5 * z,
+                color,
+            );
         }
         return;
     }
@@ -379,19 +485,41 @@ pub fn shadow(p: &Painter, rect: Rect, radius: f32, z: f32) {
 /// one that drops into an input on a node's top edge.
 pub fn cable_shape(from: Pos2, to: Pos2, top: bool, z: f32) -> CubicBezierShape {
     let dx = ((to.x - from.x).abs() * 0.5).max(40.0 * z);
-    let end = if top { vec2(0.0, ((to.y - from.y).abs() * 0.5).max(40.0 * z)) } else { vec2(dx, 0.0) };
-    CubicBezierShape::from_points_stroke([from, from + vec2(dx, 0.0), to - end, to], false, Color32::TRANSPARENT, Stroke::NONE)
+    let end = if top {
+        vec2(0.0, ((to.y - from.y).abs() * 0.5).max(40.0 * z))
+    } else {
+        vec2(dx, 0.0)
+    };
+    CubicBezierShape::from_points_stroke(
+        [from, from + vec2(dx, 0.0), to - end, to],
+        false,
+        Color32::TRANSPARENT,
+        Stroke::NONE,
+    )
 }
 
 /// `level` (0..1) brightens the cable so active signal paths stand out.
 /// MIDI cables are dashed.
 #[allow(clippy::too_many_arguments)]
-pub fn draw_cable(p: &Painter, from: Pos2, to: Pos2, top: bool, color: Color32, level: f32, hot: bool, midi: bool, z: f32) {
+pub fn draw_cable(
+    p: &Painter,
+    from: Pos2,
+    to: Pos2,
+    top: bool,
+    color: Color32,
+    level: f32,
+    hot: bool,
+    midi: bool,
+    z: f32,
+) {
     let mut s = cable_shape(from, to, top, z);
     let (width, color) = if hot {
         (2.6, theme::mix(color, Color32::WHITE, 0.3))
     } else {
-        (1.8, alpha(color, 0.55 + 0.45 * level.clamp(0.0, 1.0).sqrt()))
+        (
+            1.8,
+            alpha(color, 0.55 + 0.45 * level.clamp(0.0, 1.0).sqrt()),
+        )
     };
     let stroke = Stroke::new(width * z, color);
     if midi {

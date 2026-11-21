@@ -25,8 +25,17 @@ pub enum Format {
     Mp3,
 }
 
-pub const FORMATS: [Format; 9] =
-    [Format::Wav24, Format::Wav16, Format::WavFloat, Format::Aiff24, Format::Aiff16, Format::Flac, Format::Alac, Format::Aac, Format::Mp3];
+pub const FORMATS: [Format; 9] = [
+    Format::Wav24,
+    Format::Wav16,
+    Format::WavFloat,
+    Format::Aiff24,
+    Format::Aiff16,
+    Format::Flac,
+    Format::Alac,
+    Format::Aac,
+    Format::Mp3,
+];
 
 impl Format {
     pub fn label(self) -> &'static str {
@@ -56,8 +65,12 @@ impl Format {
     /// Why it can't be used here, if it can't.
     pub fn missing(self) -> Option<&'static str> {
         match self {
-            Format::Flac | Format::Alac | Format::Aac if tool("afconvert").is_none() => Some("needs macOS's afconvert"),
-            Format::Mp3 if tool("ffmpeg").is_none() && tool("lame").is_none() => Some("needs ffmpeg or lame installed (e.g. brew install lame)"),
+            Format::Flac | Format::Alac | Format::Aac if tool("afconvert").is_none() => {
+                Some("needs macOS's afconvert")
+            }
+            Format::Mp3 if tool("ffmpeg").is_none() && tool("lame").is_none() => {
+                Some("needs ffmpeg or lame installed (e.g. brew install lame)")
+            }
             _ => None,
         }
     }
@@ -74,7 +87,11 @@ pub struct Options {
 
 impl Default for Options {
     fn default() -> Self {
-        Self { format: Format::Wav24, normalize: false, trim: true }
+        Self {
+            format: Format::Wav24,
+            normalize: false,
+            trim: true,
+        }
     }
 }
 
@@ -88,13 +105,20 @@ const NORMAL_PEAK: f32 = 0.891_25;
 /// A program on this machine (a GUI app doesn't see the shell's PATH, so
 /// the usual places are tried too).
 pub fn tool(name: &str) -> Option<PathBuf> {
-    let mut dirs: Vec<PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
+    let mut dirs: Vec<PathBuf> = std::env::var_os("PATH")
+        .map(|p| std::env::split_paths(&p).collect())
+        .unwrap_or_default();
     dirs.extend(["/usr/bin", "/opt/homebrew/bin", "/usr/local/bin"].map(PathBuf::from));
     dirs.into_iter().map(|d| d.join(name)).find(|p| p.is_file())
 }
 
 /// Reads the take's frames `[from, to)` in chunks, as interleaved stereo.
-fn read(take: &Take, from: u64, to: u64, mut each: impl FnMut(&[f32]) -> Result<(), String>) -> Result<(), String> {
+fn read(
+    take: &Take,
+    from: u64,
+    to: u64,
+    mut each: impl FnMut(&[f32]) -> Result<(), String>,
+) -> Result<(), String> {
     let file = File::open(&take.path).map_err(|e| e.to_string())?;
     let mut reader = BufReader::with_capacity(1 << 20, file);
     let mut skip = from * 8;
@@ -102,16 +126,26 @@ fn read(take: &Take, from: u64, to: u64, mut each: impl FnMut(&[f32]) -> Result<
     let mut left = to.saturating_sub(from) * 8;
     while skip > 0 {
         let n = (skip as usize).min(bytes.len());
-        reader.read_exact(&mut bytes[..n]).map_err(|e| e.to_string())?;
+        reader
+            .read_exact(&mut bytes[..n])
+            .map_err(|e| e.to_string())?;
         skip -= n as u64;
     }
     let mut samples = Vec::with_capacity(bytes.len() / 4);
     while left > 0 {
         let n = (left as usize).min(bytes.len());
-        reader.read_exact(&mut bytes[..n]).map_err(|e| e.to_string())?;
+        reader
+            .read_exact(&mut bytes[..n])
+            .map_err(|e| e.to_string())?;
         left -= n as u64;
         samples.clear();
-        samples.extend(bytes[..n].as_chunks::<4>().0.iter().map(|b| f32::from_le_bytes(*b)));
+        samples.extend(
+            bytes[..n]
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|b| f32::from_le_bytes(*b)),
+        );
         each(&samples)?;
     }
     Ok(())
@@ -135,9 +169,15 @@ fn survey(take: &Take, trim: bool) -> Result<(u64, u64, f32), String> {
     if !trim {
         return Ok((0, take.frames, peak));
     }
-    let Some(first) = first else { return Ok((0, 0, 0.0)) };
+    let Some(first) = first else {
+        return Ok((0, 0, 0.0));
+    };
     let pad = (TRIM_PAD * take.sample_rate as f64) as u64;
-    Ok((first.saturating_sub(pad), (last + 1 + pad).min(take.frames), peak))
+    Ok((
+        first.saturating_sub(pad),
+        (last + 1 + pad).min(take.frames),
+        peak,
+    ))
 }
 
 /// Writes the take to `dest` as `options` say.
@@ -149,8 +189,13 @@ pub fn export(take: &Take, options: Options, dest: &Path) -> Result<(), String> 
     if to <= from {
         return Err("the take is silent".to_owned());
     }
-    let gain = if options.normalize && peak > 1e-6 { NORMAL_PEAK / peak } else { 1.0 };
-    let pcm = |container, sample, path: &Path| write_pcm(take, from, to, gain, container, sample, path);
+    let gain = if options.normalize && peak > 1e-6 {
+        NORMAL_PEAK / peak
+    } else {
+        1.0
+    };
+    let pcm =
+        |container, sample, path: &Path| write_pcm(take, from, to, gain, container, sample, path);
     match options.format {
         Format::Wav16 => pcm(Container::Wav, Sample::I16, dest),
         Format::Wav24 => pcm(Container::Wav, Sample::I24, dest),
@@ -161,7 +206,8 @@ pub fn export(take: &Take, options: Options, dest: &Path) -> Result<(), String> 
             // Through a 24-bit WAV, handed to the encoder.
             static EXPORTS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
             let n = EXPORTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            let wav = std::env::temp_dir().join(format!("audioboard-export-{}-{n}.wav", std::process::id()));
+            let wav = std::env::temp_dir()
+                .join(format!("audioboard-export-{}-{n}.wav", std::process::id()));
             pcm(Container::Wav, Sample::I24, &wav)?;
             let result = encode(options.format, &wav, dest);
             let _ = std::fs::remove_file(&wav);
@@ -186,7 +232,10 @@ fn encode(format: Format, wav: &Path, dest: &Path) -> Result<(), String> {
         _ => match tool("ffmpeg") {
             Some(ffmpeg) => {
                 let mut c = Command::new(ffmpeg);
-                c.args(["-y", "-loglevel", "error", "-i"]).arg(wav).args(["-codec:a", "libmp3lame", "-b:a", "320k"]).arg(dest);
+                c.args(["-y", "-loglevel", "error", "-i"])
+                    .arg(wav)
+                    .args(["-codec:a", "libmp3lame", "-b:a", "320k"])
+                    .arg(dest);
                 c
             }
             None => {
@@ -201,7 +250,11 @@ fn encode(format: Format, wav: &Path, dest: &Path) -> Result<(), String> {
         Ok(())
     } else {
         let why = String::from_utf8_lossy(&out.stderr).trim().to_owned();
-        Err(if why.is_empty() { format!("the encoder failed ({})", out.status) } else { why })
+        Err(if why.is_empty() {
+            format!("the encoder failed ({})", out.status)
+        } else {
+            why
+        })
     }
 }
 
@@ -247,7 +300,15 @@ fn extended(rate: u32) -> [u8; 10] {
 
 /// Frames `[from, to)` of the take, times `gain`, as a WAV or AIFF file.
 #[allow(clippy::too_many_arguments)]
-fn write_pcm(take: &Take, from: u64, to: u64, gain: f32, container: Container, sample: Sample, dest: &Path) -> Result<(), String> {
+fn write_pcm(
+    take: &Take,
+    from: u64,
+    to: u64,
+    gain: f32,
+    container: Container,
+    sample: Sample,
+    dest: &Path,
+) -> Result<(), String> {
     let frames = to - from;
     let data = frames * 2 * sample.bytes() as u64;
     if data > u32::MAX as u64 - 64 {
@@ -304,7 +365,11 @@ fn write_pcm(take: &Take, from: u64, to: u64, gain: f32, container: Container, s
                     // TPDF dither, one LSB.
                     let d = (rng.unit() - rng.unit()) / 32_768.0;
                     let v = ((x + d) * 32_767.0).round().clamp(-32_768.0, 32_767.0) as i16;
-                    bytes.extend_from_slice(&if big { v.to_be_bytes() } else { v.to_le_bytes() });
+                    bytes.extend_from_slice(&if big {
+                        v.to_be_bytes()
+                    } else {
+                        v.to_le_bytes()
+                    });
                 }
                 Sample::I24 => {
                     let v = (x * 8_388_607.0).round().clamp(-8_388_608.0, 8_388_607.0) as i32;

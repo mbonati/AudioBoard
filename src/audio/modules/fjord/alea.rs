@@ -61,7 +61,16 @@ pub fn role(s: &Sound) -> Role {
 
 /// The knobs that are choices rather than amounts: thrown anew, not moved.
 fn choice(k: usize) -> bool {
-    matches!(k, knob::N_TYPE | knob::N_GATE | knob::T_WAVE | knob::T_GATE | knob::C_TYPE | knob::C_GATE | knob::AMP_ENV)
+    matches!(
+        k,
+        knob::N_TYPE
+            | knob::N_GATE
+            | knob::T_WAVE
+            | knob::T_GATE
+            | knob::C_TYPE
+            | knob::C_GATE
+            | knob::AMP_ENV
+    )
 }
 
 /// How far a knob may wander from the bred sound, in its own units.
@@ -70,7 +79,9 @@ fn jitter(k: usize) -> f32 {
         knob::PITCH => 5.0,
         knob::BEND => 4.0,
         knob::LEVEL => 6.0,
-        knob::N_DECAY | knob::T_DECAY | knob::AMP_D | knob::AMP_R | knob::FLT_D | knob::FLT_R => 6.0,
+        knob::N_DECAY | knob::T_DECAY | knob::AMP_D | knob::AMP_R | knob::FLT_D | knob::FLT_R => {
+            6.0
+        }
         knob::C_DECAY => 3.0,
         knob::N_FILTER | knob::T_FILTER => 14.0,
         knob::TONE | knob::NOISE | knob::CLICK => 1.5,
@@ -273,7 +284,9 @@ impl Before {
     pub fn take(p: &ModuleParams) -> Self {
         Before {
             sounds: (0..CHANNELS * knob::COUNT).map(|i| p.get(i)).collect(),
-            steps: (0..CHANNELS * MAX_LEN).map(|i| p.data[data::STEPS + i].get()).collect(),
+            steps: (0..CHANNELS * MAX_LEN)
+                .map(|i| p.data[data::STEPS + i].get())
+                .collect(),
         }
     }
 

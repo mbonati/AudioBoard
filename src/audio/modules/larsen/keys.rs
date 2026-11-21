@@ -111,7 +111,9 @@ impl Keys {
             return;
         }
         let fresh = (0..STRINGS).find(|&s| self.note[s].is_none());
-        let let_go = (0..STRINGS).filter(|&s| !self.down[s]).min_by_key(|&s| self.released[s]);
+        let let_go = (0..STRINGS)
+            .filter(|&s| !self.down[s])
+            .min_by_key(|&s| self.released[s]);
         let longest = (0..STRINGS).min_by_key(|&s| self.taken[s]);
         if let Some(s) = fresh.or(let_go).or(longest) {
             (self.note[s], self.down[s], self.taken[s]) = (Some(note), true, self.clock);
@@ -129,7 +131,12 @@ impl Keys {
             }
             (self.down[s], self.released[s]) = (false, self.clock);
             // A held note with no string takes this one, the latest first.
-            let waiting = self.held.notes().iter().rev().find(|&&n| !(0..STRINGS).any(|t| self.down[t] && self.note[t] == Some(n)));
+            let waiting = self
+                .held
+                .notes()
+                .iter()
+                .rev()
+                .find(|&&n| !(0..STRINGS).any(|t| self.down[t] && self.note[t] == Some(n)));
             if let Some(&n) = waiting {
                 (self.note[s], self.down[s], self.taken[s]) = (Some(n), true, self.clock);
             }

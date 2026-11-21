@@ -2,7 +2,9 @@
 //! MIDI threads write it, the MIDI nodes read it on the audio thread
 //! (atomics only) and the UI reads it for learning and knob mapping.
 
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering::Acquire, Ordering::Relaxed, Ordering::Release};
+use std::sync::atomic::{
+    AtomicBool, AtomicU8, AtomicU32, Ordering::Acquire, Ordering::Relaxed, Ordering::Release,
+};
 use std::sync::{Arc, Mutex};
 
 use super::params::EngineShared;
@@ -161,7 +163,10 @@ impl MidiState {
     /// Controller value (0..1) and how many messages it has received.
     pub fn cc(&self, channel: usize, number: usize) -> (f32, u32) {
         let i = channel.min(CHANNELS - 1) * 128 + number.min(127);
-        (self.cc[i].load(Relaxed) as f32 / 127.0, self.cc_seq[i].load(Relaxed))
+        (
+            self.cc[i].load(Relaxed) as f32 / 127.0,
+            self.cc_seq[i].load(Relaxed),
+        )
     }
 
     pub fn note(&self, channel: usize) -> NoteState {
@@ -177,7 +182,11 @@ impl MidiState {
     /// (messages so far, channel 1..=16, number) of the last controller moved.
     pub fn last_cc(&self) -> (u32, usize, usize) {
         let packed = self.last_cc.load(Relaxed);
-        (self.cc_count.load(Relaxed), (packed >> 8) as usize, (packed & 0x7F) as usize)
+        (
+            self.cc_count.load(Relaxed),
+            (packed >> 8) as usize,
+            (packed & 0x7F) as usize,
+        )
     }
 
     pub fn events(&self) -> u32 {
@@ -260,7 +269,11 @@ impl MidiInputs {
     pub fn activity(&self) -> Vec<InputActivity> {
         self.connections
             .iter()
-            .map(|c| InputActivity { name: c.name.clone(), events: c.events.load(Relaxed), clock: c.clock.load(Relaxed) })
+            .map(|c| InputActivity {
+                name: c.name.clone(),
+                events: c.events.load(Relaxed),
+                clock: c.clock.load(Relaxed),
+            })
             .collect()
     }
 
@@ -272,14 +285,23 @@ impl MidiInputs {
     }
 
     fn update_source(&self, sync: &SyncShared) {
-        let id = self.sync_source.as_ref().and_then(|s| self.connections.iter().find(|c| c.name == *s)).map_or(0, |c| c.id);
+        let id = self
+            .sync_source
+            .as_ref()
+            .and_then(|s| self.connections.iter().find(|c| c.name == *s))
+            .map_or(0, |c| c.id);
         sync.source.store(id, Relaxed);
         sync.follow.store(self.sync_source.is_some(), Relaxed);
     }
 
     /// Connects to inputs that appeared and drops those that went away.
     /// `wake` runs on the MIDI thread after each message (not the clock).
-    pub fn rescan(&mut self, state: &Arc<MidiState>, shared: &Arc<EngineShared>, wake: impl Fn() + Send + Clone + 'static) {
+    pub fn rescan(
+        &mut self,
+        state: &Arc<MidiState>,
+        shared: &Arc<EngineShared>,
+        wake: impl Fn() + Send + Clone + 'static,
+    ) {
         let probe = match midir::MidiInput::new("AudioBoard") {
             Ok(m) => m,
             Err(e) => {
@@ -288,7 +310,11 @@ impl MidiInputs {
             }
         };
         self.error = None;
-        let present: Vec<String> = probe.ports().iter().filter_map(|p| probe.port_name(p).ok()).collect();
+        let present: Vec<String> = probe
+            .ports()
+            .iter()
+            .filter_map(|p| probe.port_name(p).ok())
+            .collect();
         self.connections.retain(|c| present.contains(&c.name));
 
         for name in present {
@@ -300,7 +326,11 @@ impl MidiInputs {
             };
             // The clock and transport come through (for the looper and sync).
             input.ignore(midir::Ignore::SysexAndActiveSense);
-            let Some(port) = input.ports().into_iter().find(|p| input.port_name(p).ok().as_ref() == Some(&name)) else {
+            let Some(port) = input
+                .ports()
+                .into_iter()
+                .find(|p| input.port_name(p).ok().as_ref() == Some(&name))
+            else {
                 continue;
             };
             let id = self.next_id;
@@ -324,7 +354,13 @@ impl MidiInputs {
             };
             if let Ok(conn) = input.connect(&port, "AudioBoard in", callback, ()) {
                 self.next_id += 1;
-                self.connections.push(Input { name, id, _conn: conn, events, clock });
+                self.connections.push(Input {
+                    name,
+                    id,
+                    _conn: conn,
+                    events,
+                    clock,
+                });
             }
         }
         self.update_source(&shared.sync);

@@ -10,11 +10,11 @@ use super::nodes::{NodeView, segmented};
 use super::theme::{self, alpha};
 use super::{preset_menu, widgets};
 use crate::audio::engine::NodeId;
-use crate::audio::modules::nullpunkt::{
-    self as np, CRUSH, CUT, DIVS, FACTORY, GRAIN, JITTER, LEVEL, MAX_LEN, MUTATE, RATE, REVERSE, SCATTER, SKIP, STATIC, STUTTER,
-    STUTTER_LEN, WARP, WIDTH, data, glitch, knob, voice, vp, viz,
-};
 use crate::audio::modules::ModuleParams;
+use crate::audio::modules::nullpunkt::{
+    self as np, CRUSH, CUT, DIVS, FACTORY, GRAIN, JITTER, LEVEL, MAX_LEN, MUTATE, RATE, REVERSE,
+    SCATTER, SKIP, STATIC, STUTTER, STUTTER_LEN, WARP, WIDTH, data, glitch, knob, viz, voice, vp,
+};
 use crate::graph::{ModuleNode, ParamRef};
 
 pub const SIZE: Vec2 = vec2(760.0, 446.0);
@@ -29,14 +29,43 @@ const CELL: f32 = 10.5;
 const VOICE_KNOBS_X: f32 = 440.0;
 const VOICE_KNOB_DX: f32 = 52.0;
 
-const VOICE_KNOBS: [(usize, &str); knob::COUNT] =
-    [(knob::HITS, "HITS"), (knob::LEN, "LEN"), (knob::PROB, "PROB"), (knob::TONE, "TONE"), (knob::DECAY, "DECAY"), (knob::LEVEL, "LEVEL")];
-const STUTTER_KNOBS: [(usize, &str); 4] = [(STUTTER, "CHANCE"), (STUTTER_LEN, "LENGTH"), (GRAIN, "GRAIN"), (SCATTER, "SCATTER")];
-const PLAY_KNOBS: [(usize, &str); 4] = [(MUTATE, "MUTATE"), (JITTER, "JITTER"), (WIDTH, "WIDTH"), (LEVEL, "LEVEL")];
-const GLITCH_KNOBS: [(usize, &str); 7] =
-    [(SKIP, "SKIP"), (REVERSE, "REVERSE"), (WARP, "WARP"), (CUT, "CUT"), (STATIC, "STATIC"), (CRUSH, "CRUSH"), (RATE, "RATE")];
+const VOICE_KNOBS: [(usize, &str); knob::COUNT] = [
+    (knob::HITS, "HITS"),
+    (knob::LEN, "LEN"),
+    (knob::PROB, "PROB"),
+    (knob::TONE, "TONE"),
+    (knob::DECAY, "DECAY"),
+    (knob::LEVEL, "LEVEL"),
+];
+const STUTTER_KNOBS: [(usize, &str); 4] = [
+    (STUTTER, "CHANCE"),
+    (STUTTER_LEN, "LENGTH"),
+    (GRAIN, "GRAIN"),
+    (SCATTER, "SCATTER"),
+];
+const PLAY_KNOBS: [(usize, &str); 4] = [
+    (MUTATE, "MUTATE"),
+    (JITTER, "JITTER"),
+    (WIDTH, "WIDTH"),
+    (LEVEL, "LEVEL"),
+];
+const GLITCH_KNOBS: [(usize, &str); 7] = [
+    (SKIP, "SKIP"),
+    (REVERSE, "REVERSE"),
+    (WARP, "WARP"),
+    (CUT, "CUT"),
+    (STATIC, "STATIC"),
+    (CRUSH, "CRUSH"),
+    (RATE, "RATE"),
+];
 /// The bottom groups: title, left and right edges, the row's top, knobs.
-type KnobGroup = (&'static str, f32, f32, f32, &'static [(usize, &'static str)]);
+type KnobGroup = (
+    &'static str,
+    f32,
+    f32,
+    f32,
+    &'static [(usize, &'static str)],
+);
 const GROUPS: [KnobGroup; 3] = [
     ("STUTTER", PAD, 370.0, 322.0, &STUTTER_KNOBS),
     ("PLAY", 390.0, W - PAD, 322.0, &PLAY_KNOBS),
@@ -61,8 +90,14 @@ const TIPS: [&str; 4] = [
 const KNOB_TIPS: [(usize, &str); 14] = [
     (STUTTER, "The chance a step starts a stutter"),
     (STUTTER_LEN, "Up to how many steps a stutter lasts"),
-    (GRAIN, "How fine its grains can go: subdivisions of the step, triplets too"),
-    (SCATTER, "Grains an octave up or down, backwards or from earlier; stutters start afresh"),
+    (
+        GRAIN,
+        "How fine its grains can go: subdivisions of the step, triplets too",
+    ),
+    (
+        SCATTER,
+        "Grains an octave up or down, backwards or from earlier; stutters start afresh",
+    ),
     (JITTER, "Each hit a little different: level, tone, decay"),
     (SKIP, "A step sticks on a slice of what just played"),
     (REVERSE, "A step plays the one before it backwards"),
@@ -76,10 +111,22 @@ const KNOB_TIPS: [(usize, &str); 14] = [
 ];
 
 pub fn readout(p: &ModuleParams) -> (String, String) {
-    let lens: Vec<String> = (0..voice::COUNT).map(|v| np::pattern(p, v).1.to_string()).collect();
-    let hits: Vec<String> =
-        (0..voice::COUNT).map(|v| if np::muted(p, v) { "–".to_owned() } else { np::steps(p, v).count_ones().to_string() }).collect();
-    (format!("{} · {}", DIVS[np::division(p)].0, lens.join("·")), format!("{} hits", hits.join("·")))
+    let lens: Vec<String> = (0..voice::COUNT)
+        .map(|v| np::pattern(p, v).1.to_string())
+        .collect();
+    let hits: Vec<String> = (0..voice::COUNT)
+        .map(|v| {
+            if np::muted(p, v) {
+                "–".to_owned()
+            } else {
+                np::steps(p, v).count_ones().to_string()
+            }
+        })
+        .collect();
+    (
+        format!("{} · {}", DIVS[np::division(p)].0, lens.join("·")),
+        format!("{} hits", hits.join("·")),
+    )
 }
 
 struct Panel<'a, 'b> {
@@ -91,17 +138,35 @@ struct Panel<'a, 'b> {
 
 /// `out`: the output is patched.
 pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, out: bool) {
-    let s = Panel { v, id, p: &m.params, accent };
-    v.text(W - PAD, 42.0, Align2::RIGHT_CENTER, "OUT", v.font(9.0), if out { theme::TEXT_DIM } else { theme::TEXT_FAINT });
+    let s = Panel {
+        v,
+        id,
+        p: &m.params,
+        accent,
+    };
+    v.text(
+        W - PAD,
+        42.0,
+        Align2::RIGHT_CENTER,
+        "OUT",
+        v.font(9.0),
+        if out {
+            theme::TEXT_DIM
+        } else {
+            theme::TEXT_FAINT
+        },
+    );
     s.header();
     s.display();
     s.lanes();
     s.groups();
     // Animate while anything moves: the grid, the barcode.
     let p = &m.params;
-    let busy = p.viz[viz::STEP].get() >= 0.0 || (0..viz::STRIP_LEN).any(|k| p.viz[viz::STRIP + k].get() > 1e-4);
+    let busy = p.viz[viz::STEP].get() >= 0.0
+        || (0..viz::STRIP_LEN).any(|k| p.viz[viz::STRIP + k].get() > 1e-4);
     if busy {
-        v.ui.ctx().request_repaint_after(std::time::Duration::from_millis(33));
+        v.ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(33));
     }
 }
 
@@ -128,35 +193,95 @@ impl Panel<'_, '_> {
             "Thirty-second-note triplets",
             "Sixty-fourth notes",
         ];
-        let picked = segmented(v, self.uid("div"), v.r(PAD, 34.0, PAD + 216.0, 50.0), DIVS.len(), np::division(p), self.accent, |k, r, col| {
-            v.painter.text(r.center(), Align2::CENTER_CENTER, DIVS[k].0, v.font(7.0), col);
-            TIPS[k]
-        });
+        let picked = segmented(
+            v,
+            self.uid("div"),
+            v.r(PAD, 34.0, PAD + 216.0, 50.0),
+            DIVS.len(),
+            np::division(p),
+            self.accent,
+            |k, r, col| {
+                v.painter.text(
+                    r.center(),
+                    Align2::CENTER_CENTER,
+                    DIVS[k].0,
+                    v.font(7.0),
+                    col,
+                );
+                TIPS[k]
+            },
+        );
         if let Some(k) = picked {
             p.data[data::DIV].set(k as f32);
         }
 
-        let dice = widgets::toggle(v.ui, v.painter, self.uid("random"), v.r(236.0, 34.0, 316.0, 50.0), "RANDOMIZE", false, self.accent, z)
-            .on_hover_text("New patterns and sounds for the voices not muted · Shift: patterns only");
+        let dice = widgets::toggle(
+            v.ui,
+            v.painter,
+            self.uid("random"),
+            v.r(236.0, 34.0, 316.0, 50.0),
+            "RANDOMIZE",
+            false,
+            self.accent,
+            z,
+        )
+        .on_hover_text("New patterns and sounds for the voices not muted · Shift: patterns only");
         if dice.clicked() {
             let now = v.ui.input(|i| i.time);
             let only_patterns = v.ui.input(|i| i.modifiers.shift);
-            np::randomize(p, (now * 1000.0) as u32 ^ self.id.wrapping_mul(0x9e37_79b9), !only_patterns);
+            np::randomize(
+                p,
+                (now * 1000.0) as u32 ^ self.id.wrapping_mul(0x9e37_79b9),
+                !only_patterns,
+            );
         }
-        let menu = widgets::toggle(v.ui, v.painter, self.uid("presets"), v.r(322.0, 34.0, 402.0, 50.0), "PRESETS ▾", false, self.accent, z)
-            .on_hover_text("Save this scene as a preset, or load one");
+        let menu = widgets::toggle(
+            v.ui,
+            v.painter,
+            self.uid("presets"),
+            v.r(322.0, 34.0, 402.0, 50.0),
+            "PRESETS ▾",
+            false,
+            self.accent,
+            z,
+        )
+        .on_hover_text("Save this scene as a preset, or load one");
         let names = FACTORY.map(|(name, _)| name);
-        preset_menu::show(&menu, p, self.uid("presets"), "scene", &names, |k| np::load_factory(p, k));
+        preset_menu::show(&menu, p, self.uid("presets"), "scene", &names, |k| {
+            np::load_factory(p, k)
+        });
 
         let playing = p.viz[viz::STEP].get() >= 0.0;
-        let state = if playing { "in time" } else { "waiting for Start" };
-        v.text(410.0, 42.0, Align2::LEFT_CENTER, state, v.font(7.5), theme::TEXT_FAINT);
+        let state = if playing {
+            "in time"
+        } else {
+            "waiting for Start"
+        };
+        v.text(
+            410.0,
+            42.0,
+            Align2::LEFT_CENTER,
+            state,
+            v.font(7.5),
+            theme::TEXT_FAINT,
+        );
         let now = p.viz[viz::GLITCH].get().round() as usize;
         let crackle = p.viz[viz::STATIC].get() > 0.5;
         for (k, (at, label)) in LIGHTS.into_iter().enumerate() {
             let on = if at == usize::MAX { crackle } else { at == now };
             let x = W - 252.0 + 38.0 * k as f32;
-            v.text(x, 42.0, Align2::CENTER_CENTER, label, theme::strong(7.5 * z), if on { theme::TEXT } else { alpha(theme::TEXT_FAINT, 0.5) });
+            v.text(
+                x,
+                42.0,
+                Align2::CENTER_CENTER,
+                label,
+                theme::strong(7.5 * z),
+                if on {
+                    theme::TEXT
+                } else {
+                    alpha(theme::TEXT_FAINT, 0.5)
+                },
+            );
         }
     }
 
@@ -181,9 +306,19 @@ impl Panel<'_, '_> {
             let h = (peak.sqrt() * (y1 - y0 - 16.0) * 0.5).max(0.5);
             let x = x0 + bw * (k as f32 + 0.5);
             let width = (bw * (0.25 + 0.6 * peak)).max(1.0);
-            painter.line_segment([v.p(x, mid - h), v.p(x, mid + h)], Stroke::new(width * z, alpha(theme::TEXT, 0.35 + 0.65 * peak)));
+            painter.line_segment(
+                [v.p(x, mid - h), v.p(x, mid + h)],
+                Stroke::new(width * z, alpha(theme::TEXT, 0.35 + 0.65 * peak)),
+            );
         }
-        v.text(x0, y1 - 8.0, Align2::LEFT_CENTER, "OUT", v.font(6.5), theme::TEXT_FAINT);
+        v.text(
+            x0,
+            y1 - 8.0,
+            Align2::LEFT_CENTER,
+            "OUT",
+            v.font(6.5),
+            theme::TEXT_FAINT,
+        );
     }
 
     /// The four voices: name, mute, lane of steps, knobs.
@@ -191,12 +326,21 @@ impl Panel<'_, '_> {
         let (v, p, z) = (self.v, self.p, self.z());
         let painter = v.painter;
         for (k, (_, label)) in VOICE_KNOBS.iter().enumerate() {
-            v.text(VOICE_KNOBS_X + VOICE_KNOB_DX * k as f32, LANES_Y - 6.0, Align2::CENTER_CENTER, label, v.font(7.0), theme::TEXT_FAINT);
+            v.text(
+                VOICE_KNOBS_X + VOICE_KNOB_DX * k as f32,
+                LANES_Y - 6.0,
+                Align2::CENTER_CENTER,
+                label,
+                v.font(7.0),
+                theme::TEXT_FAINT,
+            );
         }
         let step = p.viz[viz::STEP].get();
         let now = v.ui.input(|i| i.time);
         let flash_id = self.uid("flash");
-        let mut flashes: [(f32, f64); voice::COUNT] = v.ui.data(|d| d.get_temp(flash_id)).unwrap_or([(0.0, 0.0); voice::COUNT]);
+        let mut flashes: [(f32, f64); voice::COUNT] =
+            v.ui.data(|d| d.get_temp(flash_id))
+                .unwrap_or([(0.0, 0.0); voice::COUNT]);
         for vc in 0..voice::COUNT {
             let top = LANES_Y + LANE_H * vc as f32;
             let cy = top + LANE_H * 0.5;
@@ -206,18 +350,45 @@ impl Panel<'_, '_> {
                 flashes[vc] = (hits, now);
             }
             let glow = (1.0 - ((now - flashes[vc].1) / 0.12) as f32).clamp(0.0, 1.0);
-            let name_col = if muted { theme::TEXT_FAINT } else { theme::mix(theme::TEXT_DIM, theme::TEXT, glow) };
-            let name_rect = v.text(PAD, cy, Align2::LEFT_CENTER, voice::NAMES[vc], theme::strong(8.5 * z), name_col);
-            v.ui.interact(name_rect, self.uid(("name", vc)), Sense::hover()).on_hover_text(TIPS[vc]);
-            let mute = widgets::toggle(v.ui, painter, self.uid(("mute", vc)), v.r(46.0, cy - 7.0, 60.0, cy + 7.0), "M", muted, theme::MUTE, z)
-                .on_hover_text("Mute this voice");
+            let name_col = if muted {
+                theme::TEXT_FAINT
+            } else {
+                theme::mix(theme::TEXT_DIM, theme::TEXT, glow)
+            };
+            let name_rect = v.text(
+                PAD,
+                cy,
+                Align2::LEFT_CENTER,
+                voice::NAMES[vc],
+                theme::strong(8.5 * z),
+                name_col,
+            );
+            v.ui.interact(name_rect, self.uid(("name", vc)), Sense::hover())
+                .on_hover_text(TIPS[vc]);
+            let mute = widgets::toggle(
+                v.ui,
+                painter,
+                self.uid(("mute", vc)),
+                v.r(46.0, cy - 7.0, 60.0, cy + 7.0),
+                "M",
+                muted,
+                theme::MUTE,
+                z,
+            )
+            .on_hover_text("Mute this voice");
             if mute.clicked() {
                 p.data[data::MUTE + vc].set(if muted { 0.0 } else { 1.0 });
             }
             self.lane(vc, top, step, muted);
 
             for (k, (kn, _)) in VOICE_KNOBS.iter().enumerate() {
-                self.knob(vp(vc, *kn), VOICE_KNOBS_X + VOICE_KNOB_DX * k as f32, top + 2.0, None, 8.5);
+                self.knob(
+                    vp(vc, *kn),
+                    VOICE_KNOBS_X + VOICE_KNOB_DX * k as f32,
+                    top + 2.0,
+                    None,
+                    8.5,
+                );
             }
         }
         v.ui.data_mut(|d| d.insert_temp(flash_id, flashes));
@@ -230,14 +401,24 @@ impl Panel<'_, '_> {
         let painter = v.painter;
         let cy = top + LANE_H * 0.5;
         let (_, len, _) = np::pattern(p, vc);
-        let rect = v.r(CELLS_X, top + 6.0, CELLS_X + CELL * MAX_LEN as f32, top + LANE_H - 6.0);
-        let resp = v
-            .ui
-            .interact(rect, self.uid(("lane", vc)), Sense::click_and_drag())
-            .on_hover_cursor(CursorIcon::PointingHand)
-            .on_hover_text("Click a step to switch it, drag to paint · Shift-drag sideways to rotate");
+        let rect = v.r(
+            CELLS_X,
+            top + 6.0,
+            CELLS_X + CELL * MAX_LEN as f32,
+            top + LANE_H - 6.0,
+        );
+        let resp =
+            v.ui.interact(rect, self.uid(("lane", vc)), Sense::click_and_drag())
+                .on_hover_cursor(CursorIcon::PointingHand)
+                .on_hover_text(
+                    "Click a step to switch it, drag to paint · Shift-drag sideways to rotate",
+                );
         let shift = v.ui.input(|i| i.modifiers.shift);
-        let cell_at = |x: f32| ((x - rect.left()) / (CELL * z)).floor().clamp(0.0, (len - 1) as f32) as usize;
+        let cell_at = |x: f32| {
+            ((x - rect.left()) / (CELL * z))
+                .floor()
+                .clamp(0.0, (len - 1) as f32) as usize
+        };
         let paint_id = self.uid(("paint", vc));
         if let Some(q) = resp.interact_pointer_pos() {
             let s = cell_at(q.x);
@@ -269,7 +450,11 @@ impl Panel<'_, '_> {
         }
 
         let bits = np::steps(p, vc);
-        let at = if step >= 0.0 { Some(np::position(p, vc, step as i64)) } else { None };
+        let at = if step >= 0.0 {
+            Some(np::position(p, vc, step as i64))
+        } else {
+            None
+        };
         let ink = if muted { 0.3 } else { 1.0 };
         for s in 0..MAX_LEN {
             let c = v.p(CELLS_X + CELL * (s as f32 + 0.5), cy);
@@ -280,13 +465,31 @@ impl Panel<'_, '_> {
             let hit = bits >> s & 1 == 1;
             let here = at == Some(s) && !muted;
             if hit {
-                let col = if here { self.accent } else { alpha(theme::TEXT, 0.75 * ink) };
-                painter.rect_filled(egui::Rect::from_center_size(c, vec2(6.0, 6.0) * z), 1.0 * z, col);
+                let col = if here {
+                    self.accent
+                } else {
+                    alpha(theme::TEXT, 0.75 * ink)
+                };
+                painter.rect_filled(
+                    egui::Rect::from_center_size(c, vec2(6.0, 6.0) * z),
+                    1.0 * z,
+                    col,
+                );
             } else {
-                painter.rect_stroke(egui::Rect::from_center_size(c, vec2(5.0, 5.0) * z), 1.0 * z, Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.6 * ink)), egui::StrokeKind::Inside);
+                painter.rect_stroke(
+                    egui::Rect::from_center_size(c, vec2(5.0, 5.0) * z),
+                    1.0 * z,
+                    Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.6 * ink)),
+                    egui::StrokeKind::Inside,
+                );
             }
             if here {
-                painter.rect_stroke(egui::Rect::from_center_size(c, vec2(9.0, 9.0) * z), 1.5 * z, Stroke::new(1.0 * z, self.accent), egui::StrokeKind::Outside);
+                painter.rect_stroke(
+                    egui::Rect::from_center_size(c, vec2(9.0, 9.0) * z),
+                    1.5 * z,
+                    Stroke::new(1.0 * z, self.accent),
+                    egui::StrokeKind::Outside,
+                );
             }
         }
     }
@@ -295,8 +498,19 @@ impl Panel<'_, '_> {
     fn groups(&self) {
         let (v, z) = (self.v, self.z());
         for (title, x0, x1, y, knobs) in GROUPS {
-            v.text(x0, y, Align2::LEFT_CENTER, title, theme::strong(8.5 * z), theme::TEXT_DIM);
-            v.painter.hline(v.p(x0 + 60.0, 0.0).x..=v.p(x1, 0.0).x, v.p(0.0, y).y, Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.3)));
+            v.text(
+                x0,
+                y,
+                Align2::LEFT_CENTER,
+                title,
+                theme::strong(8.5 * z),
+                theme::TEXT_DIM,
+            );
+            v.painter.hline(
+                v.p(x0 + 60.0, 0.0).x..=v.p(x1, 0.0).x,
+                v.p(0.0, y).y,
+                Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.3)),
+            );
             let cw = (x1 - x0) / knobs.len() as f32;
             for (k, (i, label)) in knobs.iter().enumerate() {
                 self.knob(*i, x0 + cw * (k as f32 + 0.5), y + 14.0, Some(label), 10.0);
@@ -310,17 +524,36 @@ impl Panel<'_, '_> {
         let (v, p, z) = (self.v, self.p, self.z());
         let spec = np::spec(i);
         let top = if let Some(label) = label {
-            v.text(cx, y, Align2::CENTER_CENTER, label, v.font(7.5), theme::TEXT_FAINT);
+            v.text(
+                cx,
+                y,
+                Align2::CENTER_CENTER,
+                label,
+                v.font(7.5),
+                theme::TEXT_FAINT,
+            );
             y + 8.0
         } else {
             y
         };
         let mut norm = spec.to_norm(p.get(i));
-        let mut resp = widgets::knob(v.ui, v.painter, self.uid(("knob", i)), v.p(cx, top + r), r * z, &mut norm, spec.to_norm(spec.default), spec.bipolar, self.accent, z);
+        let mut resp = widgets::knob(
+            v.ui,
+            v.painter,
+            self.uid(("knob", i)),
+            v.p(cx, top + r),
+            r * z,
+            &mut norm,
+            spec.to_norm(spec.default),
+            spec.bipolar,
+            self.accent,
+            z,
+        );
         if let Some((_, tip)) = KNOB_TIPS.iter().find(|(k, _)| *k == i) {
             resp = resp.on_hover_text(*tip);
         }
-        let generator = i < voice::COUNT * knob::COUNT && matches!(i % knob::COUNT, knob::HITS | knob::LEN);
+        let generator =
+            i < voice::COUNT * knob::COUNT && matches!(i % knob::COUNT, knob::HITS | knob::LEN);
         if generator {
             resp = resp.on_hover_text("Lays the Euclidean pattern down again (over your edits)");
         } else {
@@ -328,7 +561,11 @@ impl Panel<'_, '_> {
         }
         if resp.dragged() || resp.double_clicked() {
             let value = spec.denorm(norm);
-            let value = if matches!(spec.unit, crate::audio::params::Unit::Integer) { value.round() } else { value };
+            let value = if matches!(spec.unit, crate::audio::params::Unit::Integer) {
+                value.round()
+            } else {
+                value
+            };
             if value != p.get(i) {
                 p.set(i, value);
                 if generator {
@@ -337,6 +574,13 @@ impl Panel<'_, '_> {
             }
         }
         let hot = resp.dragged() || resp.hovered();
-        v.text(cx, top + 2.0 * r + 8.0, Align2::CENTER_CENTER, np::format(p, i), v.mono(7.0), if hot { theme::TEXT } else { theme::TEXT_DIM });
+        v.text(
+            cx,
+            top + 2.0 * r + 8.0,
+            Align2::CENTER_CENTER,
+            np::format(p, i),
+            v.mono(7.0),
+            if hot { theme::TEXT } else { theme::TEXT_DIM },
+        );
     }
 }

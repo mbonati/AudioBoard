@@ -167,17 +167,47 @@ impl<'a> Io<'a> {
         // SAFETY: the host passes pointers valid for the call, with these
         // lengths (null only with a length of 0).
         unsafe {
-            let slice = |p: *const Buf, n: u32| if p.is_null() { &[][..] } else { std::slice::from_raw_parts(p, n as usize) };
-            let n_out = if raw.outputs.is_null() { 0 } else { raw.n_outputs as usize };
-            let n_midi_out = if raw.midi_out.is_null() { 0 } else { (raw.midi_out_cap as usize).min(MIDI_CAP) };
+            let slice = |p: *const Buf, n: u32| {
+                if p.is_null() {
+                    &[][..]
+                } else {
+                    std::slice::from_raw_parts(p, n as usize)
+                }
+            };
+            let n_out = if raw.outputs.is_null() {
+                0
+            } else {
+                raw.n_outputs as usize
+            };
+            let n_midi_out = if raw.midi_out.is_null() {
+                0
+            } else {
+                (raw.midi_out_cap as usize).min(MIDI_CAP)
+            };
             Self {
                 frames: (raw.frames as usize).min(BLOCK),
                 inputs: slice(raw.inputs, raw.n_inputs),
-                connected: if raw.connected.is_null() { &[] } else { std::slice::from_raw_parts(raw.connected, raw.n_inputs as usize) },
-                outputs: if n_out == 0 { &mut [] } else { std::slice::from_raw_parts_mut(raw.outputs, n_out) },
-                midi_in: if raw.midi_in.is_null() { &[] } else { std::slice::from_raw_parts(raw.midi_in, raw.n_midi_in as usize) },
+                connected: if raw.connected.is_null() {
+                    &[]
+                } else {
+                    std::slice::from_raw_parts(raw.connected, raw.n_inputs as usize)
+                },
+                outputs: if n_out == 0 {
+                    &mut []
+                } else {
+                    std::slice::from_raw_parts_mut(raw.outputs, n_out)
+                },
+                midi_in: if raw.midi_in.is_null() {
+                    &[]
+                } else {
+                    std::slice::from_raw_parts(raw.midi_in, raw.n_midi_in as usize)
+                },
                 midi_connected: raw.midi_connected,
-                midi_out: if n_midi_out == 0 { &mut [] } else { std::slice::from_raw_parts_mut(raw.midi_out, n_midi_out) },
+                midi_out: if n_midi_out == 0 {
+                    &mut []
+                } else {
+                    std::slice::from_raw_parts_mut(raw.midi_out, n_midi_out)
+                },
                 midi_out_len: 0,
                 scratch: [[0.0; BLOCK]; 2],
             }
@@ -193,7 +223,9 @@ impl<'a> Io<'a> {
     /// Input `i`, if patched.
     #[inline]
     pub fn input(&self, i: usize) -> Option<&Buf> {
-        (self.connected.get(i) == Some(&true)).then(|| self.inputs.get(i)).flatten()
+        (self.connected.get(i) == Some(&true))
+            .then(|| self.inputs.get(i))
+            .flatten()
     }
 
     /// Input `i`'s left channel, if patched: the mono view control (CV)
@@ -220,7 +252,8 @@ impl<'a> Io<'a> {
 
     /// Input `i` (or silence) and output `j` at once, for effects.
     pub fn through(&mut self, i: usize, j: usize) -> (Option<&Buf>, &mut Buf) {
-        let input = (self.connected.get(i) == Some(&true) && i < self.inputs.len()).then(|| &self.inputs[i]);
+        let input = (self.connected.get(i) == Some(&true) && i < self.inputs.len())
+            .then(|| &self.inputs[i]);
         let out = match self.outputs.get_mut(j) {
             Some(out) => out,
             None => &mut self.scratch,
@@ -245,7 +278,10 @@ impl<'a> Io<'a> {
     #[inline]
     pub fn send_midi(&mut self, frame: usize, data: [u8; 3]) {
         if self.midi_out_len < self.midi_out.len() {
-            self.midi_out[self.midi_out_len] = MidiMsg { frame: frame.min(BLOCK - 1) as u16, data };
+            self.midi_out[self.midi_out_len] = MidiMsg {
+                frame: frame.min(BLOCK - 1) as u16,
+                data,
+            };
             self.midi_out_len += 1;
         }
     }

@@ -51,7 +51,10 @@ impl Node for Haze {
             viz: 1,
             ..NodeDef::EMPTY
         },
-        panel: Panel { display: Display::Trace { index: 0 }, readout: Readout::Param(RATE) },
+        panel: Panel {
+            display: Display::Trace { index: 0 },
+            readout: Readout::Param(RATE),
+        },
     };
 
     fn new(init: &Init) -> Self {

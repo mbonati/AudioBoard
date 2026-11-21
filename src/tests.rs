@@ -49,8 +49,14 @@ fn rejects_feedback_loops() {
     let x = g.add_osc(pos2(0.0, 0.0), &a);
     let y = g.add_osc(pos2(0.0, 0.0), &a);
     assert!(g.connect(port(x, 0), port(y, 0), &a));
-    assert!(!g.connect(port(y, 0), port(x, 0), &a), "y -> x would close a loop");
-    assert!(!g.connect(port(x, 0), port(x, 1), &a), "self-patching is a loop");
+    assert!(
+        !g.connect(port(y, 0), port(x, 0), &a),
+        "y -> x would close a loop"
+    );
+    assert!(
+        !g.connect(port(x, 0), port(x, 1), &a),
+        "self-patching is a loop"
+    );
     assert_eq!(g.cables.len(), 1);
 }
 
@@ -125,7 +131,10 @@ fn mixers_send_on_aux_mute_their_master_and_patch_their_out() {
     let dry = g.add_mixer(pos2(0.0, 0.0), &a);
     let wet = g.add_mixer(pos2(0.0, 0.0), &a);
     g.connect(port(x, 0), port(dry, 0), &a);
-    assert!(g.connect(port(dry, 1), port(wet, 0), &a), "AUX into another mixer");
+    assert!(
+        g.connect(port(dry, 1), port(wet, 0), &a),
+        "AUX into another mixer"
+    );
     let (dp, wp) = (mixer_params(&g, dry), mixer_params(&g, wet));
     // No send: the second mixer hears nothing.
     assert!(master_peak(&mut e, &dp) > 0.05);
@@ -141,7 +150,10 @@ fn mixers_send_on_aux_mute_their_master_and_patch_their_out() {
     dp.master_mute.store(true, Ordering::Relaxed);
     assert!(master_peak(&mut e, &dp) < 1e-4);
     assert!((master_peak(&mut e, &wp) - wet_level).abs() < 0.01);
-    assert!(render(&mut e, 4800).0 > 0.05, "heard through the second mixer");
+    assert!(
+        render(&mut e, 4800).0 > 0.05,
+        "heard through the second mixer"
+    );
     dp.master_mute.store(false, Ordering::Relaxed);
     dp.aux[0].set(0.0);
     // OUT patched into another mixer: no longer to the device itself, so the
@@ -151,7 +163,10 @@ fn mixers_send_on_aux_mute_their_master_and_patch_their_out() {
     assert!(g.connect(port(dry, 0), port(wet, 1), &a));
     render(&mut e, 4800);
     let through = render(&mut e, 4800).0;
-    assert!(through > 0.05 && through < alone * 0.75, "{through} vs {alone}: wet's master (-6 dB) once, not twice");
+    assert!(
+        through > 0.05 && through < alone * 0.75,
+        "{through} vs {alone}: wet's master (-6 dB) once, not twice"
+    );
 }
 
 #[test]
@@ -166,7 +181,14 @@ fn the_console_takes_24_channels_either_way_round() {
     assert_eq!(n.input_pos(0).y, n.pos.y);
     assert!(n.input_pos(1).x > n.input_pos(0).x);
     // Vertical, 24 channels: down the left edge.
-    g.set_console(c, Console { channels: 24, horizontal: false }, &a);
+    g.set_console(
+        c,
+        Console {
+            channels: 24,
+            horizontal: false,
+        },
+        &a,
+    );
     let n = g.node(c).unwrap();
     assert_eq!(n.inputs().len(), 24);
     assert!(!n.inputs_on_top());
@@ -177,7 +199,10 @@ fn the_console_takes_24_channels_either_way_round() {
     assert!(g.connect(port(x, 0), port(c, 19), &a));
     assert!(render(&mut e, 4800).0 > 0.05);
     // Back to 12 unplugs it.
-    let twelve = Console { channels: 12, horizontal: true };
+    let twelve = Console {
+        channels: 12,
+        horizontal: true,
+    };
     assert_eq!(g.console_losses(c, twelve), 1);
     g.set_console(c, twelve, &a);
     assert!(g.cables.is_empty());
@@ -272,14 +297,21 @@ fn patch(g: &mut Graph, a: &AudioHandle, kind: ModuleKind) -> (u32, Arc<ModulePa
 
 /// Removes the cable feeding the module's audio input.
 fn unplug_input(g: &mut Graph, a: &AudioHandle, m: u32) {
-    let cable = *g.cables.iter().find(|c| c.to == port(m, 0)).expect("input cable");
+    let cable = *g
+        .cables
+        .iter()
+        .find(|c| c.to == port(m, 0))
+        .expect("input cable");
     g.disconnect(cable, a);
 }
 
 #[test]
 fn every_module_stays_finite_across_settings() {
     // MIDI generators make no sound of their own (tested below).
-    for kind in ModuleKind::ALL.into_iter().filter(|k| !k.def().outputs.is_empty()) {
+    for kind in ModuleKind::ALL
+        .into_iter()
+        .filter(|k| !k.def().outputs.is_empty())
+    {
         let def = kind.def();
         let (mut g, a, mut e) = setup();
         let (m, p) = patch(&mut g, &a, kind);
@@ -351,7 +383,10 @@ fn reverb_tail_decays_and_freeze_holds_it() {
     let held_a = rms_of(&render_buf(&mut e, 24_000));
     render_buf(&mut e, 96_000);
     let held_b = rms_of(&render_buf(&mut e, 24_000));
-    assert!(held_b > held_a * 0.7, "freeze lost energy: {held_a} → {held_b}");
+    assert!(
+        held_b > held_a * 0.7,
+        "freeze lost energy: {held_a} → {held_b}"
+    );
 }
 
 #[test]
@@ -391,7 +426,10 @@ fn delay_echoes_outlast_the_input() {
     assert!(echoes > 0.01, "no echoes: {echoes}");
     render_buf(&mut e, 48_000 * 4);
     let gone = rms_of(&render_buf(&mut e, 24_000));
-    assert!(gone < echoes * 0.05, "echoes do not die away: {echoes} → {gone}");
+    assert!(
+        gone < echoes * 0.05,
+        "echoes do not die away: {echoes} → {gone}"
+    );
 }
 
 #[test]
@@ -408,7 +446,10 @@ fn filter_modes_shape_the_spectrum() {
     p.set_mode(filter::HIGHPASS);
     render_buf(&mut e, 4800);
     let high = rms_of(&render_buf(&mut e, 9600));
-    assert!(low < high * 0.05, "6 kHz through a 300 Hz low-pass: {low} vs high-pass {high}");
+    assert!(
+        low < high * 0.05,
+        "6 kHz through a 300 Hz low-pass: {low} vs high-pass {high}"
+    );
 }
 
 #[test]
@@ -422,7 +463,9 @@ fn random_wanders_within_range() {
         render_buf(&mut e, 600);
         seen.push(p.viz[random::VALUE].get());
     }
-    let (lo, hi) = seen.iter().fold((1.0f32, -1.0f32), |(lo, hi), v| (lo.min(*v), hi.max(*v)));
+    let (lo, hi) = seen
+        .iter()
+        .fold((1.0f32, -1.0f32), |(lo, hi), v| (lo.min(*v), hi.max(*v)));
     assert!(lo >= -1.0 && hi <= 1.0);
     assert!(hi - lo > 0.5, "barely moves: {lo}..{hi}");
 }
@@ -466,7 +509,11 @@ fn cables_carry_stereo_through_the_mixer() {
     let left: Vec<f32> = buf.iter().step_by(2).copied().collect();
     let right: Vec<f32> = buf.iter().skip(1).step_by(2).copied().collect();
     assert!(peak_of(&left) > 0.1);
-    assert!(peak_of(&right) < 1e-3, "hard-left pan leaks right: {}", peak_of(&right));
+    assert!(
+        peak_of(&right) < 1e-3,
+        "hard-left pan leaks right: {}",
+        peak_of(&right)
+    );
 }
 
 #[test]
@@ -511,7 +558,11 @@ fn collapsing_shrinks_a_node_and_keeps_it_patchable() {
     g.toggle_collapsed(m);
     let small = g.node(m).unwrap().size();
     assert!(small.x < full.x && small.y < full.y, "{full:?} → {small:?}");
-    assert_ne!(g.node(m).unwrap().input_pos(2), input, "ports follow the compact layout");
+    assert_ne!(
+        g.node(m).unwrap().input_pos(2),
+        input,
+        "ports follow the compact layout"
+    );
     assert!(g.node(m).unwrap().input_pos(3).y < g.node(m).unwrap().pos.y + small.y);
 
     // Collapsing is visual only: the audio keeps flowing.
@@ -519,7 +570,10 @@ fn collapsing_shrinks_a_node_and_keeps_it_patchable() {
     assert!(rms_of(&render_buf(&mut e, 4800)) > 0.01);
 
     let copy = g.duplicate(m, &a).unwrap();
-    assert!(g.node(copy).unwrap().collapsed, "duplicates keep the collapsed state");
+    assert!(
+        g.node(copy).unwrap().collapsed,
+        "duplicates keep the collapsed state"
+    );
     g.set_all_collapsed(false);
     assert!(g.nodes.iter().all(|n| !n.collapsed));
     assert_eq!(g.node(m).unwrap().size(), full);
@@ -612,7 +666,9 @@ fn keyboard_makes_and_folds_a_module() {
     let [random, drone, filter, _reverb, _mixer] = ambient_chain(&mut g, &a);
     let mut editor = crate::ui::canvas::Editor::new();
     let ctx = egui::Context::default();
-    let frame = |editor: &mut crate::ui::canvas::Editor, g: &mut Graph, key: Option<(egui::Key, egui::Modifiers)>| {
+    let frame = |editor: &mut crate::ui::canvas::Editor,
+                 g: &mut Graph,
+                 key: Option<(egui::Key, egui::Modifiers)>| {
         let mut input = egui::RawInput::default();
         if let Some((key, modifiers)) = key {
             input.events.push(egui::Event::ModifiersChanged(modifiers));
@@ -630,17 +686,36 @@ fn keyboard_makes_and_folds_a_module() {
 
     frame(&mut editor, &mut g, None);
     editor.selected = [random, drone, filter].into_iter().collect();
-    frame(&mut editor, &mut g, Some((egui::Key::G, egui::Modifiers::COMMAND)));
+    frame(
+        &mut editor,
+        &mut g,
+        Some((egui::Key::G, egui::Modifiers::COMMAND)),
+    );
     assert_eq!(g.groups.len(), 1);
     let gid = g.groups[0].id;
     assert_eq!(editor.selected_group(&g).map(|m| m.id), Some(gid));
 
-    frame(&mut editor, &mut g, Some((egui::Key::C, egui::Modifiers::NONE)));
+    frame(
+        &mut editor,
+        &mut g,
+        Some((egui::Key::C, egui::Modifiers::NONE)),
+    );
     assert!(g.group(gid).unwrap().collapsed, "C folds a selected module");
-    frame(&mut editor, &mut g, Some((egui::Key::C, egui::Modifiers::NONE)));
+    frame(
+        &mut editor,
+        &mut g,
+        Some((egui::Key::C, egui::Modifiers::NONE)),
+    );
     assert!(!g.group(gid).unwrap().collapsed);
 
-    frame(&mut editor, &mut g, Some((egui::Key::G, egui::Modifiers::COMMAND | egui::Modifiers::SHIFT)));
+    frame(
+        &mut editor,
+        &mut g,
+        Some((
+            egui::Key::G,
+            egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
+        )),
+    );
     assert!(g.groups.is_empty(), "Cmd+Shift+G ungroups");
 }
 
@@ -650,7 +725,10 @@ fn right_click_opens_a_menu_on_anything() {
     let x = source(&mut g, &a);
     let y = g.add_osc(pos2(500.0, 0.0), &a);
     g.connect(port(x, 0), port(y, 0), &a);
-    let pair = [g.add_osc(pos2(0.0, 400.0), &a), g.add_osc(pos2(300.0, 400.0), &a)];
+    let pair = [
+        g.add_osc(pos2(0.0, 400.0), &a),
+        g.add_osc(pos2(300.0, 400.0), &a),
+    ];
     let gid = g.create_group(&pair).unwrap();
     g.set_group_collapsed(gid, true);
 
@@ -660,12 +738,17 @@ fn right_click_opens_a_menu_on_anything() {
     let ctx = egui::Context::default();
     let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 900.0));
     let run = |editor: &mut crate::ui::canvas::Editor, g: &mut Graph, events: Vec<egui::Event>| {
-        let input = egui::RawInput { screen_rect: Some(screen), events, ..Default::default() };
+        let input = egui::RawInput {
+            screen_rect: Some(screen),
+            events,
+            ..Default::default()
+        };
         let mut out = ctx.run_ui(input, |ui| editor.show(ui, g, &a));
         out.textures_delta.clear();
     };
     run(&mut editor, &mut g, vec![]);
-    let to_screen = |e: &crate::ui::canvas::Editor, p: egui::Pos2| (e.pan + p.to_vec2() * e.zoom).to_pos2();
+    let to_screen =
+        |e: &crate::ui::canvas::Editor, p: egui::Pos2| (e.pan + p.to_vec2() * e.zoom).to_pos2();
     let button = |pos, pressed| egui::Event::PointerButton {
         pos,
         button: egui::PointerButton::Secondary,
@@ -681,10 +764,17 @@ fn right_click_opens_a_menu_on_anything() {
     };
 
     let knob = to_screen(&editor, g.node(x).unwrap().pos + egui::vec2(44.0, 175.0));
-    let card = to_screen(&editor, crate::ui::groups::frame_rect(&g, g.group(gid).unwrap()).unwrap().min)
-        + egui::vec2(120.0, 40.0) * editor.zoom;
+    let card = to_screen(
+        &editor,
+        crate::ui::groups::frame_rect(&g, g.group(gid).unwrap())
+            .unwrap()
+            .min,
+    ) + egui::vec2(120.0, 40.0) * editor.zoom;
     let mid_cable = {
-        let (a_, b_) = (g.node(x).unwrap().output_pos(0), g.node(y).unwrap().input_pos(0));
+        let (a_, b_) = (
+            g.node(x).unwrap().output_pos(0),
+            g.node(y).unwrap().input_pos(0),
+        );
         to_screen(&editor, a_ + (b_ - a_) * 0.5)
     };
     let empty = egui::pos2(1380.0, 880.0);
@@ -699,7 +789,10 @@ fn right_click_opens_a_menu_on_anything() {
         run(&mut editor, &mut g, vec![button(p, true)]);
         run(&mut editor, &mut g, vec![button(p, false)]);
         run(&mut editor, &mut g, vec![]);
-        assert!(egui::Popup::is_any_open(&ctx), "right-click on {what} opened no menu");
+        assert!(
+            egui::Popup::is_any_open(&ctx),
+            "right-click on {what} opened no menu"
+        );
         let mut got: Vec<u32> = editor.selected.iter().copied().collect();
         got.sort();
         assert_eq!(got, selects, "right-click on {what} selects it");
@@ -722,14 +815,27 @@ impl Canvas {
     fn new() -> Self {
         let ctx = egui::Context::default();
         ctx.enable_accesskit();
-        Self { ctx, editor: crate::ui::canvas::Editor::new(), labels: Vec::new() }
+        Self {
+            ctx,
+            editor: crate::ui::canvas::Editor::new(),
+            labels: Vec::new(),
+        }
     }
 
-    fn frame(&mut self, g: &mut Graph, a: &AudioHandle, modifiers: egui::Modifiers, events: Vec<egui::Event>) {
+    fn frame(
+        &mut self,
+        g: &mut Graph,
+        a: &AudioHandle,
+        modifiers: egui::Modifiers,
+        events: Vec<egui::Event>,
+    ) {
         let mut all = vec![egui::Event::ModifiersChanged(modifiers)];
         all.extend(events);
         let input = egui::RawInput {
-            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 900.0))),
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1400.0, 900.0),
+            )),
             events: all,
             ..Default::default()
         };
@@ -745,7 +851,10 @@ impl Canvas {
                     .filter_map(|(_, n)| {
                         let b = n.bounds()?;
                         let text = n.label().or(n.value())?;
-                        Some((text.to_owned(), egui::pos2(((b.x0 + b.x1) * 0.5) as f32, ((b.y0 + b.y1) * 0.5) as f32)))
+                        Some((
+                            text.to_owned(),
+                            egui::pos2(((b.x0 + b.x1) * 0.5) as f32, ((b.y0 + b.y1) * 0.5) as f32),
+                        ))
                     })
                     .collect()
             })
@@ -755,23 +864,59 @@ impl Canvas {
     /// Where the widget labelled `text` was last frame (a menu item's label
     /// also holds its shortcut: "Make module Cmd+G").
     fn find(&self, text: &str) -> Option<egui::Pos2> {
-        self.labels.iter().find(|(l, _)| l == text || l.starts_with(&format!("{text} "))).map(|(_, p)| *p)
+        self.labels
+            .iter()
+            .find(|(l, _)| l == text || l.starts_with(&format!("{text} ")))
+            .map(|(_, p)| *p)
     }
 
-    fn button(pos: egui::Pos2, button: egui::PointerButton, pressed: bool, modifiers: egui::Modifiers) -> egui::Event {
-        egui::Event::PointerButton { pos, button, pressed, modifiers }
+    fn button(
+        pos: egui::Pos2,
+        button: egui::PointerButton,
+        pressed: bool,
+        modifiers: egui::Modifiers,
+    ) -> egui::Event {
+        egui::Event::PointerButton {
+            pos,
+            button,
+            pressed,
+            modifiers,
+        }
     }
 
     /// Press and release `button` at `p` (screen), with `modifiers` held.
-    fn click(&mut self, g: &mut Graph, a: &AudioHandle, p: egui::Pos2, button: egui::PointerButton, modifiers: egui::Modifiers) {
+    fn click(
+        &mut self,
+        g: &mut Graph,
+        a: &AudioHandle,
+        p: egui::Pos2,
+        button: egui::PointerButton,
+        modifiers: egui::Modifiers,
+    ) {
         self.frame(g, a, modifiers, vec![egui::Event::PointerMoved(p)]);
-        self.frame(g, a, modifiers, vec![Self::button(p, button, true, modifiers)]);
-        self.frame(g, a, modifiers, vec![Self::button(p, button, false, modifiers)]);
+        self.frame(
+            g,
+            a,
+            modifiers,
+            vec![Self::button(p, button, true, modifiers)],
+        );
+        self.frame(
+            g,
+            a,
+            modifiers,
+            vec![Self::button(p, button, false, modifiers)],
+        );
         self.frame(g, a, egui::Modifiers::NONE, vec![]);
     }
 
     fn escape(&mut self, g: &mut Graph, a: &AudioHandle) {
-        let key = egui::Event::Key { key: egui::Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::NONE };
+        let key = egui::Event::Key {
+            key: egui::Key::Escape,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        };
         self.frame(g, a, egui::Modifiers::NONE, vec![key]);
         self.frame(g, a, egui::Modifiers::NONE, vec![]);
     }
@@ -831,15 +976,52 @@ fn the_selection_survives_menus_and_right_drags() {
     // A right drag from an unselected node pans the view, and selects nothing.
     let pan = c.editor.pan;
     let from = c.header(&g, reverb);
-    c.frame(&mut g, &a, Modifiers::NONE, vec![egui::Event::PointerMoved(from)]);
-    c.frame(&mut g, &a, Modifiers::NONE, vec![Canvas::button(from, PointerButton::Secondary, true, Modifiers::NONE)]);
+    c.frame(
+        &mut g,
+        &a,
+        Modifiers::NONE,
+        vec![egui::Event::PointerMoved(from)],
+    );
+    c.frame(
+        &mut g,
+        &a,
+        Modifiers::NONE,
+        vec![Canvas::button(
+            from,
+            PointerButton::Secondary,
+            true,
+            Modifiers::NONE,
+        )],
+    );
     for k in 1..=6 {
-        c.frame(&mut g, &a, Modifiers::NONE, vec![egui::Event::PointerMoved(from + egui::vec2(15.0 * k as f32, 0.0))]);
+        c.frame(
+            &mut g,
+            &a,
+            Modifiers::NONE,
+            vec![egui::Event::PointerMoved(
+                from + egui::vec2(15.0 * k as f32, 0.0),
+            )],
+        );
     }
     let to = from + egui::vec2(90.0, 0.0);
-    c.frame(&mut g, &a, Modifiers::NONE, vec![Canvas::button(to, PointerButton::Secondary, false, Modifiers::NONE)]);
+    c.frame(
+        &mut g,
+        &a,
+        Modifiers::NONE,
+        vec![Canvas::button(
+            to,
+            PointerButton::Secondary,
+            false,
+            Modifiers::NONE,
+        )],
+    );
     c.frame(&mut g, &a, Modifiers::NONE, vec![]);
-    assert!(c.editor.pan.x > pan.x + 30.0, "the right drag panned: {:?} → {:?}", pan, c.editor.pan);
+    assert!(
+        c.editor.pan.x > pan.x + 30.0,
+        "the right drag panned: {:?} → {:?}",
+        pan,
+        c.editor.pan
+    );
     assert!(!c.menu_open(), "a drag is no right-click");
     assert_eq!(c.selected(), three, "the right drag kept the selection");
 
@@ -858,15 +1040,26 @@ fn the_selection_survives_menus_and_right_drags() {
 
     // On the Mac, Ctrl+click is a right-click: a menu, never a deselect.
     if cfg!(target_os = "macos") {
-        let ctrl = Modifiers { ctrl: true, ..Modifiers::NONE };
+        let ctrl = Modifiers {
+            ctrl: true,
+            ..Modifiers::NONE
+        };
         c.click(&mut g, &a, empty, PointerButton::Primary, ctrl);
         assert!(c.menu_open());
-        assert_eq!(c.selected(), four, "Ctrl+click on the canvas kept the selection");
+        assert_eq!(
+            c.selected(),
+            four,
+            "Ctrl+click on the canvas kept the selection"
+        );
         c.escape(&mut g, &a);
         let at = c.header(&g, drone);
         c.click(&mut g, &a, at, PointerButton::Primary, ctrl);
         assert!(c.menu_open());
-        assert_eq!(c.selected(), four, "Ctrl+click on a selected node kept the selection");
+        assert_eq!(
+            c.selected(),
+            four,
+            "Ctrl+click on a selected node kept the selection"
+        );
         c.escape(&mut g, &a);
     }
 
@@ -893,14 +1086,27 @@ fn the_selection_bar_makes_and_merges_modules() {
     // Three: the bar, above them, with Make module first.
     c.editor.selected = [random, drone, filter].into_iter().collect();
     c.frame(&mut g, &a, Modifiers::NONE, vec![]);
-    let (bar, buttons) = c.editor.selection_bar_layout().expect("a bar for three nodes");
+    let (bar, buttons) = c
+        .editor
+        .selection_bar_layout()
+        .expect("a bar for three nodes");
     let names: Vec<&str> = buttons.iter().map(|(n, _)| *n).collect();
     assert_eq!(names, ["Make module", "Collapse", "Duplicate", "Delete"]);
-    let top = (c.editor.pan.y + g.node(random).unwrap().pos.y * c.editor.zoom).min(c.editor.pan.y + g.node(filter).unwrap().pos.y * c.editor.zoom);
-    assert!(bar.bottom() <= top || bar.top() >= top, "the bar keeps off the nodes");
+    let top = (c.editor.pan.y + g.node(random).unwrap().pos.y * c.editor.zoom)
+        .min(c.editor.pan.y + g.node(filter).unwrap().pos.y * c.editor.zoom);
+    assert!(
+        bar.bottom() <= top || bar.top() >= top,
+        "the bar keeps off the nodes"
+    );
 
     // A click on the bar's count (not a button) changes nothing.
-    c.click(&mut g, &a, bar.left_center() + egui::vec2(16.0, 0.0), PointerButton::Primary, Modifiers::NONE);
+    c.click(
+        &mut g,
+        &a,
+        bar.left_center() + egui::vec2(16.0, 0.0),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
     assert_eq!(c.selected().len(), 3);
     assert!(g.groups.is_empty());
 
@@ -919,8 +1125,15 @@ fn the_selection_bar_makes_and_merges_modules() {
     let at = c.header(&g, reverb);
     c.click(&mut g, &a, at, PointerButton::Primary, Modifiers::SHIFT);
     assert_eq!(c.selected().len(), 4);
-    let (_, buttons) = c.editor.selection_bar_layout().expect("a bar for module + node");
-    let make = buttons.iter().find(|(n, _)| *n == "Make module").expect("Make module is back").1;
+    let (_, buttons) = c
+        .editor
+        .selection_bar_layout()
+        .expect("a bar for module + node");
+    let make = buttons
+        .iter()
+        .find(|(n, _)| *n == "Make module")
+        .expect("Make module is back")
+        .1;
     c.click(&mut g, &a, make, PointerButton::Primary, Modifiers::NONE);
     assert_eq!(g.groups.len(), 1, "one module, the old one merged in");
     assert_eq!(g.groups[0].members.len(), 4);
@@ -928,12 +1141,50 @@ fn the_selection_bar_makes_and_merges_modules() {
     // Hidden while a rectangle is being drawn.
     c.editor.selected = [random, drone].into_iter().collect();
     let empty = egui::pos2(1380.0, 880.0);
-    c.frame(&mut g, &a, Modifiers::NONE, vec![egui::Event::PointerMoved(empty)]);
-    c.frame(&mut g, &a, Modifiers::NONE, vec![Canvas::button(empty, PointerButton::Primary, true, Modifiers::NONE)]);
-    c.frame(&mut g, &a, Modifiers::NONE, vec![egui::Event::PointerMoved(empty - egui::vec2(60.0, 60.0))]);
-    c.frame(&mut g, &a, Modifiers::NONE, vec![egui::Event::PointerMoved(empty - egui::vec2(80.0, 80.0))]);
-    assert!(c.editor.selection_bar_layout().is_none(), "no bar while a rectangle is drawn");
-    c.frame(&mut g, &a, Modifiers::NONE, vec![Canvas::button(empty - egui::vec2(80.0, 80.0), PointerButton::Primary, false, Modifiers::NONE)]);
+    c.frame(
+        &mut g,
+        &a,
+        Modifiers::NONE,
+        vec![egui::Event::PointerMoved(empty)],
+    );
+    c.frame(
+        &mut g,
+        &a,
+        Modifiers::NONE,
+        vec![Canvas::button(
+            empty,
+            PointerButton::Primary,
+            true,
+            Modifiers::NONE,
+        )],
+    );
+    c.frame(
+        &mut g,
+        &a,
+        Modifiers::NONE,
+        vec![egui::Event::PointerMoved(empty - egui::vec2(60.0, 60.0))],
+    );
+    c.frame(
+        &mut g,
+        &a,
+        Modifiers::NONE,
+        vec![egui::Event::PointerMoved(empty - egui::vec2(80.0, 80.0))],
+    );
+    assert!(
+        c.editor.selection_bar_layout().is_none(),
+        "no bar while a rectangle is drawn"
+    );
+    c.frame(
+        &mut g,
+        &a,
+        Modifiers::NONE,
+        vec![Canvas::button(
+            empty - egui::vec2(80.0, 80.0),
+            PointerButton::Primary,
+            false,
+            Modifiers::NONE,
+        )],
+    );
 }
 
 /// Right-clicking a module with more selected offers to merge them all.
@@ -948,17 +1199,39 @@ fn a_module_menu_offers_to_merge_the_selection() {
     c.frame(&mut g, &a, Modifiers::NONE, vec![]);
     c.editor.selected = [random, drone, filter, reverb].into_iter().collect();
     c.frame(&mut g, &a, Modifiers::NONE, vec![]);
-    let card = crate::ui::groups::card_layout(&g, g.group(gid).unwrap()).unwrap().0;
+    let card = crate::ui::groups::card_layout(&g, g.group(gid).unwrap())
+        .unwrap()
+        .0;
     let on_card = (c.editor.pan + (card.center().to_vec2()) * c.editor.zoom).to_pos2();
-    c.click(&mut g, &a, on_card, PointerButton::Secondary, Modifiers::NONE);
+    c.click(
+        &mut g,
+        &a,
+        on_card,
+        PointerButton::Secondary,
+        Modifiers::NONE,
+    );
     assert!(c.menu_open());
-    assert_eq!(c.selected().len(), 4, "right-clicking a selected module keeps the rest");
+    assert_eq!(
+        c.selected().len(),
+        4,
+        "right-clicking a selected module keeps the rest"
+    );
     // It says what it acts on, and merges.
-    assert!(c.find("4 nodes selected").is_some(), "the menu names its subject: {:?}", c.labels);
-    let merge = c.find("Make module from selection").expect("the module's menu offers to merge");
+    assert!(
+        c.find("4 nodes selected").is_some(),
+        "the menu names its subject: {:?}",
+        c.labels
+    );
+    let merge = c
+        .find("Make module from selection")
+        .expect("the module's menu offers to merge");
     c.click(&mut g, &a, merge, PointerButton::Primary, Modifiers::NONE);
     assert_eq!(g.groups.len(), 1);
-    assert_eq!(g.groups[0].members.len(), 4, "the module and the two nodes, in one module");
+    assert_eq!(
+        g.groups[0].members.len(),
+        4,
+        "the module and the two nodes, in one module"
+    );
     assert!(!c.menu_open());
 
     // With only the module selected, its menu names it, and has no merge.
@@ -966,9 +1239,17 @@ fn a_module_menu_offers_to_merge_the_selection() {
     let gid = g.groups[0].id;
     g.set_group_collapsed(gid, true);
     c.frame(&mut g, &a, Modifiers::NONE, vec![]);
-    let card = crate::ui::groups::card_layout(&g, g.group(gid).unwrap()).unwrap().0;
+    let card = crate::ui::groups::card_layout(&g, g.group(gid).unwrap())
+        .unwrap()
+        .0;
     let on_card = (c.editor.pan + (card.center().to_vec2()) * c.editor.zoom).to_pos2();
-    c.click(&mut g, &a, on_card, PointerButton::Secondary, Modifiers::NONE);
+    c.click(
+        &mut g,
+        &a,
+        on_card,
+        PointerButton::Secondary,
+        Modifiers::NONE,
+    );
     assert!(c.menu_open());
     assert!(c.find("Make module from selection").is_none());
     assert!(c.find("Rename…").is_some());
@@ -987,7 +1268,9 @@ fn the_canvas_menu_leads_with_the_selection() {
     let empty = egui::pos2(1300.0, 820.0);
     c.click(&mut g, &a, empty, PointerButton::Secondary, Modifiers::NONE);
     assert!(c.find("2 nodes selected").is_some(), "{:?}", c.labels);
-    let make = c.find("Make module from selection").expect("Make module in the canvas menu");
+    let make = c
+        .find("Make module from selection")
+        .expect("Make module in the canvas menu");
     c.click(&mut g, &a, make, PointerButton::Primary, Modifiers::NONE);
     assert_eq!(g.groups.len(), 1);
     assert_eq!(c.selected().len(), 2);
@@ -1002,7 +1285,8 @@ struct TempDir(std::path::PathBuf);
 
 impl TempDir {
     fn new(tag: &str) -> Self {
-        let dir = std::env::temp_dir().join(format!("audioboard-test-{tag}-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("audioboard-test-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         Self(dir)
@@ -1031,8 +1315,17 @@ fn projects_round_trip_through_a_file() {
     mixer_params(&g, mixer).aux[1].set(0.5);
     mixer_params(&g, mixer).aux_master.set(0.4);
     let console = g.add_console(pos2(0.0, 600.0), &a);
-    g.set_console(console, crate::graph::Console { channels: 24, horizontal: false }, &a);
-    mixer_params(&g, console).master_mute.store(true, Ordering::Relaxed);
+    g.set_console(
+        console,
+        crate::graph::Console {
+            channels: 24,
+            horizontal: false,
+        },
+        &a,
+    );
+    mixer_params(&g, console)
+        .master_mute
+        .store(true, Ordering::Relaxed);
     mixer_params(&g, console).aux[20].set(0.7);
     g.node(reverb_id).unwrap().set_bypass(true);
     osc_params(&g, x).set_waveform(Waveform::Square);
@@ -1051,7 +1344,11 @@ fn projects_round_trip_through_a_file() {
     source(&mut h, &b);
     let loaded = project::load_project(&path).unwrap();
     assert_eq!(project::restore(&mut h, &loaded, &b), 0);
-    assert_eq!(project::snapshot(&h), saved, "everything survives the round trip");
+    assert_eq!(
+        project::snapshot(&h),
+        saved,
+        "everything survives the round trip"
+    );
     assert_eq!(h.groups[0].title, "Source");
 
     // And it plays.
@@ -1080,7 +1377,10 @@ fn library_modules_are_inserted_with_their_cables() {
     assert_eq!(group.title, "Wobble pad");
     assert!(group.collapsed, "library modules arrive folded");
     let frame = crate::ui::groups::frame_rect(&h, group).unwrap();
-    assert!((frame.min - pos2(500.0, 200.0)).length() < 1e-3, "frame at the drop point: {frame:?}");
+    assert!(
+        (frame.min - pos2(500.0, 200.0)).length() < 1e-3,
+        "frame at the drop point: {frame:?}"
+    );
     let f = h.nodes.iter().find(|n| n.title == "FILTER 1").unwrap().id;
     assert_eq!(module_params(&h, f).get(filter::CUTOFF), 333.0);
 }
@@ -1117,7 +1417,11 @@ fn foreign_files_are_rejected() {
     let path = dir.0.join("x.audioboard");
     std::fs::write(&path, "{\"hello\": 1}").unwrap();
     assert!(project::load_project(&path).is_err());
-    std::fs::write(&path, r#"{"format":"other","version":1,"nodes":[],"cables":[]}"#).unwrap();
+    std::fs::write(
+        &path,
+        r#"{"format":"other","version":1,"nodes":[],"cables":[]}"#,
+    )
+    .unwrap();
     assert!(project::load_project(&path).is_err());
 }
 
@@ -1145,7 +1449,10 @@ impl Ui {
     fn frame(&mut self, g: &mut Graph, a: &AudioHandle, events: Vec<egui::Event>) {
         self.time += 0.05;
         let input = egui::RawInput {
-            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 900.0))),
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1400.0, 900.0),
+            )),
             time: Some(self.time),
             events,
             ..Default::default()
@@ -1159,7 +1466,13 @@ impl Ui {
         self.key_with(g, a, key, egui::Modifiers::NONE);
     }
 
-    fn key_with(&mut self, g: &mut Graph, a: &AudioHandle, key: egui::Key, modifiers: egui::Modifiers) {
+    fn key_with(
+        &mut self,
+        g: &mut Graph,
+        a: &AudioHandle,
+        key: egui::Key,
+        modifiers: egui::Modifiers,
+    ) {
         let event = egui::Event::Key {
             key,
             physical_key: None,
@@ -1168,7 +1481,11 @@ impl Ui {
             modifiers,
         };
         self.frame(g, a, vec![egui::Event::ModifiersChanged(modifiers), event]);
-        self.frame(g, a, vec![egui::Event::ModifiersChanged(egui::Modifiers::NONE)]);
+        self.frame(
+            g,
+            a,
+            vec![egui::Event::ModifiersChanged(egui::Modifiers::NONE)],
+        );
     }
 
     /// Lets animations finish.
@@ -1223,7 +1540,10 @@ fn midi_learn_and_mapping_drive_knobs() {
     assert!(!p.toggled(), "learn switches itself off");
 
     // Mapping does not jump the knob; the next message moves it.
-    let cutoff = Target { node: filter_id, param: ParamRef::Module(filter::CUTOFF) };
+    let cutoff = Target {
+        node: filter_id,
+        param: ParamRef::Module(filter::CUTOFF),
+    };
     g.set_target(cc, Some(cutoff));
     let before = module_params(&g, filter_id).get(filter::CUTOFF);
     g.update_midi(&a.midi);
@@ -1234,14 +1554,26 @@ fn midi_learn_and_mapping_drive_knobs() {
     assert_eq!(g.target_label(cutoff).unwrap(), "FILTER 1 · CUTOFF");
 
     // A key sets a pitch knob to its frequency.
-    g.set_target(note, Some(Target { node: drone_id, param: ParamRef::Module(drone::PITCH) }));
+    g.set_target(
+        note,
+        Some(Target {
+            node: drone_id,
+            param: ParamRef::Module(drone::PITCH),
+        }),
+    );
     g.update_midi(&a.midi);
     a.midi.handle(&[0x90, 45, 100]); // A2
     g.update_midi(&a.midi);
     assert!((module_params(&g, drone_id).get(drone::PITCH) - 110.0).abs() < 0.01);
 
     // Controllers can ride mixer faders too.
-    g.set_target(cc, Some(Target { node: mixer, param: ParamRef::Fader(1) }));
+    g.set_target(
+        cc,
+        Some(Target {
+            node: mixer,
+            param: ParamRef::Fader(1),
+        }),
+    );
     g.update_midi(&a.midi);
     a.midi.handle(&[0xB4, 21, 0]);
     g.update_midi(&a.midi);
@@ -1260,7 +1592,10 @@ fn midi_learn_and_mapping_drive_knobs() {
     crate::project::restore(&mut h, &crate::project::snapshot(&g), &b);
     assert_eq!(crate::project::snapshot(&h), saved);
     let cc_copy = h.nodes.iter().find(|n| n.title == "CC 1").unwrap().id;
-    assert_eq!(h.target_label(h.target_of(cc_copy).unwrap()).unwrap(), "FILTER 1 · CUTOFF");
+    assert_eq!(
+        h.target_label(h.target_of(cc_copy).unwrap()).unwrap(),
+        "FILTER 1 · CUTOFF"
+    );
 }
 
 #[test]
@@ -1296,7 +1631,10 @@ fn palette_entries_drop_where_released() {
     ui.frame(&mut g, &a, vec![]);
 
     let p = egui::pos2(300.0, 200.0);
-    egui::DragAndDrop::set_payload(&ui.ctx, Spawn::Node(crate::graph::NodeType::Module(ModuleKind::Reverb)));
+    egui::DragAndDrop::set_payload(
+        &ui.ctx,
+        Spawn::Node(crate::graph::NodeType::Module(ModuleKind::Reverb)),
+    );
     let release = egui::Event::PointerButton {
         pos: p,
         button: egui::PointerButton::Primary,
@@ -1304,11 +1642,18 @@ fn palette_entries_drop_where_released() {
         modifiers: egui::Modifiers::NONE,
     };
     ui.frame(&mut g, &a, vec![egui::Event::PointerMoved(p), release]);
-    let reverb = g.nodes.iter().find(|n| n.title == "REVERB 1").expect("dropped");
+    let reverb = g
+        .nodes
+        .iter()
+        .find(|n| n.title == "REVERB 1")
+        .expect("dropped");
     // Its header sits under the pointer.
     let e = &ui.editor;
     let screen = (e.pan + reverb.pos.to_vec2() * e.zoom).to_pos2();
-    assert!((screen.y - p.y).abs() < 20.0 && screen.x < p.x, "{screen:?}");
+    assert!(
+        (screen.y - p.y).abs() < 20.0 && screen.x < p.x,
+        "{screen:?}"
+    );
     assert!(egui::DragAndDrop::payload::<Spawn>(&ui.ctx).is_none());
 }
 
@@ -1325,7 +1670,10 @@ fn assert_no_overlaps(g: &Graph, ids: &[u32]) {
     for (i, &a) in ids.iter().enumerate() {
         for &b in &ids[i + 1..] {
             let (ra, rb) = (rect_of(g, a), rect_of(g, b));
-            assert!(!ra.shrink(1.0).intersects(rb.shrink(1.0)), "{a} and {b} overlap: {ra:?} {rb:?}");
+            assert!(
+                !ra.shrink(1.0).intersects(rb.shrink(1.0)),
+                "{a} and {b} overlap: {ra:?} {rb:?}"
+            );
         }
     }
 }
@@ -1336,16 +1684,39 @@ fn arrange_puts_signal_flow_in_columns_with_level_ports() {
     let size = egui::vec2(200.0, 100.0);
     // 0 → 1 → 2, and modulator 3 → 2 (its port lower on 2).
     let links = [
-        Link { from: 0, to: 1, from_dy: 20.0, to_dy: 20.0 },
-        Link { from: 1, to: 2, from_dy: 20.0, to_dy: 20.0 },
-        Link { from: 3, to: 2, from_dy: 20.0, to_dy: 60.0 },
+        Link {
+            from: 0,
+            to: 1,
+            from_dy: 20.0,
+            to_dy: 20.0,
+        },
+        Link {
+            from: 1,
+            to: 2,
+            from_dy: 20.0,
+            to_dy: 20.0,
+        },
+        Link {
+            from: 3,
+            to: 2,
+            from_dy: 20.0,
+            to_dy: 60.0,
+        },
     ];
-    let start = [pos2(500.0, 0.0), pos2(0.0, 300.0), pos2(250.0, 900.0), pos2(0.0, 0.0)];
+    let start = [
+        pos2(500.0, 0.0),
+        pos2(0.0, 300.0),
+        pos2(250.0, 900.0),
+        pos2(0.0, 0.0),
+    ];
     let p = arrange(&[size; 4], &start, &links);
     assert_eq!(p[0].x, 0.0);
     assert_eq!(p[1].x, size.x + GAP_X);
     assert_eq!(p[2].x, 2.0 * (size.x + GAP_X));
-    assert_eq!(p[3].x, p[1].x, "the modulator sits right before what it feeds");
+    assert_eq!(
+        p[3].x, p[1].x,
+        "the modulator sits right before what it feeds"
+    );
     // Two blocks in one column never overlap, and a source lines up with
     // what it feeds even when its neighbours have to compromise.
     assert!((p[1].y - p[3].y).abs() >= size.y + crate::ui::layout::GAP_Y - 0.5);
@@ -1376,12 +1747,18 @@ fn auto_layout_arranges_the_patch_left_to_right() {
     assert!(x(random) < x(filter));
     // Every cable runs left to right.
     for c in &g.cables {
-        assert!(g.node(c.from.node).unwrap().output_pos(c.from.port).x < g.node(c.to.node).unwrap().input_pos(c.to.port).x);
+        assert!(
+            g.node(c.from.node).unwrap().output_pos(c.from.port).x
+                < g.node(c.to.node).unwrap().input_pos(c.to.port).x
+        );
     }
     // The module moved as one block: its frame does not cover other nodes.
     let frame = crate::ui::groups::frame_rect(&g, g.group(gid).unwrap()).unwrap();
     for id in [filter, reverb, mixer] {
-        assert!(!frame.intersects(rect_of(&g, id)), "module frame covers {id}");
+        assert!(
+            !frame.intersects(rect_of(&g, id)),
+            "module frame covers {id}"
+        );
     }
 }
 
@@ -1425,7 +1802,11 @@ fn auto_fit_follows_the_patch_until_you_zoom() {
     // A node far away: the view zooms out to keep everything in sight.
     g.add_osc(pos2(5000.0, 3000.0), &a);
     ui.settle(&mut g, &a);
-    assert!(ui.editor.zoom < fitted * 0.7, "{} vs {fitted}", ui.editor.zoom);
+    assert!(
+        ui.editor.zoom < fitted * 0.7,
+        "{} vs {fitted}",
+        ui.editor.zoom
+    );
 
     // Zooming by hand turns auto-fit off.
     let z = ui.editor.zoom;
@@ -1447,12 +1828,23 @@ fn after_auto_layout_no_cable_runs_behind_a_node() {
 
     for c in &g.cables {
         let (from, to) = (g.node(c.from.node).unwrap(), g.node(c.to.node).unwrap());
-        let shape = widgets::cable_shape(from.output_pos(c.from.port), to.input_pos(c.to.port), false, 1.0);
+        let shape = widgets::cable_shape(
+            from.output_pos(c.from.port),
+            to.input_pos(c.to.port),
+            false,
+            1.0,
+        );
         for n in g.nodes.iter().filter(|n| n.id != from.id && n.id != to.id) {
             let body = egui::Rect::from_min_size(n.pos, n.size()).shrink(4.0);
             for i in 0..=64 {
                 let p = shape.sample(i as f32 / 64.0);
-                assert!(!body.contains(p), "{} → {} passes behind {}", from.title, to.title, n.title);
+                assert!(
+                    !body.contains(p),
+                    "{} → {} passes behind {}",
+                    from.title,
+                    to.title,
+                    n.title
+                );
             }
         }
     }
@@ -1465,7 +1857,14 @@ fn after_auto_layout_no_cable_runs_behind_a_node() {
 #[test]
 fn base64_round_trips() {
     use crate::project::{base64_decode, base64_encode};
-    for data in [&b""[..], b"f", b"fo", b"foo", b"foob", b"\x00\xff\x10binary\x80"] {
+    for data in [
+        &b""[..],
+        b"f",
+        b"fo",
+        b"foo",
+        b"foob",
+        b"\x00\xff\x10binary\x80",
+    ] {
         let text = base64_encode(data);
         assert_eq!(base64_decode(&text).unwrap(), data, "{text}");
     }
@@ -1512,7 +1911,9 @@ fn installed_effect() -> Option<std::path::PathBuf> {
 #[test]
 fn vst3_plugins_work_as_nodes() {
     use crate::graph::{NodeKind, ParamRef, Target};
-    let Some(path) = installed_effect() else { return };
+    let Some(path) = installed_effect() else {
+        return;
+    };
     let (mut g, a, mut e) = setup();
     let src = source(&mut g, &a);
     let fx = g.add_plugin(&path, pos2(300.0, 0.0), &a).expect("loads");
@@ -1546,7 +1947,13 @@ fn vst3_plugins_work_as_nodes() {
 
     // MIDI CC can drive a plugin parameter too.
     let cc = g.add_module(ModuleKind::MidiCc, pos2(0.0, 300.0), &a);
-    g.set_target(cc, Some(Target { node: fx, param: ParamRef::Plugin(id) }));
+    g.set_target(
+        cc,
+        Some(Target {
+            node: fx,
+            param: ParamRef::Plugin(id),
+        }),
+    );
     g.update_midi(&a.midi);
     a.midi.handle(&[0xB0, 1, 127]);
     g.update_midi(&a.midi);
@@ -1557,7 +1964,12 @@ fn vst3_plugins_work_as_nodes() {
     let saved = crate::project::snapshot(&g);
     let (mut h, b, mut e2) = setup();
     assert_eq!(crate::project::restore(&mut h, &saved, &b), 0);
-    let copy = h.nodes.iter().find(|n| matches!(n.kind, NodeKind::Plugin(_))).expect("plugin restored").id;
+    let copy = h
+        .nodes
+        .iter()
+        .find(|n| matches!(n.kind, NodeKind::Plugin(_)))
+        .expect("plugin restored")
+        .id;
     render_buf(&mut e2, 4800);
     assert!((plugin_value(&h) - 1.0).abs() < 1e-3, "state restored");
     let _ = copy;
@@ -1570,7 +1982,10 @@ fn vst3_plugins_work_as_nodes() {
     g.remove_node(dup, &a);
     render_buf(&mut e, 4800); // the engine lets go of them
     g.service_plugins(0.0);
-    assert!(rms_of(&render_buf(&mut e, 4800)) < 1e-3, "nothing left reaches the mixer");
+    assert!(
+        rms_of(&render_buf(&mut e, 4800)) < 1e-3,
+        "nothing left reaches the mixer"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1588,7 +2003,14 @@ fn run_generator(
     mut feed: impl FnMut(usize, &mut MidiBuf),
 ) -> Vec<(usize, [u8; 3])> {
     const SR: f32 = 48_000.0;
-    let mut ctx = ProcessCtx { sample_rate: SR, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / SR as f64, playing: true, restart: false };
+    let mut ctx = ProcessCtx {
+        sample_rate: SR,
+        smooth: 0.01,
+        beat: 0.0,
+        beats_per_sample: 2.0 / SR as f64,
+        playing: true,
+        restart: false,
+    };
     let mut inputs = Box::new(Inputs {
         bufs: [[[0.0; 64]; 2]; MAX_INPUTS],
         connected: [false; MAX_INPUTS],
@@ -1613,7 +2035,11 @@ fn run_generator(
 }
 
 fn note_ons(events: &[(usize, [u8; 3])]) -> Vec<(usize, u8)> {
-    events.iter().filter(|(_, m)| m[0] & 0xF0 == 0x90 && m[2] > 0).map(|(f, m)| (*f, m[1])).collect()
+    events
+        .iter()
+        .filter(|(_, m)| m[0] & 0xF0 == 0x90 && m[2] > 0)
+        .map(|(f, m)| (*f, m[1]))
+        .collect()
 }
 
 #[test]
@@ -1631,15 +2057,30 @@ fn sequencer_plays_its_steps_in_time() {
     // C3 major, degrees 0 2 4 2 5 4 2 1.
     let notes: Vec<u8> = ons.iter().map(|o| o.1).collect();
     assert_eq!(notes, [48, 52, 55, 52, 57, 55, 52, 50]);
-    let offs: Vec<usize> = events.iter().filter(|(_, m)| m[0] & 0xF0 == 0x80).map(|e| e.0).collect();
-    assert_eq!(offs[..3], [3000, 9000, 15000], "GATE 50% ends notes half way");
+    let offs: Vec<usize> = events
+        .iter()
+        .filter(|(_, m)| m[0] & 0xF0 == 0x80)
+        .map(|e| e.0)
+        .collect();
+    assert_eq!(
+        offs[..3],
+        [3000, 9000, 15000],
+        "GATE 50% ends notes half way"
+    );
     assert!(events.iter().all(|(_, m)| m[0] & 0x0F == 0), "channel 1");
 
     // Swing pushes the off-beats late; switched-off steps rest.
     p.set(sequencer::SWING, 1.0);
     sequencer::set_on(&p, 2, false);
-    let ons = note_ons(&run_generator(&mut Sequencer::new(p.clone()), 24_000, |_, _| {}));
-    assert_eq!(ons.iter().map(|o| o.0).collect::<Vec<_>>(), [0, 9000, 21000]);
+    let ons = note_ons(&run_generator(
+        &mut Sequencer::new(p.clone()),
+        24_000,
+        |_, _| {},
+    ));
+    assert_eq!(
+        ons.iter().map(|o| o.0).collect::<Vec<_>>(),
+        [0, 9000, 21000]
+    );
 
     // Stopping it ends the note that is sounding.
     p.set(sequencer::SWING, 0.0);
@@ -1666,13 +2107,19 @@ fn arpeggiator_walks_the_held_chord() {
             }
         }
     };
-    let notes: Vec<u8> = note_ons(&run_generator(&mut arp, 48_000, chord)).iter().map(|o| o.1).collect();
+    let notes: Vec<u8> = note_ons(&run_generator(&mut arp, 48_000, chord))
+        .iter()
+        .map(|o| o.1)
+        .collect();
     assert_eq!(notes, [60, 64, 67, 72, 76, 79, 60, 64]);
 
     // Down, as played.
     p.set_mode(arpeggiator::DOWN);
     let mut arp = Arpeggiator::new(p.clone(), a.midi.clone());
-    let notes: Vec<u8> = note_ons(&run_generator(&mut arp, 24_000, chord)).iter().map(|o| o.1).collect();
+    let notes: Vec<u8> = note_ons(&run_generator(&mut arp, 24_000, chord))
+        .iter()
+        .map(|o| o.1)
+        .collect();
     assert_eq!(notes, [79, 76, 72, 67]);
 
     // Letting go stops it, unless LATCH holds the chord.
@@ -1707,10 +2154,22 @@ fn midi_cables_only_join_midi_ports() {
     assert_eq!(node(arp).input_ports(), [MIDI_PORT]);
     assert_eq!(node(osc).input_ports(), [0, 1], "no MIDI on an oscillator");
 
-    assert!(!g.connect(port(seq, MIDI_PORT), port(osc, 0), &a), "MIDI into audio");
-    assert!(!g.connect(port(osc, 0), port(arp, MIDI_PORT), &a), "audio into MIDI");
-    assert!(!g.connect(port(seq, MIDI_PORT), port(filter, MIDI_PORT), &a), "no such port");
-    assert!(!g.connect(port(seq, 0), port(filter, 0), &a), "the sequencer has no audio out");
+    assert!(
+        !g.connect(port(seq, MIDI_PORT), port(osc, 0), &a),
+        "MIDI into audio"
+    );
+    assert!(
+        !g.connect(port(osc, 0), port(arp, MIDI_PORT), &a),
+        "audio into MIDI"
+    );
+    assert!(
+        !g.connect(port(seq, MIDI_PORT), port(filter, MIDI_PORT), &a),
+        "no such port"
+    );
+    assert!(
+        !g.connect(port(seq, 0), port(filter, 0), &a),
+        "the sequencer has no audio out"
+    );
     assert!(g.connect(port(seq, MIDI_PORT), port(arp, MIDI_PORT), &a));
     assert_eq!(g.cables.len(), 1);
 }
@@ -1731,7 +2190,10 @@ fn a_sequencer_plays_a_midi_note_node_through_the_engine() {
 
     render_buf(&mut e, 24_000);
     assert_eq!(np.viz[midi_note::CABLE].get(), 1.0);
-    assert!(np.viz[midi_note::SEQ].get() >= 2.0, "notes arrive on the cable");
+    assert!(
+        np.viz[midi_note::SEQ].get() >= 2.0,
+        "notes arrive on the cable"
+    );
     let played = np.viz[midi_note::NOTE].get() as u8;
     assert!((48..=72).contains(&played), "a note of the scale: {played}");
     assert!(sp.viz[sequencer::STEP].get() >= 0.0);
@@ -1773,7 +2235,8 @@ fn tempo_and_steps_are_saved() {
 /// An instrument plugin, if installed. Its samples load in the background
 /// on the app's run loop, so tests see silence: they check the wiring.
 fn installed_instrument() -> Option<std::path::PathBuf> {
-    let path = std::path::PathBuf::from("/Library/Audio/Plug-Ins/VST3/Originals - Cinematic Pads.vst3");
+    let path =
+        std::path::PathBuf::from("/Library/Audio/Plug-Ins/VST3/Originals - Cinematic Pads.vst3");
     if path.exists() {
         Some(path)
     } else {
@@ -1785,21 +2248,31 @@ fn installed_instrument() -> Option<std::path::PathBuf> {
 #[test]
 fn vst3_instruments_take_a_midi_cable() {
     use crate::graph::MIDI_PORT;
-    let Some(path) = installed_instrument() else { return };
+    let Some(path) = installed_instrument() else {
+        return;
+    };
     let (mut g, a, mut e) = setup();
     let seq = g.add_module(ModuleKind::Sequencer, pos2(0.0, 0.0), &a);
     let synth = g.add_plugin(&path, pos2(300.0, 0.0), &a).expect("loads");
     let mix = g.add_mixer(pos2(600.0, 0.0), &a);
     let node = g.node(synth).unwrap();
     assert!(node.midi_in());
-    assert_eq!(node.input_ports(), [MIDI_PORT], "an instrument: MIDI in, no audio in");
+    assert_eq!(
+        node.input_ports(),
+        [MIDI_PORT],
+        "an instrument: MIDI in, no audio in"
+    );
     assert!(g.connect(port(seq, MIDI_PORT), port(synth, MIDI_PORT), &a));
     assert!(g.connect(port(synth, 0), port(mix, 0), &a));
     let buf = render_buf(&mut e, 24_000);
     assert!(buf.iter().all(|s| s.is_finite()));
 
     // Unplugging mid-note is safe (the plugin gets note-offs).
-    let cable = *g.cables.iter().find(|c| c.to == port(synth, MIDI_PORT)).unwrap();
+    let cable = *g
+        .cables
+        .iter()
+        .find(|c| c.to == port(synth, MIDI_PORT))
+        .unwrap();
     g.disconnect(cable, &a);
     let buf = render_buf(&mut e, 4_800);
     assert!(buf.iter().all(|s| s.is_finite()));
@@ -1829,8 +2302,16 @@ fn resting_on_a_node_or_module_shows_its_type() {
     let mut editor = crate::ui::canvas::Editor::new();
     let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 900.0));
     // Runs a frame at `time` and returns every text drawn.
-    let run = |editor: &mut crate::ui::canvas::Editor, g: &mut Graph, time: f64, events: Vec<egui::Event>| {
-        let input = egui::RawInput { screen_rect: Some(screen), time: Some(time), events, ..Default::default() };
+    let run = |editor: &mut crate::ui::canvas::Editor,
+               g: &mut Graph,
+               time: f64,
+               events: Vec<egui::Event>| {
+        let input = egui::RawInput {
+            screen_rect: Some(screen),
+            time: Some(time),
+            events,
+            ..Default::default()
+        };
         let mut out = ctx.run_ui(input, |ui| editor.show(ui, g, &a));
         out.textures_delta.clear();
         fn texts(shape: &egui::Shape, into: &mut Vec<String>) {
@@ -1845,22 +2326,46 @@ fn resting_on_a_node_or_module_shows_its_type() {
         found
     };
     run(&mut editor, &mut g, 0.0, vec![]);
-    let to_screen = |e: &crate::ui::canvas::Editor, p: egui::Pos2| (e.pan + p.to_vec2() * e.zoom).to_pos2();
-    let on_reverb = to_screen(&editor, g.node(reverb).unwrap().pos + egui::vec2(100.0, 90.0));
-    let on_card = to_screen(&editor, crate::ui::groups::frame_rect(&g, g.group(gid).unwrap()).unwrap().min)
-        + egui::vec2(100.0, 12.0) * editor.zoom;
+    let to_screen =
+        |e: &crate::ui::canvas::Editor, p: egui::Pos2| (e.pan + p.to_vec2() * e.zoom).to_pos2();
+    let on_reverb = to_screen(
+        &editor,
+        g.node(reverb).unwrap().pos + egui::vec2(100.0, 90.0),
+    );
+    let on_card = to_screen(
+        &editor,
+        crate::ui::groups::frame_rect(&g, g.group(gid).unwrap())
+            .unwrap()
+            .min,
+    ) + egui::vec2(100.0, 12.0) * editor.zoom;
     let label = |texts: &[String], what: &str| texts.iter().any(|t| t.contains(what));
 
     // Only once the pointer has rested a moment.
-    let texts = run(&mut editor, &mut g, 1.0, vec![egui::Event::PointerMoved(on_reverb)]);
+    let texts = run(
+        &mut editor,
+        &mut g,
+        1.0,
+        vec![egui::Event::PointerMoved(on_reverb)],
+    );
     assert!(!label(&texts, "hall · shimmer"), "no label straight away");
     let texts = run(&mut editor, &mut g, 1.6, vec![]);
-    assert!(label(&texts, "Reverb") && label(&texts, "hall · shimmer · freeze"), "{texts:?}");
+    assert!(
+        label(&texts, "Reverb") && label(&texts, "hall · shimmer · freeze"),
+        "{texts:?}"
+    );
 
     // A renamed module says what it holds.
-    run(&mut editor, &mut g, 2.0, vec![egui::Event::PointerMoved(on_card)]);
+    run(
+        &mut editor,
+        &mut g,
+        2.0,
+        vec![egui::Event::PointerMoved(on_card)],
+    );
     let texts = run(&mut editor, &mut g, 2.6, vec![]);
-    assert!(label(&texts, "Module") && label(&texts, "Drone · Filter"), "{texts:?}");
+    assert!(
+        label(&texts, "Module") && label(&texts, "Drone · Filter"),
+        "{texts:?}"
+    );
 
     // Not while dragging.
     let press = egui::Event::PointerButton {
@@ -1883,7 +2388,10 @@ fn palette_categories_fold() {
     let mut run = |palette: &mut Palette, events: Vec<egui::Event>| {
         time += 0.1;
         let input = egui::RawInput {
-            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(240.0, 900.0))),
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(240.0, 900.0),
+            )),
             time: Some(time),
             events,
             ..Default::default()
@@ -1896,7 +2404,10 @@ fn palette_categories_fold() {
         let mut texts = Vec::new();
         for c in &out.shapes {
             if let egui::Shape::Text(t) = &c.shape {
-                texts.push((t.galley.job.text.clone(), t.pos + t.galley.rect.center().to_vec2()));
+                texts.push((
+                    t.galley.job.text.clone(),
+                    t.pos + t.galley.rect.center().to_vec2(),
+                ));
             }
         }
         texts
@@ -1913,15 +2424,21 @@ fn palette_categories_fold() {
     };
 
     let texts = run(&mut palette, vec![]);
-    assert!(shows(&texts, "Oscillator") && shows(&texts, "Drone"), "open at first");
+    assert!(
+        shows(&texts, "Oscillator") && shows(&texts, "Drone"),
+        "open at first"
+    );
     let heading = texts.iter().find(|(t, _)| t == "SOURCES").unwrap().1;
     run(&mut palette, click(heading));
     let mut texts = Vec::new();
     for _ in 0..10 {
         texts = run(&mut palette, vec![]);
     }
-    assert!(!shows(&texts, "Oscillator") && shows(&texts, "SOURCES"), "folded");
-    assert!(shows(&texts, "11"), "a folded category shows its count");
+    assert!(
+        !shows(&texts, "Oscillator") && shows(&texts, "SOURCES"),
+        "folded"
+    );
+    assert!(shows(&texts, "12"), "a folded category shows its count");
     assert!(shows(&texts, "Reverb"), "the others stay open");
 
     // Searching opens what matches; clearing it folds it again.
@@ -1929,18 +2446,29 @@ fn palette_categories_fold() {
     run(&mut palette, click(field));
     let texts = run(&mut palette, vec![egui::Event::Text("drone".into())]);
     assert!(shows(&texts, "Drone") && !shows(&texts, "Reverb"));
-    run(&mut palette, vec![egui::Event::Key {
-        key: egui::Key::Backspace,
-        physical_key: None,
-        pressed: true,
-        repeat: false,
-        modifiers: egui::Modifiers { command: true, mac_cmd: true, ..Default::default() },
-    }]);
+    run(
+        &mut palette,
+        vec![egui::Event::Key {
+            key: egui::Key::Backspace,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers {
+                command: true,
+                mac_cmd: true,
+                ..Default::default()
+            },
+        }],
+    );
     let mut texts = Vec::new();
     for _ in 0..3 {
         texts = run(&mut palette, vec![]);
     }
-    assert!(!shows(&texts, "Drone") && shows(&texts, "Reverb"), "{:?}", texts.iter().map(|t| &t.0).collect::<Vec<_>>());
+    assert!(
+        !shows(&texts, "Drone") && shows(&texts, "Reverb"),
+        "{:?}",
+        texts.iter().map(|t| &t.0).collect::<Vec<_>>()
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1962,19 +2490,42 @@ fn midicer_plays_the_manuals_basic_pattern() {
     let events = run_generator(&mut m, 2 * 96_000, |_, _| {});
     let ons = note_ons(&events);
     assert_eq!(ons.len(), 32, "two bars of sixteenths");
-    assert!(ons.iter().all(|o| o.0 % 6000 == 0 && (o.1 == 48 || o.1 == 60)), "{ons:?}");
+    assert!(
+        ons.iter()
+            .all(|o| o.0 % 6000 == 0 && (o.1 == 48 || o.1 == 60)),
+        "{ons:?}"
+    );
     // DICE: the second bar repeats the first.
-    let bar = |b: usize| ons[b * 16..(b + 1) * 16].iter().map(|o| o.1).collect::<Vec<_>>();
+    let bar = |b: usize| {
+        ons[b * 16..(b + 1) * 16]
+            .iter()
+            .map(|o| o.1)
+            .collect::<Vec<_>>()
+    };
     assert_eq!(bar(0), bar(1));
-    assert!(bar(0).contains(&48) && bar(0).contains(&60), "both octaves: {:?}", bar(0));
+    assert!(
+        bar(0).contains(&48) && bar(0).contains(&60),
+        "both octaves: {:?}",
+        bar(0)
+    );
     // GATE 80%: each note ends before the next.
-    let offs: Vec<usize> = events.iter().filter(|(_, m)| m[0] & 0xF0 == 0x80).map(|e| e.0).collect();
+    let offs: Vec<usize> = events
+        .iter()
+        .filter(|(_, m)| m[0] & 0xF0 == 0x80)
+        .map(|e| e.0)
+        .collect();
     assert_eq!(offs[0], 4800);
 
     // Different dice, a different pattern.
     p.data[data::SEED_M].set(777.0);
-    let (_, mut m2) = (p.clone(), crate::audio::modules::midicer::Midicer::new(p.clone(), setup().1.midi.clone()));
-    let other: Vec<u8> = note_ons(&run_generator(&mut m2, 96_000, |_, _| {})).iter().map(|o| o.1).collect();
+    let (_, mut m2) = (
+        p.clone(),
+        crate::audio::modules::midicer::Midicer::new(p.clone(), setup().1.midi.clone()),
+    );
+    let other: Vec<u8> = note_ons(&run_generator(&mut m2, 96_000, |_, _| {}))
+        .iter()
+        .map(|o| o.1)
+        .collect();
     assert_ne!(other, bar(0));
 }
 
@@ -1988,14 +2539,22 @@ fn midicer_live_mode_never_repeats() {
     let midi = setup().1.midi.clone();
     let first_bar = |p: &Arc<ModuleParams>| -> Vec<u8> {
         let mut m = Midicer::new(p.clone(), midi.clone());
-        note_ons(&run_generator(&mut m, 96_000, |_, _| {})).iter().map(|o| o.1).collect()
+        note_ons(&run_generator(&mut m, 96_000, |_, _| {}))
+            .iter()
+            .map(|o| o.1)
+            .collect()
     };
     let kept = first_bar(&p);
 
     p.data[data::DICE_M].set(0.0);
     let mut m = Midicer::new(p.clone(), midi.clone());
     let ons = note_ons(&run_generator(&mut m, 2 * 96_000, |_, _| {}));
-    let bar = |b: usize| ons[b * 16..(b + 1) * 16].iter().map(|o| o.1).collect::<Vec<_>>();
+    let bar = |b: usize| {
+        ons[b * 16..(b + 1) * 16]
+            .iter()
+            .map(|o| o.1)
+            .collect::<Vec<_>>()
+    };
     assert_ne!(bar(0), bar(1), "LIVE: no repeating pattern");
 
     // Back to DICE: the kept values return.
@@ -2008,7 +2567,10 @@ fn midicer_rests_legato_and_mute() {
     use crate::audio::modules::midicer::{LEGATO, REST, data};
     let (p, mut m) = midicer();
     p.set(REST, 1.0);
-    assert!(note_ons(&run_generator(&mut m, 96_000, |_, _| {})).is_empty(), "all rests");
+    assert!(
+        note_ons(&run_generator(&mut m, 96_000, |_, _| {})).is_empty(),
+        "all rests"
+    );
 
     let (p, mut m) = midicer();
     p.set(LEGATO, 1.0);
@@ -2019,13 +2581,19 @@ fn midicer_rests_legato_and_mute() {
     assert!(ons.len() < 16, "ties: {}", ons.len());
     for w in events.windows(2) {
         if w[1].1[0] & 0xF0 == 0x80 {
-            assert_eq!(w[0].0, w[1].0, "a note-off only comes with the next note-on");
+            assert_eq!(
+                w[0].0, w[1].0,
+                "a note-off only comes with the next note-on"
+            );
         }
     }
 
     let (p, mut m) = midicer();
     p.data[data::MUTE].set(1.0);
-    assert!(note_ons(&run_generator(&mut m, 96_000, |_, _| {})).is_empty(), "muted");
+    assert!(
+        note_ons(&run_generator(&mut m, 96_000, |_, _| {})).is_empty(),
+        "muted"
+    );
 }
 
 #[test]
@@ -2039,7 +2607,12 @@ fn midicer_pattern_length_and_variation() {
         p.data[data::WEIGHTS + pc].set(1.0);
     }
     let ons = note_ons(&run_generator(&mut m, 96_000, |_, _| {}));
-    let beat = |b: usize| ons[b * 4..(b + 1) * 4].iter().map(|o| o.1).collect::<Vec<_>>();
+    let beat = |b: usize| {
+        ons[b * 4..(b + 1) * 4]
+            .iter()
+            .map(|o| o.1)
+            .collect::<Vec<_>>()
+    };
     assert_eq!(beat(0), beat(1));
     assert_eq!(beat(1), beat(3));
 
@@ -2050,7 +2623,10 @@ fn midicer_pattern_length_and_variation() {
     p.data[data::THIRTY_SECOND].set(1.0);
     let ons = note_ons(&run_generator(&mut m, 96_000, |_, _| {}));
     let gaps: Vec<usize> = ons.windows(2).map(|w| w[1].0 - w[0].0).collect();
-    assert!(gaps.iter().all(|&g| [12_000, 6000, 3000].contains(&g)), "{gaps:?}");
+    assert!(
+        gaps.iter().all(|&g| [12_000, 6000, 3000].contains(&g)),
+        "{gaps:?}"
+    );
     assert!(gaps.iter().any(|&g| g < 12_000), "some shorter notes");
     assert!(ons.len() > 8);
 }
@@ -2071,14 +2647,25 @@ fn midicer_follows_gates_and_quantizes() {
     let ons = note_ons(&events);
     assert_eq!(ons.iter().map(|o| o.0).collect::<Vec<_>>(), [3210, 9605]);
     assert!(ons.iter().all(|o| o.1 == 48 || o.1 == 60));
-    assert!(events.iter().any(|(f, m)| *f == 6400 && m[0] & 0xF0 == 0x80));
+    assert!(
+        events
+            .iter()
+            .any(|(f, m)| *f == 6400 && m[0] & 0xF0 == 0x80)
+    );
 
     // QUANT1: CV2 → the enabled notes, once a beat. With only C enabled and
     // CV2 at +1 (the top of LOW…HIGH), that is C4 every beat.
     let (p, mut m) = midicer();
     p.set_mode(QUANT1);
     const SR: f32 = 48_000.0;
-    let mut ctx = ProcessCtx { sample_rate: SR, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / SR as f64, playing: true, restart: false };
+    let mut ctx = ProcessCtx {
+        sample_rate: SR,
+        smooth: 0.01,
+        beat: 0.0,
+        beats_per_sample: 2.0 / SR as f64,
+        playing: true,
+        restart: false,
+    };
     let mut inputs = Box::new(Inputs {
         bufs: [[[0.0; 64]; 2]; MAX_INPUTS],
         connected: [false; MAX_INPUTS],
@@ -2132,7 +2719,11 @@ fn stop_rewinds_and_start_plays_from_the_top() {
     render_buf(&mut e, 512);
     assert_eq!(sp.viz[sequencer::STEP].get(), 0.0);
     assert_eq!(np.viz[midi_note::NOTE].get(), 48.0);
-    assert!(shared.beat.get() < 0.05, "the transport starts at 0: {}", shared.beat.get());
+    assert!(
+        shared.beat.get() < 0.05,
+        "the transport starts at 0: {}",
+        shared.beat.get()
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -2143,7 +2734,14 @@ fn stop_rewinds_and_start_plays_from_the_top() {
 /// left and right outputs.
 fn click_response(proc: &mut dyn Processor, frames: usize) -> (Vec<f32>, Vec<f32>) {
     const SR: f32 = 48_000.0;
-    let mut ctx = ProcessCtx { sample_rate: SR, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / SR as f64, playing: true, restart: false };
+    let mut ctx = ProcessCtx {
+        sample_rate: SR,
+        smooth: 0.01,
+        beat: 0.0,
+        beats_per_sample: 2.0 / SR as f64,
+        playing: true,
+        restart: false,
+    };
     let mut inputs = Box::new(Inputs {
         bufs: [[[0.0; 64]; 2]; MAX_INPUTS],
         connected: [false; MAX_INPUTS],
@@ -2168,7 +2766,9 @@ fn click_response(proc: &mut dyn Processor, frames: usize) -> (Vec<f32>, Vec<f32
 
 /// Where the loudest sample is between `from` and `to`, and how loud.
 fn loudest(x: &[f32], from: usize, to: usize) -> (usize, f32) {
-    (from..to.min(x.len())).map(|i| (i, x[i].abs())).fold((from, 0.0), |a, b| if b.1 > a.1 { b } else { a })
+    (from..to.min(x.len()))
+        .map(|i| (i, x[i].abs()))
+        .fold((from, 0.0), |a, b| if b.1 > a.1 { b } else { a })
 }
 
 #[test]
@@ -2184,7 +2784,10 @@ fn delay_syncs_to_the_tempo() {
     p.set(delay::DIV, 7.0);
     let (l, _) = click_response(&mut Delay::new(p.clone(), 48_000.0), 48_000);
     let (at, level) = loudest(&l, 1000, 48_000);
-    assert!(level > 0.1 && at.abs_diff(18_000) <= 2, "echo at {at} ({level})");
+    assert!(
+        level > 0.1 && at.abs_diff(18_000) <= 2,
+        "echo at {at} ({level})"
+    );
     // Off sync: TIME rules.
     p.set_toggle(false);
     p.set(delay::TIME, 0.25);
@@ -2205,8 +2808,18 @@ fn ping_pong_echoes_alternate_sides() {
     let (l, r) = click_response(&mut PingPong::new(p.clone(), 48_000.0), 4 * d + 2000);
     let near = |x: &[f32], k: usize| loudest(x, k * d - 300, k * d + 300).1;
     // Left, right, left: each echo on one side only (WIDTH 100%).
-    assert!(near(&l, 1) > 0.2 && near(&r, 1) < 0.01, "1st: L {} R {}", near(&l, 1), near(&r, 1));
-    assert!(near(&r, 2) > 0.1 && near(&l, 2) < 0.01, "2nd: L {} R {}", near(&l, 2), near(&r, 2));
+    assert!(
+        near(&l, 1) > 0.2 && near(&r, 1) < 0.01,
+        "1st: L {} R {}",
+        near(&l, 1),
+        near(&r, 1)
+    );
+    assert!(
+        near(&r, 2) > 0.1 && near(&l, 2) < 0.01,
+        "2nd: L {} R {}",
+        near(&l, 2),
+        near(&r, 2)
+    );
     assert!(near(&l, 3) > 0.05 && near(&r, 3) < 0.01);
     assert!(near(&l, 3) < near(&l, 1), "they fade");
 
@@ -2232,7 +2845,12 @@ fn ping_pong_ducks_under_the_input() {
         render_buf(&mut e, 48_000);
         levels.push(rms_of(&render_buf(&mut e, 24_000)));
     }
-    assert!(levels[1] < levels[0] * 0.3, "ducked {} vs {}", levels[1], levels[0]);
+    assert!(
+        levels[1] < levels[0] * 0.3,
+        "ducked {} vs {}",
+        levels[1],
+        levels[0]
+    );
 }
 
 #[test]
@@ -2257,7 +2875,11 @@ fn stop_silences_sources_but_tails_ring_on() {
     shared.running.store(false, Ordering::Relaxed);
     let after = render_buf(&mut e, 48_000);
     assert!(rms_of(&after[..96]) > 0.05, "no cut: it fades");
-    assert!(rms_of(&after[40_000..]) > 0.005, "the tail rings on: {}", rms_of(&after[40_000..]));
+    assert!(
+        rms_of(&after[40_000..]) > 0.005,
+        "the tail rings on: {}",
+        rms_of(&after[40_000..])
+    );
     // The source itself is silent once faded.
     let dry = g.add_mixer(pos2(600.0, 300.0), &a);
     g.connect(port(src, 0), port(dry, 0), &a);
@@ -2293,7 +2915,10 @@ fn stop_ends_the_notes_of_sequencers() {
     assert!(np.viz[midi_note::ENV].get() > 0.5, "a note is held");
     shared.running.store(false, Ordering::Relaxed);
     render_buf(&mut e, 24_000);
-    assert!(np.viz[midi_note::ENV].get() < 0.01, "Stop ended it: the envelope released");
+    assert!(
+        np.viz[midi_note::ENV].get() < 0.01,
+        "Stop ended it: the envelope released"
+    );
     assert_eq!(sp.viz[sequencer::STEP].get(), -1.0);
 }
 
@@ -2309,9 +2934,17 @@ fn idle_effects_rest_and_wake_up() {
     unplug_input(&mut g, &a, m);
     assert!(rms_of(&render_buf(&mut e, 4_800)) > 1e-3, "the tail first");
     render_buf(&mut e, 96_000);
-    assert!(render_buf(&mut e, 4_800).iter().all(|&s| s == 0.0), "resting");
+    assert!(
+        render_buf(&mut e, 4_800).iter().all(|&s| s == 0.0),
+        "resting"
+    );
     // Input back: it sounds at once.
-    let src = g.nodes.iter().find(|n| matches!(n.kind, NodeKind::Osc(_))).unwrap().id;
+    let src = g
+        .nodes
+        .iter()
+        .find(|n| matches!(n.kind, NodeKind::Osc(_)))
+        .unwrap()
+        .id;
     g.connect(port(src, 0), port(m, 0), &a);
     assert!(rms_of(&render_buf(&mut e, 4_800)) > 1e-3, "awake");
 }
@@ -2337,7 +2970,10 @@ fn the_output_is_limited_not_clipped() {
     assert!(peak <= 0.967, "kept under the ceiling: {peak}");
     // No flat tops: hard clipping would hold full scale for many samples.
     let left: Vec<f32> = out.iter().step_by(2).copied().collect();
-    let at_top = left.windows(2).filter(|w| w[0].abs() > 0.96 && w[0] == w[1]).count();
+    let at_top = left
+        .windows(2)
+        .filter(|w| w[0].abs() > 0.96 && w[0] == w[1])
+        .count();
     assert_eq!(at_top, 0);
     assert!(shared.limiting.take() > 3.0, "the limiter worked");
 }
@@ -2353,13 +2989,24 @@ fn removed_nodes_are_freed_off_the_audio_thread() {
         }
     }
     impl Processor for Probe {
-        fn process(&mut self, _: &ProcessCtx, _: &Inputs, _: &mut [crate::audio::engine::Buf], _: usize) {}
+        fn process(
+            &mut self,
+            _: &ProcessCtx,
+            _: &Inputs,
+            _: &mut [crate::audio::engine::Buf],
+            _: usize,
+        ) {
+        }
     }
     let (tx, rx) = std::sync::mpsc::channel();
     let mut e = Engine::new(rx, Arc::new(EngineShared::new()), 48_000.0);
     let trash = e.take_trash().unwrap();
     let freed = Arc::new(AtomicBool::new(false));
-    tx.send(Command::AddNode(1, Slot::new(Box::new(Probe(freed.clone())), 1))).unwrap();
+    tx.send(Command::AddNode(
+        1,
+        Slot::new(Box::new(Probe(freed.clone())), 1),
+    ))
+    .unwrap();
     render_buf(&mut e, 512);
     tx.send(Command::RemoveNode(1)).unwrap();
     render_buf(&mut e, 512);
@@ -2370,7 +3017,12 @@ fn removed_nodes_are_freed_off_the_audio_thread() {
 
 /// Runs a processor at 120 BPM, transport playing, on `input(frame)` in
 /// both channels.
-fn drive(proc: &mut dyn Processor, frames: usize, from: usize, input: impl Fn(usize) -> f32) -> (Vec<f32>, Vec<f32>) {
+fn drive(
+    proc: &mut dyn Processor,
+    frames: usize,
+    from: usize,
+    input: impl Fn(usize) -> f32,
+) -> (Vec<f32>, Vec<f32>) {
     const SR: f32 = 48_000.0;
     let mut ctx = ProcessCtx {
         sample_rate: SR,
@@ -2380,7 +3032,12 @@ fn drive(proc: &mut dyn Processor, frames: usize, from: usize, input: impl Fn(us
         playing: true,
         restart: false,
     };
-    let mut inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: false });
+    let mut inputs = Box::new(Inputs {
+        bufs: [[[0.0; 64]; 2]; MAX_INPUTS],
+        connected: [false; MAX_INPUTS],
+        midi: MidiBuf::default(),
+        midi_connected: false,
+    });
     inputs.connected[0] = true;
     let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
     let (mut l, mut r) = (Vec::new(), Vec::new());
@@ -2409,7 +3066,15 @@ fn frakture_with(sections: &[usize]) -> Arc<ModuleParams> {
     for i in 0..frakture::MAPPABLE {
         frakture::set_mapping(&p, i, None);
     }
-    for i in [frakture::FEEDBACK, frakture::SWARM, frakture::GLIDE, frakture::SHIMMER, frakture::RESONATE, frakture::BLUR, frakture::ERODE] {
+    for i in [
+        frakture::FEEDBACK,
+        frakture::SWARM,
+        frakture::GLIDE,
+        frakture::SHIMMER,
+        frakture::RESONATE,
+        frakture::BLUR,
+        frakture::ERODE,
+    ] {
         p.set(i, 0.0);
     }
     p
@@ -2431,8 +3096,14 @@ fn frakture_gate_drops_the_off_steps() {
     p.data[data::GATE_PATTERN].set(1.0);
     p.data[data::GATE_PATTERN + 1].set(0.0);
     let (l, _) = drive(&mut Frakture::new(p, 48_000.0), 48_000, 0, |_| 0.5);
-    assert!(l[2_000..22_000].iter().all(|s| (s - 0.5).abs() < 0.01), "the on step passes");
-    assert!(l[26_000..46_000].iter().all(|s| s.abs() < 0.01), "the off step is silent");
+    assert!(
+        l[2_000..22_000].iter().all(|s| (s - 0.5).abs() < 0.01),
+        "the on step passes"
+    );
+    assert!(
+        l[26_000..46_000].iter().all(|s| s.abs() < 0.01),
+        "the off step is silent"
+    );
 }
 
 #[test]
@@ -2450,12 +3121,26 @@ fn frakture_repeat_plays_the_slice_again() {
     // (the dry signal ducks out over the first few milliseconds).
     let slice = 6_000;
     for n in 108_200..113_800 {
-        assert!((l[n] - l[n + slice]).abs() < 1e-3, "repeat differs at {n}: {} vs {}", l[n], l[n + slice]);
-        assert!((l[n] - saw(n - 12_000)).abs() < 1e-3, "not the slice at {n}");
+        assert!(
+            (l[n] - l[n + slice]).abs() < 1e-3,
+            "repeat differs at {n}: {} vs {}",
+            l[n],
+            l[n + slice]
+        );
+        assert!(
+            (l[n] - saw(n - 12_000)).abs() < 1e-3,
+            "not the slice at {n}"
+        );
     }
-    assert!((108_200..113_800).any(|n| (l[n] - saw(n)).abs() > 0.1), "not just the input");
+    assert!(
+        (108_200..113_800).any(|n| (l[n] - saw(n)).abs() > 0.1),
+        "not just the input"
+    );
     // After the fourth repeat the input is back.
-    assert!((128_000..129_900).all(|n| (l[n] - saw(n)).abs() < 0.01), "the input is back");
+    assert!(
+        (128_000..129_900).all(|n| (l[n] - saw(n)).abs() < 0.01),
+        "the input is back"
+    );
 }
 
 #[test]
@@ -2470,12 +3155,20 @@ fn frakture_freeze_keeps_the_grains_playing() {
     drive(&mut fx, 96_000, 0, saw);
     p.data[data::FREEZE].set(1.0);
     let (held, _) = drive(&mut fx, 192_000, 96_000, |_| 0.0);
-    assert!(rms_of(&held[96_000..]) > 0.02, "frozen grains fell silent: {}", rms_of(&held[96_000..]));
+    assert!(
+        rms_of(&held[96_000..]) > 0.02,
+        "frozen grains fell silent: {}",
+        rms_of(&held[96_000..])
+    );
     // Recording again: silence fills the buffer and the grains die out.
     p.data[data::FREEZE].set(0.0);
     drive(&mut fx, 144_000, 288_000, |_| 0.0);
     let (after, _) = drive(&mut fx, 48_000, 432_000, |_| 0.0);
-    assert!(peak_of(&after) < 1e-4, "still sounding: {}", peak_of(&after));
+    assert!(
+        peak_of(&after) < 1e-4,
+        "still sounding: {}",
+        peak_of(&after)
+    );
 }
 
 #[test]
@@ -2488,7 +3181,11 @@ fn frakture_hexagon_moves_mapped_knobs() {
     let mut fx = Frakture::new(p.clone(), 48_000.0);
     drive(&mut fx, 640, 0, |_| 0.0);
     assert!((p.viz[viz::EFFECTIVE + frakture::SPACE_MIX].get() - 0.8).abs() < 1e-4);
-    assert_eq!(p.viz[viz::EFFECTIVE + frakture::SPACE_LENGTH].get(), -1.0, "not mapped");
+    assert_eq!(
+        p.viz[viz::EFFECTIVE + frakture::SPACE_LENGTH].get(),
+        -1.0,
+        "not mapped"
+    );
 }
 
 #[test]
@@ -2502,20 +3199,50 @@ fn frakture_paths_and_mappings_are_saved() {
     p.data[data::ROUTING].set(3.0);
     p.data[data::ROUTING + 3].set(0.0);
     let pts = [
-        motion::PathPoint { x: -0.5, y: 0.2, bend: 0.3, clicked: true },
-        motion::PathPoint { x: 0.4, y: -0.1, bend: 0.0, clicked: false },
+        motion::PathPoint {
+            x: -0.5,
+            y: 0.2,
+            bend: 0.3,
+            clicked: true,
+        },
+        motion::PathPoint {
+            x: 0.4,
+            y: -0.1,
+            bend: 0.0,
+            clicked: false,
+        },
     ];
     motion::set_drawn(&p, &pts, false);
-    motion::set_rec_point(&p, 0, motion::PathPoint { x: 0.25, y: 0.5, bend: 0.0, clicked: true });
+    motion::set_rec_point(
+        &p,
+        0,
+        motion::PathPoint {
+            x: 0.25,
+            y: 0.5,
+            bend: 0.0,
+            clicked: true,
+        },
+    );
     p.data[data::REC_COUNT].set(1.0);
     let saved = crate::project::snapshot(&g);
 
     let (mut h, b, _f) = setup();
     assert_eq!(crate::project::restore(&mut h, &saved, &b), 0);
     let q = module_params(&h, h.nodes[0].id);
-    assert_eq!(frakture::mapping(&q, frakture::REP_DUCK), Some((3, 0.1, 0.9)));
+    assert_eq!(
+        frakture::mapping(&q, frakture::REP_DUCK),
+        Some((3, 0.1, 0.9))
+    );
     assert_eq!(q.get(frakture::lp(1, frakture::layer::PITCH)), -7.0);
-    assert_eq!(frakture::routing(&q), [frakture::SPACE, frakture::GATE, frakture::REPEAT, frakture::GRAINS]);
+    assert_eq!(
+        frakture::routing(&q),
+        [
+            frakture::SPACE,
+            frakture::GATE,
+            frakture::REPEAT,
+            frakture::GRAINS
+        ]
+    );
     assert_eq!(motion::drawn_count(&q), 2);
     assert_eq!(motion::drawn_point(&q, 0), pts[0]);
     assert_eq!(motion::drawn_point(&q, 1), pts[1]);
@@ -2528,7 +3255,8 @@ fn projects_with_the_old_fractal_name_still_load() {
     let (mut g, a, _e) = setup();
     g.add_module(ModuleKind::Frakture, pos2(0.0, 0.0), &a);
     let json = serde_json::to_string(&crate::project::snapshot(&g)).unwrap();
-    let saved: crate::project::Project = serde_json::from_str(&json.replace("\"Frakture\"", "\"Fractal\"")).unwrap();
+    let saved: crate::project::Project =
+        serde_json::from_str(&json.replace("\"Frakture\"", "\"Fractal\"")).unwrap();
     let (mut h, b, _f) = setup();
     assert_eq!(crate::project::restore(&mut h, &saved, &b), 0);
     assert_eq!(module_params(&h, h.nodes[0].id).kind, ModuleKind::Frakture);
@@ -2542,8 +3270,20 @@ fn drive_stereo(
     main: impl Fn(usize) -> (f32, f32),
     side: Option<&dyn Fn(usize) -> (f32, f32)>,
 ) -> (Vec<f32>, Vec<f32>) {
-    let ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing: true, restart: false };
-    let mut inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: false });
+    let ctx = ProcessCtx {
+        sample_rate: 48_000.0,
+        smooth: 0.01,
+        beat: 0.0,
+        beats_per_sample: 2.0 / 48_000.0,
+        playing: true,
+        restart: false,
+    };
+    let mut inputs = Box::new(Inputs {
+        bufs: [[[0.0; 64]; 2]; MAX_INPUTS],
+        connected: [false; MAX_INPUTS],
+        midi: MidiBuf::default(),
+        midi_connected: false,
+    });
     inputs.connected[0] = true;
     inputs.connected[1] = side.is_some();
     let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
@@ -2586,13 +3326,36 @@ fn equalizer_bands_shape_the_spectrum() {
     let p = eq_params();
     p.set(bp(3, band::FREQ), 1000.0);
     p.set(bp(3, band::GAIN), 6.0);
-    let (l, _) = drive_stereo(&mut Equalizer::new(p.clone(), 48_000.0), 24_000, sine(1000.0, 0.25), None);
-    assert!((level_db(&l, 0.25) - 6.0).abs() < 0.3, "boost at 1 kHz: {}", level_db(&l, 0.25));
-    let (l, _) = drive_stereo(&mut Equalizer::new(p.clone(), 48_000.0), 24_000, sine(100.0, 0.25), None);
-    assert!(level_db(&l, 0.25).abs() < 0.3, "100 Hz untouched: {}", level_db(&l, 0.25));
+    let (l, _) = drive_stereo(
+        &mut Equalizer::new(p.clone(), 48_000.0),
+        24_000,
+        sine(1000.0, 0.25),
+        None,
+    );
+    assert!(
+        (level_db(&l, 0.25) - 6.0).abs() < 0.3,
+        "boost at 1 kHz: {}",
+        level_db(&l, 0.25)
+    );
+    let (l, _) = drive_stereo(
+        &mut Equalizer::new(p.clone(), 48_000.0),
+        24_000,
+        sine(100.0, 0.25),
+        None,
+    );
+    assert!(
+        level_db(&l, 0.25).abs() < 0.3,
+        "100 Hz untouched: {}",
+        level_db(&l, 0.25)
+    );
     // Flat by default: the input passes as it is.
     let flat = eq_params();
-    let (l, _) = drive_stereo(&mut Equalizer::new(flat, 48_000.0), 4_800, sine(440.0, 0.3), None);
+    let (l, _) = drive_stereo(
+        &mut Equalizer::new(flat, 48_000.0),
+        4_800,
+        sine(440.0, 0.3),
+        None,
+    );
     assert!((0..4_800).all(|n| (l[n] - sine(440.0, 0.3)(n).0).abs() < 1e-5));
 }
 
@@ -2605,15 +3368,42 @@ fn equalizer_dynamics_act_above_the_threshold() {
     p.set(bp(3, band::THRESHOLD), -30.0);
     p.set(bp(3, band::ATTACK), 0.001);
     // Loud: the band cuts by its full range.
-    let (l, _) = drive_stereo(&mut Equalizer::new(p.clone(), 48_000.0), 24_000, sine(1000.0, 0.5), None);
-    assert!((level_db(&l, 0.5) + 12.0).abs() < 1.0, "compressed: {}", level_db(&l, 0.5));
+    let (l, _) = drive_stereo(
+        &mut Equalizer::new(p.clone(), 48_000.0),
+        24_000,
+        sine(1000.0, 0.5),
+        None,
+    );
+    assert!(
+        (level_db(&l, 0.5) + 12.0).abs() < 1.0,
+        "compressed: {}",
+        level_db(&l, 0.5)
+    );
     // Quiet: below the threshold nothing happens.
-    let (l, _) = drive_stereo(&mut Equalizer::new(p.clone(), 48_000.0), 24_000, sine(1000.0, 0.005), None);
-    assert!(level_db(&l, 0.005).abs() < 0.3, "untouched: {}", level_db(&l, 0.005));
+    let (l, _) = drive_stereo(
+        &mut Equalizer::new(p.clone(), 48_000.0),
+        24_000,
+        sine(1000.0, 0.005),
+        None,
+    );
+    assert!(
+        level_db(&l, 0.005).abs() < 0.3,
+        "untouched: {}",
+        level_db(&l, 0.005)
+    );
     // Positive range expands.
     p.set(bp(3, band::RANGE), 6.0);
-    let (l, _) = drive_stereo(&mut Equalizer::new(p.clone(), 48_000.0), 24_000, sine(1000.0, 0.25), None);
-    assert!((level_db(&l, 0.25) - 6.0).abs() < 1.0, "expanded: {}", level_db(&l, 0.25));
+    let (l, _) = drive_stereo(
+        &mut Equalizer::new(p.clone(), 48_000.0),
+        24_000,
+        sine(1000.0, 0.25),
+        None,
+    );
+    assert!(
+        (level_db(&l, 0.25) - 6.0).abs() < 1.0,
+        "expanded: {}",
+        level_db(&l, 0.25)
+    );
 }
 
 #[test]
@@ -2628,16 +3418,35 @@ fn equalizer_external_side_chain_ducks() {
     let quiet = sine(1000.0, 0.01);
     // A loud key on SC (another frequency: WIDE hears it) ducks the band.
     let key = |n: usize| sine(100.0, 0.5)(n);
-    let (l, _) = drive_stereo(&mut Equalizer::new(p.clone(), 48_000.0), 24_000, &quiet, Some(&key));
-    assert!((level_db(&l, 0.01) + 9.0).abs() < 1.0, "ducked: {}", level_db(&l, 0.01));
+    let (l, _) = drive_stereo(
+        &mut Equalizer::new(p.clone(), 48_000.0),
+        24_000,
+        &quiet,
+        Some(&key),
+    );
+    assert!(
+        (level_db(&l, 0.01) + 9.0).abs() < 1.0,
+        "ducked: {}",
+        level_db(&l, 0.01)
+    );
     // In SPLIT the band only hears its own frequencies: 100 Hz, 20 dB down
     // there, stays under the threshold.
     p.data[data::SC_WIDE + 3].set(0.0);
-    let (l, _) = drive_stereo(&mut Equalizer::new(p.clone(), 48_000.0), 24_000, &quiet, Some(&key));
+    let (l, _) = drive_stereo(
+        &mut Equalizer::new(p.clone(), 48_000.0),
+        24_000,
+        &quiet,
+        Some(&key),
+    );
     assert!(level_db(&l, 0.01) > -4.0, "split: {}", level_db(&l, 0.01));
     // Without a key, nothing.
     let silent = |_: usize| (0.0, 0.0);
-    let (l, _) = drive_stereo(&mut Equalizer::new(p, 48_000.0), 24_000, &quiet, Some(&silent));
+    let (l, _) = drive_stereo(
+        &mut Equalizer::new(p, 48_000.0),
+        24_000,
+        &quiet,
+        Some(&silent),
+    );
     assert!(level_db(&l, 0.01).abs() < 0.3);
 }
 
@@ -2649,11 +3458,25 @@ fn equalizer_filters_mid_side_mix_and_solo() {
     p.data[data::HP_ON].set(1.0);
     p.data[data::HP_SLOPE].set(3.0);
     p.set(equalizer::HP_FREQ, 1000.0);
-    let (l, _) = drive_stereo(&mut Equalizer::new(p.clone(), 48_000.0), 24_000, sine(250.0, 0.5), None);
-    assert!((level_db(&l, 0.5) + 48.0).abs() < 1.5, "HP: {}", level_db(&l, 0.5));
+    let (l, _) = drive_stereo(
+        &mut Equalizer::new(p.clone(), 48_000.0),
+        24_000,
+        sine(250.0, 0.5),
+        None,
+    );
+    assert!(
+        (level_db(&l, 0.5) + 48.0).abs() < 1.5,
+        "HP: {}",
+        level_db(&l, 0.5)
+    );
     // MIX 0: the dry signal.
     p.set(equalizer::MIX, 0.0);
-    let (l, _) = drive_stereo(&mut Equalizer::new(p.clone(), 48_000.0), 24_000, sine(250.0, 0.5), None);
+    let (l, _) = drive_stereo(
+        &mut Equalizer::new(p.clone(), 48_000.0),
+        24_000,
+        sine(250.0, 0.5),
+        None,
+    );
     assert!(level_db(&l, 0.5).abs() < 0.1, "dry: {}", level_db(&l, 0.5));
 
     // A side-only band leaves a mono signal alone and works on the sides.
@@ -2661,22 +3484,49 @@ fn equalizer_filters_mid_side_mix_and_solo() {
     p.set(bp(2, band::FREQ), 1000.0);
     p.set(bp(2, band::GAIN), 12.0);
     p.data[data::BAND_MODE + 2].set(equalizer::SIDE as f32);
-    let (l, r) = drive_stereo(&mut Equalizer::new(p.clone(), 48_000.0), 24_000, sine(1000.0, 0.2), None);
-    assert!(level_db(&l, 0.2).abs() < 0.1 && level_db(&r, 0.2).abs() < 0.1, "mono untouched");
+    let (l, r) = drive_stereo(
+        &mut Equalizer::new(p.clone(), 48_000.0),
+        24_000,
+        sine(1000.0, 0.2),
+        None,
+    );
+    assert!(
+        level_db(&l, 0.2).abs() < 0.1 && level_db(&r, 0.2).abs() < 0.1,
+        "mono untouched"
+    );
     let wide = |n: usize| {
         let v = sine(1000.0, 0.2)(n).0;
         (v, -v)
     };
     let (l, _) = drive_stereo(&mut Equalizer::new(p.clone(), 48_000.0), 24_000, wide, None);
-    assert!((level_db(&l, 0.2) - 12.0).abs() < 0.5, "sides boosted: {}", level_db(&l, 0.2));
+    assert!(
+        (level_db(&l, 0.2) - 12.0).abs() < 0.5,
+        "sides boosted: {}",
+        level_db(&l, 0.2)
+    );
 
     // Solo plays the band's side chain: around its frequency only.
     let p = eq_params();
     p.set(bp(3, band::FREQ), 1000.0);
     p.data[data::SOLO].set(3.0);
-    let (near, _) = drive_stereo(&mut Equalizer::new(p.clone(), 48_000.0), 24_000, sine(1000.0, 0.3), None);
-    let (far, _) = drive_stereo(&mut Equalizer::new(p, 48_000.0), 24_000, sine(100.0, 0.3), None);
-    assert!(level_db(&near, 0.3).abs() < 0.5 && level_db(&far, 0.3) < -15.0, "solo: {} / {}", level_db(&near, 0.3), level_db(&far, 0.3));
+    let (near, _) = drive_stereo(
+        &mut Equalizer::new(p.clone(), 48_000.0),
+        24_000,
+        sine(1000.0, 0.3),
+        None,
+    );
+    let (far, _) = drive_stereo(
+        &mut Equalizer::new(p, 48_000.0),
+        24_000,
+        sine(100.0, 0.3),
+        None,
+    );
+    assert!(
+        level_db(&near, 0.3).abs() < 0.5 && level_db(&far, 0.3) < -15.0,
+        "solo: {} / {}",
+        level_db(&near, 0.3),
+        level_db(&far, 0.3)
+    );
 }
 
 fn magma_params() -> Arc<ModuleParams> {
@@ -2684,7 +3534,11 @@ fn magma_params() -> Arc<ModuleParams> {
 }
 
 fn magma(p: &Arc<ModuleParams>) -> crate::audio::modules::magma::Magma {
-    crate::audio::modules::magma::Magma::new(p.clone(), Arc::new(crate::audio::midi::MidiState::new()), 48_000.0)
+    crate::audio::modules::magma::Magma::new(
+        p.clone(),
+        Arc::new(crate::audio::midi::MidiState::new()),
+        48_000.0,
+    )
 }
 
 /// Filter 1 alone, clean, of `shape` at `freq`.
@@ -2715,7 +3569,10 @@ fn magma_filters_match_their_curves() {
         let measured = level_db(&l, 0.1);
         let vals = magma::base_values(&p);
         let expected = magma::db(magma::total_response(&p, &vals, 0, probe, 48_000.0));
-        assert!((measured - expected).abs() < 0.6, "shape {shape} slope {slope} at {probe} Hz: {measured:.2} vs {expected:.2}");
+        assert!(
+            (measured - expected).abs() < 0.6,
+            "shape {shape} slope {slope} at {probe} Hz: {measured:.2} vs {expected:.2}"
+        );
     }
 }
 
@@ -2726,16 +3583,37 @@ fn magma_self_oscillates_and_auto_mutes() {
     p.data[data::STYLE].set(0.0); // Classic
     p.data[data::AUTO_MUTE].set(0.0);
     let mut fx = magma(&p);
-    let burst = |n: usize| if n < 480 { sine(800.0, 0.5)(n) } else { (0.0, 0.0) };
+    let burst = |n: usize| {
+        if n < 480 {
+            sine(800.0, 0.5)(n)
+        } else {
+            (0.0, 0.0)
+        }
+    };
     let (l, _) = drive_stereo(&mut fx, 48_000, burst, None);
     let tail = &l[24_000..];
-    assert!(rms_of(tail) > 0.05, "keeps singing on its own: {}", rms_of(tail));
-    let crossings = tail.windows(2).filter(|w| w[0] < 0.0 && w[1] >= 0.0).count() as f32 * 2.0;
-    assert!((crossings - 800.0).abs() < 120.0, "near the cutoff: {crossings} Hz");
+    assert!(
+        rms_of(tail) > 0.05,
+        "keeps singing on its own: {}",
+        rms_of(tail)
+    );
+    let crossings = tail
+        .windows(2)
+        .filter(|w| w[0] < 0.0 && w[1] >= 0.0)
+        .count() as f32
+        * 2.0;
+    assert!(
+        (crossings - 800.0).abs() < 120.0,
+        "near the cutoff: {crossings} Hz"
+    );
     // Auto-mute stops it once the input has gone silent.
     p.data[data::AUTO_MUTE].set(1.0);
     let (l, _) = drive_stereo(&mut magma(&p), 48_000, burst, None);
-    assert!(peak_of(&l[24_000..]) < 1e-3, "muted: {}", peak_of(&l[24_000..]));
+    assert!(
+        peak_of(&l[24_000..]) < 1e-3,
+        "muted: {}",
+        peak_of(&l[24_000..])
+    );
     // Clean never oscillates.
     p.data[data::STYLE].set(10.0);
     p.data[data::AUTO_MUTE].set(0.0);
@@ -2756,8 +3634,16 @@ fn magma_routing_and_mid_side() {
     p.set(fp(1, filt::FREQ), 3000.0);
     p.set(fp(1, filt::PEAK), 0.0);
     p.data[data::ROUTING].set(1.0);
-    let level = |hz: f32| level_db(&drive_stereo(&mut magma(&p), 24_000, sine(hz, 0.1), None).0, 0.1);
-    assert!(level(80.0).abs() < 1.0 && level(10_000.0).abs() < 1.0, "ends pass");
+    let level = |hz: f32| {
+        level_db(
+            &drive_stereo(&mut magma(&p), 24_000, sine(hz, 0.1), None).0,
+            0.1,
+        )
+    };
+    assert!(
+        level(80.0).abs() < 1.0 && level(10_000.0).abs() < 1.0,
+        "ends pass"
+    );
     assert!(level(950.0) < -12.0, "middle cut: {}", level(950.0));
     // In series they cut everything.
     p.data[data::ROUTING].set(0.0);
@@ -2781,11 +3667,26 @@ fn magma_routing_and_mid_side() {
 fn magma_high_quality_keeps_the_sound() {
     use crate::audio::modules::magma::{LOW_PASS, data};
     let p = magma_clean(LOW_PASS, 1, 2000.0, 0.3);
-    let plain = level_db(&drive_stereo(&mut magma(&p), 24_000, sine(1000.0, 0.1), None).0, 0.1);
+    let plain = level_db(
+        &drive_stereo(&mut magma(&p), 24_000, sine(1000.0, 0.1), None).0,
+        0.1,
+    );
     p.data[data::HQ].set(1.0);
-    let hq = level_db(&drive_stereo(&mut magma(&p), 24_000, sine(1000.0, 0.1), None).0, 0.1);
+    let hq = level_db(
+        &drive_stereo(&mut magma(&p), 24_000, sine(1000.0, 0.1), None).0,
+        0.1,
+    );
     assert!((plain - hq).abs() < 0.3, "{plain} vs {hq}");
-    let high = level_db(&drive_stereo(&mut magma(&magma_clean(LOW_PASS, 0, 20_000.0, 0.0)), 24_000, sine(15_000.0, 0.1), None).0, 0.1);
+    let high = level_db(
+        &drive_stereo(
+            &mut magma(&magma_clean(LOW_PASS, 0, 20_000.0, 0.0)),
+            24_000,
+            sine(15_000.0, 0.1),
+            None,
+        )
+        .0,
+        0.1,
+    );
     p.set(crate::audio::modules::magma::fp(0, 1), 20_000.0);
     assert!(high > -4.0, "the oversampler passes the top: {high}");
 }
@@ -2802,14 +3703,19 @@ fn magma_modulation_moves_the_filter() {
         drive_stereo(&mut fx, 960, sine(440.0, 0.1), None);
         seen.push(p.viz[viz::EFFECTIVE + fp(0, filt::FREQ)].get());
     }
-    let (lo, hi) = seen.iter().fold((1.0f32, 0.0f32), |(a, b), &v| (a.min(v), b.max(v)));
+    let (lo, hi) = seen
+        .iter()
+        .fold((1.0f32, 0.0f32), |(a, b), &v| (a.min(v), b.max(v)));
     assert!(lo >= 0.0 && hi - lo > 0.2, "swept: {lo}…{hi}");
     // A slot on another slot's level: the XLFO's depth follows XY 1.
     magma::add_slot(&p, modulation::SRC_XY, magma::SLOT0).expect("a second slot");
     p.set(magma::XY0, -1.0);
     p.set(magma::SLOT0 + 1, 1.0);
     drive_stereo(&mut fx, 960, sine(440.0, 0.1), None);
-    assert!(p.viz[viz::EFFECTIVE + magma::SLOT0].get() < 0.5, "slot level pulled down");
+    assert!(
+        p.viz[viz::EFFECTIVE + magma::SLOT0].get() < 0.5,
+        "slot level pulled down"
+    );
     let _ = data::SLOT_SOURCE;
 }
 
@@ -2820,14 +3726,28 @@ fn magma_envelope_follows_midi_notes() {
     p.data[data::EG].set(2.0); // MIDI trigger
     p.data[data::SOURCE_SHOWN].set(2.0); // shown in the panel: worked out
     let mut fx = magma(&p);
-    let ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing: true, restart: false };
-    let mut inputs = Box::new(Inputs { bufs: [[[0.1; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: true });
+    let ctx = ProcessCtx {
+        sample_rate: 48_000.0,
+        smooth: 0.01,
+        beat: 0.0,
+        beats_per_sample: 2.0 / 48_000.0,
+        playing: true,
+        restart: false,
+    };
+    let mut inputs = Box::new(Inputs {
+        bufs: [[[0.1; 64]; 2]; MAX_INPUTS],
+        connected: [false; MAX_INPUTS],
+        midi: MidiBuf::default(),
+        midi_connected: true,
+    });
     inputs.connected[0] = true;
     let mut out = vec![[[0.0f32; 64]; 2]; 1];
     let mut run = |inputs: &mut Inputs, blocks: usize, first: Option<[u8; 3]>| {
         for b in 0..blocks {
             inputs.midi.clear();
-            if b == 0 && let Some(msg) = first {
+            if b == 0
+                && let Some(msg) = first
+            {
                 inputs.midi.push(0, msg);
             }
             fx.process(&ctx, inputs, &mut out, 64);
@@ -2837,7 +3757,11 @@ fn magma_envelope_follows_midi_notes() {
     let eg = viz::SOURCES_AT + modulation::SRC_EG - 1;
     assert_eq!(p.viz[eg].get(), 0.0);
     run(&mut inputs, 400, Some([0x90, 60, 100]));
-    assert!((p.viz[eg].get() - 0.5).abs() < 0.05, "sustain: {}", p.viz[eg].get());
+    assert!(
+        (p.viz[eg].get() - 0.5).abs() < 0.05,
+        "sustain: {}",
+        p.viz[eg].get()
+    );
     run(&mut inputs, 750, Some([0x80, 60, 0]));
     assert!(p.viz[eg].get() < 0.01, "released: {}", p.viz[eg].get());
     let _ = magma::FILTERS;
@@ -2886,8 +3810,20 @@ fn run_pops(
 ) -> (Vec<f32>, Vec<(usize, [u8; 3])>) {
     use crate::audio::modules::pops::Pops;
     let mut proc = Pops::new(p.clone(), 48_000.0);
-    let mut ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing, restart: false };
-    let mut inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: true });
+    let mut ctx = ProcessCtx {
+        sample_rate: 48_000.0,
+        smooth: 0.01,
+        beat: 0.0,
+        beats_per_sample: 2.0 / 48_000.0,
+        playing,
+        restart: false,
+    };
+    let mut inputs = Box::new(Inputs {
+        bufs: [[[0.0; 64]; 2]; MAX_INPUTS],
+        connected: [false; MAX_INPUTS],
+        midi: MidiBuf::default(),
+        midi_connected: true,
+    });
     let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
     let (mut left, mut sent) = (Vec::new(), Vec::new());
     for b in 0..blocks {
@@ -2898,7 +3834,11 @@ fn run_pops(
         proc.process(&ctx, &inputs, &mut outputs, 64);
         left.extend_from_slice(&outputs[0][0]);
         if let Some(out) = proc.midi_out() {
-            sent.extend(out.events().iter().map(|e| (b * 64 + e.frame as usize, e.data)));
+            sent.extend(
+                out.events()
+                    .iter()
+                    .map(|e| (b * 64 + e.frame as usize, e.data)),
+            );
         }
         if playing {
             ctx.beat += ctx.beats_per_sample * 64.0;
@@ -2916,24 +3856,35 @@ fn pops_rhythms_are_well_formed_and_combine() {
     use crate::audio::modules::pops::rhythms::{RHYTHMS, combine};
     use crate::audio::modules::pops::voices::{BASE, HIHAT};
     for r in &RHYTHMS {
-        assert!(r.len >= 6 && r.len <= 32 && matches!(r.per_beat, 3 | 4), "{}", r.name);
+        assert!(
+            r.len >= 6 && r.len <= 32 && matches!(r.per_beat, 3 | 4),
+            "{}",
+            r.name
+        );
         assert!(r.rows.iter().any(|&b| b != 0), "{} plays something", r.name);
         assert_eq!(r.len % r.per_beat, 0, "{}: whole beats", r.name);
     }
     // ROCK 1 + ROCK 2: ROCK 1's grid, ROCK 2's sixteenth hats added.
     let both = combine(&[6, 16]).unwrap();
     assert_eq!(both.rows[HIHAT].count_ones(), 32);
-    assert_eq!(both.rows[BASE], RHYTHMS[6].rows[BASE] | RHYTHMS[16].rows[BASE]);
+    assert_eq!(
+        both.rows[BASE],
+        RHYTHMS[6].rows[BASE] | RHYTHMS[16].rows[BASE]
+    );
     assert!(combine(&[]).is_none());
 }
 
 #[test]
 fn pops_follows_the_board_tempo() {
-    use crate::audio::modules::pops::{data, voices::BASE, INSTRUMENTS};
+    use crate::audio::modules::pops::{INSTRUMENTS, data, voices::BASE};
     let p = pops_params(); // ROCK 1, SYNC on
     let (left, sent) = run_pops(&p, 1500, true, &[]);
     // At 120 BPM a sixteenth is 6000 frames: bass drum on steps 0, 8, 16, 24.
-    let kicks: Vec<usize> = sent.iter().filter(|(_, m)| m[0] == 0x99 && m[1] == INSTRUMENTS[BASE].note).map(|(f, _)| *f).collect();
+    let kicks: Vec<usize> = sent
+        .iter()
+        .filter(|(_, m)| m[0] == 0x99 && m[1] == INSTRUMENTS[BASE].note)
+        .map(|(f, _)| *f)
+        .collect();
     assert_eq!(kicks, [0, 48_000]);
     assert!(rms_of(&left) > 0.01, "makes sound");
     // Transport stopped: nothing.
@@ -2944,19 +3895,29 @@ fn pops_follows_the_board_tempo() {
     p.data[data::RUNNING].set(1.0);
     p.set(crate::audio::modules::pops::TEMPO, 60.0);
     let (_, sent) = run_pops(&p, 1600, false, &[]);
-    let kicks: Vec<usize> = sent.iter().filter(|(_, m)| m[0] == 0x99 && m[1] == 36).map(|(f, _)| *f).collect();
+    let kicks: Vec<usize> = sent
+        .iter()
+        .filter(|(_, m)| m[0] == 0x99 && m[1] == 36)
+        .map(|(f, _)| *f)
+        .collect();
     assert_eq!(kicks, [0, 96_000]);
 }
 
 #[test]
 fn pops_plays_midi_notes_user_patterns_and_mutes() {
-    use crate::audio::modules::pops::{self, data, voices::{BASE, SNARE1}, viz};
+    use crate::audio::modules::pops::{
+        self, data, viz,
+        voices::{BASE, SNARE1},
+    };
     let p = pops_params();
     p.data[data::POWER].set(0.0);
     // A MIDI note plays its instrument, rhythm off.
     let (left, sent) = run_pops(&p, 200, true, &[(10, [0x99, 38, 120])]);
     assert!(sent.is_empty(), "notes played in are not sent out");
-    assert!(peak_of(&left[..640]) == 0.0 && rms_of(&left[640..640 + 9600]) > 0.01, "snare from MIDI");
+    assert!(
+        peak_of(&left[..640]) == 0.0 && rms_of(&left[640..640 + 9600]) > 0.01,
+        "snare from MIDI"
+    );
     assert_eq!(p.viz[viz::HITS + SNARE1].get(), 1.0);
     // A user pattern: one snare on step 4 of 8.
     p.data[data::POWER].set(1.0);
@@ -2965,7 +3926,11 @@ fn pops_plays_midi_notes_user_patterns_and_mutes() {
     pops::set_shape(&p, 7, 8, false);
     pops::set_hit(&p, 7, SNARE1, 4, true);
     let (_, sent) = run_pops(&p, 1600, true, &[]);
-    let snares: Vec<usize> = sent.iter().filter(|(_, m)| m[0] == 0x99 && m[1] == 38).map(|(f, _)| *f).collect();
+    let snares: Vec<usize> = sent
+        .iter()
+        .filter(|(_, m)| m[0] == 0x99 && m[1] == 38)
+        .map(|(f, _)| *f)
+        .collect();
     assert_eq!(snares, [24_000, 72_000]);
     // Mute it.
     p.data[data::MUTE + SNARE1].set(1.0);
@@ -2981,9 +3946,19 @@ fn pops_every_instrument_sounds() {
         let p = pops_params();
         p.data[data::POWER].set(0.0);
         let note = info.note;
-        let (left, _) = run_pops(&p, 400, true, &[(0, [0x99, note, 127]), (50, [0x89, note, 0])]);
+        let (left, _) = run_pops(
+            &p,
+            400,
+            true,
+            &[(0, [0x99, note, 127]), (50, [0x89, note, 0])],
+        );
         assert!(left.iter().all(|s| s.is_finite()));
-        assert!(rms_of(&left[..12_000]) > 0.002, "{} is silent: {}", info.name, rms_of(&left[..12_000]));
+        assert!(
+            rms_of(&left[..12_000]) > 0.002,
+            "{} is silent: {}",
+            info.name,
+            rms_of(&left[..12_000])
+        );
         assert!(peak_of(&left) <= 1.0);
     }
 }
@@ -3007,12 +3982,24 @@ fn pops_waveforms_can_be_reshaped() {
     // A square: more energy under the same peak.
     p.set(ip(BASE, knob::WAVE), 1.0);
     let square = render(&p, BASE, 19_200);
-    assert!(rms_of(&square) > rms_of(&sine) * 1.2 && peak_of(&square) <= 1.2, "{} {} {} {}", rms_of(&square), rms_of(&sine), peak_of(&square), peak_of(&sine));
+    assert!(
+        rms_of(&square) > rms_of(&sine) * 1.2 && peak_of(&square) <= 1.2,
+        "{} {} {} {}",
+        rms_of(&square),
+        rms_of(&sine),
+        peak_of(&square),
+        peak_of(&sine)
+    );
     p.set(ip(BASE, knob::WAVE), 0.0);
     // BEND up: the hit starts two octaves higher and glides back to TUNE.
     p.set(ip(BASE, knob::BEND), 1.0);
     let bent = render(&p, BASE, 19_200);
-    assert!(upward(&bent[..960]) > upward(&sine[..960]) + 1, "{} vs {}", upward(&bent[..960]), upward(&sine[..960]));
+    assert!(
+        upward(&bent[..960]) > upward(&sine[..960]) + 1,
+        "{} vs {}",
+        upward(&bent[..960]),
+        upward(&sine[..960])
+    );
     assert!(upward(&bent[9600..14_400]).abs_diff(upward(&sine[9600..14_400])) <= 1);
     p.set(ip(BASE, knob::BEND), 0.0);
     // DRIVE: flattened, louder, never over the top.
@@ -3033,7 +4020,12 @@ fn pops_waveforms_can_be_reshaped() {
             p.set(ip(inst, knob::DRIVE), drive);
             let hit = render(&p, inst, (pops::hit_seconds(&p, inst) * 48_000.0) as usize);
             assert!(hit.iter().all(|y| y.is_finite()), "{inst}");
-            assert!(rms_of(&hit) > 0.001 && peak_of(&hit) < 4.0, "{inst}: {} {}", rms_of(&hit), peak_of(&hit));
+            assert!(
+                rms_of(&hit) > 0.001 && peak_of(&hit) < 4.0,
+                "{inst}: {} {}",
+                rms_of(&hit),
+                peak_of(&hit)
+            );
         }
     }
 }
@@ -3065,8 +4057,14 @@ fn tape_is_clean_when_quiet_and_saturates_when_driven() {
     let (l, _) = drive_stereo(&mut t, 24_000, sine(1000.0, 0.05), None);
     let tail = &l[14_400..24_000];
     let fundamental = tone_amp(tail, 1000.0);
-    assert!((fundamental / 0.05 - 1.0).abs() < 0.12, "unity when quiet: {fundamental}");
-    assert!(tone_amp(tail, 3000.0) < fundamental * 0.003, "clean when quiet");
+    assert!(
+        (fundamental / 0.05 - 1.0).abs() < 0.12,
+        "unity when quiet: {fundamental}"
+    );
+    assert!(
+        tone_amp(tail, 3000.0) < fundamental * 0.003,
+        "clean when quiet"
+    );
     // Driven 18 dB (AUTO keeps the level): squeezed, with harmonics.
     p.set(INPUT, 18.0);
     let mut t = Tape::new(p.clone(), 48_000.0);
@@ -3074,8 +4072,15 @@ fn tape_is_clean_when_quiet_and_saturates_when_driven() {
     let tail = &l[14_400..24_000];
     let fundamental = tone_amp(tail, 1000.0);
     assert!(fundamental < 0.25 * 0.7, "squeezed: {fundamental}");
-    assert!(tone_amp(tail, 3000.0) > fundamental * 0.03, "third harmonic");
-    assert!(p.viz[viz::SAT].get() < -1.0, "the panel sees it: {}", p.viz[viz::SAT].get());
+    assert!(
+        tone_amp(tail, 3000.0) > fundamental * 0.03,
+        "third harmonic"
+    );
+    assert!(
+        p.viz[viz::SAT].get() < -1.0,
+        "the panel sees it: {}",
+        p.viz[viz::SAT].get()
+    );
 }
 
 #[test]
@@ -3087,7 +4092,11 @@ fn tape_lines_up_dry_and_wet() {
         p.set(MIX, mix);
         let mut t = Tape::new(p, 48_000.0);
         let (l, _) = drive_stereo(&mut t, 9600, click, None);
-        l.iter().enumerate().max_by(|a, b| a.1.abs().total_cmp(&b.1.abs())).unwrap().0
+        l.iter()
+            .enumerate()
+            .max_by(|a, b| a.1.abs().total_cmp(&b.1.abs()))
+            .unwrap()
+            .0
     };
     let (dry, wet) = (peak_at(0.0), peak_at(1.0));
     assert!(dry.abs_diff(wet) <= 3, "dry {dry}, wet {wet}");
@@ -3112,7 +4121,10 @@ fn tape_stops_and_spins_back_up() {
     let (starting, _) = drive_stereo(&mut t, 48_000, &tone, None);
     assert_eq!(p.viz[viz::SPEED].get(), 1.0);
     let back = rms_of(&starting[33_600..]);
-    assert!((back / level - 1.0).abs() < 0.1, "back to {back} from {level}");
+    assert!(
+        (back / level - 1.0).abs() < 0.1,
+        "back to {back} from {level}"
+    );
     assert!(starting.iter().all(|s| s.is_finite() && s.abs() <= 1.0));
 }
 
@@ -3164,7 +4176,12 @@ fn every_tape_setting_stays_finite_and_bounded() {
             for tape in 0..3 {
                 for eq in 0..2 {
                     let p = tape_params();
-                    for (i, v) in [(data::MACHINE, machine), (data::SPEED, speed), (data::TAPE, tape), (data::EQ, eq)] {
+                    for (i, v) in [
+                        (data::MACHINE, machine),
+                        (data::SPEED, speed),
+                        (data::TAPE, tape),
+                        (data::EQ, eq),
+                    ] {
                         p.data[i].set(v as f32);
                     }
                     p.set(INPUT, 18.0);
@@ -3200,9 +4217,17 @@ fn effects_bypass_without_clicks() {
     let dry = rms_of(&render_buf(&mut e, 9600));
     assert!(dry > filtered * 10.0, "bypassed {dry}, filtered {filtered}");
     // No jumps bigger than the sine itself makes (4 kHz at this level).
-    let steepest = fade.chunks(2).collect::<Vec<_>>().windows(2).map(|w| (w[1][0] - w[0][0]).abs()).fold(0.0, f32::max);
+    let steepest = fade
+        .chunks(2)
+        .collect::<Vec<_>>()
+        .windows(2)
+        .map(|w| (w[1][0] - w[0][0]).abs())
+        .fold(0.0, f32::max);
     let sine_step = dry * std::f32::consts::SQRT_2 * std::f32::consts::TAU * 4000.0 / 48_000.0;
-    assert!(steepest <= sine_step * 1.1, "click: {steepest} > {sine_step}");
+    assert!(
+        steepest <= sine_step * 1.1,
+        "click: {steepest} > {sine_step}"
+    );
     // And back.
     g.node(f).unwrap().set_bypass(false);
     render_buf(&mut e, 9600);
@@ -3218,8 +4243,20 @@ fn effects_bypass_without_clicks() {
 fn run_nullpunkt(p: &Arc<ModuleParams>, blocks: usize, playing: bool) -> Vec<f32> {
     use crate::audio::modules::nullpunkt::Nullpunkt;
     let mut proc = Nullpunkt::new(p.clone(), 48_000.0);
-    let mut ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing, restart: false };
-    let inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: false });
+    let mut ctx = ProcessCtx {
+        sample_rate: 48_000.0,
+        smooth: 0.01,
+        beat: 0.0,
+        beats_per_sample: 2.0 / 48_000.0,
+        playing,
+        restart: false,
+    };
+    let inputs = Box::new(Inputs {
+        bufs: [[[0.0; 64]; 2]; MAX_INPUTS],
+        connected: [false; MAX_INPUTS],
+        midi: MidiBuf::default(),
+        midi_connected: false,
+    });
     let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
     let mut left = Vec::new();
     for _ in 0..blocks {
@@ -3234,7 +4271,9 @@ fn run_nullpunkt(p: &Arc<ModuleParams>, blocks: usize, playing: bool) -> Vec<f32
 
 /// Nullpunkt with nothing on: no voices, no field, no glitches.
 fn quiet_nullpunkt() -> Arc<ModuleParams> {
-    use crate::audio::modules::nullpunkt::{CUT, JITTER, MUTATE, SKIP, STUTTER, data, knob, voice, vp};
+    use crate::audio::modules::nullpunkt::{
+        CUT, JITTER, MUTATE, SKIP, STUTTER, data, knob, voice, vp,
+    };
     let p = Arc::new(ModuleParams::new(ModuleKind::Nullpunkt));
     for v in 0..voice::COUNT {
         p.set(vp(v, knob::LEVEL), 0.0);
@@ -3271,10 +4310,23 @@ fn nullpunkt_voices_play_on_the_board_clock() {
         regenerate(&p, v);
         // 120 BPM, sixteenths: a step every 6000 frames, a hit every fourth.
         let left = run_nullpunkt(&p, 1500, true);
-        assert_eq!(p.viz[viz::HITS + v].get(), 4.0, "{}: steps 0, 4, 8, 12", voice::NAMES[v]);
+        assert_eq!(
+            p.viz[viz::HITS + v].get(),
+            4.0,
+            "{}: steps 0, 4, 8, 12",
+            voice::NAMES[v]
+        );
         assert!(left.iter().all(|s| s.is_finite() && s.abs() <= 1.0));
-        assert!(peak_of(&left[..3000]) > 0.01, "{} sounds on step 0", voice::NAMES[v]);
-        assert!(peak_of(&left[12_100..23_900]) < peak_of(&left[..3000]) * 0.5, "{} quieter between hits", voice::NAMES[v]);
+        assert!(
+            peak_of(&left[..3000]) > 0.01,
+            "{} sounds on step 0",
+            voice::NAMES[v]
+        );
+        assert!(
+            peak_of(&left[12_100..23_900]) < peak_of(&left[..3000]) * 0.5,
+            "{} quieter between hits",
+            voice::NAMES[v]
+        );
         // Stopped: nothing.
         let p2 = quiet_nullpunkt();
         p2.set(vp(v, knob::LEVEL), 0.8);
@@ -3284,7 +4336,9 @@ fn nullpunkt_voices_play_on_the_board_clock() {
 
 #[test]
 fn nullpunkt_cuts_steps_and_survives_every_glitch() {
-    use crate::audio::modules::nullpunkt::{CRUSH, CUT, MUTATE, RATE, REVERSE, SKIP, STATIC, WARP, knob, regenerate, voice, vp};
+    use crate::audio::modules::nullpunkt::{
+        CRUSH, CUT, MUTATE, RATE, REVERSE, SKIP, STATIC, WARP, knob, regenerate, voice, vp,
+    };
     // DATA on every step, ringing through it; CUT at full: about half the
     // steps fall silent.
     let p = quiet_nullpunkt();
@@ -3296,7 +4350,11 @@ fn nullpunkt_cuts_steps_and_survives_every_glitch() {
     regenerate(&p, voice::DATA);
     p.set(CUT, 1.0);
     let left = run_nullpunkt(&p, 3000, true);
-    let silent = left.chunks(6000).skip(1).filter(|step| rms_of(&step[200..5800]) < 1e-3).count();
+    let silent = left
+        .chunks(6000)
+        .skip(1)
+        .filter(|step| rms_of(&step[200..5800]) < 1e-3)
+        .count();
     assert!((6..26).contains(&silent), "{silent} of 31 steps cut");
     // Everything at once stays finite and bounded.
     let p = Arc::new(ModuleParams::new(ModuleKind::Nullpunkt));
@@ -3325,7 +4383,9 @@ fn nullpunkt_cuts_steps_and_survives_every_glitch() {
 
 #[test]
 fn nullpunkt_steps_can_be_edited_rotated_and_muted() {
-    use crate::audio::modules::nullpunkt::{data, knob, rotate, set_step, set_steps, steps, viz, voice, vp};
+    use crate::audio::modules::nullpunkt::{
+        data, knob, rotate, set_step, set_steps, steps, viz, voice, vp,
+    };
     let p = quiet_nullpunkt();
     let sub = voice::SUB;
     p.set(vp(sub, knob::LEVEL), 0.8);
@@ -3335,7 +4395,10 @@ fn nullpunkt_steps_can_be_edited_rotated_and_muted() {
     set_step(&p, sub, 3, true);
     let left = run_nullpunkt(&p, 375, true);
     assert_eq!(p.viz[viz::HITS + sub].get(), 1.0);
-    assert!(peak_of(&left[..17_900]) < 1e-6 && peak_of(&left[18_000..21_000]) > 0.05, "struck on step 3");
+    assert!(
+        peak_of(&left[..17_900]) < 1e-6 && peak_of(&left[18_000..21_000]) > 0.05,
+        "struck on step 3"
+    );
     // Rotating turns it a step later, within the length.
     rotate(&p, sub, 1);
     assert_eq!(steps(&p, sub), 1 << 4);
@@ -3356,21 +4419,33 @@ fn nullpunkt_randomizes_what_is_not_muted() {
     randomize(&p, 1234, true);
     let after: Vec<u32> = (0..voice::COUNT).map(|v| steps(&p, v)).collect();
     assert_ne!(before, after);
-    assert_eq!((steps(&p, voice::SINE), p.get(vp(voice::SINE, knob::TONE))), sine, "muted voices stay");
+    assert_eq!(
+        (steps(&p, voice::SINE), p.get(vp(voice::SINE, knob::TONE))),
+        sine,
+        "muted voices stay"
+    );
     for v in 0..voice::COUNT {
         let (_, len, _) = pattern(&p, v);
-        assert!(steps(&p, v) & ((1u64 << len) - 1) as u32 != 0, "something to play");
+        assert!(
+            steps(&p, v) & ((1u64 << len) - 1) as u32 != 0,
+            "something to play"
+        );
     }
     // The same seed, the same scene.
     let q = Arc::new(ModuleParams::new(ModuleKind::Nullpunkt));
     q.data[data::MUTE + voice::SINE].set(1.0);
     randomize(&q, 1234, true);
-    assert_eq!(after, (0..voice::COUNT).map(|v| steps(&q, v)).collect::<Vec<_>>());
+    assert_eq!(
+        after,
+        (0..voice::COUNT).map(|v| steps(&q, v)).collect::<Vec<_>>()
+    );
 }
 
 #[test]
 fn nullpunkt_scenes_save_as_presets() {
-    use crate::audio::modules::nullpunkt::{FACTORY, SKIP, data, load_factory, set_step, steps, voice};
+    use crate::audio::modules::nullpunkt::{
+        FACTORY, SKIP, data, load_factory, set_step, steps, voice,
+    };
     use crate::presets::{self, ModulePreset};
     let p = Arc::new(ModuleParams::new(ModuleKind::Nullpunkt));
     set_step(&p, voice::CLICK, 1, true);
@@ -3396,7 +4471,10 @@ fn nullpunkt_scenes_save_as_presets() {
     for (k, (name, _)) in FACTORY.iter().enumerate() {
         load_factory(&q, k);
         let left = run_nullpunkt(&q, 1500, true);
-        assert!(left.iter().all(|s| s.is_finite() && s.abs() <= 1.0), "{name}");
+        assert!(
+            left.iter().all(|s| s.is_finite() && s.abs() <= 1.0),
+            "{name}"
+        );
         assert!(rms_of(&left) > 0.001, "{name} plays");
     }
 }
@@ -3414,7 +4492,10 @@ fn nullpunkt_plays_triplets_and_probabilities_on_the_grid() {
     p.data[data::DIV].set(2.0);
     let left = run_nullpunkt(&p, 750, true);
     assert_eq!(p.viz[viz::HITS + sub].get(), 2.0);
-    assert!(peak_of(&left[23_900..24_000]) < peak_of(&left[24_000..25_000]) * 0.2, "the second hit on frame 24000");
+    assert!(
+        peak_of(&left[23_900..24_000]) < peak_of(&left[24_000..25_000]) * 0.2,
+        "the second hit on frame 24000"
+    );
     // PROB: no hits at 0; about half at 0.5.
     set_steps(&p, sub, 0b111111);
     p.set(vp(sub, knob::PROB), 0.0);
@@ -3428,7 +4509,9 @@ fn nullpunkt_plays_triplets_and_probabilities_on_the_grid() {
 
 #[test]
 fn nullpunkt_stutters_in_time() {
-    use crate::audio::modules::nullpunkt::{GRAIN, SCATTER, STUTTER, STUTTER_LEN, knob, set_steps, voice, vp};
+    use crate::audio::modules::nullpunkt::{
+        GRAIN, SCATTER, STUTTER, STUTTER_LEN, knob, set_steps, voice, vp,
+    };
     let p = quiet_nullpunkt();
     let sub = voice::SUB;
     p.set(vp(sub, knob::LEVEL), 0.8);
@@ -3443,7 +4526,9 @@ fn nullpunkt_stutters_in_time() {
     let left = run_nullpunkt(&p, 1500, true);
     for step in 1..15 {
         let at = step * 6000;
-        let worst = (64..2900).map(|u| (left[at + 3000 + u] - left[at + u]).abs()).fold(0.0, f32::max);
+        let worst = (64..2900)
+            .map(|u| (left[at + 3000 + u] - left[at + u]).abs())
+            .fold(0.0, f32::max);
         assert!(worst < 1e-3, "step {step}: off by {worst}");
     }
 }
@@ -3454,12 +4539,32 @@ type AetherRun = (Vec<f32>, Vec<f32>, Vec<(usize, f32, u8)>);
 
 /// Aether alone for `blocks` blocks at 120 BPM, its MIDI cable carrying
 /// `midi` (block, message) if any.
-fn run_aether(p: &Arc<ModuleParams>, blocks: usize, playing: bool, midi: &[(usize, [u8; 3])]) -> AetherRun {
+fn run_aether(
+    p: &Arc<ModuleParams>,
+    blocks: usize,
+    playing: bool,
+    midi: &[(usize, [u8; 3])],
+) -> AetherRun {
     use crate::audio::modules::aether::{Aether, viz};
-    let mut proc = Aether::new(p.clone(), Arc::new(crate::audio::midi::MidiState::new()), 48_000.0);
-    let mut ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing, restart: false };
-    let mut inputs =
-        Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: !midi.is_empty() });
+    let mut proc = Aether::new(
+        p.clone(),
+        Arc::new(crate::audio::midi::MidiState::new()),
+        48_000.0,
+    );
+    let mut ctx = ProcessCtx {
+        sample_rate: 48_000.0,
+        smooth: 0.01,
+        beat: 0.0,
+        beats_per_sample: 2.0 / 48_000.0,
+        playing,
+        restart: false,
+    };
+    let mut inputs = Box::new(Inputs {
+        bufs: [[[0.0; 64]; 2]; MAX_INPUTS],
+        connected: [false; MAX_INPUTS],
+        midi: MidiBuf::default(),
+        midi_connected: !midi.is_empty(),
+    });
     let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
     let (mut left, mut right, mut events) = (Vec::new(), Vec::new(), Vec::new());
     let mut seen = p.viz[viz::FIRED].get() as u32;
@@ -3505,13 +4610,22 @@ fn aether_sounds_warm_finite_and_under_full_scale() {
     let warm = brightness(body);
     assert!(warm < 0.1, "warm, not bright: {warm}");
     // Wide: the sides differ.
-    let corr = l[48_000..].iter().zip(&r[48_000..]).map(|(a, b)| a * b).sum::<f32>() / (rms_of(&l[48_000..]) * rms_of(&r[48_000..]) * (l.len() - 48_000) as f32);
+    let corr = l[48_000..]
+        .iter()
+        .zip(&r[48_000..])
+        .map(|(a, b)| a * b)
+        .sum::<f32>()
+        / (rms_of(&l[48_000..]) * rms_of(&r[48_000..]) * (l.len() - 48_000) as f32);
     assert!(corr < 0.95, "stereo, not mono: {corr}");
 
     // TONE opens it up.
     p.set(TONE, 1.0);
     let (bright, _, _) = run_aether(&p, 2000, true, &[]);
-    assert!(brightness(&bright[48_000..]) > warm * 1.5, "TONE brightens: {} vs {warm}", brightness(&bright[48_000..]));
+    assert!(
+        brightness(&bright[48_000..]) > warm * 1.5,
+        "TONE brightens: {} vs {warm}",
+        brightness(&bright[48_000..])
+    );
 
     // Everything up, everything down: never past full scale.
     for setting in [0.0, 1.0] {
@@ -3526,19 +4640,26 @@ fn aether_sounds_warm_finite_and_under_full_scale() {
             p.set_mode(mode);
             let (l, r, _) = run_aether(&p, 1500, true, &[]);
             let peak = l.iter().chain(&r).fold(0.0f32, |m, s| m.max(s.abs()));
-            assert!(l.iter().chain(&r).all(|s| s.is_finite()) && peak < 1.0, "setting {setting} mode {mode}: {peak}");
+            assert!(
+                l.iter().chain(&r).all(|s| s.is_finite()) && peak < 1.0,
+                "setting {setting} mode {mode}: {peak}"
+            );
         }
     }
 }
 
 #[test]
 fn aether_evolves_slowly_and_the_same_from_start() {
-    use crate::audio::modules::aether::{EVOLVE, GLITCH, viz};
     use crate::audio::modules::aether::fractal::PARTIALS;
+    use crate::audio::modules::aether::{EVOLVE, GLITCH, viz};
     let p = Arc::new(ModuleParams::new(ModuleKind::Aether));
     p.set(GLITCH, 0.0);
     p.set(EVOLVE, 0.0); // a bar: 2 s at 120 BPM
-    let snapshot = |p: &ModuleParams| -> Vec<f32> { (0..5 * PARTIALS).map(|k| p.viz[viz::AMP + k].get()).collect() };
+    let snapshot = |p: &ModuleParams| -> Vec<f32> {
+        (0..5 * PARTIALS)
+            .map(|k| p.viz[viz::AMP + k].get())
+            .collect()
+    };
     // The partials' levels move while the knobs stand still…
     let mut shots = Vec::new();
     let mut colors = Vec::new();
@@ -3547,17 +4668,38 @@ fn aether_evolves_slowly_and_the_same_from_start() {
         shots.push(snapshot(&p));
         colors.push(p.viz[viz::COLOR].get());
     }
-    let change = |a: &[f32], b: &[f32]| a.iter().zip(b).map(|(x, y)| (x - y).abs()).sum::<f32>() / a.iter().sum::<f32>().max(1e-9);
+    let change = |a: &[f32], b: &[f32]| {
+        a.iter().zip(b).map(|(x, y)| (x - y).abs()).sum::<f32>() / a.iter().sum::<f32>().max(1e-9)
+    };
     // (each run starts from Start: the same moment every time)
-    assert!(change(&shots[0], &shots[5]) < 1e-6, "from Start it plays the same");
+    assert!(
+        change(&shots[0], &shots[5]) < 1e-6,
+        "from Start it plays the same"
+    );
 
     // Over one long run, sampled as it goes.
     let mut proc_shots = Vec::new();
     {
         use crate::audio::modules::aether::Aether;
-        let mut proc = Aether::new(p.clone(), Arc::new(crate::audio::midi::MidiState::new()), 48_000.0);
-        let mut ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing: true, restart: false };
-        let inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: false });
+        let mut proc = Aether::new(
+            p.clone(),
+            Arc::new(crate::audio::midi::MidiState::new()),
+            48_000.0,
+        );
+        let mut ctx = ProcessCtx {
+            sample_rate: 48_000.0,
+            smooth: 0.01,
+            beat: 0.0,
+            beats_per_sample: 2.0 / 48_000.0,
+            playing: true,
+            restart: false,
+        };
+        let inputs = Box::new(Inputs {
+            bufs: [[[0.0; 64]; 2]; MAX_INPUTS],
+            connected: [false; MAX_INPUTS],
+            midi: MidiBuf::default(),
+            midi_connected: false,
+        });
         let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
         for b in 0..750 * 8 {
             proc.process(&ctx, &inputs, &mut outputs, 64);
@@ -3568,23 +4710,33 @@ fn aether_evolves_slowly_and_the_same_from_start() {
         }
     }
     // Slowly: little changes in a 20th of a second…
-    let steps: Vec<f32> = proc_shots.windows(2).map(|w| change(&w[0].0, &w[1].0)).collect();
+    let steps: Vec<f32> = proc_shots
+        .windows(2)
+        .map(|w| change(&w[0].0, &w[1].0))
+        .collect();
     let far = change(&proc_shots[0].0, &proc_shots[proc_shots.len() - 1].0);
     assert!(far > 0.1, "the timbre has moved over 8 s: {far}");
     let colors: Vec<f32> = proc_shots.iter().map(|s| s.1).collect();
-    let spread = colors.iter().fold(f32::MIN, |m, c| m.max(*c)) - colors.iter().fold(f32::MAX, |m, c| m.min(*c));
+    let spread = colors.iter().fold(f32::MIN, |m, c| m.max(*c))
+        - colors.iter().fold(f32::MAX, |m, c| m.min(*c));
     assert!(spread > 0.02, "COLOR wanders: {colors:?}");
     assert!(steps.iter().all(|s| s.is_finite()));
     // Synced, the motion is on the bars: a period is a bar of 4 beats.
     let (_, _, pos) = proc_shots[3];
     let beats = 375.0 * 4.0 * 64.0 * 2.0 / 48_000.0;
-    assert!((pos - beats / 4.0).abs() < 0.01, "position {pos} after {beats} beats");
+    assert!(
+        (pos - beats / 4.0).abs() < 0.01,
+        "position {pos} after {beats} beats"
+    );
 
     // RESEED: another evolution.
     let before = colors.clone();
     crate::audio::modules::aether::reseed(&p, 777);
     run_aether(&p, 375 * 3, true, &[]);
-    assert!((p.viz[viz::COLOR].get() - before[2]).abs() > 1e-4, "another seed, another path");
+    assert!(
+        (p.viz[viz::COLOR].get() - before[2]).abs() > 1e-4,
+        "another seed, another path"
+    );
 }
 
 /// Whether `hz` is a harmonic of one of `notes`, an octave or more down
@@ -3605,7 +4757,9 @@ fn on_a_harmonic(hz: f32, notes: &[f32], octaves_up: bool) -> bool {
 #[test]
 fn aether_glitches_ring_on_harmonics_in_time() {
     use crate::audio::modules::aether::glitch::{PING, SKIP as SKIPPED};
-    use crate::audio::modules::aether::{DECAY, GLITCH, HARM, MORPH, REPEAT, SKIP, SPARK, data, knob_chord};
+    use crate::audio::modules::aether::{
+        DECAY, GLITCH, HARM, MORPH, REPEAT, SKIP, SPARK, data, knob_chord,
+    };
     let p = Arc::new(ModuleParams::new(ModuleKind::Aether));
     p.set(MORPH, 0.0); // the voices barely drift
     p.set(GLITCH, 1.0);
@@ -3618,7 +4772,10 @@ fn aether_glitches_ring_on_harmonics_in_time() {
     for &(frame, hz, kind) in &events {
         assert_eq!(kind, PING);
         assert!(frame % 24_000 < 64, "on the beat: frame {frame}");
-        assert!(on_a_harmonic(hz, &notes, false), "{hz} Hz is not a harmonic of {notes:?}");
+        assert!(
+            on_a_harmonic(hz, &notes, false),
+            "{hz} Hz is not a harmonic of {notes:?}"
+        );
     }
     // In tune, not noise: the glitches alone (with them minus without)
     // ring at their pitch and not a quarter tone off.
@@ -3633,8 +4790,12 @@ fn aether_glitches_ring_on_harmonics_in_time() {
             .map(|(i, x)| x * (0.5 - 0.5 * (std::f32::consts::TAU * i as f32 / len as f32).cos()))
             .collect();
         let tuned = tone_amp(&window, hz);
-        let off = tone_amp(&window, hz * 2f32.powf(1.0 / 12.0)).max(tone_amp(&window, hz * 2f32.powf(-1.0 / 12.0)));
-        assert!(tuned > 4.0 * off, "{hz} Hz: {tuned} on pitch, {off} a semitone off");
+        let off = tone_amp(&window, hz * 2f32.powf(1.0 / 12.0))
+            .max(tone_amp(&window, hz * 2f32.powf(-1.0 / 12.0)));
+        assert!(
+            tuned > 4.0 * off,
+            "{hz} Hz: {tuned} on pitch, {off} a semitone off"
+        );
     }
 
     // HARM keeps them low: at 2, only the octave (folded down or not).
@@ -3665,13 +4826,19 @@ fn aether_glitches_ring_on_harmonics_in_time() {
     p.set(REPEAT, 1.0);
     p.set(SPARK, 1.0);
     let (_, _, events) = run_aether(&p, 3000, true, &[]);
-    assert!(events.len() > 12, "ratchets: {} glitches in 8 beats", events.len());
+    assert!(
+        events.len() > 12,
+        "ratchets: {} glitches in 8 beats",
+        events.len()
+    );
     let subdivided = events.iter().filter(|e| e.0 % 24_000 >= 64).count();
     assert!(subdivided > 0);
     for &(frame, _, _) in &events {
         // Every ratchet sits on a 2, 3, 4, 6 or 8-way split of the beat.
         let within = (frame % 24_000) as f32 / 24_000.0;
-        let on_grid = [2.0, 3.0, 4.0, 6.0, 8.0].iter().any(|d: &f32| ((within * d).round() - within * d).abs() * 24_000.0 / d < 64.0);
+        let on_grid = [2.0, 3.0, 4.0, 6.0, 8.0]
+            .iter()
+            .any(|d: &f32| ((within * d).round() - within * d).abs() * 24_000.0 / d < 64.0);
         assert!(on_grid || within < 0.003, "frame {frame} off the grid");
     }
 
@@ -3686,7 +4853,11 @@ fn aether_plays_the_keys_latches_and_gates() {
     let p = Arc::new(ModuleParams::new(ModuleKind::Aether));
     p.set(GLITCH, 0.0);
     p.set(MORPH, 0.0);
-    let notes = |p: &ModuleParams| -> Vec<i32> { (0..5).map(|v| p.viz[viz::NOTE + v].get().round() as i32).collect() };
+    let notes = |p: &ModuleParams| -> Vec<i32> {
+        (0..5)
+            .map(|v| p.viz[viz::NOTE + v].get().round() as i32)
+            .collect()
+    };
     // One key: the chord shape on it.
     let one = [(10, [0x90, 48, 100])];
     run_aether(&p, 400, true, &one);
@@ -3694,7 +4865,11 @@ fn aether_plays_the_keys_latches_and_gates() {
     let shape = CHORDS[0].2;
     assert_eq!(notes(&p), shape.iter().map(|s| 48 + s).collect::<Vec<_>>());
     // Three keys: themselves, doubled an octave up.
-    let three = [(10, [0x90, 50, 100]), (10, [0x90, 53, 100]), (10, [0x90, 57, 100])];
+    let three = [
+        (10, [0x90, 50, 100]),
+        (10, [0x90, 53, 100]),
+        (10, [0x90, 57, 100]),
+    ];
     run_aether(&p, 400, true, &three);
     assert_eq!(notes(&p), vec![50, 53, 57, 62, 65]);
     // Let go: latched, still sounding while the transport plays.
@@ -3709,7 +4884,10 @@ fn aether_plays_the_keys_latches_and_gates() {
     let (l, _, _) = run_aether(&p, 2300, true, &second);
     let held = rms_of(&l[38_000..48_000]);
     assert!(held > 0.03, "it sounds while held");
-    assert!(rms_of(&l[l.len() - 4_800..]) < held * 0.1, "it fades after the key");
+    assert!(
+        rms_of(&l[l.len() - 4_800..]) < held * 0.1,
+        "it fades after the key"
+    );
     // And with the transport stopped, a held key still plays.
     p.data[data::KEYS].set(0.0);
     let held = [(10, [0x90, 45, 100])];
@@ -3723,9 +4901,25 @@ fn aether_plays_the_keys_latches_and_gates() {
 fn aether_swells_in_fades_out_and_rests() {
     let p = Arc::new(ModuleParams::new(ModuleKind::Aether));
     use crate::audio::modules::aether::Aether;
-    let mut proc = Aether::new(p.clone(), Arc::new(crate::audio::midi::MidiState::new()), 48_000.0);
-    let mut ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing: true, restart: false };
-    let inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: false });
+    let mut proc = Aether::new(
+        p.clone(),
+        Arc::new(crate::audio::midi::MidiState::new()),
+        48_000.0,
+    );
+    let mut ctx = ProcessCtx {
+        sample_rate: 48_000.0,
+        smooth: 0.01,
+        beat: 0.0,
+        beats_per_sample: 2.0 / 48_000.0,
+        playing: true,
+        restart: false,
+    };
+    let inputs = Box::new(Inputs {
+        bufs: [[[0.0; 64]; 2]; MAX_INPUTS],
+        connected: [false; MAX_INPUTS],
+        midi: MidiBuf::default(),
+        midi_connected: false,
+    });
     let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
     let mut run = |ctx: &mut ProcessCtx, blocks: usize| -> Vec<f32> {
         let mut out = Vec::new();
@@ -3737,8 +4931,14 @@ fn aether_swells_in_fades_out_and_rests() {
         out
     };
     let start = run(&mut ctx, 1500);
-    assert!(rms_of(&start[..2_400]) < rms_of(&start[48_000..]) * 0.5, "it swells in");
-    assert!(start.windows(2).all(|w| (w[1] - w[0]).abs() < 0.1), "no clicks");
+    assert!(
+        rms_of(&start[..2_400]) < rms_of(&start[48_000..]) * 0.5,
+        "it swells in"
+    );
+    assert!(
+        start.windows(2).all(|w| (w[1] - w[0]).abs() < 0.1),
+        "no clicks"
+    );
     ctx.playing = false;
     let stop = run(&mut ctx, 750);
     assert!(rms_of(&stop[..4_800]) > 0.01, "no cut: it fades");
@@ -3809,7 +5009,10 @@ fn aether_panel_draws_while_it_plays() {
         for _ in 0..3 {
             render_buf(&mut e, 4_800);
             time += 0.1;
-            let input = egui::RawInput { time: Some(time), ..Default::default() };
+            let input = egui::RawInput {
+                time: Some(time),
+                ..Default::default()
+            };
             let mut out = ctx.run_ui(input, |ui| editor.show(ui, &mut g, &a));
             out.textures_delta.clear();
         }
@@ -3843,16 +5046,21 @@ fn aether_free_plays_the_keys_as_a_plain_pad() {
     p.set(MORPH, 0.0);
     // The notes of the voices that sound (faded in), low to high.
     let sounding = |p: &ModuleParams| -> Vec<i32> {
-        let mut notes: Vec<i32> =
-            (0..5).filter(|&v| p.viz[viz::LIVE + v].get() > 0.5).map(|v| p.viz[viz::NOTE + v].get().round() as i32).collect();
+        let mut notes: Vec<i32> = (0..5)
+            .filter(|&v| p.viz[viz::LIVE + v].get() > 0.5)
+            .map(|v| p.viz[viz::NOTE + v].get().round() as i32)
+            .collect();
         notes.sort_unstable();
         notes
     };
     // The fifth over ROOT (E3 over A2), for ROOT's level, over a second.
     let fifth = |l: &[f32]| {
         let len = 48_000;
-        let w: Vec<f32> =
-            l[96_000..96_000 + len].iter().enumerate().map(|(i, x)| x * (0.5 - 0.5 * (std::f32::consts::TAU * i as f32 / len as f32).cos())).collect();
+        let w: Vec<f32> = l[96_000..96_000 + len]
+            .iter()
+            .enumerate()
+            .map(|(i, x)| x * (0.5 - 0.5 * (std::f32::consts::TAU * i as f32 / len as f32).cos()))
+            .collect();
         tone_amp(&w, note_hz(52.0)) / tone_amp(&w, note_hz(45.0))
     };
     let (l, _, _) = run_aether(&p, 2300, true, &[]);
@@ -3861,7 +5069,11 @@ fn aether_free_plays_the_keys_as_a_plain_pad() {
     p.set_mode(FREE);
     let (l, _, _) = run_aether(&p, 2300, true, &[]);
     assert_eq!(sounding(&p), vec![45; 5]);
-    assert!(fifth(&l) < shaped * 0.05, "no fifth: {} against {shaped}", fifth(&l));
+    assert!(
+        fifth(&l) < shaped * 0.05,
+        "no fifth: {} against {shaped}",
+        fifth(&l)
+    );
     assert!(rms_of(&l[96_000..]) > 0.02, "and it sounds");
 
     // One key: that note alone, on one voice; the others fade out.
@@ -3869,27 +5081,49 @@ fn aether_free_plays_the_keys_as_a_plain_pad() {
     assert_eq!(sounding(&p), vec![62]);
     assert_eq!(p.viz[viz::SOURCE].get(), 1.0);
     // Three keys: those three, nothing doubled or added.
-    let three = [(10, [0x90, 50, 100]), (10, [0x90, 53, 100]), (10, [0x90, 58, 100])];
+    let three = [
+        (10, [0x90, 50, 100]),
+        (10, [0x90, 53, 100]),
+        (10, [0x90, 58, 100]),
+    ];
     run_aether(&p, 1500, true, &three);
     assert_eq!(sounding(&p), vec![50, 53, 58]);
     // LATCH: letting go of the keys one by one keeps the chord whole (a
     // voice let go would have faded below 0.95 by the end).
-    let letting_go = [three[0], three[1], three[2], (900, [0x80, 58, 0]), (1000, [0x80, 53, 0])];
+    let letting_go = [
+        three[0],
+        three[1],
+        three[2],
+        (900, [0x80, 58, 0]),
+        (1000, [0x80, 53, 0]),
+    ];
     run_aether(&p, 1050, true, &letting_go);
     assert_eq!(sounding(&p), vec![50, 53, 58]);
-    let lives: Vec<f32> = (0..5).map(|v| p.viz[viz::LIVE + v].get()).filter(|&l| l > 0.5).collect();
+    let lives: Vec<f32> = (0..5)
+        .map(|v| p.viz[viz::LIVE + v].get())
+        .filter(|&l| l > 0.5)
+        .collect();
     assert!(lives.iter().all(|&l| l > 0.95), "none let go: {lives:?}");
     // Five keys at once stay under full scale.
-    let five: Vec<(usize, [u8; 3])> = [45, 52, 57, 61, 64].iter().map(|&k| (0, [0x90, k, 100])).collect();
+    let five: Vec<(usize, [u8; 3])> = [45, 52, 57, 61, 64]
+        .iter()
+        .map(|&k| (0, [0x90, k, 100]))
+        .collect();
     let (l, r, _) = run_aether(&p, 1500, true, &five);
     let peak = peak_of(&l).max(peak_of(&r));
     assert!(peak < 0.9, "five keys: peak {peak}");
     // GATE: a key let go fades out on its own note while the rest play on.
     p.data[data::KEYS].set(1.0);
-    let gated = [(10, [0x90, 50, 100]), (10, [0x90, 57, 100]), (600, [0x80, 57, 0])];
+    let gated = [
+        (10, [0x90, 50, 100]),
+        (10, [0x90, 57, 100]),
+        (600, [0x80, 57, 0]),
+    ];
     let (l, _, _) = run_aether(&p, 1500, true, &gated);
     assert_eq!(sounding(&p), vec![50]);
-    let fading = (0..5).find(|&v| p.viz[viz::NOTE + v].get().round() as i32 == 57).expect("it keeps its note");
+    let fading = (0..5)
+        .find(|&v| p.viz[viz::NOTE + v].get().round() as i32 == 57)
+        .expect("it keeps its note");
     let live = p.viz[viz::LIVE + fading].get();
     assert!(live > 0.0 && live < 0.5, "fading: {live}");
     assert!(l.windows(2).all(|w| (w[1] - w[0]).abs() < 0.1), "no clicks");
@@ -3902,7 +5136,10 @@ fn aether_free_plays_the_keys_as_a_plain_pad() {
     let (_, _, events) = run_aether(&p, 3000, true, &chord);
     assert!(events.len() >= 5, "{} glitches", events.len());
     for &(_, hz, kind) in &events {
-        assert!(on_a_harmonic(hz, &[50.0, 57.0], kind == SKIPPED), "{hz} Hz is not a harmonic of the keys");
+        assert!(
+            on_a_harmonic(hz, &[50.0, 57.0], kind == SKIPPED),
+            "{hz} Hz is not a harmonic of the keys"
+        );
     }
 }
 
@@ -3913,13 +5150,22 @@ fn aether_glides_only_with_glide() {
     p.set(GLITCH, 0.0);
     p.set(MORPH, 0.0);
     // C3 latched, then G3: the lowest voice goes from 48 to 55.
-    let change = [(10, [0x90, 48, 100]), (300, [0x80, 48, 0]), (400, [0x90, 55, 100])];
+    let change = [
+        (10, [0x90, 48, 100]),
+        (300, [0x80, 48, 0]),
+        (400, [0x90, 55, 100]),
+    ];
     let lowest = |p: &ModuleParams| p.viz[viz::NOTE].get();
     // Off at first: the voices step there, without a click.
     assert!(!glides(&p));
     let (l, r, _) = run_aether(&p, 403, true, &change);
     assert!((lowest(&p) - 55.0).abs() < 0.1, "stepped: {}", lowest(&p));
-    assert!(l.windows(2).chain(r.windows(2)).all(|w| (w[1] - w[0]).abs() < 0.1), "no clicks");
+    assert!(
+        l.windows(2)
+            .chain(r.windows(2))
+            .all(|w| (w[1] - w[0]).abs() < 0.1),
+        "no clicks"
+    );
     // With GLIDE they are on their way (from wherever the glide from ROOT
     // to C3 had got to), and get there.
     p.data[data::GLIDE].set(1.0);
@@ -3927,14 +5173,20 @@ fn aether_glides_only_with_glide() {
     let before = lowest(&p);
     run_aether(&p, 403, true, &change);
     let after = lowest(&p);
-    assert!(after > before + 0.1 && after < 50.0, "gliding: {before} to {after}");
+    assert!(
+        after > before + 0.1 && after < 50.0,
+        "gliding: {before} to {after}"
+    );
     run_aether(&p, 1300, true, &change);
     assert!((lowest(&p) - 55.0).abs() < 0.1, "there: {}", lowest(&p));
 }
 
 #[test]
 fn aether_randomizes_within_warm_ranges() {
-    use crate::audio::modules::aether::{CHORDS, DECAY, FREE, GLITCH, HARM, LEVEL, REPEAT, ROOT, SKIP, SPARK, data, randomize, seed, spec};
+    use crate::audio::modules::aether::{
+        CHORDS, DECAY, FREE, GLITCH, HARM, LEVEL, REPEAT, ROOT, SKIP, SPARK, data, randomize, seed,
+        spec,
+    };
     let fresh = || {
         let p = Arc::new(ModuleParams::new(ModuleKind::Aether));
         p.set(ROOT, 50.0);
@@ -3948,10 +5200,26 @@ fn aether_randomizes_within_warm_ranges() {
     let before = knobs(&p);
     randomize(&p, 99, false);
     let after = knobs(&p);
-    assert!(before.iter().zip(&after).filter(|(a, b)| a != b).count() >= 15, "a new sound");
-    assert_eq!((p.get(ROOT), p.get(LEVEL), p.toggled(), p.data[data::KEYS].get()), (50.0, 0.5, false, 1.0), "the player's settings stay");
+    assert!(
+        before.iter().zip(&after).filter(|(a, b)| a != b).count() >= 15,
+        "a new sound"
+    );
+    assert_eq!(
+        (
+            p.get(ROOT),
+            p.get(LEVEL),
+            p.toggled(),
+            p.data[data::KEYS].get()
+        ),
+        (50.0, 0.5, false, 1.0),
+        "the player's settings stay"
+    );
     for (i, v) in after.iter().enumerate() {
-        assert!((spec(i).min..=spec(i).max).contains(v), "{} at {v}", spec(i).name);
+        assert!(
+            (spec(i).min..=spec(i).max).contains(v),
+            "{} at {v}",
+            spec(i).name
+        );
     }
     assert!(p.get(GLITCH) <= 0.4 && p.get(HARM).fract() == 0.0);
     assert!(p.mode() < FREE, "a chord shape");
@@ -3962,7 +5230,12 @@ fn aether_randomizes_within_warm_ranges() {
 
     // FREE stays FREE; the timbre alone keeps the chord, the seed and the
     // glitches.
-    let glitches = |p: &ModuleParams| -> Vec<f32> { [GLITCH, HARM, REPEAT, SKIP, DECAY, SPARK].iter().map(|&i| p.get(i)).collect() };
+    let glitches = |p: &ModuleParams| -> Vec<f32> {
+        [GLITCH, HARM, REPEAT, SKIP, DECAY, SPARK]
+            .iter()
+            .map(|&i| p.get(i))
+            .collect()
+    };
     p.set_mode(FREE);
     let kept = (glitches(&p), seed(&p), p.data[data::DIV].get());
     randomize(&p, 7, true);
@@ -3987,7 +5260,9 @@ fn aether_randomizes_within_warm_ranges() {
 
 #[test]
 fn aether_sounds_save_as_presets() {
-    use crate::audio::modules::aether::{COLOR, FACTORY, FREE, LEVEL, ROOT, data, load_factory, reseed, seed};
+    use crate::audio::modules::aether::{
+        COLOR, FACTORY, FREE, LEVEL, ROOT, data, load_factory, reseed, seed,
+    };
     use crate::presets::{self, ModulePreset};
     let p = Arc::new(ModuleParams::new(ModuleKind::Aether));
     p.set_mode(FREE);
@@ -4002,15 +5277,22 @@ fn aether_sounds_save_as_presets() {
     presets::save(&dir.0, ModuleKind::Aether, &list).unwrap();
     let loaded = presets::load(&dir.0, ModuleKind::Aether);
     assert_eq!(loaded, list);
-    assert_eq!((loaded[0].mode.as_deref(), loaded[0].toggle), (Some("FREE"), Some(false)));
+    assert_eq!(
+        (loaded[0].mode.as_deref(), loaded[0].toggle),
+        (Some("FREE"), Some(false))
+    );
     // Into a fresh node: the same sound, the chord shape and SYNC included.
     let q = Arc::new(ModuleParams::new(ModuleKind::Aether));
     loaded[0].apply(&q);
     assert_eq!((q.mode(), q.toggled()), (FREE, false));
-    assert_eq!((q.get(COLOR), q.data[data::DIV].get(), seed(&q)), (0.77, 5.0, 2468));
+    assert_eq!(
+        (q.get(COLOR), q.data[data::DIV].get(), seed(&q)),
+        (0.77, 5.0, 2468)
+    );
     // A preset without a mode or toggle (older ones, other kinds) leaves
     // them be.
-    let old: ModulePreset = serde_json::from_str(r#"{"name":"Old","params":{"COLOR":0.1}}"#).unwrap();
+    let old: ModulePreset =
+        serde_json::from_str(r#"{"name":"Old","params":{"COLOR":0.1}}"#).unwrap();
     old.apply(&q);
     assert_eq!((q.mode(), q.toggled(), q.get(COLOR)), (FREE, false, 0.1));
 
@@ -4021,7 +5303,15 @@ fn aether_sounds_save_as_presets() {
     q.data[data::KEYS].set(1.0);
     q.data[data::GLIDE].set(1.0);
     load_factory(&q, 1);
-    assert_eq!((q.get(ROOT), q.get(LEVEL), q.data[data::KEYS].get(), q.data[data::GLIDE].get()), (52.0, 0.5, 1.0, 1.0));
+    assert_eq!(
+        (
+            q.get(ROOT),
+            q.get(LEVEL),
+            q.data[data::KEYS].get(),
+            q.data[data::GLIDE].get()
+        ),
+        (52.0, 0.5, 1.0, 1.0)
+    );
     assert_eq!(q.mode(), FREE, "{}", FACTORY[1].0);
     q.data[data::KEYS].set(0.0);
     q.set(LEVEL, crate::audio::modules::aether::spec(LEVEL).default);
@@ -4047,10 +5337,25 @@ fn run_larsen_with(
     each: &dyn Fn(usize),
 ) -> (Vec<f32>, Vec<f32>) {
     use crate::audio::modules::larsen::Larsen;
-    let mut proc = Larsen::new(p.clone(), Arc::new(crate::audio::midi::MidiState::new()), 48_000.0);
-    let mut ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing: true, restart: false };
-    let mut inputs =
-        Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: !midi.is_empty() });
+    let mut proc = Larsen::new(
+        p.clone(),
+        Arc::new(crate::audio::midi::MidiState::new()),
+        48_000.0,
+    );
+    let mut ctx = ProcessCtx {
+        sample_rate: 48_000.0,
+        smooth: 0.01,
+        beat: 0.0,
+        beats_per_sample: 2.0 / 48_000.0,
+        playing: true,
+        restart: false,
+    };
+    let mut inputs = Box::new(Inputs {
+        bufs: [[[0.0; 64]; 2]; MAX_INPUTS],
+        connected: [false; MAX_INPUTS],
+        midi: MidiBuf::default(),
+        midi_connected: !midi.is_empty(),
+    });
     inputs.connected[0] = input.is_some();
     let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
     let (mut left, mut right) = (Vec::new(), Vec::new());
@@ -4074,7 +5379,11 @@ fn run_larsen_with(
     (left, right)
 }
 
-fn run_larsen(p: &Arc<ModuleParams>, blocks: usize, midi: &[(usize, [u8; 3])]) -> (Vec<f32>, Vec<f32>) {
+fn run_larsen(
+    p: &Arc<ModuleParams>,
+    blocks: usize,
+    midi: &[(usize, [u8; 3])],
+) -> (Vec<f32>, Vec<f32>) {
     run_larsen_with(p, blocks, |_| true, midi, None, &|_| {})
 }
 
@@ -4109,7 +5418,11 @@ fn larsen_drones_on_its_own_and_stays_in_range() {
     let (l, r) = run_larsen(&p, blocks(6.0), &[]);
     // From a floor of noise to a drone within the first second, on both
     // sides (two strings, not one copied).
-    assert!(rms_of(&l[24_000..48_000]) > 0.03, "it starts: {}", rms_of(&l[24_000..48_000]));
+    assert!(
+        rms_of(&l[24_000..48_000]) > 0.03,
+        "it starts: {}",
+        rms_of(&l[24_000..48_000])
+    );
     assert!(rms_of(&r[96_000..]) > 0.03 && rms_of(&l[96_000..]) > 0.03);
     assert!(l != r, "two strings");
     assert!(l.iter().chain(&r).all(|s| s.is_finite()));
@@ -4118,11 +5431,18 @@ fn larsen_drones_on_its_own_and_stays_in_range() {
     // Too little FEEDBACK and the loop dies away; with more it sustains.
     p.set(FEEDBACK, -36.0);
     let (l, _) = run_larsen(&p, blocks(3.0), &[]);
-    assert!(rms_of(&l[96_000..]) < 1e-3, "closed: {}", rms_of(&l[96_000..]));
+    assert!(
+        rms_of(&l[96_000..]) < 1e-3,
+        "closed: {}",
+        rms_of(&l[96_000..])
+    );
     p.set(FEEDBACK, 12.0);
     let (l, r) = run_larsen(&p, blocks(3.0), &[]);
     assert!(rms_of(&l[96_000..]) > 0.05);
-    assert!(peak_of(&l).max(peak_of(&r)) < 0.9, "saturating, not running away");
+    assert!(
+        peak_of(&l).max(peak_of(&r)) < 0.9,
+        "saturating, not running away"
+    );
 }
 
 #[test]
@@ -4149,12 +5469,18 @@ fn larsen_pitch_follows_the_keys_and_the_knob_takes_it_back() {
         let (l, _) = run_larsen(&p, blocks(3.0), &[(5, [0x90, note, 100])]);
         let want = note_hz(note as f32);
         let got = strongest_hz(&l[96_000..96_000 + 32_768], want * 0.7, want * 1.4);
-        assert!(cents(got, want).abs() < 30.0, "note {note}: {got} Hz for {want}");
+        assert!(
+            cents(got, want).abs() < 30.0,
+            "note {note}: {got} Hz for {want}"
+        );
         assert!(p.viz[viz::MIDI].get() > 0.5 && p.viz[viz::TUNED].get() > 0.5);
         // BODY snapped to a whole number of the note's periods (less the
         // filters' lag, a fraction of one).
         let periods = p.viz[viz::BODY].get() * want;
-        assert!((periods - periods.round()).abs() < 0.35 && periods.round() >= 2.0, "{periods} periods");
+        assert!(
+            (periods - periods.round()).abs() < 0.35 && periods.round() >= 2.0,
+            "{periods} periods"
+        );
     }
     // Bend: up two semitones at most.
     let bent = [(5, [0x90, 60, 100]), (5, [0xE0, 0x7F, 0x7F])];
@@ -4184,10 +5510,17 @@ fn larsen_gate_opens_the_loop_only_while_a_key_is_held() {
     p.data[data::GATE].set(1.0);
     let held = [(750, [0x90, 48, 100]), (2250, [0x80, 48, 0])];
     let (l, _) = run_larsen(&p, blocks(6.0), &held);
-    assert!(rms_of(&l[..48_000]) < 1e-3, "silent until a key: {}", rms_of(&l[..48_000]));
+    assert!(
+        rms_of(&l[..48_000]) < 1e-3,
+        "silent until a key: {}",
+        rms_of(&l[..48_000])
+    );
     let sounding = rms_of(&l[96_000..144_000]);
     assert!(sounding > 0.03, "it swells on the key: {sounding}");
-    assert!(rms_of(&l[l.len() - 24_000..]) < sounding * 0.1, "and dies away after");
+    assert!(
+        rms_of(&l[l.len() - 24_000..]) < sounding * 0.1,
+        "and dies away after"
+    );
     assert_eq!(p.viz[viz::OPEN].get(), 0.0);
 }
 
@@ -4205,18 +5538,28 @@ fn larsen_three_strings_play_three_notes() {
         let want = note_hz(root + st);
         let got = strongest_hz(&l[144_000..144_000 + 32_768], want * 0.97, want * 1.03);
         assert!(cents(got, want).abs() < 30.0, "+{st}: {got} Hz for {want}");
-        assert!(tone_amp(&l[144_000..144_000 + 32_768], got) > 0.01, "+{st} sounds");
+        assert!(
+            tone_amp(&l[144_000..144_000 + 32_768], got) > 0.01,
+            "+{st} sounds"
+        );
     }
     assert!(peak_of(&l).max(peak_of(&r)) < 0.9);
     // From three keys, coupled.
     load_factory(&p, find("Chord keys"));
-    let chord = [(5, [0x90, 48, 100]), (5, [0x90, 52, 100]), (5, [0x90, 55, 100])];
+    let chord = [
+        (5, [0x90, 48, 100]),
+        (5, [0x90, 52, 100]),
+        (5, [0x90, 55, 100]),
+    ];
     let (l, _) = run_larsen(&p, blocks(3.0), &chord);
     for note in [48.0, 52.0, 55.0] {
         let want = note_hz(note);
         let got = strongest_hz(&l[96_000..96_000 + 32_768], want * 0.97, want * 1.03);
         assert!(cents(got, want).abs() < 30.0, "{note}: {got} Hz for {want}");
-        assert!(tone_amp(&l[96_000..96_000 + 32_768], got) > 0.01, "{note} sounds");
+        assert!(
+            tone_amp(&l[96_000..96_000 + 32_768], got) > 0.01,
+            "{note} sounds"
+        );
     }
     // One key sounds one string: those never played stay closed.
     run_larsen(&p, blocks(1.0), &[(5, [0x90, 50, 100])]);
@@ -4233,7 +5576,13 @@ fn larsen_echo_repeats_warps_and_pongs() {
     p.set(SEND, 1.0);
     p.set(REPEATS, 0.6);
     p.set(TIME, 0.5);
-    let burst = |i: usize| if i < 480 { 0.5 * (i as f32 * 0.3).sin() } else { 0.0 };
+    let burst = |i: usize| {
+        if i < 480 {
+            0.5 * (i as f32 * 0.3).sin()
+        } else {
+            0.0
+        }
+    };
     // Around repeat `k`, and just before it (once the string has stopped
     // ringing).
     let window = |x: &[f32], k: usize| rms_of(&x[k * 24_000 - 3000..k * 24_000 + 3000]);
@@ -4242,7 +5591,12 @@ fn larsen_echo_repeats_warps_and_pongs() {
     // CLASSIC: every 0.5 s, on both sides.
     for k in 1..=3 {
         assert!(window(&l, k) > 1e-4 && window(&r, k) > 1e-4, "repeat {k}");
-        assert!(window(&l, k) > 10.0 * before(&l, k), "repeat {k}: {} against {}", window(&l, k), before(&l, k));
+        assert!(
+            window(&l, k) > 10.0 * before(&l, k),
+            "repeat {k}: {} against {}",
+            window(&l, k),
+            before(&l, k)
+        );
     }
     // PONG: the first on the left, the next on the right, and so on.
     p.data[data::PONG].set(1.0);
@@ -4253,7 +5607,11 @@ fn larsen_echo_repeats_warps_and_pongs() {
     // WARP: a quarter of the time above the shortest.
     p.data[data::WARP].set(1.0);
     run_larsen(&p, blocks(1.0), &[]);
-    assert!((p.viz[viz::ECHO].get() - (0.05 + 0.45 / 4.0)).abs() < 1e-3, "{}", p.viz[viz::ECHO].get());
+    assert!(
+        (p.viz[viz::ECHO].get() - (0.05 + 0.45 / 4.0)).abs() < 1e-3,
+        "{}",
+        p.viz[viz::ECHO].get()
+    );
 }
 
 #[test]
@@ -4270,18 +5628,36 @@ fn larsen_rests_once_stopped_and_needs_input_as_a_resonator() {
     assert!(rms_of(&l[96_000..144_000]) > 0.03);
     assert!(l[l.len() - 48_000..].iter().all(|&s| s == 0.0), "rests");
     // The resonator plays only what comes in.
-    load_factory(&p, FACTORY.iter().position(|s| s.0 == "Resonator (IN)").unwrap());
+    load_factory(
+        &p,
+        FACTORY
+            .iter()
+            .position(|s| s.0 == "Resonator (IN)")
+            .unwrap(),
+    );
     let (l, _) = run_larsen(&p, blocks(3.0), &[]);
     assert!(rms_of(&l) < 1e-3, "nothing in, nothing out: {}", rms_of(&l));
-    let pulses = |i: usize| if i % 24_000 < 200 { 0.3 * (i as f32 * 0.37).sin() } else { 0.0 };
+    let pulses = |i: usize| {
+        if i % 24_000 < 200 {
+            0.3 * (i as f32 * 0.37).sin()
+        } else {
+            0.0
+        }
+    };
     let (l, r) = run_larsen_with(&p, blocks(3.0), |_| true, &[], Some(&pulses), &|_| {});
-    assert!(rms_of(&l) > 0.005, "it rings with the input: {}", rms_of(&l));
+    assert!(
+        rms_of(&l) > 0.005,
+        "it rings with the input: {}",
+        rms_of(&l)
+    );
     assert!(peak_of(&l).max(peak_of(&r)) < 0.9);
 }
 
 #[test]
 fn larsen_settings_and_sounds_are_saved() {
-    use crate::audio::modules::larsen::{BODY, FACTORY, FEEDBACK, LEVEL, data, flag, load_factory, spec};
+    use crate::audio::modules::larsen::{
+        BODY, FACTORY, FEEDBACK, LEVEL, data, flag, load_factory, spec,
+    };
     use crate::presets::{self, ModulePreset};
     let (mut g, a, _e) = setup();
     let id = g.add_module(ModuleKind::Larsen, pos2(0.0, 0.0), &a);
@@ -4297,12 +5673,23 @@ fn larsen_settings_and_sounds_are_saved() {
     assert_eq!(crate::project::restore(&mut h, &saved, &b), 0);
     let q = module_params(&h, h.nodes[0].id);
     assert_eq!((q.get(FEEDBACK), q.get(BODY)), (3.0, 0.042));
-    assert!(flag(&q, data::PONG) && flag(&q, data::POLY) && flag(&q, data::GATE) && !flag(&q, data::LOCK) && !flag(&q, data::PITCH));
+    assert!(
+        flag(&q, data::PONG)
+            && flag(&q, data::POLY)
+            && flag(&q, data::GATE)
+            && !flag(&q, data::LOCK)
+            && !flag(&q, data::PITCH)
+    );
     assert_eq!(crate::project::snapshot(&h), saved);
 
     // A preset holds the switches too.
     let dir = TempDir::new("larsen-presets");
-    presets::save(&dir.0, ModuleKind::Larsen, &[ModulePreset::capture(&q, "Mine")]).unwrap();
+    presets::save(
+        &dir.0,
+        ModuleKind::Larsen,
+        &[ModulePreset::capture(&q, "Mine")],
+    )
+    .unwrap();
     let loaded = presets::load(&dir.0, ModuleKind::Larsen);
     let fresh = Arc::new(ModuleParams::new(ModuleKind::Larsen));
     loaded[0].apply(&fresh);
@@ -4348,7 +5735,10 @@ fn larsen_panel_draws_while_it_plays() {
         for _ in 0..3 {
             render_buf(&mut e, 4_800);
             time += 0.1;
-            let input = egui::RawInput { time: Some(time), ..Default::default() };
+            let input = egui::RawInput {
+                time: Some(time),
+                ..Default::default()
+            };
             let mut out = ctx.run_ui(input, |ui| editor.show(ui, &mut g, &a));
             out.textures_delta.clear();
         }
@@ -4359,12 +5749,33 @@ fn larsen_panel_draws_while_it_plays() {
 /// Runs a MIDI Looper at 120 BPM (a beat is 24 000 samples): MIDI on its
 /// cable as (sample, message), the board's transport `playing`, and `each`
 /// called before every block. What comes out, as (sample, message).
-fn run_looper(p: &Arc<ModuleParams>, blocks: usize, playing: bool, midi: &[(usize, [u8; 3])], each: &dyn Fn(usize)) -> Vec<(usize, [u8; 3])> {
+fn run_looper(
+    p: &Arc<ModuleParams>,
+    blocks: usize,
+    playing: bool,
+    midi: &[(usize, [u8; 3])],
+    each: &dyn Fn(usize),
+) -> Vec<(usize, [u8; 3])> {
     use crate::audio::modules::looper::Looper;
-    let mut proc = Looper::new(p.clone(), Arc::new(crate::audio::midi::MidiState::new()), 48_000.0);
-    let mut ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing, restart: playing };
-    let mut inputs =
-        Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: true });
+    let mut proc = Looper::new(
+        p.clone(),
+        Arc::new(crate::audio::midi::MidiState::new()),
+        48_000.0,
+    );
+    let mut ctx = ProcessCtx {
+        sample_rate: 48_000.0,
+        smooth: 0.01,
+        beat: 0.0,
+        beats_per_sample: 2.0 / 48_000.0,
+        playing,
+        restart: playing,
+    };
+    let mut inputs = Box::new(Inputs {
+        bufs: [[[0.0; 64]; 2]; MAX_INPUTS],
+        connected: [false; MAX_INPUTS],
+        midi: MidiBuf::default(),
+        midi_connected: true,
+    });
     let mut outputs: Vec<crate::audio::engine::Buf> = Vec::new();
     let mut out = Vec::new();
     for b in 0..blocks {
@@ -4390,7 +5801,10 @@ const BEAT: usize = 24_000;
 
 /// When `key` starts, in samples.
 fn looper_ons(out: &[(usize, [u8; 3])], key: u8) -> Vec<usize> {
-    out.iter().filter(|(_, m)| m[0] & 0xF0 == 0x90 && m[2] > 0 && m[1] == key).map(|&(at, _)| at).collect()
+    out.iter()
+        .filter(|(_, m)| m[0] & 0xF0 == 0x90 && m[2] > 0 && m[1] == key)
+        .map(|&(at, _)| at)
+        .collect()
 }
 
 fn near(at: usize, want: usize) -> bool {
@@ -4402,7 +5816,17 @@ fn looper_with(notes: &[(usize, u8, u32, u32)]) -> Arc<ModuleParams> {
     let p = Arc::new(ModuleParams::new(ModuleKind::Looper));
     for &(scene, key, at, len) in notes {
         set_bars(&p, scene, 1);
-        add_note(&p, scene, Note { at, len, key, velocity: 100, channel: 0 });
+        add_note(
+            &p,
+            scene,
+            Note {
+                at,
+                len,
+                key,
+                velocity: 100,
+                channel: 0,
+            },
+        );
     }
     p
 }
@@ -4432,10 +5856,19 @@ fn looper_records_its_bars_and_plays_them_back() {
     // Heard as played (THRU), then from the loop on every pass after.
     let ons = looper_ons(&out, 60);
     assert_eq!(ons.len(), 3, "{ons:?}");
-    assert!(near(ons[0], BEAT / 2) && near(ons[1], 4 * BEAT + BEAT / 2) && near(ons[2], 8 * BEAT + BEAT / 2), "{ons:?}");
+    assert!(
+        near(ons[0], BEAT / 2)
+            && near(ons[1], 4 * BEAT + BEAT / 2)
+            && near(ons[2], 8 * BEAT + BEAT / 2),
+        "{ons:?}"
+    );
     assert!(looper_ons(&out, 64).iter().any(|&at| near(at, 6 * BEAT)));
     // Each note ends as long as it was held.
-    let off = out.iter().find(|(at, m)| *at > 4 * BEAT && m[0] & 0xF0 == 0x80 && m[1] == 60).unwrap().0;
+    let off = out
+        .iter()
+        .find(|(at, m)| *at > 4 * BEAT && m[0] & 0xF0 == 0x80 && m[1] == 60)
+        .unwrap()
+        .0;
     assert!(near(off, 5 * BEAT), "{off}");
     // Without THRU, only the loop is heard.
     p.data[data::THRU].set(0.0);
@@ -4445,7 +5878,9 @@ fn looper_records_its_bars_and_plays_them_back() {
 
 #[test]
 fn looper_starts_on_the_first_note_overdubs_and_undoes() {
-    use crate::audio::modules::looper::{ON_NOTE, ask, count, data, note, request, set_bars, state, viz};
+    use crate::audio::modules::looper::{
+        ON_NOTE, ask, count, data, note, request, set_bars, state, viz,
+    };
     let p = Arc::new(ModuleParams::new(ModuleKind::Looper));
     set_bars(&p, 0, 1);
     p.data[data::TRIGGER].set(ON_NOTE as f32);
@@ -4464,7 +5899,11 @@ fn looper_starts_on_the_first_note_overdubs_and_undoes() {
             request(&p, ask::REC, 0.0);
         }
         if b == 4 * BEAT / 64 - 10 {
-            assert_eq!(p.viz[viz::STATE].get() as usize, state::ARMED, "still armed");
+            assert_eq!(
+                p.viz[viz::STATE].get() as usize,
+                state::ARMED,
+                "still armed"
+            );
         }
         if b == dub_at {
             request(&p, ask::DUB, 0.0);
@@ -4476,14 +5915,21 @@ fn looper_starts_on_the_first_note_overdubs_and_undoes() {
     });
     assert_eq!(note(&p, 0, 0).at, 24, "a quarter beat into its bar");
     // The overdubbed note plays from the pass after it was played.
-    assert!(looper_ons(&out, 67).iter().any(|&at| near(at, 13 * BEAT)), "{:?}", looper_ons(&out, 67));
+    assert!(
+        looper_ons(&out, 67).iter().any(|&at| near(at, 13 * BEAT)),
+        "{:?}",
+        looper_ons(&out, 67)
+    );
     assert_eq!(count(&p, 0), 1, "UNDO took the overdub back");
 
     // Played an eighth early, a note opens the next bar.
     let early = Arc::new(ModuleParams::new(ModuleKind::Looper));
     set_bars(&early, 0, 1);
     early.data[data::TRIGGER].set(ON_NOTE as f32);
-    let played = [(4 * BEAT - BEAT / 5, [0x90, 62, 100]), (4 * BEAT + BEAT / 2, [0x80, 62, 0])];
+    let played = [
+        (4 * BEAT - BEAT / 5, [0x90, 62, 100]),
+        (4 * BEAT + BEAT / 2, [0x80, 62, 0]),
+    ];
     run_looper(&early, 9 * BEAT / 64, true, &played, &|b| {
         if b == 0 {
             request(&early, ask::REC, 0.0);
@@ -4496,7 +5942,11 @@ fn looper_starts_on_the_first_note_overdubs_and_undoes() {
 #[test]
 fn looper_plays_reversed_and_picks_at_random() {
     use crate::audio::modules::looper::{GRID, RANDOM, REVERSE, set_direction};
-    let notes: Vec<(usize, u8, u32, u32)> = [60u8, 62, 64, 65].iter().enumerate().map(|(k, &key)| (0, key, k as u32 * 96, 48)).collect();
+    let notes: Vec<(usize, u8, u32, u32)> = [60u8, 62, 64, 65]
+        .iter()
+        .enumerate()
+        .map(|(k, &key)| (0, key, k as u32 * 96, 48))
+        .collect();
     let p = looper_with(&notes);
     let first = |out: &[(usize, [u8; 3])], key: u8| looper_ons(out, key)[0];
     let out = run_looper(&p, 4 * BEAT / 64, true, &[], &|_| {});
@@ -4504,16 +5954,29 @@ fn looper_plays_reversed_and_picks_at_random() {
     // Reversed: each note ends where it started, from the end back.
     set_direction(&p, 0, REVERSE);
     let out = run_looper(&p, 4 * BEAT / 64, true, &[], &|_| {});
-    for (key, at) in [(65, BEAT / 2), (64, 3 * BEAT / 2), (62, 5 * BEAT / 2), (60, 7 * BEAT / 2)] {
+    for (key, at) in [
+        (65, BEAT / 2),
+        (64, 3 * BEAT / 2),
+        (62, 5 * BEAT / 2),
+        (60, 7 * BEAT / 2),
+    ] {
         assert!(near(first(&out, key), at), "{key}: {}", first(&out, key));
     }
     // RANDOM: a beat's slice at a time (GRID 1/4), each picked anew.
     set_direction(&p, 0, RANDOM);
     p.set(GRID, 0.0);
     let out = run_looper(&p, 32 * BEAT / 64, true, &[], &|_| {});
-    let ons: Vec<(usize, u8)> = out.iter().filter(|(_, m)| m[0] & 0xF0 == 0x90 && m[2] > 0).map(|&(at, m)| (at, m[1])).collect();
+    let ons: Vec<(usize, u8)> = out
+        .iter()
+        .filter(|(_, m)| m[0] & 0xF0 == 0x90 && m[2] > 0)
+        .map(|&(at, m)| (at, m[1]))
+        .collect();
     assert_eq!(ons.len(), 32, "a note every beat");
-    assert!(ons.iter().all(|&(at, _)| near(at, (at + BEAT / 2) / BEAT * BEAT)), "on the beats");
+    assert!(
+        ons.iter()
+            .all(|&(at, _)| near(at, (at + BEAT / 2) / BEAT * BEAT)),
+        "on the beats"
+    );
     let keys: Vec<u8> = ons.iter().map(|&(_, k)| k).collect();
     let forward: Vec<u8> = (0..32).map(|k| [60, 62, 64, 65][k % 4]).collect();
     assert_ne!(keys, forward, "not in order");
@@ -4524,7 +5987,9 @@ fn looper_plays_reversed_and_picks_at_random() {
 
 #[test]
 fn looper_switches_scenes_on_launch_and_follows_on() {
-    use crate::audio::modules::looper::{HALT, NEXT, ask, data, request, scene, set_follow, set_repeats, state, viz};
+    use crate::audio::modules::looper::{
+        HALT, NEXT, ask, data, request, scene, set_follow, set_repeats, state, viz,
+    };
     let p = looper_with(&[(0, 60, 0, 48), (1, 72, 0, 48), (2, 84, 0, 48)]);
     // Scene 1 twice, then the next: scene 2, for good.
     set_repeats(&p, 0, 2);
@@ -4538,9 +6003,15 @@ fn looper_switches_scenes_on_launch_and_follows_on() {
         }
     });
     let ons = looper_ons(&out, 60);
-    assert!(near(ons[0], 0) && near(ons[1], 4 * BEAT) && near(ons[2], 16 * BEAT), "{ons:?}");
+    assert!(
+        near(ons[0], 0) && near(ons[1], 4 * BEAT) && near(ons[2], 16 * BEAT),
+        "{ons:?}"
+    );
     let ons = looper_ons(&out, 72);
-    assert!(near(ons[0], 8 * BEAT) && near(ons[1], 12 * BEAT) && ons.len() == 2, "{ons:?}");
+    assert!(
+        near(ons[0], 8 * BEAT) && near(ons[1], 12 * BEAT) && ons.len() == 2,
+        "{ons:?}"
+    );
     // Program Change 3 picks scene 3 the same way.
     p.data[data::SCENE].set(0.0);
     set_repeats(&p, 0, 0);
@@ -4570,13 +6041,22 @@ fn looper_follows_a_midi_clock() {
     // The board stands still: only the clock moves it.
     let out = run_looper(&p, 8 * BEAT / 64, false, &clock, &|b| {
         if b == 3 * BEAT / 64 {
-            assert!((p.viz[viz::TEMPO].get() - 120.0).abs() < 1.0, "{}", p.viz[viz::TEMPO].get());
+            assert!(
+                (p.viz[viz::TEMPO].get() - 120.0).abs() < 1.0,
+                "{}",
+                p.viz[viz::TEMPO].get()
+            );
         }
     });
     let ons = looper_ons(&out, 60);
     assert_eq!(ons.len(), 2, "{ons:?}");
     assert!(near(ons[0], BEAT) && near(ons[1], 5 * BEAT), "{ons:?}");
-    assert!(out.iter().filter(|(at, _)| *at > 6 * BEAT + 64).all(|(_, m)| m[0] & 0xF0 != 0x90), "nothing after Stop");
+    assert!(
+        out.iter()
+            .filter(|(at, _)| *at > 6 * BEAT + 64)
+            .all(|(_, m)| m[0] & 0xF0 != 0x90),
+        "nothing after Stop"
+    );
 
     // The clock reaches the stream (for the looper), but is no activity.
     let midi = MidiState::new();
@@ -4612,18 +6092,28 @@ fn looper_step_records_and_takes_commands_over_midi() {
         (800, [0xC0, 1, 0]),
     ];
     let out = run_looper(&p, 20, true, &played, &|_| {});
-    let notes: Vec<(u32, u8, u32)> = (0..count(&p, 0)).map(|i| note(&p, 0, i)).map(|n| (n.at, n.key, n.len)).collect();
-    assert_eq!(notes, vec![(0, 60, 24), (24, 64, 24), (24, 67, 24), (48, 72, 24)]);
+    let notes: Vec<(u32, u8, u32)> = (0..count(&p, 0))
+        .map(|i| note(&p, 0, i))
+        .map(|n| (n.at, n.key, n.len))
+        .collect();
+    assert_eq!(
+        notes,
+        vec![(0, 60, 24), (24, 64, 24), (24, 67, 24), (48, 72, 24)]
+    );
     assert_eq!(p.viz[viz::CURSOR].get(), 72.0);
     assert_eq!(p.viz[viz::STATE].get() as usize, state::ARMED);
-    assert!(out.iter().all(|(_, m)| m[1] != 36 || m[0] & 0x0F != 15), "commands are not music");
+    assert!(
+        out.iter().all(|(_, m)| m[1] != 36 || m[0] & 0x0F != 15),
+        "commands are not music"
+    );
     assert_eq!(scene(&p), 1);
 }
 
 #[test]
 fn looper_scenes_are_saved() {
     use crate::audio::modules::looper::{
-        Note, REVERSE, add_note, bars, count, data, direction, follow, note, repeats, scene, set_bars, set_direction, set_follow, set_repeats,
+        Note, REVERSE, add_note, bars, count, data, direction, follow, note, repeats, scene,
+        set_bars, set_direction, set_follow, set_repeats,
     };
     let (mut g, a, _e) = setup();
     let id = g.add_module(ModuleKind::Looper, pos2(0.0, 0.0), &a);
@@ -4632,7 +6122,13 @@ fn looper_scenes_are_saved() {
     set_repeats(&p, 5, 4);
     set_direction(&p, 5, REVERSE);
     set_follow(&p, 5, 1);
-    let n = Note { at: 4000, len: 300, key: 91, velocity: 77, channel: 9 };
+    let n = Note {
+        at: 4000,
+        len: 300,
+        key: 91,
+        velocity: 77,
+        channel: 9,
+    };
     add_note(&p, 5, n);
     p.data[data::SCENE].set(5.0);
     p.data[data::SYNC].set(1.0);
@@ -4640,7 +6136,16 @@ fn looper_scenes_are_saved() {
     let (mut h, b, _f) = setup();
     assert_eq!(crate::project::restore(&mut h, &saved, &b), 0);
     let q = module_params(&h, h.nodes[0].id);
-    assert_eq!((bars(&q, 5), repeats(&q, 5), direction(&q, 5), follow(&q, 5), count(&q, 5)), (12, 4, REVERSE, 1, 1));
+    assert_eq!(
+        (
+            bars(&q, 5),
+            repeats(&q, 5),
+            direction(&q, 5),
+            follow(&q, 5),
+            count(&q, 5)
+        ),
+        (12, 4, REVERSE, 1, 1)
+    );
     assert_eq!(note(&q, 5, 0), n);
     assert_eq!(scene(&q), 5);
     assert_eq!(crate::project::snapshot(&h), saved);
@@ -4657,7 +6162,17 @@ fn looper_panel_draws_while_it_plays() {
     let p = module_params(&g, id);
     for s in 0..3 {
         for k in 0..8u32 {
-            crate::audio::modules::looper::add_note(&p, s, crate::audio::modules::looper::Note { at: k * 48, len: 40, key: 50 + (k * 5 % 30) as u8, velocity: 100, channel: 0 });
+            crate::audio::modules::looper::add_note(
+                &p,
+                s,
+                crate::audio::modules::looper::Note {
+                    at: k * 48,
+                    len: 40,
+                    key: 50 + (k * 5 % 30) as u8,
+                    velocity: 100,
+                    channel: 0,
+                },
+            );
         }
     }
     crate::audio::modules::looper::set_bars(&p, 1, 9);
@@ -4676,7 +6191,10 @@ fn looper_panel_draws_while_it_plays() {
         for _ in 0..3 {
             render_buf(&mut e, 9_600);
             time += 0.1;
-            let input = egui::RawInput { time: Some(time), ..Default::default() };
+            let input = egui::RawInput {
+                time: Some(time),
+                ..Default::default()
+            };
             let mut out = ctx.run_ui(input, |ui| editor.show(ui, &mut g, &a));
             out.textures_delta.clear();
         }
@@ -4705,10 +6223,33 @@ const VESPER_BAR_BLOCKS: usize = VESPER_BAR / 64;
 impl VesperRig {
     fn new(p: &Arc<ModuleParams>) -> Self {
         use crate::audio::modules::vesper::Vesper;
-        let proc = Vesper::new(p.clone(), Arc::new(crate::audio::midi::MidiState::new()), 48_000.0);
-        let ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing: false, restart: false };
-        let inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: true });
-        let mut rig = Self { proc, ctx, inputs, outputs: vec![[[0.0f32; 64]; 2]; 1], p: p.clone(), at: 0 };
+        let proc = Vesper::new(
+            p.clone(),
+            Arc::new(crate::audio::midi::MidiState::new()),
+            48_000.0,
+        );
+        let ctx = ProcessCtx {
+            sample_rate: 48_000.0,
+            smooth: 0.01,
+            beat: 0.0,
+            beats_per_sample: 2.0 / 48_000.0,
+            playing: false,
+            restart: false,
+        };
+        let inputs = Box::new(Inputs {
+            bufs: [[[0.0; 64]; 2]; MAX_INPUTS],
+            connected: [false; MAX_INPUTS],
+            midi: MidiBuf::default(),
+            midi_connected: true,
+        });
+        let mut rig = Self {
+            proc,
+            ctx,
+            inputs,
+            outputs: vec![[[0.0f32; 64]; 2]; 1],
+            p: p.clone(),
+            at: 0,
+        };
         rig.wait_for_sounds();
         rig
     }
@@ -4719,7 +6260,8 @@ impl VesperRig {
         let playing = self.ctx.playing;
         self.ctx.playing = false;
         for _ in 0..4000 {
-            self.proc.process(&self.ctx, &self.inputs, &mut self.outputs, 64);
+            self.proc
+                .process(&self.ctx, &self.inputs, &mut self.outputs, 64);
             if (0..SAMPLED).all(|l| self.p.viz[viz::LOADED + l].get() == sound(&self.p, l) as f32) {
                 self.ctx.playing = playing;
                 return;
@@ -4738,7 +6280,8 @@ impl VesperRig {
             for (_, msg) in keys.iter().filter(|(at, _)| *at == b) {
                 self.inputs.midi.push(0, *msg);
             }
-            self.proc.process(&self.ctx, &self.inputs, &mut self.outputs, 64);
+            self.proc
+                .process(&self.ctx, &self.inputs, &mut self.outputs, 64);
             l.extend_from_slice(&self.outputs[0][0]);
             r.extend_from_slice(&self.outputs[0][1]);
             for e in self.proc.midi_out().map(|m| m.events()).unwrap_or(&[]) {
@@ -4796,18 +6339,36 @@ fn vesper_every_sound_renders() {
     assert!(PINGS.len() >= 12);
     for layer in 0..SAMPLED {
         let list = recipes(layer);
-        assert!(list.len() >= 40, "at least forty sounds a layer: {layer} has {}", list.len());
+        assert!(
+            list.len() >= 40,
+            "at least forty sounds a layer: {layer} has {}",
+            list.len()
+        );
         for (k, r) in list.iter().enumerate() {
             let t = render_table(r, 48.0, 1 << 15, 48_000.0, 77 + k as u32);
-            assert!(t.left.iter().chain(t.right.iter()).all(|x| x.is_finite()), "{}: finite", r.name);
+            assert!(
+                t.left.iter().chain(t.right.iter()).all(|x| x.is_finite()),
+                "{}: finite",
+                r.name
+            );
             let rms = rms_of(&t.left);
-            assert!(rms > 0.3 * LOOP_RMS && rms < 3.0 * LOOP_RMS, "{}: rms {rms}", r.name);
+            assert!(
+                rms > 0.3 * LOOP_RMS && rms < 3.0 * LOOP_RMS,
+                "{}: rms {rms}",
+                r.name
+            );
             assert_ne!(t.left, t.right, "{}: two channels", r.name);
         }
-        let mut names: Vec<&str> = (0..sound_count(layer)).map(|s| sound_name(layer, s)).collect();
+        let mut names: Vec<&str> = (0..sound_count(layer))
+            .map(|s| sound_name(layer, s))
+            .collect();
         names.sort_unstable();
         names.dedup();
-        assert_eq!(names.len(), sound_count(layer), "the names of layer {layer} are all different");
+        assert_eq!(
+            names.len(),
+            sound_count(layer),
+            "the names of layer {layer} are all different"
+        );
     }
 }
 
@@ -4817,83 +6378,198 @@ fn vesper_loops_have_no_seam() {
     use crate::audio::modules::vesper::sounds::recipes;
     use crate::audio::modules::vesper::{NOISE, PAD, find_sound};
     // A tone, a tone with swells and a sweep, a wind.
-    for (layer, name) in [(PAD, "Slow Silk"), (PAD, "Tidal Sweep"), (NOISE, "Mountain Wind")] {
+    for (layer, name) in [
+        (PAD, "Slow Silk"),
+        (PAD, "Tidal Sweep"),
+        (NOISE, "Mountain Wind"),
+    ] {
         let r = &recipes(layer)[find_sound(layer, name)];
         let t = render_table(r, 48.0, 1 << 16, 48_000.0, 5);
         let n = t.left.len();
-        let biggest = t.left.windows(2).map(|w| (w[1] - w[0]).abs()).fold(0.0f32, f32::max);
+        let biggest = t
+            .left
+            .windows(2)
+            .map(|w| (w[1] - w[0]).abs())
+            .fold(0.0f32, f32::max);
         let seam = (t.left[0] - t.left[n - 1]).abs();
-        assert!(seam <= biggest * 1.01, "{name}: the seam jumps {seam}, the loop at most {biggest}");
+        assert!(
+            seam <= biggest * 1.01,
+            "{name}: the seam jumps {seam}, the loop at most {biggest}"
+        );
     }
 }
 
 #[test]
 fn vesper_chords_follow_the_rules() {
-    use crate::audio::modules::vesper::harmony::{MOODS, Rules, Step, allowed, fold, label, progression, voice};
+    use crate::audio::modules::vesper::harmony::{
+        MOODS, Rules, Step, allowed, fold, label, progression, voice,
+    };
     assert_eq!(MOODS.len(), 16, "sixteen moods");
     for mood in 0..MOODS.len() {
         for seed in 1..40u32 {
             for variation in 1..=7 {
-                let rules = Rules { root: (seed % 12) as i32, mood, variation, complexity: 3 };
+                let rules = Rules {
+                    root: (seed % 12) as i32,
+                    mood,
+                    variation,
+                    complexity: 3,
+                };
                 let (degrees, len) = allowed(seed, &rules);
                 assert_eq!(len, variation);
                 assert_eq!(degrees[0], 0, "the tonic is always allowed");
-                let more = Rules { variation: (variation + 1).min(7), ..rules };
+                let more = Rules {
+                    variation: (variation + 1).min(7),
+                    ..rules
+                };
                 let (wider, wider_len) = allowed(seed, &more);
-                assert!(degrees[..len].iter().all(|d| wider[..wider_len].contains(d)), "a wider choice keeps the narrower");
+                assert!(
+                    degrees[..len]
+                        .iter()
+                        .all(|d| wider[..wider_len].contains(d)),
+                    "a wider choice keeps the narrower"
+                );
                 let prog = progression(seed, 8, &rules);
                 for s in &prog {
-                    assert!(degrees[..len].contains(&s.degree), "mood {mood}, variation {variation}: degree {}", s.degree);
+                    assert!(
+                        degrees[..len].contains(&s.degree),
+                        "mood {mood}, variation {variation}: degree {}",
+                        s.degree
+                    );
                 }
                 if variation > 1 {
                     let (a, b) = (prog[0], prog[7]);
-                    assert_ne!(a.degree, b.degree, "the last chord doesn't land on the first");
-                    assert!(prog.windows(2).all(|w| w[0].degree != w[1].degree), "no chord follows itself");
+                    assert_ne!(
+                        a.degree, b.degree,
+                        "the last chord doesn't land on the first"
+                    );
+                    assert!(
+                        prog.windows(2).all(|w| w[0].degree != w[1].degree),
+                        "no chord follows itself"
+                    );
                 }
             }
             // Each chord has its notes, in the scale, laid out low to high,
             // moving little from the one before.
             for complexity in 2..=4 {
-                let rules = Rules { root: 9, mood, variation: 7, complexity };
+                let rules = Rules {
+                    root: 9,
+                    mood,
+                    variation: 7,
+                    complexity,
+                };
                 let mut prev: Vec<i32> = Vec::new();
                 let mut moved = 0;
                 for &step in &progression(seed, 8, &rules) {
                     let mut notes = [0; 4];
                     let n = voice(&rules, step, &prev, 60, &mut notes);
                     assert_eq!(n, complexity);
-                    assert!(notes[..n].windows(2).all(|w| w[0] < w[1]), "{:?}", &notes[..n]);
+                    assert!(
+                        notes[..n].windows(2).all(|w| w[0] < w[1]),
+                        "{:?}",
+                        &notes[..n]
+                    );
                     for &m in &notes[..n] {
                         assert!(rules.in_scale(m), "mood {mood}: {m} is outside the scale");
                         assert!((40..=84).contains(&m), "{m} out of register");
                     }
                     let (tones, _) = rules.tones(step);
-                    let pcs: Vec<i32> = tones[..n].iter().map(|t| (rules.root + t).rem_euclid(12)).collect();
-                    assert!(notes[..n].iter().all(|m| pcs.contains(&m.rem_euclid(12))), "the chord's own notes");
+                    let pcs: Vec<i32> = tones[..n]
+                        .iter()
+                        .map(|t| (rules.root + t).rem_euclid(12))
+                        .collect();
+                    assert!(
+                        notes[..n].iter().all(|m| pcs.contains(&m.rem_euclid(12))),
+                        "the chord's own notes"
+                    );
                     if !prev.is_empty() {
-                        moved += notes[..n].iter().map(|m| prev.iter().map(|q| (m - q).abs()).min().unwrap()).sum::<i32>();
+                        moved += notes[..n]
+                            .iter()
+                            .map(|m| prev.iter().map(|q| (m - q).abs()).min().unwrap())
+                            .sum::<i32>();
                     }
                     prev = notes[..n].to_vec();
                     assert!(!label(&rules, step).is_empty());
                 }
-                assert!(moved <= 7 * complexity as i32 * 5, "voices move little: {moved}");
+                assert!(
+                    moved <= 7 * complexity as i32 * 5,
+                    "voices move little: {moved}"
+                );
             }
         }
     }
     // Names, spelled for the key.
-    let am = Rules { root: 9, mood: 4, variation: 7, complexity: 4 };
-    assert_eq!(label(&am, Step { degree: 0, flavor: 0 }), "Am7");
-    assert_eq!(label(&am, Step { degree: 2, flavor: 0 }), "Cmaj7");
-    let triad = Rules { complexity: 3, ..am };
-    assert_eq!(label(&triad, Step { degree: 5, flavor: 0 }), "F");
-    assert_eq!(label(&triad, Step { degree: 0, flavor: 2 }), "Asus4");
-    let open = Rules { complexity: 2, ..am };
-    assert_eq!(label(&open, Step { degree: 0, flavor: 0 }), "A5");
+    let am = Rules {
+        root: 9,
+        mood: 4,
+        variation: 7,
+        complexity: 4,
+    };
+    assert_eq!(
+        label(
+            &am,
+            Step {
+                degree: 0,
+                flavor: 0
+            }
+        ),
+        "Am7"
+    );
+    assert_eq!(
+        label(
+            &am,
+            Step {
+                degree: 2,
+                flavor: 0
+            }
+        ),
+        "Cmaj7"
+    );
+    let triad = Rules {
+        complexity: 3,
+        ..am
+    };
+    assert_eq!(
+        label(
+            &triad,
+            Step {
+                degree: 5,
+                flavor: 0
+            }
+        ),
+        "F"
+    );
+    assert_eq!(
+        label(
+            &triad,
+            Step {
+                degree: 0,
+                flavor: 2
+            }
+        ),
+        "Asus4"
+    );
+    let open = Rules {
+        complexity: 2,
+        ..am
+    };
+    assert_eq!(
+        label(
+            &open,
+            Step {
+                degree: 0,
+                flavor: 0
+            }
+        ),
+        "A5"
+    );
     assert_eq!(fold(60, 33), 36);
 }
 
 #[test]
 fn vesper_loop_repeats_on_the_bars_and_sends_its_score() {
-    use crate::audio::modules::vesper::{CHORDS, COMPLEXITY, DURATION, MOOD, ROOT, VARIATION, generate, rules};
+    use crate::audio::modules::vesper::{
+        CHORDS, COMPLEXITY, DURATION, MOOD, ROOT, VARIATION, generate, rules,
+    };
     let p = Arc::new(ModuleParams::new(ModuleKind::Vesper));
     p.set(DURATION, 1.0); // a bar a chord
     p.set(CHORDS, 3.0);
@@ -4910,7 +6586,10 @@ fn vesper_loop_repeats_on_the_bars_and_sends_its_score() {
     for bar in 0..9 {
         let notes = at(bar);
         assert_eq!(notes.len(), 4, "bar {bar}: {notes:?}");
-        assert!(notes.iter().all(|&n| rules_now.in_scale(n as i32)), "bar {bar}: {notes:?}");
+        assert!(
+            notes.iter().all(|&n| rules_now.in_scale(n as i32)),
+            "bar {bar}: {notes:?}"
+        );
     }
     assert_eq!(at(3), at(6));
     assert_eq!(at(4), at(7));
@@ -4932,9 +6611,16 @@ fn vesper_loop_repeats_on_the_bars_and_sends_its_score() {
     let (_, _, midi2) = rig.run(VESPER_BAR_BLOCKS * 7, true, &[]);
     let mut all = midi.clone();
     all.extend_from_slice(&midi2);
-    let after: Vec<Vec<u8>> = (12..15).map(|bar| vesper_sounding(&all, 0, bar * VESPER_BAR + 10)).collect();
+    let after: Vec<Vec<u8>> = (12..15)
+        .map(|bar| vesper_sounding(&all, 0, bar * VESPER_BAR + 10))
+        .collect();
     assert_ne!(before, after, "GENERATE writes new chords");
-    assert!(after.iter().flatten().all(|&n| rules_now.in_scale(n as i32)));
+    assert!(
+        after
+            .iter()
+            .flatten()
+            .all(|&n| rules_now.in_scale(n as i32))
+    );
 }
 
 #[test]
@@ -4947,15 +6633,33 @@ fn vesper_evolve_keeps_writing_within_the_rules() {
     let mut rig = VesperRig::new(&p);
     let bars = 16;
     let (_, _, midi) = rig.run(VESPER_BAR_BLOCKS * bars, true, &[]);
-    let chords: Vec<Vec<u8>> = (0..bars * 2).map(|c| vesper_sounding(&midi, 0, c * VESPER_BAR / 2 + 10)).collect();
+    let chords: Vec<Vec<u8>> = (0..bars * 2)
+        .map(|c| vesper_sounding(&midi, 0, c * VESPER_BAR / 2 + 10))
+        .collect();
     let rules_now = rules(&p);
-    assert!(chords.iter().flatten().all(|&n| rules_now.in_scale(n as i32)));
-    assert!(chords.windows(2).filter(|w| w[0] != w[1]).count() >= chords.len() / 2, "it moves on");
+    assert!(
+        chords
+            .iter()
+            .flatten()
+            .all(|&n| rules_now.in_scale(n as i32))
+    );
+    assert!(
+        chords.windows(2).filter(|w| w[0] != w[1]).count() >= chords.len() / 2,
+        "it moves on"
+    );
     let mut distinct = chords.clone();
     distinct.sort();
     distinct.dedup();
-    assert!(distinct.len() >= 7, "it doesn't just go round: {} different chords", distinct.len());
-    assert_eq!(p.viz[viz::CARDS].get() as usize, 8, "it shows what it has written, and what's next");
+    assert!(
+        distinct.len() >= 7,
+        "it doesn't just go round: {} different chords",
+        distinct.len()
+    );
+    assert_eq!(
+        p.viz[viz::CARDS].get() as usize,
+        8,
+        "it shows what it has written, and what's next"
+    );
 }
 
 #[test]
@@ -4970,7 +6674,11 @@ fn vesper_each_layer_sounds_and_all_stay_in_range() {
         assert!(l.iter().chain(&r).all(|x| x.is_finite()), "layer {layer}");
         let rms = rms_of(&l[144_000..]);
         assert!(rms > 0.004, "layer {layer} sounds alone: {rms}");
-        assert_ne!(l[200_000..200_500], r[200_000..200_500], "layer {layer} is stereo");
+        assert_ne!(
+            l[200_000..200_500],
+            r[200_000..200_500],
+            "layer {layer} is stereo"
+        );
     }
     // Everything up, in every MixType.
     for mix in 0..4 {
@@ -4987,7 +6695,10 @@ fn vesper_each_layer_sounds_and_all_stay_in_range() {
         }
         let mut rig = VesperRig::new(&p);
         let (l, r, _) = rig.run(blocks(10.0), true, &[]);
-        assert!(l.iter().chain(&r).all(|x| x.is_finite() && x.abs() <= 1.0), "mix {mix}");
+        assert!(
+            l.iter().chain(&r).all(|x| x.is_finite() && x.abs() <= 1.0),
+            "mix {mix}"
+        );
         assert!(rms_of(&l[240_000..]) > 0.05);
     }
 }
@@ -5011,7 +6722,11 @@ fn vesper_plays_in_tune_from_the_keys() {
     vesper_solo(&p, BASS);
     set_sound(&p, BASS, find_sound(BASS, "Pure Sub"));
     let mut rig = VesperRig::new(&p);
-    let (l, _, _) = rig.run(blocks(6.0), false, &[(0, [0x90, 67, 100]), (0, [0x90, 60, 100])]);
+    let (l, _, _) = rig.run(
+        blocks(6.0),
+        false,
+        &[(0, [0x90, 67, 100]), (0, [0x90, 60, 100])],
+    );
     let hz = strongest_hz(&l[192_000..], 40.0, 120.0);
     assert!(cents(hz, 65.406).abs() < 6.0, "the Bass on C2: {hz} Hz");
 
@@ -5025,7 +6740,10 @@ fn vesper_plays_in_tune_from_the_keys() {
         let (l, _, _) = rig.run(blocks(4.0), false, &[(0, [0x90, note, 100])]);
         let want = crate::audio::midi::note_hz(note as f32);
         let hz = strongest_hz(&l[120_000..], want * 0.8, want * 1.2);
-        assert!(cents(hz, want).abs() < 12.0, "note {note}: {hz} Hz against {want} Hz");
+        assert!(
+            cents(hz, want).abs() < 12.0,
+            "note {note}: {hz} Hz against {want} Hz"
+        );
         rig.run(blocks(6.0), false, &[(0, [0x80, note, 0])]);
     }
 }
@@ -5043,22 +6761,43 @@ fn vesper_keys_play_only_with_play_off() {
     let mut rig = VesperRig::new(&p);
     // PLAY on, transport stopped: keys do nothing.
     let (l, _, _) = rig.run(blocks(1.0), false, &[(0, [0x90, 60, 100])]);
-    assert!(rms_of(&l) < 1e-6, "with PLAY on the keys are off: {}", rms_of(&l));
+    assert!(
+        rms_of(&l) < 1e-6,
+        "with PLAY on the keys are off: {}",
+        rms_of(&l)
+    );
     rig.run(1, false, &[(0, [0x80, 60, 0])]);
     // PLAY off: they play, and the transport alone does not.
     p.set_toggle(false);
     let (l, _, midi) = rig.run(blocks(1.0), true, &[]);
-    assert!(rms_of(&l[24_000..]) < 1e-4, "PLAY off and no key: silence, whatever the transport: {}", rms_of(&l[24_000..]));
-    assert!(midi.iter().all(|(_, m)| m[0] & 0xF0 != 0x90), "and no score");
+    assert!(
+        rms_of(&l[24_000..]) < 1e-4,
+        "PLAY off and no key: silence, whatever the transport: {}",
+        rms_of(&l[24_000..])
+    );
+    assert!(
+        midi.iter().all(|(_, m)| m[0] & 0xF0 != 0x90),
+        "and no score"
+    );
     let (l, _, _) = rig.run(blocks(1.0), false, &[(0, [0x90, 60, 100])]);
-    assert!(rms_of(&l[24_000..]) > 0.01, "a key plays it: {}", rms_of(&l[24_000..]));
+    assert!(
+        rms_of(&l[24_000..]) > 0.01,
+        "a key plays it: {}",
+        rms_of(&l[24_000..])
+    );
     let (l, _, _) = rig.run(blocks(1.5), false, &[(0, [0x80, 60, 0])]);
-    assert!(rms_of(&l[48_000..]) < 1e-3, "and letting go ends it: {}", rms_of(&l[48_000..]));
+    assert!(
+        rms_of(&l[48_000..]) < 1e-3,
+        "and letting go ends it: {}",
+        rms_of(&l[48_000..])
+    );
 }
 
 #[test]
 fn vesper_shuffle_respects_the_locks_and_generate_keeps_the_sounds() {
-    use crate::audio::modules::vesper::{BASS, LAYERS, PAD, data, generate, seed, set_flag, shuffle, sound};
+    use crate::audio::modules::vesper::{
+        BASS, LAYERS, PAD, data, generate, seed, set_flag, shuffle, sound,
+    };
     let p = ModuleParams::new(ModuleKind::Vesper);
     set_flag(&p, data::LOCK + PAD, true);
     set_flag(&p, data::LOCK + BASS, true);
@@ -5070,11 +6809,18 @@ fn vesper_shuffle_respects_the_locks_and_generate_keeps_the_sounds() {
         assert_eq!(sound(&p, BASS), before[BASS], "a locked layer stays");
         assert_eq!(seed(&p), chords, "SHUFFLE leaves the chords");
     }
-    assert!((2..LAYERS).all(|l| sound(&p, l) != before[l] || l == LAYERS), "the others have moved");
+    assert!(
+        (2..LAYERS).all(|l| sound(&p, l) != before[l] || l == LAYERS),
+        "the others have moved"
+    );
     let sounds: Vec<usize> = (0..LAYERS).map(|l| sound(&p, l)).collect();
     generate(&p, 4242);
     assert_ne!(seed(&p), chords);
-    assert_eq!(sounds, (0..LAYERS).map(|l| sound(&p, l)).collect::<Vec<_>>(), "GENERATE leaves the sounds");
+    assert_eq!(
+        sounds,
+        (0..LAYERS).map(|l| sound(&p, l)).collect::<Vec<_>>(),
+        "GENERATE leaves the sounds"
+    );
     // SHUFFLE always moves an unlocked layer on.
     for s in 1..200 {
         let was = sound(&p, 2);
@@ -5085,21 +6831,43 @@ fn vesper_shuffle_respects_the_locks_and_generate_keeps_the_sounds() {
 
 #[test]
 fn vesper_scenes_and_settings_are_saved() {
-    use crate::audio::modules::vesper::{FACTORY, LAYERS, LEVEL, MOOD, ROOT, data, k, knob, load_factory, set_sound, sound, sound_count, sound_name, spec};
+    use crate::audio::modules::vesper::{
+        FACTORY, LAYERS, LEVEL, MOOD, ROOT, data, k, knob, load_factory, set_sound, sound,
+        sound_count, sound_name, spec,
+    };
     use crate::presets::ModulePreset;
-    let names: std::collections::HashSet<&str> = ModuleKind::Vesper.def().params.iter().map(|s| s.name).collect();
-    assert_eq!(names.len(), ModuleKind::Vesper.def().params.len(), "knobs are saved by name: no two the same");
+    let names: std::collections::HashSet<&str> = ModuleKind::Vesper
+        .def()
+        .params
+        .iter()
+        .map(|s| s.name)
+        .collect();
+    assert_eq!(
+        names.len(),
+        ModuleKind::Vesper.def().params.len(),
+        "knobs are saved by name: no two the same"
+    );
     // Every scene's sounds exist; a scene sets them, and leaves ROOT and LEVEL.
     let p = ModuleParams::new(ModuleKind::Vesper);
     p.set(ROOT, 3.0);
     p.set(LEVEL, 0.5);
     for (n, scene) in FACTORY.iter().enumerate() {
         for layer in 0..LAYERS {
-            assert!((0..sound_count(layer)).any(|s| sound_name(layer, s) == scene.sounds[layer]), "{}: no {} on layer {layer}", scene.name, scene.sounds[layer]);
+            assert!(
+                (0..sound_count(layer)).any(|s| sound_name(layer, s) == scene.sounds[layer]),
+                "{}: no {} on layer {layer}",
+                scene.name,
+                scene.sounds[layer]
+            );
         }
         for &(i, v) in scene.knobs {
             let s = spec(i);
-            assert!(v >= s.min && v <= s.max, "{}: {} is {v}", scene.name, s.name);
+            assert!(
+                v >= s.min && v <= s.max,
+                "{}: {} is {v}",
+                scene.name,
+                s.name
+            );
         }
         load_factory(&p, n);
         for layer in 0..LAYERS {
@@ -5110,7 +6878,10 @@ fn vesper_scenes_and_settings_are_saved() {
         assert_eq!(p.get(LEVEL), 0.5);
     }
     // A scene overrides what the one before set.
-    let brass = FACTORY.iter().position(|s| s.name == "Folded City").unwrap();
+    let brass = FACTORY
+        .iter()
+        .position(|s| s.name == "Folded City")
+        .unwrap();
     load_factory(&p, brass);
     assert!(p.get(knob(0, k::HOLD)) < 10.0);
     load_factory(&p, 0);
@@ -5180,12 +6951,22 @@ fn vesper_rests_once_stopped_and_ends_its_notes() {
     let mut rig = VesperRig::new(&p);
     let (l, _, midi) = rig.run(blocks(5.0), true, &[]);
     assert!(rms_of(&l[120_000..]) > 0.01);
-    let ons = midi.iter().filter(|(_, m)| m[0] & 0xF0 == 0x90 && m[0] & 0x0F < 2).count();
+    let ons = midi
+        .iter()
+        .filter(|(_, m)| m[0] & 0xF0 == 0x90 && m[0] & 0x0F < 2)
+        .count();
     assert!(ons >= 4, "chord and bass: {ons}");
     let (l, _, midi) = rig.run(blocks(15.0), false, &[]);
-    let offs = midi.iter().filter(|(_, m)| m[0] & 0xF0 == 0x80 && m[0] & 0x0F < 2).count();
+    let offs = midi
+        .iter()
+        .filter(|(_, m)| m[0] & 0xF0 == 0x80 && m[0] & 0x0F < 2)
+        .count();
     assert_eq!(offs, 3 + 1, "the score's notes end when it stops");
-    assert_eq!(peak_of(&l[640_000..]), 0.0, "and it falls silent, doing nothing");
+    assert_eq!(
+        peak_of(&l[640_000..]),
+        0.0,
+        "and it falls silent, doing nothing"
+    );
     // And starts again.
     let (l, _, _) = rig.run(blocks(4.0), true, &[]);
     assert!(rms_of(&l[96_000..]) > 0.01);
@@ -5208,8 +6989,17 @@ fn vesper_hold_lets_a_note_go_and_the_next_chord_strikes_again() {
         rms_of(&l[at..at + 4800])
     };
     for bar in [0.0, 1.0, 2.0] {
-        assert!(bit(bar, 0.1) > 0.01, "a stab at the start of bar {bar}: {}", bit(bar, 0.1));
-        assert!(bit(bar, 1.5) < bit(bar, 0.1) * 0.02, "gone before the next: {} after {}", bit(bar, 1.5), bit(bar, 0.1));
+        assert!(
+            bit(bar, 0.1) > 0.01,
+            "a stab at the start of bar {bar}: {}",
+            bit(bar, 0.1)
+        );
+        assert!(
+            bit(bar, 1.5) < bit(bar, 0.1) * 0.02,
+            "gone before the next: {} after {}",
+            bit(bar, 1.5),
+            bit(bar, 0.1)
+        );
     }
 }
 
@@ -5223,7 +7013,11 @@ fn vesper_ostinato_plays_the_chord_in_time() {
     p.set(COMPLEXITY, 3.0);
     let mut rig = VesperRig::new(&p);
     let (_, _, midi) = rig.run(VESPER_BAR_BLOCKS, true, &[]);
-    let ons: Vec<(usize, u8)> = midi.iter().filter(|(_, m)| m[0] & 0xF0 == 0x90 && m[0] & 0x0F == 2).map(|&(at, m)| (at, m[1])).collect();
+    let ons: Vec<(usize, u8)> = midi
+        .iter()
+        .filter(|(_, m)| m[0] & 0xF0 == 0x90 && m[0] & 0x0F == 2)
+        .map(|&(at, m)| (at, m[1]))
+        .collect();
     assert_eq!(ons.len(), 8, "eight eighths in a bar: {ons:?}");
     for (n, &(at, _)) in ons.iter().enumerate() {
         assert_eq!(at, n * 12_000, "on the grid: {ons:?}");
@@ -5231,11 +7025,17 @@ fn vesper_ostinato_plays_the_chord_in_time() {
     // Up over two octaves of the chord, then back down.
     let notes: Vec<i32> = ons.iter().map(|&(_, m)| m as i32).collect();
     assert!(notes[..6].windows(2).all(|w| w[0] < w[1]), "up: {notes:?}");
-    assert!(notes[5..8].windows(2).all(|w| w[0] > w[1]), "and down: {notes:?}");
+    assert!(
+        notes[5..8].windows(2).all(|w| w[0] > w[1]),
+        "and down: {notes:?}"
+    );
     assert_eq!(notes[3], notes[0] + 12);
     assert_eq!(notes[6], notes[4]);
     // Each has a note-off.
-    let offs = midi.iter().filter(|(_, m)| m[0] & 0xF0 == 0x80 && m[0] & 0x0F == 2).count();
+    let offs = midi
+        .iter()
+        .filter(|(_, m)| m[0] & 0xF0 == 0x80 && m[0] & 0x0F == 2)
+        .count();
     assert_eq!(offs, 8);
 }
 
@@ -5260,8 +7060,18 @@ fn vesper_big_screen_sounds_have_their_shape() {
     assert!(crest < 3.2, "saturated: a crest of {crest}");
     // The brass and the organ turn slowly through i–VI–III–VII.
     let folded = FACTORY.iter().find(|s| s.name == "Folded City").unwrap();
-    let rules = crate::audio::modules::vesper::harmony::Rules { root: 9, mood: folded.mood, variation: folded.variation as usize, complexity: folded.complexity as usize };
-    let degrees = crate::audio::modules::vesper::harmony::progression(folded.seed as u32, folded.chords as usize, &rules).map(|s| s.degree);
+    let rules = crate::audio::modules::vesper::harmony::Rules {
+        root: 9,
+        mood: folded.mood,
+        variation: folded.variation as usize,
+        complexity: folded.complexity as usize,
+    };
+    let degrees = crate::audio::modules::vesper::harmony::progression(
+        folded.seed as u32,
+        folded.chords as usize,
+        &rules,
+    )
+    .map(|s| s.degree);
     assert_eq!(degrees[..4], [0, 5, 2, 6]);
     // Each scene plays, loud enough and in range, in every mix it asks for.
     for (n, scene) in FACTORY.iter().enumerate().skip(20) {
@@ -5270,7 +7080,11 @@ fn vesper_big_screen_sounds_have_their_shape() {
         assert!(p.get(MIXTYPE) < 4.0);
         let mut rig = VesperRig::new(&p);
         let (l, r, _) = rig.run(blocks(8.0), true, &[]);
-        assert!(l.iter().chain(&r).all(|x| x.is_finite() && x.abs() <= 1.0), "{}", scene.name);
+        assert!(
+            l.iter().chain(&r).all(|x| x.is_finite() && x.abs() <= 1.0),
+            "{}",
+            scene.name
+        );
         let rms = rms_of(&l[96_000..]);
         assert!(rms > 0.03, "{} is audible: {rms}", scene.name);
     }
@@ -5298,12 +7112,18 @@ fn vesper_panel_draws_while_it_plays() {
             std::thread::sleep(std::time::Duration::from_millis(40));
             render_buf(&mut e, 4_800);
             time += 0.1;
-            let input = egui::RawInput { time: Some(time), ..Default::default() };
+            let input = egui::RawInput {
+                time: Some(time),
+                ..Default::default()
+            };
             let mut out = ctx.run_ui(input, |ui| editor.show(ui, &mut g, &a));
             out.textures_delta.clear();
         }
     }
-    assert!(p.viz[viz::CARDS].get() >= 2.0, "it showed its chords while drawn");
+    assert!(
+        p.viz[viz::CARDS].get() >= 2.0,
+        "it showed its chords while drawn"
+    );
 }
 
 /// Records `seconds` of an oscillator through a mixer with the offline
@@ -5344,8 +7164,13 @@ fn takes_export_to_wav_and_aiff() {
     let take = record_take(0.25, 0.5);
     let dir = TempDir::new("export");
     let raw = std::fs::read(&take.path).unwrap();
-    let sample = |frame: usize| f32::from_le_bytes(raw[frame * 8..frame * 8 + 4].try_into().unwrap());
-    let all = Options { format: Format::Wav24, normalize: false, trim: false };
+    let sample =
+        |frame: usize| f32::from_le_bytes(raw[frame * 8..frame * 8 + 4].try_into().unwrap());
+    let all = Options {
+        format: Format::Wav24,
+        normalize: false,
+        trim: false,
+    };
 
     // WAV, 24-bit: a plain header, then every frame.
     let wav = dir.0.join("t.wav");
@@ -5354,38 +7179,91 @@ fn takes_export_to_wav_and_aiff() {
     assert_eq!(&bytes[..4], b"RIFF");
     assert_eq!(&bytes[8..16], b"WAVEfmt ");
     assert_eq!(u16::from_le_bytes([bytes[22], bytes[23]]), 2, "stereo");
-    assert_eq!(u32::from_le_bytes(bytes[24..28].try_into().unwrap()), 48_000);
+    assert_eq!(
+        u32::from_le_bytes(bytes[24..28].try_into().unwrap()),
+        48_000
+    );
     assert_eq!(u16::from_le_bytes([bytes[34], bytes[35]]), 24);
     assert_eq!(bytes.len() as u64, 44 + take.frames * 6);
     let at = 44 + 18_000 * 6;
     let v = i32::from_le_bytes([0, bytes[at], bytes[at + 1], bytes[at + 2]]) >> 8;
-    assert!((v as f32 / 8_388_607.0 - sample(18_000)).abs() < 1e-6, "the same samples");
+    assert!(
+        (v as f32 / 8_388_607.0 - sample(18_000)).abs() < 1e-6,
+        "the same samples"
+    );
 
     // 32-bit float.
     let float = dir.0.join("f.wav");
-    export(&take, Options { format: Format::WavFloat, ..all }, &float).unwrap();
+    export(
+        &take,
+        Options {
+            format: Format::WavFloat,
+            ..all
+        },
+        &float,
+    )
+    .unwrap();
     let bytes = std::fs::read(&float).unwrap();
     assert_eq!(u16::from_le_bytes([bytes[20], bytes[21]]), 3, "IEEE float");
-    assert_eq!(f32::from_le_bytes(bytes[44 + 18_000 * 8..44 + 18_000 * 8 + 4].try_into().unwrap()), sample(18_000));
+    assert_eq!(
+        f32::from_le_bytes(
+            bytes[44 + 18_000 * 8..44 + 18_000 * 8 + 4]
+                .try_into()
+                .unwrap()
+        ),
+        sample(18_000)
+    );
 
     // AIFF, 16-bit: big-endian, the rate as an 80-bit float.
     let aiff = dir.0.join("t.aiff");
-    export(&take, Options { format: Format::Aiff16, ..all }, &aiff).unwrap();
+    export(
+        &take,
+        Options {
+            format: Format::Aiff16,
+            ..all
+        },
+        &aiff,
+    )
+    .unwrap();
     let bytes = std::fs::read(&aiff).unwrap();
     assert_eq!(&bytes[..4], b"FORM");
     assert_eq!(&bytes[8..16], b"AIFFCOMM");
-    assert_eq!(u32::from_be_bytes(bytes[22..26].try_into().unwrap()) as u64, take.frames);
-    assert_eq!(&bytes[28..38], &[0x40, 0x0E, 0xBB, 0x80, 0, 0, 0, 0, 0, 0], "48000 Hz");
+    assert_eq!(
+        u32::from_be_bytes(bytes[22..26].try_into().unwrap()) as u64,
+        take.frames
+    );
+    assert_eq!(
+        &bytes[28..38],
+        &[0x40, 0x0E, 0xBB, 0x80, 0, 0, 0, 0, 0, 0],
+        "48000 Hz"
+    );
     assert_eq!(bytes.len() as u64, 54 + take.frames * 4);
 
     // Trimmed: the silence goes (10 ms kept each side); normalized: the
     // peak at −1 dBFS.
     let trimmed = dir.0.join("trim.wav");
-    export(&take, Options { format: Format::WavFloat, normalize: true, trim: true }, &trimmed).unwrap();
+    export(
+        &take,
+        Options {
+            format: Format::WavFloat,
+            normalize: true,
+            trim: true,
+        },
+        &trimmed,
+    )
+    .unwrap();
     let bytes = std::fs::read(&trimmed).unwrap();
     let frames = (bytes.len() - 44) / 8;
-    assert!((24_000..=25_500).contains(&frames), "{frames} frames of sound");
-    let peak = bytes[44..].as_chunks::<4>().0.iter().map(|b| f32::from_le_bytes(*b).abs()).fold(0.0, f32::max);
+    assert!(
+        (24_000..=25_500).contains(&frames),
+        "{frames} frames of sound"
+    );
+    let peak = bytes[44..]
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|b| f32::from_le_bytes(*b).abs())
+        .fold(0.0, f32::max);
     assert!((peak - 0.891).abs() < 0.002, "peak {peak}");
 }
 
@@ -5397,9 +7275,22 @@ fn takes_export_through_the_system_encoders() {
     }
     let take = record_take(0.0, 0.5);
     let dir = TempDir::new("encode");
-    for (format, magic, at) in [(Format::Flac, &b"fLaC"[..], 0), (Format::Alac, &b"ftyp"[..], 4), (Format::Aac, &b"ftyp"[..], 4)] {
+    for (format, magic, at) in [
+        (Format::Flac, &b"fLaC"[..], 0),
+        (Format::Alac, &b"ftyp"[..], 4),
+        (Format::Aac, &b"ftyp"[..], 4),
+    ] {
         let path = dir.0.join(format!("t.{}", format.extension()));
-        export(&take, Options { format, normalize: false, trim: false }, &path).unwrap();
+        export(
+            &take,
+            Options {
+                format,
+                normalize: false,
+                trim: false,
+            },
+            &path,
+        )
+        .unwrap();
         let bytes = std::fs::read(&path).unwrap();
         assert_eq!(&bytes[at..at + 4], magic, "{}", format.label());
     }
@@ -5423,7 +7314,10 @@ fn a_centred_channel_keeps_its_level_and_the_output_sets_the_board() {
     g.connect(port(x, 0), port(m, 0), &a);
     render(&mut e, 9600);
     let level = render(&mut e, 9600).0;
-    assert!((level - 0.5).abs() < 0.03, "−6 dBFS through the mixer: {level}");
+    assert!(
+        (level - 0.5).abs() < 0.03,
+        "−6 dBFS through the mixer: {level}"
+    );
     // OUTPUT +3 dB: louder by as much, under the limiter's ceiling.
     shared.output.set(10f32.powf(3.0 / 20.0));
     render(&mut e, 9600);
@@ -5447,11 +7341,17 @@ fn tape_saturation_adds_harmonics_at_a_steady_level() {
     let (clean, clean_h) = run(0.0);
     let (default, default_h) = run(0.35);
     let (full, full_h) = run(1.0);
-    assert!(default_h > 3.0 * clean_h && full_h > 3.0 * default_h, "harmonics grow: {clean_h} {default_h} {full_h}");
+    assert!(
+        default_h > 3.0 * clean_h && full_h > 3.0 * default_h,
+        "harmonics grow: {clean_h} {default_h} {full_h}"
+    );
     assert!(default_h > 0.03, "characterful by default: {default_h}");
     for (level, what) in [(default, "default"), (full, "full")] {
         let db = 20.0 * (level / clean).log10();
-        assert!((-3.5..1.0).contains(&db), "{what} keeps the level: {db:.1} dB");
+        assert!(
+            (-3.5..1.0).contains(&db),
+            "{what} keeps the level: {db:.1} dB"
+        );
     }
 }
 
@@ -5485,7 +7385,10 @@ fn frakture_mutations_reshape_the_grains() {
         rms_of(&after[144_000..])
     };
     let (dry_tail, fed_tail) = (tail(0.0), tail(0.9));
-    assert!(fed_tail > 0.01 && fed_tail > 10.0 * dry_tail, "feedback tail {fed_tail} vs {dry_tail}");
+    assert!(
+        fed_tail > 0.01 && fed_tail > 10.0 * dry_tail,
+        "feedback tail {fed_tail} vs {dry_tail}"
+    );
 
     // SWARM: clouds, many more grains at once.
     let grains = |swarm: f32| {
@@ -5496,7 +7399,10 @@ fn frakture_mutations_reshape_the_grains() {
         p.viz[viz::GRAIN_COUNT].get()
     };
     let (alone, cloud) = (grains(0.0), grains(1.0));
-    assert!(cloud >= 3.0 * alone.max(1.0), "{cloud} grains in a swarm, {alone} without");
+    assert!(
+        cloud >= 3.0 * alone.max(1.0),
+        "{cloud} grains in a swarm, {alone} without"
+    );
 
     // GLIDE and SHIMMER: grains end up away from their starting pitch, and
     // some jump up; ERODE marks some as eroded.
@@ -5510,11 +7416,30 @@ fn frakture_mutations_reshape_the_grains() {
     let shown: Vec<(f32, f32, u32)> = (0..VIZ_GRAINS)
         .map(|g| viz::GRAINS + g * GRAIN_VIZ)
         .filter(|&at| p.viz[at + 2].get() >= 0.0)
-        .map(|at| (p.viz[at + 1].get(), p.viz[at + 4].get(), p.viz[at + 3].get() as u32))
+        .map(|at| {
+            (
+                p.viz[at + 1].get(),
+                p.viz[at + 4].get(),
+                p.viz[at + 3].get() as u32,
+            )
+        })
         .collect();
-    assert!(shown.iter().any(|(now, start, _)| now - start > 3.0), "no grain glided: {shown:?}");
-    assert!(shown.iter().all(|(_, _, kind)| kind & grain_kind::SHIMMER != 0), "shimmer at full jumps every grain");
-    assert!(shown.iter().all(|(_, _, kind)| kind & grain_kind::ERODED != 0), "erode at full wears every grain");
+    assert!(
+        shown.iter().any(|(now, start, _)| now - start > 3.0),
+        "no grain glided: {shown:?}"
+    );
+    assert!(
+        shown
+            .iter()
+            .all(|(_, _, kind)| kind & grain_kind::SHIMMER != 0),
+        "shimmer at full jumps every grain"
+    );
+    assert!(
+        shown
+            .iter()
+            .all(|(_, _, kind)| kind & grain_kind::ERODED != 0),
+        "erode at full wears every grain"
+    );
 
     // RESONATE: noise comes out pitched, on the harmonics of KEY.
     let peaks = |resonate: f32| {
@@ -5524,12 +7449,21 @@ fn frakture_mutations_reshape_the_grains() {
         let mut fx = Frakture::new(p, 48_000.0);
         let (l, _) = drive(&mut fx, 144_000, 0, noise);
         let tail = &l[48_000..];
-        let on: f32 = [220.0, 440.0, 660.0, 880.0].iter().map(|&f| tone_amp(tail, f)).sum();
-        let off: f32 = [330.0, 550.0, 770.0, 990.0].iter().map(|&f| tone_amp(tail, f)).sum();
+        let on: f32 = [220.0, 440.0, 660.0, 880.0]
+            .iter()
+            .map(|&f| tone_amp(tail, f))
+            .sum();
+        let off: f32 = [330.0, 550.0, 770.0, 990.0]
+            .iter()
+            .map(|&f| tone_amp(tail, f))
+            .sum();
         on / off.max(1e-9)
     };
     let (flat, rung) = (peaks(0.0), peaks(1.0));
-    assert!(rung > 3.0 * flat, "harmonics of KEY stand out: {rung:.2} vs {flat:.2}");
+    assert!(
+        rung > 3.0 * flat,
+        "harmonics of KEY stand out: {rung:.2} vs {flat:.2}"
+    );
 }
 
 #[test]
@@ -5554,7 +7488,9 @@ fn frakture_mutated_to_the_extreme_stays_in_bounds() {
 
 #[test]
 fn frakture_scan_sync_is_locked_to_the_transport() {
-    use crate::audio::modules::frakture::{self, Frakture, SCAN, SCAN_RANGE, data, div_norm, layer, lp, viz};
+    use crate::audio::modules::frakture::{
+        self, Frakture, SCAN, SCAN_RANGE, data, div_norm, layer, lp, viz,
+    };
     // A 1-bar buffer (4 beats, 96000 frames at 120 BPM): at 1× the playhead
     // makes one pass per bar, at −½× half a pass backwards, wherever the
     // transport starts.
@@ -5572,7 +7508,10 @@ fn frakture_scan_sync_is_locked_to_the_transport() {
                 let want = (beat / 4.0 * at).rem_euclid(1.0) as f32;
                 let got = p.viz[viz::PLAYHEADS].get();
                 let off = (got - want).abs();
-                assert!(off.min(1.0 - off) < 0.002, "{at}× from {from}: playhead {got}, want {want}");
+                assert!(
+                    off.min(1.0 - off) < 0.002,
+                    "{at}× from {from}: playhead {got}, want {want}"
+                );
                 fx = Frakture::new(p.clone(), 48_000.0);
             }
         }
@@ -5580,12 +7519,17 @@ fn frakture_scan_sync_is_locked_to_the_transport() {
     let p = grains_only();
     p.data[data::PLAYHEAD_MODE].set(SCAN as f32);
     p.data[data::SCAN_SYNC].set(1.0);
-    assert_eq!(frakture::format(&p, lp(0, layer::PLAYHEAD), div_norm(6, SCAN_RANGE)), "1×");
+    assert_eq!(
+        frakture::format(&p, lp(0, layer::PLAYHEAD), div_norm(6, SCAN_RANGE)),
+        "1×"
+    );
 }
 
 #[test]
 fn frakture_synced_swarm_rolls_in_time() {
-    use crate::audio::modules::frakture::{self, DENSITY_DIVS, Frakture, SIZE_DIVS, data, div_norm, layer, lp, viz};
+    use crate::audio::modules::frakture::{
+        self, DENSITY_DIVS, Frakture, SIZE_DIVS, data, div_norm, layer, lp, viz,
+    };
     // A cloud every half note, grains a quarter long; with SYNC its grains
     // start one after another, a 1/32 (3000 frames) apart.
     let run = |sync: bool| {
@@ -5617,15 +7561,23 @@ fn frakture_synced_swarm_rolls_in_time() {
     for &(block, added) in &starts {
         assert_eq!(added, 1.0, "one grain at a time, block {block}");
         let into = (block * 64 + 63) % 3_000;
-        assert!(into < 256 + 2, "block {block} isn't on the 1/32 grid ({into} frames past it)");
+        assert!(
+            into < 256 + 2,
+            "block {block} isn't on the 1/32 grid ({into} frames past it)"
+        );
     }
     let (free, _) = run(false);
-    assert!(free.iter().any(|&(_, added)| added > 1.0), "unsynced, a cloud starts all at once");
+    assert!(
+        free.iter().any(|&(_, added)| added > 1.0),
+        "unsynced, a cloud starts all at once"
+    );
 }
 
 #[test]
 fn frakture_synced_glide_bends_in_a_note_value() {
-    use crate::audio::modules::frakture::{self, Frakture, GRAIN_VIZ, SIZE_DIVS, VIZ_GRAINS, data, div_norm, layer, lp, viz};
+    use crate::audio::modules::frakture::{
+        self, Frakture, GRAIN_VIZ, SIZE_DIVS, VIZ_GRAINS, data, div_norm, layer, lp, viz,
+    };
     // Whole-note grains, a new one every 1/16, each bending 12…36 st: synced
     // to 1/16, nearly all of them are past 12 st; free, the bend lasts the
     // whole grain and fewer than half are.
@@ -5654,7 +7606,10 @@ fn frakture_synced_glide_bends_in_a_note_value() {
         done as f32 / all.max(1) as f32
     };
     let (synced, free) = (bent(true), bent(false));
-    assert!(synced > 0.85 && free < 0.65, "bent past 12 st: {synced:.2} synced, {free:.2} free");
+    assert!(
+        synced > 0.85 && free < 0.65,
+        "bent past 12 st: {synced:.2} synced, {free:.2} free"
+    );
 }
 
 #[test]
@@ -5670,15 +7625,26 @@ fn frakture_synced_feedback_echoes_a_note_value_later() {
         p.set(frakture::FEEDBACK, 0.9);
         p.data[frakture::data::FEEDBACK_SYNC].set(if sync { 1.0 } else { 0.0 });
         p.set(frakture::FEEDBACK_TIME, 13.0);
-        let (l, _) = drive(&mut Frakture::new(p, 48_000.0), 120_000, 0, |f| if f < 4_800 { saw(f) } else { 0.0 });
+        let (l, _) = drive(&mut Frakture::new(p, 48_000.0), 120_000, 0, |f| {
+            if f < 4_800 { saw(f) } else { 0.0 }
+        });
         let w = |from: usize| rms_of(&l[from..from + 8_000]);
         (w(24_500), w(48_500), w(72_500), w(96_500))
     };
     let (first, early, later, late) = tail(true);
-    assert!(first > 0.01 && late > 0.1 * first, "the echo comes back: {first} then {late}");
-    assert!(early < 0.05 * late && later < 0.05 * late, "nothing in between: {early}, {later} vs {late}");
+    assert!(
+        first > 0.01 && late > 0.1 * first,
+        "the echo comes back: {first} then {late}"
+    );
+    assert!(
+        early < 0.05 * late && later < 0.05 * late,
+        "nothing in between: {early}, {later} vs {late}"
+    );
     let (_, free, _, _) = tail(false);
-    assert!(free > 20.0 * early, "unsynced it's straight back: {free} vs {early}");
+    assert!(
+        free > 20.0 * early,
+        "unsynced it's straight back: {free} vs {early}"
+    );
 }
 
 #[test]
@@ -5691,7 +7657,11 @@ fn frakture_synced_space_shows_note_values() {
     assert_eq!(frakture::format(&p, frakture::SPACE_LENGTH, v), "1/2");
     p.data[data::SPACE_SYNC].set(0.0);
     assert!(frakture::format(&p, frakture::SPACE_LENGTH, v).ends_with('s'));
-    for (i, label) in [(frakture::SWARM_RATE, "1/32"), (frakture::GLIDE_TIME, "1/4"), (frakture::FEEDBACK_TIME, "1/4")] {
+    for (i, label) in [
+        (frakture::SWARM_RATE, "1/32"),
+        (frakture::GLIDE_TIME, "1/4"),
+        (frakture::FEEDBACK_TIME, "1/4"),
+    ] {
         assert_eq!(frakture::format(&p, i, spec_default(i)), label);
     }
 }
@@ -5713,12 +7683,18 @@ fn input_sample(frame: usize, channel: usize) -> f32 {
 /// Pushes `frames` of the 4-channel test input from `from`, as a device
 /// callback would.
 fn push_input(shared: &EngineShared, from: usize, frames: usize, channels: usize) {
-    let data: Vec<f32> = (from..from + frames).flat_map(|f| (0..channels).map(move |c| input_sample(f, c))).collect();
+    let data: Vec<f32> = (from..from + frames)
+        .flat_map(|f| (0..channels).map(move |c| input_sample(f, c)))
+        .collect();
     shared.input.push(&data, channels);
 }
 
 /// An Audio In node's processor on `shared`'s input, with INPUT and mode.
-fn audio_in(shared: &Arc<EngineShared>, input: f32, mono: bool) -> crate::audio::modules::audio_in::AudioIn {
+fn audio_in(
+    shared: &Arc<EngineShared>,
+    input: f32,
+    mono: bool,
+) -> crate::audio::modules::audio_in::AudioIn {
     use crate::audio::modules::audio_in::{self, AudioIn};
     let p = Arc::new(ModuleParams::new(ModuleKind::AudioIn));
     p.set(audio_in::INPUT, input);
@@ -5728,10 +7704,26 @@ fn audio_in(shared: &Arc<EngineShared>, input: f32, mono: bool) -> crate::audio:
 
 /// One output buffer of `frames`: the engine takes the input, the node
 /// plays it block by block.
-fn play_input(shared: &EngineShared, node: &mut dyn crate::audio::engine::Processor, frames: usize) -> (Vec<f32>, Vec<f32>) {
+fn play_input(
+    shared: &EngineShared,
+    node: &mut dyn crate::audio::engine::Processor,
+    frames: usize,
+) -> (Vec<f32>, Vec<f32>) {
     use crate::audio::engine::{Inputs, MAX_INPUTS, MidiBuf, ProcessCtx};
-    let ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing: true, restart: false };
-    let inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: false });
+    let ctx = ProcessCtx {
+        sample_rate: 48_000.0,
+        smooth: 0.01,
+        beat: 0.0,
+        beats_per_sample: 2.0 / 48_000.0,
+        playing: true,
+        restart: false,
+    };
+    let inputs = Box::new(Inputs {
+        bufs: [[[0.0; 64]; 2]; MAX_INPUTS],
+        connected: [false; MAX_INPUTS],
+        midi: MidiBuf::default(),
+        midi_connected: false,
+    });
     let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
     shared.input.begin_render(frames);
     let (mut l, mut r) = (Vec::new(), Vec::new());
@@ -5760,9 +7752,16 @@ fn audio_in_plays_the_chosen_input_channels_a_buffer_late() {
     }
     // The first buffer waits for the cushion (one device buffer), then
     // every frame comes through, 256 frames late, nothing lost.
-    assert!(l[..256].iter().chain(&r[..256]).all(|&s| s == 0.0), "silent while the cushion fills");
+    assert!(
+        l[..256].iter().chain(&r[..256]).all(|&s| s == 0.0),
+        "silent while the cushion fills"
+    );
     for f in 256..l.len() {
-        assert_eq!((l[f], r[f]), (input_sample(f - 256, 2), input_sample(f - 256, 3)), "frame {f}");
+        assert_eq!(
+            (l[f], r[f]),
+            (input_sample(f - 256, 2), input_sample(f - 256, 3)),
+            "frame {f}"
+        );
     }
     assert_eq!(shared.input.dropouts.load(Ordering::Relaxed), 0);
 
@@ -5770,7 +7769,13 @@ fn audio_in_plays_the_chosen_input_channels_a_buffer_late() {
     let mut node = audio_in(&shared, 2.0, true);
     push_input(&shared, 12 * 256, 256, 4);
     let (l, r) = play_input(&shared, &mut node, 256);
-    assert_eq!((l[10], r[10]), (input_sample(11 * 256 + 10, 1), input_sample(11 * 256 + 10, 1)));
+    assert_eq!(
+        (l[10], r[10]),
+        (
+            input_sample(11 * 256 + 10, 1),
+            input_sample(11 * 256 + 10, 1)
+        )
+    );
 }
 
 #[test]
@@ -5807,7 +7812,11 @@ fn audio_in_copes_with_mono_inputs_dropouts_and_drift() {
     assert!(l.iter().all(|&s| s == 0.0), "waits for a whole cushion");
     push_input(&shared, 5 * 256, 256, 2);
     let (l, _) = play_input(&shared, &mut node, 256);
-    assert_eq!(l[0], input_sample(4 * 256, 0), "then plays on from where it stopped");
+    assert_eq!(
+        l[0],
+        input_sample(4 * 256, 0),
+        "then plays on from where it stopped"
+    );
 
     // An input whose clock runs fast piles up frames: some are skipped, so
     // the delay stays short.
@@ -5823,7 +7832,10 @@ fn audio_in_copes_with_mono_inputs_dropouts_and_drift() {
     }
     assert!(shared.input.skips.load(Ordering::Relaxed) > 0);
     let behind = pushed as f32 - (last[255] * 100_000.0).round();
-    assert!(behind <= (2 * 256 + 4 * 300) as f32, "{behind} frames behind");
+    assert!(
+        behind <= (2 * 256 + 4 * 300) as f32,
+        "{behind} frames behind"
+    );
 
     // Closed: silence, and the node says so.
     shared.input.close();
@@ -5843,14 +7855,23 @@ fn audio_in_node_reaches_the_board() {
     let tone = |f: usize| 0.3 * (f as f32 * std::f32::consts::TAU * 440.0 / 48_000.0).sin();
     let mut out = Vec::new();
     for k in 0..40 {
-        let data: Vec<f32> = (k * 600..(k + 1) * 600).flat_map(|f| [tone(f), tone(f)]).collect();
+        let data: Vec<f32> = (k * 600..(k + 1) * 600)
+            .flat_map(|f| [tone(f), tone(f)])
+            .collect();
         shared.input.push(&data, 2);
         out.extend(render_buf(&mut e, 600));
     }
     let left: Vec<f32> = out.chunks(2).map(|f| f[0]).skip(4800).collect();
-    assert!(tone_amp(&left, 440.0) > 0.05, "the input is heard: {}", tone_amp(&left, 440.0));
+    assert!(
+        tone_amp(&left, 440.0) > 0.05,
+        "the input is heard: {}",
+        tone_amp(&left, 440.0)
+    );
     let p = module_params(&g, input);
-    assert_eq!(p.viz[crate::audio::modules::audio_in::viz::CHANNELS].get(), 2.0);
+    assert_eq!(
+        p.viz[crate::audio::modules::audio_in::viz::CHANNELS].get(),
+        2.0
+    );
 }
 
 #[test]
@@ -5879,7 +7900,11 @@ fn audio_settings_survive_and_older_files_still_load() {
     // Before the audio settings there was only the buffer size.
     let old = AppSettings::parse(r#"{ "buffer_size": 512, "output_db": 3.0 }"#).unwrap();
     assert_eq!((old.audio.buffer_size, old.output_db), (Some(512), 3.0));
-    assert_eq!(old.audio.input, InputChoice::SystemDefault, "the input follows the system by default");
+    assert_eq!(
+        old.audio.input,
+        InputChoice::SystemDefault,
+        "the input follows the system by default"
+    );
 
     let mut settings = AppSettings::default();
     settings.audio = AudioConfig {
@@ -5892,11 +7917,20 @@ fn audio_settings_survive_and_older_files_still_load() {
     };
     let text = serde_json::to_string(&settings).unwrap();
     let json: serde_json::Value = serde_json::from_str(&text).unwrap();
-    assert!(json.get("buffer_size").is_none(), "the old field isn't written again");
+    assert!(
+        json.get("buffer_size").is_none(),
+        "the old field isn't written again"
+    );
     assert_eq!(AppSettings::parse(&text).unwrap(), settings);
 
     assert_eq!(device::pairs(2), [(0, "1–2".to_owned())]);
-    assert_eq!(device::pairs(5).iter().map(|(_, l)| l.as_str()).collect::<Vec<_>>(), ["1–2", "3–4", "5"]);
+    assert_eq!(
+        device::pairs(5)
+            .iter()
+            .map(|(_, l)| l.as_str())
+            .collect::<Vec<_>>(),
+        ["1–2", "3–4", "5"]
+    );
     assert_eq!(device::pairs(1), [(0, "1".to_owned())]);
 }
 
@@ -5932,12 +7966,17 @@ fn audio_in_feeds_effects_and_texture_nodes() {
             let tone = |f: usize| 0.3 * (f as f32 * std::f32::consts::TAU * 220.0 / 48_000.0).sin();
             let mut out = Vec::new();
             for k in 0..80 {
-                let data: Vec<f32> = (k * 600..(k + 1) * 600).flat_map(|f| [tone(f), tone(f)]).collect();
+                let data: Vec<f32> = (k * 600..(k + 1) * 600)
+                    .flat_map(|f| [tone(f), tone(f)])
+                    .collect();
                 shared.input.push(&data, 2);
                 out.extend(render_buf(&mut e, 600));
             }
             let level = rms_of(&out[out.len() / 2..]);
-            assert!(level > 0.01, "{kind:?} (playing {playing}) passes the input on: {level}");
+            assert!(
+                level > 0.01,
+                "{kind:?} (playing {playing}) passes the input on: {level}"
+            );
         }
     }
 }
@@ -6022,19 +8061,33 @@ fn automa_melodies_stay_in_key_on_the_chords_and_in_time() {
             let ons = note_ons(&events);
             // The melody from middle C up (OCTAVE 4), the pad under it.
             let (melody, pad): (Vec<_>, Vec<_>) = ons.iter().partition(|o| o.1 >= 60);
-            assert!(melody.len() > 40, "engine {engine} plays: {} notes", melody.len());
+            assert!(
+                melody.len() > 40,
+                "engine {engine} plays: {} notes",
+                melody.len()
+            );
             for &(frame, note) in &melody {
                 assert_eq!(frame % SIXTEENTH, 0, "on the sixteenths of the global grid");
-                assert!(scale.contains(&(note % 12)), "engine {engine}: {note} is in C major");
+                assert!(
+                    scale.contains(&(note % 12)),
+                    "engine {engine}: {note} is in C major"
+                );
                 // Every chord begins on one of its tones; with no TENSION
                 // there is nothing else.
                 if frame % BAR == 0 || tension == 0.0 {
                     let chord = chord_at(frame);
-                    assert!(chord.contains(note % 12), "engine {engine}: {note} at frame {frame} is a tone of {}", chord.name(&h));
+                    assert!(
+                        chord.contains(note % 12),
+                        "engine {engine}: {note} at frame {frame} is a tone of {}",
+                        chord.name(&h)
+                    );
                 }
             }
             if voices > 1.0 {
-                let chords = melody.iter().filter(|a| melody.iter().filter(|b| b.0 == a.0).count() > 1).count();
+                let chords = melody
+                    .iter()
+                    .filter(|a| melody.iter().filter(|b| b.0 == a.0).count() > 1)
+                    .count();
                 assert!(chords > 0, "engine {engine} plays in parts");
             }
             // The pad: the chord's three tones on every bar line.
@@ -6059,12 +8112,19 @@ fn automa_plays_the_same_from_start_and_stop_ends_its_notes() {
         let mut a = Automa::new(p.clone());
         let mut first = run_automa(&mut a, 0, 4 * BAR, true, true);
         let stop = run_automa(&mut a, 4 * BAR, 64, false, false);
-        assert!(!stop.is_empty() && stop.iter().all(|(_, m)| m[0] & 0xF0 == 0x80), "Stop only ends notes");
+        assert!(
+            !stop.is_empty() && stop.iter().all(|(_, m)| m[0] & 0xF0 == 0x80),
+            "Stop only ends notes"
+        );
         first.extend(&stop);
         assert!(every_note_ends(&first), "engine {engine}: no note hangs");
         assert_eq!(p.viz[automa::viz::STEP].get(), -1.0);
         let again = run_automa(&mut a, 0, 4 * BAR, true, true);
-        assert_eq!(note_ons(&first), note_ons(&again), "engine {engine}: Start plays the same music again");
+        assert_eq!(
+            note_ons(&first),
+            note_ons(&again),
+            "engine {engine}: Start plays the same music again"
+        );
 
         // A new seed, other music.
         automa::reseed(&p, 777);
@@ -6082,14 +8142,30 @@ fn automa_follows_rate_swing_and_the_chord_length() {
     p.set(automa::RATE, 1.0); // eighths
     p.set(automa::CHANGE, 2.0); // two bars a chord
     p.data[data::PAD].set(1.0);
-    let ons = note_ons(&run_automa(&mut Automa::new(p.clone()), 0, 4 * BAR, true, true));
+    let ons = note_ons(&run_automa(
+        &mut Automa::new(p.clone()),
+        0,
+        4 * BAR,
+        true,
+        true,
+    ));
     let melody: Vec<usize> = ons.iter().filter(|o| o.1 >= 60).map(|o| o.0).collect();
-    assert_eq!(melody, (0..32).map(|k| k * 12_000).collect::<Vec<_>>(), "every eighth (CASCADE always offers)");
+    assert_eq!(
+        melody,
+        (0..32).map(|k| k * 12_000).collect::<Vec<_>>(),
+        "every eighth (CASCADE always offers)"
+    );
     let pad: Vec<usize> = ons.iter().filter(|o| o.1 < 60).map(|o| o.0).collect();
     assert_eq!(pad, [0, 0, 0, 2 * BAR, 2 * BAR, 2 * BAR]);
     // Swing pushes the off-beats late.
     p.set(automa::SWING, 1.0);
-    let ons = note_ons(&run_automa(&mut Automa::new(p.clone()), 0, BAR / 2, true, true));
+    let ons = note_ons(&run_automa(
+        &mut Automa::new(p.clone()),
+        0,
+        BAR / 2,
+        true,
+        true,
+    ));
     let firsts: Vec<usize> = ons.iter().filter(|o| o.1 >= 60).map(|o| o.0).collect();
     assert_eq!(firsts, [0, 18_000, 24_000, 42_000]);
 }
@@ -6106,7 +8182,12 @@ fn automa_freeze_loops_the_last_bar() {
     let free = note_ons(&run_automa(&mut a, 0, 2 * BAR, true, true));
     p.data[data::FREEZE].set(1.0);
     let frozen = note_ons(&run_automa(&mut a, 2 * BAR, 3 * BAR, true, false));
-    let bar = |ons: &[(usize, u8)], k: usize| ons.iter().filter(|o| o.0 / BAR == k).map(|o| (o.0 % BAR, o.1)).collect::<Vec<_>>();
+    let bar = |ons: &[(usize, u8)], k: usize| {
+        ons.iter()
+            .filter(|o| o.0 / BAR == k)
+            .map(|o| (o.0 % BAR, o.1))
+            .collect::<Vec<_>>()
+    };
     assert!(!bar(&free, 1).is_empty());
     for k in 2..5 {
         assert_eq!(bar(&frozen, k), bar(&free, 1), "frozen bar {k}");
@@ -6125,7 +8206,10 @@ fn automa_freeze_loops_the_last_bar() {
     assert!(generation > 10.0);
     p.data[data::FREEZE].set(1.0);
     let ons = note_ons(&run_automa(&mut a, BAR, 2 * BAR, true, false));
-    assert!(p.viz[viz::GENERATION].get() <= generation + 1.0, "it held still");
+    assert!(
+        p.viz[viz::GENERATION].get() <= generation + 1.0,
+        "it held still"
+    );
     assert!(!ons.is_empty());
 }
 
@@ -6138,19 +8222,27 @@ fn automa_plays_cells_drawn_on_its_grid() {
     p.set(automa::DENSITY, 1.0);
     let mut a = Automa::new(p.clone());
     run_automa(&mut a, 0, 64, false, false);
-    assert!((0..256).all(|i| p.viz[viz::CELLS + i].get() == 0.0), "an empty world");
+    assert!(
+        (0..256).all(|i| p.viz[viz::CELLS + i].get() == 0.0),
+        "an empty world"
+    );
     // A blinker drawn on row 5, columns 4–6.
     for x in 4..7 {
         p.viz[viz::EDITS + 5 * 16 + x].set(1.0);
     }
     p.viz[viz::EDITED].set(1.0);
     run_automa(&mut a, 0, 64, false, false);
-    let alive: Vec<usize> = (0..256).filter(|&i| p.viz[viz::CELLS + i].get() > 0.0).collect();
+    let alive: Vec<usize> = (0..256)
+        .filter(|&i| p.viz[viz::CELLS + i].get() > 0.0)
+        .collect();
     assert_eq!(alive, [84, 85, 86]);
     // Playing (frozen, so it stays put), exactly those columns sound.
     p.data[data::FREEZE].set(1.0);
     let ons = note_ons(&run_automa(&mut a, 0, BAR, true, false));
-    assert_eq!(ons.iter().map(|o| o.0).collect::<Vec<_>>(), [4 * SIXTEENTH, 5 * SIXTEENTH, 6 * SIXTEENTH]);
+    assert_eq!(
+        ons.iter().map(|o| o.0).collect::<Vec<_>>(),
+        [4 * SIXTEENTH, 5 * SIXTEENTH, 6 * SIXTEENTH]
+    );
     // Rubbed out.
     p.viz[viz::EDITS + 5 * 16 + 5].set(-1.0);
     p.viz[viz::EDITED].set(1.0);
@@ -6177,7 +8269,10 @@ fn automa_survives_every_setting() {
                 let mut a = Automa::new(p.clone());
                 let mut events = run_automa(&mut a, 0, 2 * BAR, true, true);
                 events.extend(run_automa(&mut a, 2 * BAR, 64, false, false));
-                assert!(every_note_ends(&events), "setting {setting} mode {mode} flags {flags}");
+                assert!(
+                    every_note_ends(&events),
+                    "setting {setting} mode {mode} flags {flags}"
+                );
                 assert!(events.iter().all(|(_, m)| m[1] < 128 && m[2] < 128));
             }
         }
@@ -6229,12 +8324,18 @@ fn automa_panel_draws_every_generator() {
         for _ in 0..4 {
             render_buf(&mut e, 4_800);
             time += 0.1;
-            let input = egui::RawInput { time: Some(time), ..Default::default() };
+            let input = egui::RawInput {
+                time: Some(time),
+                ..Default::default()
+            };
             let mut out = ctx.run_ui(input, |ui| editor.show(ui, &mut g, &a));
             out.textures_delta.clear();
         }
     }
-    assert!(p.viz[crate::audio::modules::automa::viz::EVENT_SEQ].get() > 0.0, "it played while drawn");
+    assert!(
+        p.viz[crate::audio::modules::automa::viz::EVENT_SEQ].get() > 0.0,
+        "it played while drawn"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -6285,7 +8386,11 @@ fn run_colloid(
 }
 
 fn colloid(p: &Arc<ModuleParams>) -> crate::audio::modules::colloid::Colloid {
-    crate::audio::modules::colloid::Colloid::new(p.clone(), Arc::new(crate::audio::midi::MidiState::new()), 48_000.0)
+    crate::audio::modules::colloid::Colloid::new(
+        p.clone(),
+        Arc::new(crate::audio::midi::MidiState::new()),
+        48_000.0,
+    )
 }
 
 /// The pitch classes Colloid says it plays.
@@ -6324,12 +8429,24 @@ fn colloid_strikes_play_the_chords_notes_and_every_note_ends() {
     eprintln!("default patch: {} notes in 20 s", ons.len());
     assert!(ons.len() > 20, "the atoms strike: {} notes", ons.len());
     let pcs = colloid_pcs(&p);
-    assert!(ons.iter().all(|&(_, n)| pcs >> (n % 12) & 1 == 1), "every note is in the chord");
+    assert!(
+        ons.iter().all(|&(_, n)| pcs >> (n % 12) & 1 == 1),
+        "every note is in the chord"
+    );
     assert!(events.iter().all(|(_, m)| m[0] & 0x0F == 0), "on channel 1");
-    assert!(events.iter().filter(|(_, m)| m[0] & 0xF0 == 0x90).all(|(_, m)| (1..=127).contains(&m[2])));
+    assert!(
+        events
+            .iter()
+            .filter(|(_, m)| m[0] & 0xF0 == 0x90)
+            .all(|(_, m)| (1..=127).contains(&m[2]))
+    );
     assert!(every_note_ends(&events), "stopping ends the notes");
     // Velocities follow the strikes: not all the same.
-    let vels: std::collections::BTreeSet<u8> = events.iter().filter(|(_, m)| m[0] & 0xF0 == 0x90).map(|(_, m)| m[2]).collect();
+    let vels: std::collections::BTreeSet<u8> = events
+        .iter()
+        .filter(|(_, m)| m[0] & 0xF0 == 0x90)
+        .map(|(_, m)| m[2])
+        .collect();
     assert!(vels.len() > 5, "dynamics from the physics: {vels:?}");
 }
 
@@ -6357,33 +8474,71 @@ fn colloid_takes_the_chord_from_the_keys() {
     p.set(COLOR, 0.0);
     p.set(MOLECULES, 9.0);
     let mut c = colloid(&p);
-    let c_major = [(100, [0x90, 60, 90]), (300, [0x90, 64, 90]), (400, [0x90, 67, 90]), (9_000, [0x80, 60, 0]), (9_000, [0x80, 64, 0]), (9_000, [0x80, 67, 0])];
+    let c_major = [
+        (100, [0x90, 60, 90]),
+        (300, [0x90, 64, 90]),
+        (400, [0x90, 67, 90]),
+        (9_000, [0x80, 60, 0]),
+        (9_000, [0x80, 64, 0]),
+        (9_000, [0x80, 67, 0]),
+    ];
     let events = run_colloid(&mut c, 0, 10 * 48_000, true, true, &c_major);
     assert_eq!(p.viz[viz::SOURCE].get(), 2.0);
     assert_eq!(p.viz[viz::MASK].get() as u16, 1 | 1 << 4 | 1 << 7);
-    let late: Vec<_> = note_ons(&events).into_iter().filter(|&(f, _)| f > 4_800).collect();
+    let late: Vec<_> = note_ons(&events)
+        .into_iter()
+        .filter(|&(f, _)| f > 4_800)
+        .collect();
     assert!(!late.is_empty());
-    assert!(late.iter().all(|&(_, n)| [0, 4, 7].contains(&(n % 12))), "C E G only: {late:?}");
+    assert!(
+        late.iter().all(|&(_, n)| [0, 4, 7].contains(&(n % 12))),
+        "C E G only: {late:?}"
+    );
     // The molecules hold the chord's notes, each a different one.
-    let notes: Vec<u8> = (0..9).map(|k| p.viz[viz::MOLECULE + k * viz::MOLECULE_LEN + 5].get() as u8).collect();
+    let notes: Vec<u8> = (0..9)
+        .map(|k| p.viz[viz::MOLECULE + k * viz::MOLECULE_LEN + 5].get() as u8)
+        .collect();
     assert!(notes.iter().all(|n| [0, 4, 7].contains(&(n % 12))));
-    assert_eq!(notes.iter().collect::<std::collections::BTreeSet<_>>().len(), 9);
+    assert_eq!(
+        notes
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        9
+    );
 
     // One key: a new root for the panel's shape (major): A C# E.
     let from = 10 * 48_000;
     let a = [(from + 100, [0x90, 69, 90]), (from + 4_000, [0x80, 69, 0])];
     let events = run_colloid(&mut c, from, 6 * 48_000, true, false, &a);
     assert_eq!(p.viz[viz::SOURCE].get(), 1.0);
-    let late: Vec<_> = note_ons(&events).into_iter().filter(|&(f, _)| f > from + 4_800).collect();
-    assert!(late.iter().all(|&(_, n)| [9, 1, 4].contains(&(n % 12))), "A C# E only: {late:?}");
+    let late: Vec<_> = note_ons(&events)
+        .into_iter()
+        .filter(|&(f, _)| f > from + 4_800)
+        .collect();
+    assert!(
+        late.iter().all(|&(_, n)| [9, 1, 4].contains(&(n % 12))),
+        "A C# E only: {late:?}"
+    );
 
     // Program Change picks the shape; letting go goes back to ROOT (D).
-    run_colloid(&mut c, from, 640, true, false, &[(from + 10, [0xC0, FIRST_CHORD as u8 + 1, 0])]);
+    run_colloid(
+        &mut c,
+        from,
+        640,
+        true,
+        false,
+        &[(from + 10, [0xC0, FIRST_CHORD as u8 + 1, 0])],
+    );
     assert_eq!(p.mode(), FIRST_CHORD + 1);
     p.viz[viz::UNLATCH].set(1.0);
     run_colloid(&mut c, from, 640, true, false, &[]);
     assert_eq!(p.viz[viz::SOURCE].get(), 0.0);
-    assert_eq!(p.viz[viz::MASK].get() as u16, 1 << 2 | 1 << 5 | 1 << 9, "D minor");
+    assert_eq!(
+        p.viz[viz::MASK].get() as u16,
+        1 << 2 | 1 << 5 | 1 << 9,
+        "D minor"
+    );
 }
 
 #[test]
@@ -6396,7 +8551,11 @@ fn colloid_quantized_notes_land_on_the_grid() {
     events.extend(run_colloid(&mut c, 10 * 48_000, 4_800, false, false, &[]));
     let ons = note_ons(&events);
     assert!(ons.len() > 10);
-    assert!(ons.iter().all(|&(f, _)| f % SIXTEENTH == 0), "on sixteenths: {:?}", &ons[..ons.len().min(12)]);
+    assert!(
+        ons.iter().all(|&(f, _)| f % SIXTEENTH == 0),
+        "on sixteenths: {:?}",
+        &ons[..ons.len().min(12)]
+    );
     assert!(every_note_ends(&events));
 }
 
@@ -6413,8 +8572,15 @@ fn colloid_physics_shapes_the_notes() {
     };
     let (_, few) = take(&|p| p.set(ATOMS, 3.0));
     let (_, many) = take(&|p| p.set(ATOMS, 40.0));
-    eprintln!("3 atoms: {} notes, 40 atoms: {} notes", note_ons(&few).len(), note_ons(&many).len());
-    assert!(note_ons(&many).len() > 2 * note_ons(&few).len(), "more atoms, more strikes");
+    eprintln!(
+        "3 atoms: {} notes, 40 atoms: {} notes",
+        note_ons(&few).len(),
+        note_ons(&many).len()
+    );
+    assert!(
+        note_ons(&many).len() > 2 * note_ons(&few).len(),
+        "more atoms, more strikes"
+    );
 
     let mean = |e: &[(usize, [u8; 3])]| {
         let l = note_lengths(e);
@@ -6422,7 +8588,11 @@ fn colloid_physics_shapes_the_notes() {
     };
     let (_, thin) = take(&|p| p.set(VISCOSITY, 0.0));
     let (_, thick) = take(&|p| p.set(VISCOSITY, 1.0));
-    eprintln!("mean note: thin {:.3} s, thick {:.3} s", mean(&thin), mean(&thick));
+    eprintln!(
+        "mean note: thin {:.3} s, thick {:.3} s",
+        mean(&thin),
+        mean(&thick)
+    );
     assert!(mean(&thick) < mean(&thin), "a thick liquid damps the rings");
     let (_, short) = take(&|p| p.set(LENGTH, 0.05));
     let (_, long) = take(&|p| p.set(LENGTH, 3.0));
@@ -6430,7 +8600,8 @@ fn colloid_physics_shapes_the_notes() {
 
     let (p, events) = take(&|p| p.set(MOLECULES, 4.0));
     assert_eq!(p.viz[viz::MOLECULES].get(), 4.0);
-    let distinct: std::collections::BTreeSet<u8> = note_ons(&events).into_iter().map(|(_, n)| n).collect();
+    let distinct: std::collections::BTreeSet<u8> =
+        note_ons(&events).into_iter().map(|(_, n)| n).collect();
     assert!(distinct.len() <= 4, "one note per molecule: {distinct:?}");
 }
 
@@ -6453,12 +8624,18 @@ fn colloid_panel_draws() {
         for _ in 0..4 {
             render_buf(&mut e, 4_800);
             time += 0.1;
-            let input = egui::RawInput { time: Some(time), ..Default::default() };
+            let input = egui::RawInput {
+                time: Some(time),
+                ..Default::default()
+            };
             let mut out = ctx.run_ui(input, |ui| editor.show(ui, &mut g, &a));
             out.textures_delta.clear();
         }
     }
-    assert!(p.viz[viz::EVENT_SEQ].get() > 0.0, "the atoms struck while drawn");
+    assert!(
+        p.viz[viz::EVENT_SEQ].get() > 0.0,
+        "the atoms struck while drawn"
+    );
 }
 
 /// A stepped knob (ROOT: 12 notes) dragged slowly, a pixel a frame, with the
@@ -6476,11 +8653,30 @@ fn stepped_knobs_follow_slow_drags() {
     let mut value = 0.0f32;
     let mut seen = Vec::new();
     let frame = |events: Vec<Event>, t: f64, value: &mut f32| {
-        let input = egui::RawInput { time: Some(t), events, screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(200.0, 200.0))), ..Default::default() };
+        let input = egui::RawInput {
+            time: Some(t),
+            events,
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(200.0, 200.0),
+            )),
+            ..Default::default()
+        };
         let mut out = ctx.run_ui(input, |ui| {
             let painter = ui.painter().clone();
             let mut norm = spec.to_norm(*value);
-            let resp = crate::ui::widgets::knob(ui, &painter, id, c, 10.0, &mut norm, 0.0, false, egui::Color32::WHITE, 1.0);
+            let resp = crate::ui::widgets::knob(
+                ui,
+                &painter,
+                id,
+                c,
+                10.0,
+                &mut norm,
+                0.0,
+                false,
+                egui::Color32::WHITE,
+                1.0,
+            );
             if resp.dragged() {
                 *value = spec.denorm(norm).round();
             }
@@ -6490,7 +8686,16 @@ fn stepped_knobs_follow_slow_drags() {
     let mut t = 0.0;
     frame(vec![Event::PointerMoved(c)], t, &mut value);
     t += 1.0 / 60.0;
-    frame(vec![Event::PointerButton { pos: c, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE }], t, &mut value);
+    frame(
+        vec![Event::PointerButton {
+            pos: c,
+            button: PointerButton::Primary,
+            pressed: true,
+            modifiers: Modifiers::NONE,
+        }],
+        t,
+        &mut value,
+    );
     let mut at = c;
     for _ in 0..120 {
         at.y -= 1.0;
@@ -6499,7 +8704,10 @@ fn stepped_knobs_follow_slow_drags() {
         seen.push(value);
     }
     assert!(value >= 5.0, "a slow drag up steps on: {value}");
-    assert!(seen.windows(2).all(|w| w[1] - w[0] <= 1.0), "one step at a time");
+    assert!(
+        seen.windows(2).all(|w| w[1] - w[0] <= 1.0),
+        "one step at a time"
+    );
     for _ in 0..60 {
         at.y += 1.0;
         t += 1.0 / 60.0;
@@ -6508,7 +8716,6 @@ fn stepped_knobs_follow_slow_drags() {
     let back = value;
     assert!(back < seen[seen.len() - 1], "and back down: {back}");
 }
-
 
 #[test]
 fn colloid_plays_handpan_layouts() {
@@ -6520,23 +8727,43 @@ fn colloid_plays_handpan_layouts() {
     let mut c = colloid(&p);
     let events = run_colloid(&mut c, 0, 10 * 48_000, true, true, &[]);
     assert_eq!(p.viz[viz::LAYOUT].get(), 0.0);
-    let notes: Vec<u8> = (0..10).map(|k| p.viz[viz::MOLECULE + k * viz::MOLECULE_LEN + 5].get() as u8).collect();
+    let notes: Vec<u8> = (0..10)
+        .map(|k| p.viz[viz::MOLECULE + k * viz::MOLECULE_LEN + 5].get() as u8)
+        .collect();
     let mut sorted = notes.clone();
     sorted.sort();
     assert_eq!(sorted, kurd, "one molecule per note of the layout");
     assert!(note_ons(&events).iter().all(|(_, n)| kurd.contains(n)));
     // A key moves the ding: A Kurd.
     let from = 10 * 48_000;
-    let events = run_colloid(&mut c, from, 6 * 48_000, true, false, &[(from + 100, [0x90, 57, 90]), (from + 2_000, [0x80, 57, 0])]);
+    let events = run_colloid(
+        &mut c,
+        from,
+        6 * 48_000,
+        true,
+        false,
+        &[(from + 100, [0x90, 57, 90]), (from + 2_000, [0x80, 57, 0])],
+    );
     let a_kurd: Vec<u8> = kurd.iter().map(|n| n + 7 - 12).collect();
-    let late: Vec<_> = note_ons(&events).into_iter().filter(|&(f, _)| f > from + 4_800).collect();
+    let late: Vec<_> = note_ons(&events)
+        .into_iter()
+        .filter(|&(f, _)| f > from + 4_800)
+        .collect();
     assert!(!late.is_empty());
-    assert!(late.iter().all(|(_, n)| a_kurd.iter().any(|k| k % 12 == n % 12)), "A Kurd: {late:?}");
+    assert!(
+        late.iter()
+            .all(|(_, n)| a_kurd.iter().any(|k| k % 12 == n % 12)),
+        "A Kurd: {late:?}"
+    );
 }
 
 /// The CC events sent on lane `k`'s controller: (frame, value).
 fn ccs(events: &[(usize, [u8; 3])], number: u8) -> Vec<(usize, u8)> {
-    events.iter().filter(|(_, m)| m[0] & 0xF0 == 0xB0 && m[1] == number).map(|(f, m)| (*f, m[2])).collect()
+    events
+        .iter()
+        .filter(|(_, m)| m[0] & 0xF0 == 0xB0 && m[1] == number)
+        .map(|(f, m)| (*f, m[2]))
+        .collect()
 }
 
 #[test]
@@ -6551,12 +8778,19 @@ fn colloid_pedal_catches_each_chord_and_lets_go_on_stop() {
     events.extend(run_colloid(&mut c, 96_000, 4_800, false, false, &[]));
     let pedal = ccs(&events, 64);
     assert_eq!(pedal.first(), Some(&(0, 127)), "down on Start");
-    let lift = pedal.iter().position(|&(f, v)| f >= 48_000 && v == 0).expect("lifted at the new chord");
+    let lift = pedal
+        .iter()
+        .position(|&(f, v)| f >= 48_000 && v == 0)
+        .expect("lifted at the new chord");
     let (at, _) = pedal[lift];
     assert!(at < 48_000 + 128);
     let (back, v) = pedal[lift + 1];
     assert_eq!(v, 127);
-    assert!((back - at) as f32 / 48_000.0 > 0.06 && (back - at) as f32 / 48_000.0 < 0.15, "down again soon: {}", back - at);
+    assert!(
+        (back - at) as f32 / 48_000.0 > 0.06 && (back - at) as f32 / 48_000.0 < 0.15,
+        "down again soon: {}",
+        back - at
+    );
     assert_eq!(pedal.last().map(|e| e.1), Some(0), "up on Stop");
     assert!(events.iter().all(|(_, m)| m[0] & 0x0F == 0));
 }
@@ -6567,26 +8801,41 @@ fn colloid_passes_the_keys_controllers_through_and_sends_the_tanks() {
     let p = Arc::new(ModuleParams::new(ModuleKind::Colloid));
     // Lane 0: the keys' sustain, inverted into 100…20. Lane 1: the energy
     // on CC 1, into 10…90.
-    for (i, v) in [(cc::ON, 1.0), (cc::SOURCE, cc::KEYS as f32), (cc::LOW, 100.0), (cc::HIGH, 20.0)] {
+    for (i, v) in [
+        (cc::ON, 1.0),
+        (cc::SOURCE, cc::KEYS as f32),
+        (cc::LOW, 100.0),
+        (cc::HIGH, 20.0),
+    ] {
         p.data[cc::at(0, i)].set(v);
     }
     for (i, v) in [(cc::ON, 1.0), (cc::LOW, 10.0), (cc::HIGH, 90.0)] {
         p.data[cc::at(1, i)].set(v);
     }
     let mut c = colloid(&p);
-    let keys = [(1_000, [0xB0, 64, 127]), (30_000, [0xB0, 64, 0]), (40_000, [0xB0, 7, 99])];
+    let keys = [
+        (1_000, [0xB0, 64, 127]),
+        (30_000, [0xB0, 64, 0]),
+        (40_000, [0xB0, 7, 99]),
+    ];
     let events = run_colloid(&mut c, 0, 6 * 48_000, true, true, &keys);
-    assert_eq!(ccs(&events, 64), vec![(960, 20), (29_952, 100)], "passed through (in the block they came in), mapped");
+    assert_eq!(
+        ccs(&events, 64),
+        vec![(960, 20), (29_952, 100)],
+        "passed through (in the block they came in), mapped"
+    );
     assert!(ccs(&events, 7).is_empty(), "only its own controller");
     let energy = ccs(&events, 1);
     assert!(energy.len() > 10, "the energy moves");
     assert!(energy.iter().all(|&(_, v)| (10..=90).contains(&v)));
-    assert!(energy.windows(2).all(|w| w[1].0 - w[0].0 >= 448), "at most every 10 ms");
+    assert!(
+        energy.windows(2).all(|w| w[1].0 - w[0].0 >= 448),
+        "at most every 10 ms"
+    );
     // Stopped, the tank's lanes are quiet.
     let stopped = run_colloid(&mut c, 6 * 48_000, 48_000, false, false, &[]);
     assert!(ccs(&stopped, 1).is_empty());
 }
-
 
 // ---------------------------------------------------------------------------
 // Fjord
@@ -6606,15 +8855,37 @@ struct FjordRun {
 
 /// Runs Fjord at 120 BPM for `blocks`, with `midi` arriving at (frame,
 /// message) and `trig` (if any) feeding TRIG 1 sample by sample.
-fn run_fjord(p: &Arc<ModuleParams>, blocks: usize, playing: bool, midi: &[(usize, [u8; 3])], trig: Option<&dyn Fn(usize) -> f32>) -> FjordRun {
+fn run_fjord(
+    p: &Arc<ModuleParams>,
+    blocks: usize,
+    playing: bool,
+    midi: &[(usize, [u8; 3])],
+    trig: Option<&dyn Fn(usize) -> f32>,
+) -> FjordRun {
     use crate::audio::engine::{Inputs, MAX_INPUTS, MidiBuf, ProcessCtx, Processor};
     use crate::audio::modules::fjord::Fjord;
     let mut proc = Fjord::new(p.clone(), 48_000.0);
-    let mut ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing, restart: false };
-    let mut inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: true });
+    let mut ctx = ProcessCtx {
+        sample_rate: 48_000.0,
+        smooth: 0.01,
+        beat: 0.0,
+        beats_per_sample: 2.0 / 48_000.0,
+        playing,
+        restart: false,
+    };
+    let mut inputs = Box::new(Inputs {
+        bufs: [[[0.0; 64]; 2]; MAX_INPUTS],
+        connected: [false; MAX_INPUTS],
+        midi: MidiBuf::default(),
+        midi_connected: true,
+    });
     inputs.connected[0] = trig.is_some();
     let mut outputs = vec![[[0.0f32; 64]; 2]; 5];
-    let mut run = FjordRun { out: Vec::new(), channels: Default::default(), sent: Vec::new() };
+    let mut run = FjordRun {
+        out: Vec::new(),
+        channels: Default::default(),
+        sent: Vec::new(),
+    };
     for b in 0..blocks {
         let at = b * 64;
         inputs.midi.clear();
@@ -6633,7 +8904,13 @@ fn run_fjord(p: &Arc<ModuleParams>, blocks: usize, playing: bool, midi: &[(usize
         for c in 0..4 {
             run.channels[c].extend_from_slice(&outputs[1 + c][0]);
         }
-        run.sent.extend(proc.midi_out().unwrap().events().iter().map(|e| (at + e.frame as usize, e.data)));
+        run.sent.extend(
+            proc.midi_out()
+                .unwrap()
+                .events()
+                .iter()
+                .map(|e| (at + e.frame as usize, e.data)),
+        );
         if playing {
             ctx.beat += ctx.beats_per_sample * 64.0;
         }
@@ -6651,13 +8928,17 @@ fn fjord_quiet() -> Arc<ModuleParams> {
 
 /// Rising zero crossings per second over `buf`.
 fn crossings_per_second(buf: &[f32]) -> f32 {
-    buf.windows(2).filter(|w| w[0] < 0.0 && w[1] >= 0.0).count() as f32 * 48_000.0 / buf.len() as f32
+    buf.windows(2).filter(|w| w[0] < 0.0 && w[1] >= 0.0).count() as f32 * 48_000.0
+        / buf.len() as f32
 }
 
 /// The last sample louder than `share` of the peak, in ms.
 fn length_ms(buf: &[f32], share: f32) -> f32 {
     let peak = peak_of(buf);
-    buf.iter().rposition(|y| y.abs() > peak * share).unwrap_or(0) as f32 / 48.0
+    buf.iter()
+        .rposition(|y| y.abs() > peak * share)
+        .unwrap_or(0) as f32
+        / 48.0
 }
 
 #[test]
@@ -6671,7 +8952,14 @@ fn fjord_programs_pack_load_store_and_name() {
     for (k, prog) in FACTORY.iter().enumerate() {
         fj::load_program(&p, k);
         for c in 0..4 {
-            assert_eq!(fj::sound(&p, c), prog.channels[c], "P{} {} ch{} survives packing", k + 1, prog.name, c + 1);
+            assert_eq!(
+                fj::sound(&p, c),
+                prog.channels[c],
+                "P{} {} ch{} survives packing",
+                k + 1,
+                prog.name,
+                c + 1
+            );
         }
         assert!(!fj::edited(&p));
         assert_eq!(fj::program_name(&p, k), prog.name);
@@ -6688,7 +8976,11 @@ fn fjord_programs_pack_load_store_and_name() {
     assert_eq!(fj::program(&p), 60);
     assert!(!fj::edited(&p));
     assert_eq!(fj::program_name(&p, 60), "User");
-    assert_eq!(fj::stored(&p, 60)[1][knob::PITCH], 60.5, "half semitones are kept");
+    assert_eq!(
+        fj::stored(&p, 60)[1][knob::PITCH],
+        60.5,
+        "half semitones are kept"
+    );
     // Sound Init and the extremes of every range survive packing.
     fj::init_channel(&p, 0);
     assert_eq!(fj::sound(&p, 0), INIT);
@@ -6708,11 +9000,31 @@ fn fjord_sequencer_plays_its_lanes_on_the_board_grid() {
     // 120 BPM, sixteenths: a step every 6000 frames. The kick lane starts
     // 3 0 0 0 2 0 0 0 3 0 0 1 2 …, on MIDI channel 10, note 36.
     let run = run_fjord(&p, 1500, true, &[], None);
-    let kicks: Vec<(usize, u8)> = run.sent.iter().filter(|(_, m)| m[0] == 0x99 && m[1] == 36).map(|(f, m)| (*f, m[2])).collect();
-    assert_eq!(kicks, [(0, 127), (24_000, 91), (48_000, 127), (66_000, 51), (72_000, 91)]);
-    assert!(run.sent.iter().any(|(_, m)| m[0] == 0x89 && m[1] == 36), "notes end");
+    let kicks: Vec<(usize, u8)> = run
+        .sent
+        .iter()
+        .filter(|(_, m)| m[0] == 0x99 && m[1] == 36)
+        .map(|(f, m)| (*f, m[2]))
+        .collect();
+    assert_eq!(
+        kicks,
+        [
+            (0, 127),
+            (24_000, 91),
+            (48_000, 127),
+            (66_000, 51),
+            (72_000, 91)
+        ]
+    );
+    assert!(
+        run.sent.iter().any(|(_, m)| m[0] == 0x89 && m[1] == 36),
+        "notes end"
+    );
     assert!(rms_of(&run.out) > 0.02);
-    assert!(rms_of(&run.channels[0]) > 0.02 && rms_of(&run.channels[1]) > 0.005, "each channel on its own output");
+    assert!(
+        rms_of(&run.channels[0]) > 0.02 && rms_of(&run.channels[1]) > 0.005,
+        "each channel on its own output"
+    );
     assert!(p.viz[viz::STEP].get() >= 0.0);
     // Stopped: no steps.
     let run = run_fjord(&p, 400, false, &[], None);
@@ -6723,13 +9035,22 @@ fn fjord_sequencer_plays_its_lanes_on_the_board_grid() {
     p.data[data::LENGTH].set(6.0);
     p.data[data::MUTE + 3].set(1.0);
     let run = run_fjord(&p, 1500, true, &[], None);
-    let kicks: Vec<usize> = run.sent.iter().filter(|(_, m)| m[0] == 0x99 && m[1] == 36).map(|(f, _)| *f).collect();
+    let kicks: Vec<usize> = run
+        .sent
+        .iter()
+        .filter(|(_, m)| m[0] == 0x99 && m[1] == 36)
+        .map(|(f, _)| *f)
+        .collect();
     assert_eq!(kicks, [0, 48_000, 72_000]);
     assert!(run.sent.iter().all(|(_, m)| m[1] != 47), "lane 4 muted");
     // Edited steps.
     fj::set_step(&p, 2, 1, 3);
     let run = run_fjord(&p, 200, true, &[], None);
-    assert!(run.sent.iter().any(|&(f, m)| f == 12_000 && m == [0x99, 50, 127]));
+    assert!(
+        run.sent
+            .iter()
+            .any(|&(f, m)| f == 12_000 && m == [0x99, 50, 127])
+    );
     // RUN off: silent.
     p.data[data::RUN].set(0.0);
     assert!(run_fjord(&p, 400, true, &[], None).sent.is_empty());
@@ -6787,8 +9108,20 @@ fn fjord_program_changes_go_both_ways() {
     assert_eq!(fj::program(&p), 7);
     use crate::audio::engine::{Inputs, MAX_INPUTS, MidiBuf, ProcessCtx, Processor};
     let mut proc = crate::audio::modules::fjord::Fjord::new(p.clone(), 48_000.0);
-    let ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing: true, restart: false };
-    let inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: false });
+    let ctx = ProcessCtx {
+        sample_rate: 48_000.0,
+        smooth: 0.01,
+        beat: 0.0,
+        beats_per_sample: 2.0 / 48_000.0,
+        playing: true,
+        restart: false,
+    };
+    let inputs = Box::new(Inputs {
+        bufs: [[[0.0; 64]; 2]; MAX_INPUTS],
+        connected: [false; MAX_INPUTS],
+        midi: MidiBuf::default(),
+        midi_connected: false,
+    });
     let mut outputs = vec![[[0.0f32; 64]; 2]; 5];
     proc.process(&ctx, &inputs, &mut outputs, 64);
     assert!(proc.midi_out().unwrap().events().is_empty());
@@ -6803,7 +9136,10 @@ fn fjord_local_off_sends_without_sounding() {
     let p = fjord_params();
     p.data[data::LOCAL].set(0.0);
     let run = run_fjord(&p, 800, true, &[], None);
-    assert!(run.sent.iter().any(|(_, m)| m[0] == 0x99 && m[1] == 36), "the pattern still goes out");
+    assert!(
+        run.sent.iter().any(|(_, m)| m[0] == 0x99 && m[1] == 36),
+        "the pattern still goes out"
+    );
     assert_eq!(peak_of(&run.out), 0.0);
     // MIDI coming back still plays.
     let run = run_fjord(&p, 100, false, &[(0, [0x99, 36, 100])], None);
@@ -6812,13 +9148,25 @@ fn fjord_local_off_sends_without_sounding() {
 
 #[test]
 fn fjord_panel_trig_plays_the_edited_channel_at_its_velocity() {
-    use crate::audio::modules::fjord::{data, viz};
     use crate::audio::engine::{Inputs, MAX_INPUTS, MidiBuf, ProcessCtx, Processor};
+    use crate::audio::modules::fjord::{data, viz};
     let p = fjord_quiet();
     p.data[data::CHANNEL].set(2.0);
     let mut proc = crate::audio::modules::fjord::Fjord::new(p.clone(), 48_000.0);
-    let ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing: false, restart: false };
-    let inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: false });
+    let ctx = ProcessCtx {
+        sample_rate: 48_000.0,
+        smooth: 0.01,
+        beat: 0.0,
+        beats_per_sample: 2.0 / 48_000.0,
+        playing: false,
+        restart: false,
+    };
+    let inputs = Box::new(Inputs {
+        bufs: [[[0.0; 64]; 2]; MAX_INPUTS],
+        connected: [false; MAX_INPUTS],
+        midi: MidiBuf::default(),
+        midi_connected: false,
+    });
     let mut outputs = vec![[[0.0f32; 64]; 2]; 5];
     // The panel bumps the edited channel's counter.
     p.viz[viz::AUDITION + 2].set(1.0);
@@ -6829,7 +9177,10 @@ fn fjord_panel_trig_plays_the_edited_channel_at_its_velocity() {
         sent.extend(proc.midi_out().unwrap().events().iter().map(|e| e.data));
     }
     assert!(rms_of(&sound) > 0.01);
-    assert!(sent.contains(&[0x99, 50, 100]), "TRIG goes out too, at the TRIG velocity: {sent:?}");
+    assert!(
+        sent.contains(&[0x99, 50, 100]),
+        "TRIG goes out too, at the TRIG velocity: {sent:?}"
+    );
 }
 
 #[test]
@@ -6843,10 +9194,22 @@ fn fjord_trig_inputs_find_hits_and_skip_the_ringing() {
         amp * (-t * 30.0).exp() * (std::f32::consts::TAU * 200.0 * t).sin()
     };
     let run = run_fjord(&p, 750, false, &[], Some(&drum));
-    let notes: Vec<(usize, u8)> = run.sent.iter().filter(|(_, m)| m[0] == 0x99).map(|(f, m)| (*f, m[2])).collect();
-    assert_eq!(notes.len(), 4, "one note per hit, none from its ringing: {notes:?}");
+    let notes: Vec<(usize, u8)> = run
+        .sent
+        .iter()
+        .filter(|(_, m)| m[0] == 0x99)
+        .map(|(f, m)| (*f, m[2]))
+        .collect();
+    assert_eq!(
+        notes.len(),
+        4,
+        "one note per hit, none from its ringing: {notes:?}"
+    );
     assert!(notes.iter().all(|&(f, _)| f % 12_000 < 300), "{notes:?}");
-    assert!(notes[0].1 == 127 && notes[1].1 < 70, "hard and soft: {notes:?}");
+    assert!(
+        notes[0].1 == 127 && notes[1].1 < 70,
+        "hard and soft: {notes:?}"
+    );
     assert!(p.viz[viz::STRENGTH].get() > 0.0);
     assert!(rms_of(&run.channels[0]) > 0.01);
     // A higher threshold drops the soft hits.
@@ -6865,7 +9228,9 @@ fn fjord_engine_follows_its_parameters() {
     use crate::audio::modules::fjord::voice::{Sound, WAVES, pitch_hz, render};
     let hit = |s: &Sound, n: usize| {
         let parts = render(s, 1.0, 0.1, 48_000.0, n);
-        (0..n).map(|i| parts[0][i] + parts[1][i] + parts[2][i]).collect::<Vec<f32>>()
+        (0..n)
+            .map(|i| parts[0][i] + parts[1][i] + parts[2][i])
+            .collect::<Vec<f32>>()
     };
     let with = |set: &[(usize, f32)]| {
         let mut s = INIT;
@@ -6878,22 +9243,49 @@ fn fjord_engine_follows_its_parameters() {
     for note in [45.0, 57.5, 69.0] {
         let s = with(&[(PITCH, note), (T_DECAY, 40.0)]);
         let f = crossings_per_second(&hit(&s, 24_000)[2400..]);
-        assert!((f / pitch_hz(note) - 1.0).abs() < 0.03, "{note}: {f} vs {}", pitch_hz(note));
+        assert!(
+            (f / pitch_hz(note) - 1.0).abs() < 0.03,
+            "{note}: {f} vs {}",
+            pitch_hz(note)
+        );
     }
     // Bend: positive starts above and falls; negative starts below.
     let plain = with(&[(PITCH, 57.0), (T_DECAY, 40.0)]);
-    let down = with(&[(PITCH, 57.0), (T_DECAY, 40.0), (BEND, 24.0), (BEND_TIME, 4.0)]);
-    let up = with(&[(PITCH, 57.0), (T_DECAY, 40.0), (BEND, -9.0), (BEND_TIME, 4.0)]);
+    let down = with(&[
+        (PITCH, 57.0),
+        (T_DECAY, 40.0),
+        (BEND, 24.0),
+        (BEND_TIME, 4.0),
+    ]);
+    let up = with(&[
+        (PITCH, 57.0),
+        (T_DECAY, 40.0),
+        (BEND, -9.0),
+        (BEND_TIME, 4.0),
+    ]);
     let early = |s: &Sound| crossings_per_second(&hit(s, 4800)[..2400]);
-    assert!(early(&down) > early(&plain) * 1.5 && early(&up) < early(&plain) * 0.9, "{} {} {}", early(&down), early(&plain), early(&up));
+    assert!(
+        early(&down) > early(&plain) * 1.5 && early(&up) < early(&plain) * 0.9,
+        "{} {} {}",
+        early(&down),
+        early(&plain),
+        early(&up)
+    );
     // Decay longer → longer; the gate G holds then cuts, S holds longer
     // than n.
     let short = length_ms(&hit(&with(&[(T_DECAY, 20.0)]), 48_000), 0.1);
     let long = length_ms(&hit(&with(&[(T_DECAY, 35.0)]), 48_000), 0.1);
     assert!(long > short * 4.0, "{short} {long}");
     let half = |s: &Sound| length_ms(&hit(s, 96_000), 0.5);
-    let (n, soft, gated) = (half(&with(&[(T_DECAY, 35.0)])), half(&with(&[(T_DECAY, 35.0), (T_GATE, 1.0)])), half(&with(&[(T_DECAY, 35.0), (T_GATE, 2.0)])));
-    assert!(soft > n * 2.0 && gated > n * 1.5, "half level at n {n} S {soft} G {gated}");
+    let (n, soft, gated) = (
+        half(&with(&[(T_DECAY, 35.0)])),
+        half(&with(&[(T_DECAY, 35.0), (T_GATE, 1.0)])),
+        half(&with(&[(T_DECAY, 35.0), (T_GATE, 2.0)])),
+    );
+    assert!(
+        soft > n * 2.0 && gated > n * 1.5,
+        "half level at n {n} S {soft} G {gated}"
+    );
     let g = hit(&with(&[(T_DECAY, 35.0), (T_GATE, 2.0)]), 96_000);
     let cut = length_ms(&g, 0.4) - length_ms(&g, 0.01);
     assert!(cut.abs() < 60.0, "G falls fast after the hold: {cut} ms");
@@ -6903,33 +9295,89 @@ fn fjord_engine_follows_its_parameters() {
         all.extend_from_slice(set);
         hit(&with(&all), 9600)
     };
-    let bright = |b: &[f32]| rms_of(&b.windows(2).map(|w| w[1] - w[0]).collect::<Vec<_>>()) / rms_of(b);
+    let bright =
+        |b: &[f32]| rms_of(&b.windows(2).map(|w| w[1] - w[0]).collect::<Vec<_>>()) / rms_of(b);
     let open = bright(&saw(&[])[2400..]);
     let dark = bright(&saw(&[(T_FILTER, 40.0)])[2400..]);
     let swept = bright(&saw(&[(T_FILTER, 40.0), (T_SWEEP, 10.0), (T_TIME, 9.0)])[..2400]);
-    assert!(dark < open * 0.5 && swept > dark * 1.5, "{open} {dark} {swept}");
+    assert!(
+        dark < open * 0.5 && swept > dark * 1.5,
+        "{open} {dark} {swept}"
+    );
     // Noise: COLOR below 0 darker, above 0 brighter; the filter darker still.
     let noise = |set: &[(usize, f32)]| {
-        let mut all = vec![(TONE, 0.0), (NOISE, 10.0), (N_FILTER, 99.0), (N_DECAY, 40.0)];
+        let mut all = vec![
+            (TONE, 0.0),
+            (NOISE, 10.0),
+            (N_FILTER, 99.0),
+            (N_DECAY, 40.0),
+        ];
         all.extend_from_slice(set);
         crossings_per_second(&hit(&with(&all), 9600))
     };
-    let (dull, flat, thin) = (noise(&[(N_COLOR, -8.0)]), noise(&[]), noise(&[(N_COLOR, 8.0)]));
-    assert!(dull < flat * 0.5 && thin > flat * 1.1, "{dull} {flat} {thin}");
+    let (dull, flat, thin) = (
+        noise(&[(N_COLOR, -8.0)]),
+        noise(&[]),
+        noise(&[(N_COLOR, 8.0)]),
+    );
+    assert!(
+        dull < flat * 0.5 && thin > flat * 1.1,
+        "{dull} {flat} {thin}"
+    );
     assert!(noise(&[(N_FILTER, 40.0)]) < flat * 0.3);
     // Every waveform, filter type and click type sounds and stays in range,
     // with the punch and the sweeps up.
     for w in 0..WAVES.len() {
-        let b = hit(&with(&[(T_WAVE, w as f32), (T_PUNCH, 9.0), (T_SWEEP, 10.0), (BEND, 30.0), (PITCH, 98.5)]), 9600);
-        assert!(b.iter().all(|y| y.is_finite()) && rms_of(&b) > 0.02 && peak_of(&b) < 3.0, "wave {w}: {} {}", rms_of(&b), peak_of(&b));
+        let b = hit(
+            &with(&[
+                (T_WAVE, w as f32),
+                (T_PUNCH, 9.0),
+                (T_SWEEP, 10.0),
+                (BEND, 30.0),
+                (PITCH, 98.5),
+            ]),
+            9600,
+        );
+        assert!(
+            b.iter().all(|y| y.is_finite()) && rms_of(&b) > 0.02 && peak_of(&b) < 3.0,
+            "wave {w}: {} {}",
+            rms_of(&b),
+            peak_of(&b)
+        );
     }
     for t in 1..=7 {
-        let b = hit(&with(&[(TONE, 0.0), (NOISE, 10.0), (N_TYPE, t as f32), (N_FILTER, 0.0), (N_SWEEP, 10.0), (N_DECAY, 30.0)]), 9600);
-        assert!(b.iter().all(|y| y.is_finite()) && rms_of(&b) > 0.005 && peak_of(&b) < 3.0, "type {t}: {}", rms_of(&b));
+        let b = hit(
+            &with(&[
+                (TONE, 0.0),
+                (NOISE, 10.0),
+                (N_TYPE, t as f32),
+                (N_FILTER, 0.0),
+                (N_SWEEP, 10.0),
+                (N_DECAY, 30.0),
+            ]),
+            9600,
+        );
+        assert!(
+            b.iter().all(|y| y.is_finite()) && rms_of(&b) > 0.005 && peak_of(&b) < 3.0,
+            "type {t}: {}",
+            rms_of(&b)
+        );
     }
     for c in 0..27 {
-        let b = hit(&with(&[(TONE, 0.0), (CLICK, 10.0), (C_TYPE, c as f32), (C_DECAY, 6.0)]), 960);
-        assert!(b.iter().all(|y| y.is_finite()) && rms_of(&b) > 0.01 && peak_of(&b) < 3.0, "click {c}: {}", rms_of(&b));
+        let b = hit(
+            &with(&[
+                (TONE, 0.0),
+                (CLICK, 10.0),
+                (C_TYPE, c as f32),
+                (C_DECAY, 6.0),
+            ]),
+            960,
+        );
+        assert!(
+            b.iter().all(|y| y.is_finite()) && rms_of(&b) > 0.01 && peak_of(&b) < 3.0,
+            "click {c}: {}",
+            rms_of(&b)
+        );
     }
 }
 
@@ -6942,7 +9390,11 @@ fn fjord_solo_edit_keeps_one_component_of_the_edited_channel() {
     p.data[data::CHANNEL].set(1.0);
     p.data[data::SOLO].set(2.0);
     let run = run_fjord(&p, 200, false, &[(0, [0x99, 38, 120])], None);
-    assert!(peak_of(&run.channels[1]) < 1e-4, "{}", peak_of(&run.channels[1]));
+    assert!(
+        peak_of(&run.channels[1]) < 1e-4,
+        "{}",
+        peak_of(&run.channels[1])
+    );
     p.data[data::SOLO].set(1.0);
     let run = run_fjord(&p, 200, false, &[(0, [0x99, 38, 120])], None);
     assert!(rms_of(&run.channels[1]) > 0.01);
@@ -6968,17 +9420,31 @@ fn fjord_panel_draws() {
         p.data[data::CHANNEL].set((k % 4) as f32);
         p.data[data::SOLO].set((k % 4) as f32);
         p.data[data::TAB].set((k % 2) as f32);
-        assert_eq!(g.node(id).unwrap().size().y, crate::ui::fjord::size(&p).y, "the node takes its page's size");
+        assert_eq!(
+            g.node(id).unwrap().size().y,
+            crate::ui::fjord::size(&p).y,
+            "the node takes its page's size"
+        );
         for frame in 0..4 {
             render_buf(&mut e, 4_800);
             time += 0.1;
-            let pointer = egui::Event::PointerMoved(pos2(200.0 + 120.0 * frame as f32, 120.0 + 60.0 * k as f32));
-            let input = egui::RawInput { time: Some(time), events: vec![pointer], ..Default::default() };
+            let pointer = egui::Event::PointerMoved(pos2(
+                200.0 + 120.0 * frame as f32,
+                120.0 + 60.0 * k as f32,
+            ));
+            let input = egui::RawInput {
+                time: Some(time),
+                events: vec![pointer],
+                ..Default::default()
+            };
             let mut out = ctx.run_ui(input, |ui| editor.show(ui, &mut g, &a));
             out.textures_delta.clear();
         }
     }
-    assert!(p.viz[crate::audio::modules::fjord::viz::STEP].get() >= 0.0, "the steps played while drawn");
+    assert!(
+        p.viz[crate::audio::modules::fjord::viz::STEP].get() >= 0.0,
+        "the steps played while drawn"
+    );
 }
 
 #[test]
@@ -6994,35 +9460,108 @@ fn fjord_tone_adsrs_shape_the_level_and_the_filter() {
         s
     };
     let tone = |s: &Sound, gate: f32, n: usize| render(s, 1.0, gate, 48_000.0, n)[0].clone();
-    let peak_at = |b: &[f32]| b.iter().enumerate().fold((0, 0.0f32), |(at, m), (i, y)| if y.abs() > m { (i, y.abs()) } else { (at, m) }).0;
+    let peak_at = |b: &[f32]| {
+        b.iter()
+            .enumerate()
+            .fold((0, 0.0f32), |(at, m), (i, y)| {
+                if y.abs() > m { (i, y.abs()) } else { (at, m) }
+            })
+            .0
+    };
     let level = |b: &[f32], ms: usize| peak_of(&b[ms * 48..(ms + 20) * 48]);
     // A slow attack (30: 126 ms) rises where DECAY strikes at once.
     let decay = tone(&with(&[(T_DECAY, 40.0)]), 0.5, 48_000);
-    let swell = tone(&with(&[(AMP_ENV, 1.0), (AMP_A, 30.0), (AMP_D, 30.0), (AMP_S, 99.0), (AMP_R, 20.0)]), 0.5, 48_000);
-    assert!(peak_at(&decay) < 480 && peak_at(&swell) > 4_800, "{} {}", peak_at(&decay), peak_at(&swell));
+    let swell = tone(
+        &with(&[
+            (AMP_ENV, 1.0),
+            (AMP_A, 30.0),
+            (AMP_D, 30.0),
+            (AMP_S, 99.0),
+            (AMP_R, 20.0),
+        ]),
+        0.5,
+        48_000,
+    );
+    assert!(
+        peak_at(&decay) < 480 && peak_at(&swell) > 4_800,
+        "{} {}",
+        peak_at(&decay),
+        peak_at(&swell)
+    );
     // Held at the sustain while the note is, then released.
-    assert!((level(&swell, 300) / level(&swell, 420) - 1.0).abs() < 0.1, "sustains: {} {}", level(&swell, 300), level(&swell, 420));
-    assert!(level(&swell, 700) < level(&swell, 420) * 0.05, "released: {}", level(&swell, 700));
+    assert!(
+        (level(&swell, 300) / level(&swell, 420) - 1.0).abs() < 0.1,
+        "sustains: {} {}",
+        level(&swell, 300),
+        level(&swell, 420)
+    );
+    assert!(
+        level(&swell, 700) < level(&swell, 420) * 0.05,
+        "released: {}",
+        level(&swell, 700)
+    );
     // A longer note sustains longer; with no sustain it decays all the same.
-    let long = tone(&with(&[(AMP_ENV, 1.0), (AMP_A, 30.0), (AMP_D, 30.0), (AMP_S, 99.0), (AMP_R, 20.0)]), 0.9, 48_000);
+    let long = tone(
+        &with(&[
+            (AMP_ENV, 1.0),
+            (AMP_A, 30.0),
+            (AMP_D, 30.0),
+            (AMP_S, 99.0),
+            (AMP_R, 20.0),
+        ]),
+        0.9,
+        48_000,
+    );
     assert!(level(&long, 700) > level(&long, 420) * 0.8);
-    let no_sustain = tone(&with(&[(AMP_ENV, 1.0), (AMP_D, 20.0), (AMP_S, 0.0)]), 0.9, 48_000);
-    assert!(level(&no_sustain, 500) < 1e-3, "{}", level(&no_sustain, 500));
+    let no_sustain = tone(
+        &with(&[(AMP_ENV, 1.0), (AMP_D, 20.0), (AMP_S, 0.0)]),
+        0.9,
+        48_000,
+    );
+    assert!(
+        level(&no_sustain, 500) < 1e-3,
+        "{}",
+        level(&no_sustain, 500)
+    );
     // The filter's ADSR opens a closed sawtooth at the strike and lets it
     // close again; a negative AMOUNT closes an open one.
-    let bright = |b: &[f32]| rms_of(&b.windows(2).map(|w| w[1] - w[0]).collect::<Vec<_>>()) / rms_of(b).max(1e-9);
+    let bright = |b: &[f32]| {
+        rms_of(&b.windows(2).map(|w| w[1] - w[0]).collect::<Vec<_>>()) / rms_of(b).max(1e-9)
+    };
     let saw = |set: &[(usize, f32)]| {
-        let mut all = vec![(T_WAVE, 2.0), (PITCH, 45.0), (T_DECAY, 45.0), (T_FILTER, 30.0)];
+        let mut all = vec![
+            (T_WAVE, 2.0),
+            (PITCH, 45.0),
+            (T_DECAY, 45.0),
+            (T_FILTER, 30.0),
+        ];
         all.extend_from_slice(set);
         tone(&with(&all), 0.5, 24_000)
     };
     let plain = saw(&[]);
     let enveloped = saw(&[(FLT_AMT, 10.0), (FLT_D, 30.0), (FLT_S, 0.0)]);
-    assert!(bright(&enveloped[480..2400]) > bright(&plain[480..2400]) * 2.0, "opens at the strike");
-    assert!(bright(&enveloped[19_200..24_000]) < bright(&enveloped[480..2400]) * 0.5, "and closes again");
+    assert!(
+        bright(&enveloped[480..2400]) > bright(&plain[480..2400]) * 2.0,
+        "opens at the strike"
+    );
+    assert!(
+        bright(&enveloped[19_200..24_000]) < bright(&enveloped[480..2400]) * 0.5,
+        "and closes again"
+    );
     let open = saw(&[(T_FILTER, 99.0)]);
-    let closing = saw(&[(T_FILTER, 99.0), (FLT_AMT, -10.0), (FLT_A, 0.0), (FLT_D, 40.0), (FLT_S, 99.0)]);
-    assert!(bright(&closing[2400..9600]) < bright(&open[2400..9600]) * 0.5, "{} {}", bright(&closing[2400..9600]), bright(&open[2400..9600]));
+    let closing = saw(&[
+        (T_FILTER, 99.0),
+        (FLT_AMT, -10.0),
+        (FLT_A, 0.0),
+        (FLT_D, 40.0),
+        (FLT_S, 99.0),
+    ]);
+    assert!(
+        bright(&closing[2400..9600]) < bright(&open[2400..9600]) * 0.5,
+        "{} {}",
+        bright(&closing[2400..9600]),
+        bright(&open[2400..9600])
+    );
 }
 
 #[test]
@@ -7030,34 +9569,87 @@ fn fjord_notes_are_held_by_keys_trig_and_steps() {
     use crate::audio::modules::fjord::{ch, data, knob, viz};
     let p = fjord_quiet();
     // Channel 1: an organ-like tone, held at full sustain, quick release.
-    for (k, v) in [(knob::AMP_ENV, 1.0), (knob::AMP_A, 5.0), (knob::AMP_D, 20.0), (knob::AMP_S, 99.0), (knob::AMP_R, 10.0), (knob::NOISE, 0.0), (knob::CLICK, 0.0)] {
+    for (k, v) in [
+        (knob::AMP_ENV, 1.0),
+        (knob::AMP_A, 5.0),
+        (knob::AMP_D, 20.0),
+        (knob::AMP_S, 99.0),
+        (knob::AMP_R, 10.0),
+        (knob::NOISE, 0.0),
+        (knob::CLICK, 0.0),
+    ] {
         p.set(ch(0, k), v);
     }
     // A MIDI key holds it until its note-off.
     let held = run_fjord(&p, 1000, false, &[(0, [0x99, 36, 120])], None);
-    let released = run_fjord(&p, 1000, false, &[(0, [0x99, 36, 120]), (24_000, [0x89, 36, 0])], None);
+    let released = run_fjord(
+        &p,
+        1000,
+        false,
+        &[(0, [0x99, 36, 120]), (24_000, [0x89, 36, 0])],
+        None,
+    );
     let window = |b: &[f32], from: usize| rms_of(&b[from..from + 4800]);
-    assert!(window(&held.channels[0], 40_000) > 0.05, "held: {}", window(&held.channels[0], 40_000));
-    assert!(window(&released.channels[0], 19_000) > 0.05 && window(&released.channels[0], 40_000) < 1e-3, "let go");
+    assert!(
+        window(&held.channels[0], 40_000) > 0.05,
+        "held: {}",
+        window(&held.channels[0], 40_000)
+    );
+    assert!(
+        window(&released.channels[0], 19_000) > 0.05
+            && window(&released.channels[0], 40_000) < 1e-3,
+        "let go"
+    );
     // A note-off for another note leaves it alone.
-    let other = run_fjord(&p, 1000, false, &[(0, [0x99, 36, 120]), (24_000, [0x89, 38, 0])], None);
+    let other = run_fjord(
+        &p,
+        1000,
+        false,
+        &[(0, [0x99, 36, 120]), (24_000, [0x89, 38, 0])],
+        None,
+    );
     assert!(window(&other.channels[0], 40_000) > 0.05);
 
     // A step holds it for its GATE: 50% of a sixteenth at 120 BPM, 3000
     // frames, and the MIDI note sent lasts as long.
     p.data[data::RUN].set(1.0);
     let run = run_fjord(&p, 400, true, &[], None);
-    let on = run.sent.iter().find(|(_, m)| m[0] == 0x99 && m[1] == 36).unwrap().0;
-    let off = run.sent.iter().find(|(_, m)| m[0] == 0x89 && m[1] == 36).unwrap().0;
+    let on = run
+        .sent
+        .iter()
+        .find(|(_, m)| m[0] == 0x99 && m[1] == 36)
+        .unwrap()
+        .0;
+    let off = run
+        .sent
+        .iter()
+        .find(|(_, m)| m[0] == 0x89 && m[1] == 36)
+        .unwrap()
+        .0;
     assert_eq!(off - on, 3000);
-    assert!(rms_of(&run.channels[0][1000..2800]) > 0.05 && rms_of(&run.channels[0][5000..5900]) < 1e-3, "released after the gate");
+    assert!(
+        rms_of(&run.channels[0][1000..2800]) > 0.05 && rms_of(&run.channels[0][5000..5900]) < 1e-3,
+        "released after the gate"
+    );
     p.data[data::RUN].set(0.0);
 
     // TRIG held down holds it; let go, it is released.
     use crate::audio::engine::{Inputs, MAX_INPUTS, MidiBuf, ProcessCtx, Processor};
     let mut proc = crate::audio::modules::fjord::Fjord::new(p.clone(), 48_000.0);
-    let ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing: false, restart: false };
-    let inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: false });
+    let ctx = ProcessCtx {
+        sample_rate: 48_000.0,
+        smooth: 0.01,
+        beat: 0.0,
+        beats_per_sample: 2.0 / 48_000.0,
+        playing: false,
+        restart: false,
+    };
+    let inputs = Box::new(Inputs {
+        bufs: [[[0.0; 64]; 2]; MAX_INPUTS],
+        connected: [false; MAX_INPUTS],
+        midi: MidiBuf::default(),
+        midi_connected: false,
+    });
     let mut outputs = vec![[[0.0f32; 64]; 2]; 5];
     p.viz[viz::AUDITION].set(p.viz[viz::AUDITION].get() + 1.0);
     p.viz[viz::HOLD].set(1.0);
@@ -7089,11 +9681,21 @@ fn fjord_alea_throws_breed_sounds_and_grooves_and_take_them_back() {
             let s = fj::sound(&p, c);
             assert_ne!(&s, was, "seed {seed} ch {c} changed");
             for (k, &(_, lo, hi, _)) in RANGES.iter().enumerate() {
-                assert!(s[k] >= lo && s[k] <= hi && fj::snap(k, s[k]) == s[k], "seed {seed} ch {c} knob {k}: {}", s[k]);
+                assert!(
+                    s[k] >= lo && s[k] <= hi && fj::snap(k, s[k]) == s[k],
+                    "seed {seed} ch {c} knob {k}: {}",
+                    s[k]
+                );
             }
             let parts = render(&s, 0.8, 0.2, 48_000.0, 24_000);
-            let mix: Vec<f32> = (0..24_000).map(|i| parts[0][i] + parts[1][i] + parts[2][i]).collect();
-            assert!(mix.iter().all(|y| y.is_finite()) && peak_of(&mix) > 0.02, "seed {seed} ch {c} is heard: {}", peak_of(&mix));
+            let mix: Vec<f32> = (0..24_000)
+                .map(|i| parts[0][i] + parts[1][i] + parts[2][i])
+                .collect();
+            assert!(
+                mix.iter().all(|y| y.is_finite()) && peak_of(&mix) > 0.02,
+                "seed {seed} ch {c} is heard: {}",
+                peak_of(&mix)
+            );
         }
     }
     // A small CHANCE nudges: no knob goes more than a tenth of the way.
@@ -7102,7 +9704,12 @@ fn fjord_alea_throws_breed_sounds_and_grooves_and_take_them_back() {
     alea::throw_sound(&p, 7, 0.05, &[1]);
     let after = fj::sound(&p, 1);
     let moved = (0..knob::COUNT).filter(|&k| after[k] != before[k]).count();
-    assert!(moved > 0 && (0..knob::COUNT).all(|k| (after[k] - before[k]).abs() <= (RANGES[k].2 - RANGES[k].1) * 0.15 + 1.0), "{before:?} → {after:?}");
+    assert!(
+        moved > 0
+            && (0..knob::COUNT)
+                .all(|k| (after[k] - before[k]).abs() <= (RANGES[k].2 - RANGES[k].1) * 0.15 + 1.0),
+        "{before:?} → {after:?}"
+    );
     // Only the channels asked for.
     assert_eq!(fj::sound(&p, 0), fj::stored(&p, 0)[0]);
 
@@ -7125,11 +9732,17 @@ fn fjord_alea_throws_breed_sounds_and_grooves_and_take_them_back() {
     }
     // First Light's channels are taken for kick, snare, tom, hihat.
     fj::load_program(&p, 0);
-    let roles: Vec<Role> = (0..CHANNELS).map(|c| alea::role(&fj::sound(&p, c))).collect();
+    let roles: Vec<Role> = (0..CHANNELS)
+        .map(|c| alea::role(&fj::sound(&p, c)))
+        .collect();
     assert_eq!(roles, [Role::Kick, Role::Snare, Role::Tom, Role::Hat]);
 
     // A throw of the steps, all the way: the kick lane starts its bars.
-    let steps = |p: &ModuleParams| (0..CHANNELS * MAX_LEN).map(|i| p.data[data::STEPS + i].get()).collect::<Vec<_>>();
+    let steps = |p: &ModuleParams| {
+        (0..CHANNELS * MAX_LEN)
+            .map(|i| p.data[data::STEPS + i].get())
+            .collect::<Vec<_>>()
+    };
     let original = steps(&p);
     alea::throw_steps(&p, 99, 1.0);
     assert_eq!(fj::step(&p, 0, 0), 3);
@@ -7171,13 +9784,17 @@ fn tone(x: &[f32], hz: f32, amp: f32) -> (f32, f32) {
         im += v as f64 * a.cos();
     }
     let mag = 2.0 * (re * re + im * im).sqrt() / len as f64;
-    (20.0 * (mag / amp as f64).log10() as f32, im.atan2(re) as f32)
+    (
+        20.0 * (mag / amp as f64).log10() as f32,
+        im.atan2(re) as f32,
+    )
 }
 
 fn two_tones(a: (f32, f32), b: (f32, f32)) -> impl Fn(usize) -> (f32, f32) {
     move |n| {
         let t = n as f32 / 48_000.0;
-        let v = a.1 * (std::f32::consts::TAU * a.0 * t).sin() + b.1 * (std::f32::consts::TAU * b.0 * t).sin();
+        let v = a.1 * (std::f32::consts::TAU * a.0 * t).sin()
+            + b.1 * (std::f32::consts::TAU * b.0 * t).sin();
         (v, v)
     }
 }
@@ -7193,13 +9810,38 @@ fn prism_bands_shape_the_sound_in_every_mode() {
     for mode in [pq::ZERO_LATENCY, pq::NATURAL_PHASE, pq::LINEAR_PHASE] {
         p.data[data::MODE].set(mode as f32);
         let (l, _) = drive_stereo(&mut prism()(&p), 48_000, sine(1000.0, 0.2), None);
-        assert!((tone(&l, 1000.0, 0.2).0 - 6.0).abs() < 0.3, "mode {mode}: bell {}", tone(&l, 1000.0, 0.2).0);
+        assert!(
+            (tone(&l, 1000.0, 0.2).0 - 6.0).abs() < 0.3,
+            "mode {mode}: bell {}",
+            tone(&l, 1000.0, 0.2).0
+        );
         let (l, _) = drive_stereo(&mut prism()(&p), 48_000, sine(250.0, 0.2), None);
-        let mid = Analog::design(&Shape { shape: BELL, slope: 1, freq: 1000.0, gain: 6.0, q: 1.0 }).db(250.0) as f32;
-        assert!((tone(&l, 250.0, 0.2).0 - mid).abs() < 0.3, "mode {mode}: skirt");
+        let mid = Analog::design(&Shape {
+            shape: BELL,
+            slope: 1,
+            freq: 1000.0,
+            gain: 6.0,
+            q: 1.0,
+        })
+        .db(250.0) as f32;
+        assert!(
+            (tone(&l, 250.0, 0.2).0 - mid).abs() < 0.3,
+            "mode {mode}: skirt"
+        );
         let (l, _) = drive_stereo(&mut prism()(&p), 48_000, sine(30.0, 0.2), None);
-        let cut = Analog::design(&Shape { shape: LOW_CUT, slope: 3, freq: 60.0, gain: 0.0, q: 1.0 }).db(30.0) as f32;
-        assert!((tone(&l, 30.0, 0.2).0 - cut).abs() < 1.5, "mode {mode}: cut {} vs {cut}", tone(&l, 30.0, 0.2).0);
+        let cut = Analog::design(&Shape {
+            shape: LOW_CUT,
+            slope: 3,
+            freq: 60.0,
+            gain: 0.0,
+            q: 1.0,
+        })
+        .db(30.0) as f32;
+        assert!(
+            (tone(&l, 30.0, 0.2).0 - cut).abs() < 1.5,
+            "mode {mode}: cut {} vs {cut}",
+            tone(&l, 30.0, 0.2).0
+        );
     }
     // A bypassed band does nothing; an empty Prism passes the input.
     p.data[data::MODE].set(0.0);
@@ -7214,14 +9856,26 @@ fn prism_slopes_and_the_brickwall_cut_as_set() {
     use crate::audio::modules::prism::{self as pq, data, design::*};
     let p = prism_params();
     pq::create_band(&p, 0, HIGH_CUT, 1000.0, 0.0, 1.0);
-    for (slope, f, want) in [(1usize, 4000.0, -24.1), (3, 2000.0, -24.1), (8, 1414.0, -48.0)] {
+    for (slope, f, want) in [
+        (1usize, 4000.0, -24.1),
+        (3, 2000.0, -24.1),
+        (8, 1414.0, -48.0),
+    ] {
         p.data[data::SLOPE].set(slope as f32);
         let (l, _) = drive_stereo(&mut prism()(&p), 24_000, sine(f, 0.5), None);
-        assert!((tone(&l, f, 0.5).0 - want).abs() < 1.0, "slope {slope}: {}", tone(&l, f, 0.5).0);
+        assert!(
+            (tone(&l, f, 0.5).0 - want).abs() < 1.0,
+            "slope {slope}: {}",
+            tone(&l, f, 0.5).0
+        );
     }
     p.data[data::SLOPE].set(BRICKWALL as f32);
     let (l, _) = drive_stereo(&mut prism()(&p), 24_000, sine(1500.0, 0.5), None);
-    assert!(tone(&l, 1500.0, 0.5).0 < -80.0, "brickwall stop band: {}", tone(&l, 1500.0, 0.5).0);
+    assert!(
+        tone(&l, 1500.0, 0.5).0 < -80.0,
+        "brickwall stop band: {}",
+        tone(&l, 1500.0, 0.5).0
+    );
     let (l, _) = drive_stereo(&mut prism()(&p), 24_000, sine(600.0, 0.5), None);
     assert!(tone(&l, 600.0, 0.5).0.abs() < 0.1, "brickwall pass band");
 }
@@ -7235,21 +9889,33 @@ fn prism_places_bands_on_stereo_left_right_mid_or_side() {
         p.data[data::MODE].set(mode as f32);
         p.data[data::PLACE].set(pq::LEFT as f32);
         let (l, r) = drive_stereo(&mut prism()(&p), 48_000, sine(1000.0, 0.2), None);
-        assert!((tone(&l, 1000.0, 0.2).0 + 12.0).abs() < 0.3 && tone(&r, 1000.0, 0.2).0.abs() < 0.2, "mode {mode}: left only");
+        assert!(
+            (tone(&l, 1000.0, 0.2).0 + 12.0).abs() < 0.3 && tone(&r, 1000.0, 0.2).0.abs() < 0.2,
+            "mode {mode}: left only"
+        );
         p.data[data::PLACE].set(pq::SIDE as f32);
         // A mono signal has no side: untouched.
         let (l, r) = drive_stereo(&mut prism()(&p), 48_000, sine(1000.0, 0.2), None);
-        assert!(tone(&l, 1000.0, 0.2).0.abs() < 0.2 && tone(&r, 1000.0, 0.2).0.abs() < 0.2, "mode {mode}: side leaves mono");
+        assert!(
+            tone(&l, 1000.0, 0.2).0.abs() < 0.2 && tone(&r, 1000.0, 0.2).0.abs() < 0.2,
+            "mode {mode}: side leaves mono"
+        );
         p.data[data::PLACE].set(pq::MID as f32);
         let (l, _) = drive_stereo(&mut prism()(&p), 48_000, sine(1000.0, 0.2), None);
-        assert!((tone(&l, 1000.0, 0.2).0 + 12.0).abs() < 0.3, "mode {mode}: mid");
+        assert!(
+            (tone(&l, 1000.0, 0.2).0 + 12.0).abs() < 0.3,
+            "mode {mode}: mid"
+        );
         // Opposite signals are all side: the mid band leaves them.
         let anti = |n: usize| {
             let v = 0.2 * (std::f32::consts::TAU * 1000.0 * n as f32 / 48_000.0).sin();
             (v, -v)
         };
         let (l, _) = drive_stereo(&mut prism()(&p), 48_000, anti, None);
-        assert!(tone(&l, 1000.0, 0.2).0.abs() < 0.2, "mode {mode}: mid leaves side");
+        assert!(
+            tone(&l, 1000.0, 0.2).0.abs() < 0.2,
+            "mode {mode}: mid leaves side"
+        );
     }
 }
 
@@ -7264,9 +9930,16 @@ fn prism_dynamic_bands_act_above_the_threshold() {
     for mode in [pq::ZERO_LATENCY, pq::NATURAL_PHASE, pq::LINEAR_PHASE] {
         p.data[data::MODE].set(mode as f32);
         let (l, _) = drive_stereo(&mut prism()(&p), 48_000, sine(1000.0, 0.5), None);
-        assert!((tone(&l, 1000.0, 0.5).0 + 9.0).abs() < 0.6, "mode {mode}: loud is turned down: {}", tone(&l, 1000.0, 0.5).0);
+        assert!(
+            (tone(&l, 1000.0, 0.5).0 + 9.0).abs() < 0.6,
+            "mode {mode}: loud is turned down: {}",
+            tone(&l, 1000.0, 0.5).0
+        );
         let (l, _) = drive_stereo(&mut prism()(&p), 48_000, sine(1000.0, 0.002), None);
-        assert!(tone(&l, 1000.0, 0.002).0.abs() < 0.3, "mode {mode}: quiet passes");
+        assert!(
+            tone(&l, 1000.0, 0.002).0.abs() < 0.3,
+            "mode {mode}: quiet passes"
+        );
     }
     // Expansion lifts what crosses.
     p.data[data::MODE].set(0.0);
@@ -7275,8 +9948,16 @@ fn prism_dynamic_bands_act_above_the_threshold() {
     assert!((tone(&l, 1000.0, 0.2).0 - 6.0).abs() < 0.6);
     // A tone outside the band's range doesn't trigger it.
     p.set(bp(0, band::RANGE), -9.0);
-    let (l, _) = drive_stereo(&mut prism()(&p), 48_000, two_tones((100.0, 0.5), (1000.0, 0.002)), None);
-    assert!(tone(&l, 1000.0, 0.002).0.abs() < 1.0, "the band listens to its own range");
+    let (l, _) = drive_stereo(
+        &mut prism()(&p),
+        48_000,
+        two_tones((100.0, 0.5), (1000.0, 0.002)),
+        None,
+    );
+    assert!(
+        tone(&l, 1000.0, 0.002).0.abs() < 1.0,
+        "the band listens to its own range"
+    );
     // Automatic threshold: a steady tone settles, a burst over it is caught.
     p.data[data::AUTO].set(1.0);
     let burst = |n: usize| {
@@ -7287,7 +9968,10 @@ fn prism_dynamic_bands_act_above_the_threshold() {
     let mut pr = prism()(&p);
     let (l, _) = drive_stereo(&mut pr, 81_600, burst, None);
     let steady = tone(&l[48_000..72_000], 1000.0, 0.05).0;
-    assert!(steady > -2.5, "a steady tone is mostly left alone: {steady}");
+    assert!(
+        steady > -2.5,
+        "a steady tone is mostly left alone: {steady}"
+    );
     let caught = tone(&l[72_000..81_600], 1000.0, 0.4).0;
     assert!(caught < -4.0, "the burst is turned down: {caught}");
     assert!(p.viz[pq::viz::DYN].get() < -4.0);
@@ -7304,7 +9988,11 @@ fn prism_external_side_chain_triggers_the_band() {
     p.data[data::SC_EXT].set(1.0);
     let key = sine(80.0, 0.5);
     let (l, _) = drive_stereo(&mut prism()(&p), 48_000, sine(60.0, 0.01), Some(&key));
-    assert!(tone(&l, 60.0, 0.01).0 < -7.0, "ducked by the key: {}", tone(&l, 60.0, 0.01).0);
+    assert!(
+        tone(&l, 60.0, 0.01).0 < -7.0,
+        "ducked by the key: {}",
+        tone(&l, 60.0, 0.01).0
+    );
     let silent = |_: usize| (0.0, 0.0);
     let (l, _) = drive_stereo(&mut prism()(&p), 48_000, sine(60.0, 0.01), Some(&silent));
     assert!(tone(&l, 60.0, 0.01).0 > -0.5);
@@ -7338,11 +10026,18 @@ fn prism_spectral_bands_turn_down_only_what_crosses() {
     let (loud, quiet) = (tone(&l, 3000.0, 0.5).0, tone(&l, 4200.0, 0.003).0);
     assert!(loud < -8.0, "spectral turns the loud tone down: {loud}");
     assert!(quiet.abs() < 1.5, "and leaves the quiet one: {quiet}");
-    assert!(p.viz[pq::viz::LATENCY].get() > 1000.0, "spectral bands bring the stage's latency");
+    assert!(
+        p.viz[pq::viz::LATENCY].get() > 1000.0,
+        "spectral bands bring the stage's latency"
+    );
     // Its threshold moves live: above the tone, it lets go.
     p.set(bp(0, band::THRESHOLD), 0.0);
     let (l, _) = drive_stereo(&mut pr, 72_000, &input, None);
-    assert!(tone(&l, 3000.0, 0.5).0 > -1.5, "threshold raised: {}", tone(&l, 3000.0, 0.5).0);
+    assert!(
+        tone(&l, 3000.0, 0.5).0 > -1.5,
+        "threshold raised: {}",
+        tone(&l, 3000.0, 0.5).0
+    );
 }
 
 #[test]
@@ -7353,35 +10048,82 @@ fn prism_linear_phase_is_symmetric_and_natural_phase_is_close_to_analog() {
     p.data[data::MODE].set(pq::LINEAR_PHASE as f32);
     p.data[data::RESOLUTION].set(0.0);
     let mut pr = prism()(&p);
-    let (l, _) = drive_stereo(&mut pr, 19_200, |n| if n == 4800 { (1.0, 1.0) } else { (0.0, 0.0) }, None);
+    let (l, _) = drive_stereo(
+        &mut pr,
+        19_200,
+        |n| if n == 4800 { (1.0, 1.0) } else { (0.0, 0.0) },
+        None,
+    );
     let lat = p.viz[pq::viz::LATENCY].get() as usize;
     let c = 4800 + lat;
-    let peak = l.iter().enumerate().max_by(|a, b| a.1.abs().total_cmp(&b.1.abs())).unwrap().0;
+    let peak = l
+        .iter()
+        .enumerate()
+        .max_by(|a, b| a.1.abs().total_cmp(&b.1.abs()))
+        .unwrap()
+        .0;
     assert_eq!(peak, c, "the impulse lands after the stated latency");
-    let asym = (1..1500).map(|k| (l[c + k] - l[c - k]).abs()).fold(0.0f32, f32::max);
-    assert!(asym < 2e-3 * l[c].abs(), "linear phase: a symmetric response ({asym})");
+    let asym = (1..1500)
+        .map(|k| (l[c + k] - l[c - k]).abs())
+        .fold(0.0f32, f32::max);
+    assert!(
+        asym < 2e-3 * l[c].abs(),
+        "linear phase: a symmetric response ({asym})"
+    );
 
     // Phase near the top: Natural Phase follows the analog curve closer
     // than Zero Latency, where the bell's skirt runs past Nyquist.
     p.data[data::USED].set(0.0);
     pq::create_band(&p, 1, BELL, 15_000.0, 12.0, 1.0);
-    let analog = Analog::design(&Shape { shape: BELL, slope: 1, freq: 15_000.0, gain: 12.0, q: 1.0 });
+    let analog = Analog::design(&Shape {
+        shape: BELL,
+        slope: 1,
+        freq: 15_000.0,
+        gain: 12.0,
+        q: 1.0,
+    });
     let f = 19_000.0;
     let want = analog.phase(f as f64) as f32;
-    let wrap = |x: f32| (x + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI;
+    let wrap = |x: f32| {
+        (x + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI
+    };
     let mut err = [0.0f32; 2];
-    for (k, mode) in [pq::ZERO_LATENCY, pq::NATURAL_PHASE].into_iter().enumerate() {
+    for (k, mode) in [pq::ZERO_LATENCY, pq::NATURAL_PHASE]
+        .into_iter()
+        .enumerate()
+    {
         p.data[data::MODE].set(mode as f32);
         let (l, _) = drive_stereo(&mut prism()(&p), 24_000, sine(f, 0.1), None);
         let (gain, ph) = tone(&l, f, 0.1);
-        let (_, ph_in) = tone(&(0..24_000).map(|n| sine(f, 0.1)(n).0).collect::<Vec<_>>(), f, 0.1);
-        let delay = if mode == pq::NATURAL_PHASE { pq::NATURAL_LATENCY } else { 0.0 };
+        let (_, ph_in) = tone(
+            &(0..24_000).map(|n| sine(f, 0.1)(n).0).collect::<Vec<_>>(),
+            f,
+            0.1,
+        );
+        let delay = if mode == pq::NATURAL_PHASE {
+            pq::NATURAL_LATENCY
+        } else {
+            0.0
+        };
         let measured = wrap(ph - ph_in + std::f32::consts::TAU * f * delay / 48_000.0);
         err[k] = wrap(measured - want).abs();
-        assert!((gain - analog.db(f as f64) as f32).abs() < 1.0, "mode {mode}: magnitude {gain}");
+        assert!(
+            (gain - analog.db(f as f64) as f32).abs() < 1.0,
+            "mode {mode}: magnitude {gain}"
+        );
     }
-    assert!(err[1] < 0.15, "natural phase: {:.3} rad off (zero latency {:.3})", err[1], err[0]);
-    assert!(err[1] < err[0], "natural phase is closer than zero latency ({:.3} vs {:.3})", err[1], err[0]);
+    assert!(
+        err[1] < 0.15,
+        "natural phase: {:.3} rad off (zero latency {:.3})",
+        err[1],
+        err[0]
+    );
+    assert!(
+        err[1] < err[0],
+        "natural phase is closer than zero latency ({:.3} vs {:.3})",
+        err[1],
+        err[0]
+    );
 }
 
 #[test]
@@ -7391,15 +10133,31 @@ fn prism_output_auto_gain_scale_pan_and_polarity() {
     pq::create_band(&p, 0, BELL, 1000.0, 6.0, 1.0);
     p.set(pq::SCALE, 0.5);
     let (l, _) = drive_stereo(&mut prism()(&p), 24_000, sine(1000.0, 0.2), None);
-    assert!((tone(&l, 1000.0, 0.2).0 - 3.0).abs() < 0.3, "gain scale halves the gain");
+    assert!(
+        (tone(&l, 1000.0, 0.2).0 - 3.0).abs() < 0.3,
+        "gain scale halves the gain"
+    );
     p.set(pq::SCALE, 1.0);
     p.set(pq::OUTPUT, -6.0);
     p.data[data::INVERT].set(1.0);
     let (l, _) = drive_stereo(&mut prism()(&p), 24_000, sine(1000.0, 0.2), None);
     let (db, ph) = tone(&l, 1000.0, 0.2);
     assert!(db.abs() < 0.3, "+6 band, −6 out: {db}");
-    let (_, ph_in) = tone(&(0..24_000).map(|n| sine(1000.0, 0.2)(n).0).collect::<Vec<_>>(), 1000.0, 0.2);
-    let bell_phase = Analog::design(&Shape { shape: BELL, slope: 1, freq: 1000.0, gain: 6.0, q: 1.0 }).phase(1000.0) as f32;
+    let (_, ph_in) = tone(
+        &(0..24_000)
+            .map(|n| sine(1000.0, 0.2)(n).0)
+            .collect::<Vec<_>>(),
+        1000.0,
+        0.2,
+    );
+    let bell_phase = Analog::design(&Shape {
+        shape: BELL,
+        slope: 1,
+        freq: 1000.0,
+        gain: 6.0,
+        q: 1.0,
+    })
+    .phase(1000.0) as f32;
     let d = (ph - ph_in - bell_phase).rem_euclid(std::f32::consts::TAU);
     assert!((d - std::f32::consts::PI).abs() < 0.1, "inverted: {d}");
     p.set(pq::OUTPUT, 0.0);
@@ -7425,14 +10183,31 @@ fn prism_solo_plays_what_a_band_works_on() {
     let p = prism_params();
     pq::create_band(&p, 0, BELL, 1000.0, 6.0, 4.0);
     p.data[data::SOLO].set(0.0);
-    let (l, _) = drive_stereo(&mut prism()(&p), 24_000, two_tones((1000.0, 0.2), (150.0, 0.2)), None);
-    assert!(tone(&l, 1000.0, 0.2).0.abs() < 0.5, "the band's frequency passes");
-    assert!(tone(&l, 150.0, 0.2).0 < -25.0, "the rest is gone: {}", tone(&l, 150.0, 0.2).0);
+    let (l, _) = drive_stereo(
+        &mut prism()(&p),
+        24_000,
+        two_tones((1000.0, 0.2), (150.0, 0.2)),
+        None,
+    );
+    assert!(
+        tone(&l, 1000.0, 0.2).0.abs() < 0.5,
+        "the band's frequency passes"
+    );
+    assert!(
+        tone(&l, 150.0, 0.2).0 < -25.0,
+        "the rest is gone: {}",
+        tone(&l, 150.0, 0.2).0
+    );
     // A low cut's solo plays what it removes.
     p.data[data::USED].set(0.0);
     pq::create_band(&p, 1, LOW_CUT, 500.0, 0.0, 1.0);
     p.data[data::SOLO].set(1.0);
-    let (l, _) = drive_stereo(&mut prism()(&p), 24_000, two_tones((5000.0, 0.2), (100.0, 0.2)), None);
+    let (l, _) = drive_stereo(
+        &mut prism()(&p),
+        24_000,
+        two_tones((5000.0, 0.2), (100.0, 0.2)),
+        None,
+    );
     assert!(tone(&l, 100.0, 0.2).0.abs() < 0.5 && tone(&l, 5000.0, 0.2).0 < -30.0);
 }
 
@@ -7448,10 +10223,24 @@ fn prism_character_adds_harmonics_only_when_asked() {
         p.data[data::MODE].set(mode as f32);
         let (l, _) = drive_stereo(&mut prism()(&p), 24_000, sine(500.0, 0.5), None);
         let h2 = tone(&l, 1000.0, 0.5).0;
-        assert!(h2 > -60.0 && h2 < -15.0, "mode {mode}: warm: second harmonic at {h2} dB");
-        let bell = Analog::design(&Shape { shape: BELL, slope: 1, freq: 1000.0, gain: 3.0, q: 1.0 }).db(500.0) as f32;
+        assert!(
+            h2 > -60.0 && h2 < -15.0,
+            "mode {mode}: warm: second harmonic at {h2} dB"
+        );
+        let bell = Analog::design(&Shape {
+            shape: BELL,
+            slope: 1,
+            freq: 1000.0,
+            gain: 3.0,
+            q: 1.0,
+        })
+        .db(500.0) as f32;
         // Warm rounds the peaks: a dB or so of compression at −5 dBFS.
-        assert!((tone(&l, 500.0, 0.5).0 - bell).abs() < 1.5, "the level stays: {} vs {bell}", tone(&l, 500.0, 0.5).0);
+        assert!(
+            (tone(&l, 500.0, 0.5).0 - bell).abs() < 1.5,
+            "the level stays: {} vs {bell}",
+            tone(&l, 500.0, 0.5).0
+        );
         let tail = &l[12_000..];
         let dc = tail.iter().sum::<f32>() / tail.len() as f32;
         assert!(dc.abs() < 1e-3, "mode {mode}: no offset ({dc})");
@@ -7463,7 +10252,8 @@ fn prism_every_shape_slope_and_mode_stays_finite() {
     use crate::audio::modules::prism::{self as pq, band, bp, data, design::*};
     let p = prism_params();
     let noise = |n: usize| {
-        let x = ((n as u32).wrapping_mul(2_654_435_761) >> 8) as f32 / (1u32 << 24) as f32 * 2.0 - 1.0;
+        let x =
+            ((n as u32).wrapping_mul(2_654_435_761) >> 8) as f32 / (1u32 << 24) as f32 * 2.0 - 1.0;
         (x * 0.5, -x * 0.3)
     };
     for mode in [pq::ZERO_LATENCY, pq::NATURAL_PHASE, pq::LINEAR_PHASE] {
@@ -7477,7 +10267,10 @@ fn prism_every_shape_slope_and_mode_stays_finite() {
                 }
                 p.set(bp(0, band::RANGE), -20.0);
                 let (l, r) = drive_stereo(&mut prism()(&p), 6_400, noise, None);
-                assert!(l.iter().chain(&r).all(|v| v.is_finite() && v.abs() < 100.0), "mode {mode} shape {sh} slope {slope}");
+                assert!(
+                    l.iter().chain(&r).all(|v| v.is_finite() && v.abs() < 100.0),
+                    "mode {mode} shape {sh} slope {slope}"
+                );
             }
         }
     }
@@ -7508,7 +10301,10 @@ fn prism_draws_with_every_kind_of_band() {
     }
     let (main, sub) = crate::ui::prism::readout(&p);
     assert_eq!(main, "10 bands");
-    assert!(sub.contains("1 dynamic") && sub.contains("1 spectral"), "{sub}");
+    assert!(
+        sub.contains("1 dynamic") && sub.contains("1 spectral"),
+        "{sub}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -7550,7 +10346,13 @@ fn heard_follows_cables_to_the_device_and_keeps_what_works_unheard() {
     let heard = g.heard();
     assert!(!heard.contains(&sub) && !heard.contains(&fx) && !heard.contains(&delay));
     // Unpatching the mixer's OUT makes it play, and the chain is heard.
-    g.disconnect(Cable { from: port(sub, 0), to: port(fx, 0) }, &a);
+    g.disconnect(
+        Cable {
+            from: port(sub, 0),
+            to: port(fx, 0),
+        },
+        &a,
+    );
     let heard = g.heard();
     assert!(heard.contains(&sub) && heard.contains(&delay));
 }
@@ -7580,7 +10382,13 @@ fn unheard_nodes_rest_after_two_seconds_and_come_back_faded_in() {
     // Patched in instead of the other: it plays again, faded in (read past
     // the output limiter's 64 frames of lookahead).
     hp.set(drone::LEVEL, 0.0);
-    g.disconnect(Cable { from: port(heard, 0), to: port(mixer, 0) }, &a);
+    g.disconnect(
+        Cable {
+            from: port(heard, 0),
+            to: port(mixer, 0),
+        },
+        &a,
+    );
     render_buf(&mut e, 4_800);
     g.connect(port(lone, 0), port(mixer, 1), &a);
     let out = render_buf(&mut e, 4_800);
@@ -7591,7 +10399,6 @@ fn unheard_nodes_rest_after_two_seconds_and_come_back_faded_in() {
     assert!(lp.meter.get() > 0.0);
 }
 
-
 // ---------------------------------------------------------------------------
 // Iris (video)
 // ---------------------------------------------------------------------------
@@ -7600,7 +10407,9 @@ fn unheard_nodes_rest_after_two_seconds_and_come_back_faded_in() {
 fn iris_ring(p: &ModuleParams) -> Vec<f32> {
     use crate::audio::modules::iris::{RING, viz};
     let w = p.viz[viz::WRITTEN].get() as usize;
-    (0..RING).map(|i| p.viz[viz::RING + (w + i) % RING].get()).collect()
+    (0..RING)
+        .map(|i| p.viz[viz::RING + (w + i) % RING].get())
+        .collect()
 }
 
 #[test]
@@ -7624,7 +10433,10 @@ fn iris_passes_its_input_through_and_hands_the_panel_its_sound() {
     g2.connect(port(osc2, 0), port(mix2, 0), &a2);
     render_buf(&mut e2, 4800);
     let direct = peak_of(&render_buf(&mut e2, 4800));
-    assert!((through - direct).abs() < 1e-4, "THRU changes the sound: {through} vs {direct}");
+    assert!(
+        (through - direct).abs() < 1e-4,
+        "THRU changes the sound: {through} vs {direct}"
+    );
 
     assert_eq!(p.viz[viz::LIVE].get(), 1.0);
     let ring = iris_ring(&p);
@@ -7632,7 +10444,13 @@ fn iris_passes_its_input_through_and_hands_the_panel_its_sound() {
     assert!(peak > 0.1, "the panel gets the input: {peak}");
 
     // Unpatched, listening to IN: nothing to show.
-    g.disconnect(crate::graph::Cable { from: port(osc, 0), to: port(iris, 0) }, &a);
+    g.disconnect(
+        crate::graph::Cable {
+            from: port(osc, 0),
+            to: port(iris, 0),
+        },
+        &a,
+    );
     render_buf(&mut e, 4800);
     assert_eq!(p.viz[viz::LIVE].get(), 0.0);
 }
@@ -7662,7 +10480,9 @@ fn iris_listens_to_the_main_mix() {
 /// the frequency it hears, per second of ring.
 fn iris_crossings(p: &ModuleParams) -> usize {
     let ring = iris_ring(p);
-    ring.windows(2).filter(|w| (w[0] < 0.0) != (w[1] < 0.0)).count()
+    ring.windows(2)
+        .filter(|w| (w[0] < 0.0) != (w[1] < 0.0))
+        .count()
 }
 
 #[test]
@@ -7687,7 +10507,11 @@ fn iris_follows_the_node_on_its_in_and_not_the_rest_of_the_mix() {
     // Auto, IN free: the main mix (the high tone).
     settle(&mut e);
     assert_eq!(p.viz[viz::FROM_INPUT].get(), 0.0);
-    assert!(iris_crossings(&p) > 200, "hears the mix: {}", iris_crossings(&p));
+    assert!(
+        iris_crossings(&p) > 200,
+        "hears the mix: {}",
+        iris_crossings(&p)
+    );
 
     // Auto, IN patched: only the low tone, whatever else plays.
     g.connect(port(low, 0), port(iris_id, 0), &a);
@@ -7695,7 +10519,10 @@ fn iris_follows_the_node_on_its_in_and_not_the_rest_of_the_mix() {
     assert_eq!(p.viz[viz::FROM_INPUT].get(), 1.0);
     let n = iris_crossings(&p);
     assert!(n < 40, "hears only its IN (110 Hz ≈ 19 crossings): {n}");
-    assert_eq!(crate::ui::iris::readout(&p).1.split(" · ").next(), Some("IN"));
+    assert_eq!(
+        crate::ui::iris::readout(&p).1.split(" · ").next(),
+        Some("IN")
+    );
 
     // Main mix forced: the mix again, though IN is patched.
     p.data[data::SOURCE].set(iris::MAIN);
@@ -7720,12 +10547,18 @@ fn iris_draws_every_scene_and_resizes() {
     for scene in 0..SCENES.len() {
         p.set_mode(scene);
         p.data[data::PALETTE].set((scene % crate::ui::iris::PALETTES.len()) as f32);
-        p.set(crate::audio::modules::iris::DETAIL, (scene % 3) as f32 * 0.5);
+        p.set(
+            crate::audio::modules::iris::DETAIL,
+            (scene % 3) as f32 * 0.5,
+        );
         // Every other scene with no frame.
         p.data[data::FRAMELESS].set((scene % 2) as f32);
         for _ in 0..8 {
             render_buf(&mut e, 800);
-            let input = egui::RawInput { time: Some(frame as f64 / 60.0), ..Default::default() };
+            let input = egui::RawInput {
+                time: Some(frame as f64 / 60.0),
+                ..Default::default()
+            };
             let mut out = ctx.run_ui(input, |ui| editor.show(ui, &mut g, &a));
             out.textures_delta.clear();
             frame += 1;
@@ -7737,7 +10570,11 @@ fn iris_draws_every_scene_and_resizes() {
     p.data[data::H].set(560.0);
     let node = g.node(iris).unwrap();
     assert_eq!(node.size(), egui::vec2(900.0, 560.0));
-    assert!((node.output_pos(0).x - before - (900.0 - crate::audio::modules::iris::DEFAULT_SIZE[0])).abs() < 1e-3);
+    assert!(
+        (node.output_pos(0).x - before - (900.0 - crate::audio::modules::iris::DEFAULT_SIZE[0]))
+            .abs()
+            < 1e-3
+    );
     // Out of range sizes are clamped.
     p.data[data::W].set(5.0);
     p.data[data::H].set(f32::NAN);
@@ -7764,7 +10601,12 @@ fn iris_is_saved_with_its_scene_size_and_look() {
     let project: crate::project::Project = serde_json::from_str(&json).unwrap();
     let (mut g2, a2, _e2) = setup();
     crate::project::restore(&mut g2, &project, &a2);
-    let id = g2.nodes.iter().find(|n| matches!(&n.kind, NodeKind::Module(m) if m.params.kind == ModuleKind::Iris)).unwrap().id;
+    let id = g2
+        .nodes
+        .iter()
+        .find(|n| matches!(&n.kind, NodeKind::Module(m) if m.params.kind == ModuleKind::Iris))
+        .unwrap()
+        .id;
     let q = module_params(&g2, id);
     assert_eq!(q.mode(), 10);
     assert_eq!(q.get(SPEED), 1.5);
@@ -7781,7 +10623,10 @@ fn iris_hears_midi_notes_and_the_transport() {
     let (mut g, a, mut e) = setup();
     let seq = g.add_module(ModuleKind::Sequencer, pos2(-600.0, 0.0), &a);
     let iris = g.add_module(ModuleKind::Iris, pos2(0.0, 0.0), &a);
-    assert!(g.connect(port(seq, MIDI_PORT), port(iris, MIDI_PORT), &a), "Iris takes MIDI");
+    assert!(
+        g.connect(port(seq, MIDI_PORT), port(iris, MIDI_PORT), &a),
+        "Iris takes MIDI"
+    );
     let p = module_params(&g, iris);
     render_buf(&mut e, 4800);
     let beat = p.viz[viz::BEAT].get();
@@ -7791,7 +10636,11 @@ fn iris_hears_midi_notes_and_the_transport() {
     assert!(p.viz[viz::NOTES].get() > 0.0, "notes from the sequencer");
     assert!(p.viz[viz::VELOCITY].get() > 0.0 && p.viz[viz::NOTE].get() > 0.0);
     assert_eq!(p.viz[viz::PLAYING].get(), 1.0);
-    assert!(p.viz[viz::BEAT].get() > beat, "the transport moves on: {beat} → {}", p.viz[viz::BEAT].get());
+    assert!(
+        p.viz[viz::BEAT].get() > beat,
+        "the transport moves on: {beat} → {}",
+        p.viz[viz::BEAT].get()
+    );
 }
 
 /// Iris's settings popup stays open while its comboboxes are used: their
@@ -7809,44 +10658,77 @@ fn iris_settings_stay_open_while_a_combobox_is_used() {
     let mut c = Canvas::new();
     c.frame(&mut g, &a, Modifiers::NONE, vec![]);
     let node = g.node(iris).unwrap();
-    let gear = (c.editor.pan + (node.pos + egui::vec2(node.size().x - 16.0, 16.0)).to_vec2() * c.editor.zoom).to_pos2();
-    let click = |c: &mut Canvas, g: &mut Graph, at: egui::Pos2| c.click(g, &a, at, PointerButton::Primary, Modifiers::NONE);
+    let gear = (c.editor.pan
+        + (node.pos + egui::vec2(node.size().x - 16.0, 16.0)).to_vec2() * c.editor.zoom)
+        .to_pos2();
+    let click = |c: &mut Canvas, g: &mut Graph, at: egui::Pos2| {
+        c.click(g, &a, at, PointerButton::Primary, Modifiers::NONE)
+    };
     // Clicks the widget `find` finds, looked up again with the pointer
     // over it: a popup just opened may still move into place.
-    let click_found = |c: &mut Canvas, g: &mut Graph, what: &str, find: &dyn Fn(&Canvas) -> Option<egui::Pos2>| {
+    let click_found = |c: &mut Canvas,
+                       g: &mut Graph,
+                       what: &str,
+                       find: &dyn Fn(&Canvas) -> Option<egui::Pos2>| {
         let at = find(c).unwrap_or_else(|| panic!("no {what} on screen"));
         c.frame(g, &a, Modifiers::NONE, vec![egui::Event::PointerMoved(at)]);
         c.frame(g, &a, Modifiers::NONE, vec![]);
         let at = find(c).unwrap_or_else(|| panic!("no {what} on screen"));
         c.click(g, &a, at, PointerButton::Primary, Modifiers::NONE);
     };
-    let click_on = |c: &mut Canvas, g: &mut Graph, text: &str| click_found(c, g, text, &|c| c.find(text));
+    let click_on =
+        |c: &mut Canvas, g: &mut Graph, text: &str| click_found(c, g, text, &|c| c.find(text));
     // The topmost, then leftmost, widget reading `text` (a combobox reads its value).
     let first = |c: &Canvas, text: &str| {
-        c.labels.iter().filter(|(l, _)| l == text).map(|(_, p)| *p).min_by_key(|p| (p.y.round() as i32, p.x.round() as i32))
+        c.labels
+            .iter()
+            .filter(|(l, _)| l == text)
+            .map(|(_, p)| *p)
+            .min_by_key(|p| (p.y.round() as i32, p.x.round() as i32))
     };
     let count = |c: &Canvas, text: &str| c.labels.iter().filter(|(l, _)| l == text).count();
     let open = |c: &Canvas| c.find("Modulation").is_some();
 
     click(&mut c, &mut g, gear);
     assert!(open(&c), "the gear opens the settings");
-    assert!(c.menu_open(), "the board knows a menu is open (a click that closes it picks nothing)");
+    assert!(
+        c.menu_open(),
+        "the board knows a menu is open (a click that closes it picks nothing)"
+    );
     click_on(&mut c, &mut g, "Modulation");
     assert!(c.find("MATRIX").is_some(), "on the Modulation tab");
 
     // The matrix: the source of its first slot, then its destination.
-    click_found(&mut c, &mut g, "the first slot's source", &|c| first(c, "—"));
+    click_found(&mut c, &mut g, "the first slot's source", &|c| {
+        first(c, "—")
+    });
     assert!(open(&c), "the settings stay open with the source list open");
     click_on(&mut c, &mut g, "LFO 2");
-    assert_eq!(p.data[data::MATRIX + slot::SOURCE].get(), 2.0, "LFO 2 picked");
+    assert_eq!(
+        p.data[data::MATRIX + slot::SOURCE].get(),
+        2.0,
+        "LFO 2 picked"
+    );
     assert!(open(&c), "the settings stay open after picking a source");
     assert_eq!(count(&c, "LFO 2"), 1, "the list closes on a pick");
 
-    click_found(&mut c, &mut g, "the first slot's destination", &|c| first(c, "—"));
-    assert!(open(&c), "the settings stay open with the destination list open");
+    click_found(&mut c, &mut g, "the first slot's destination", &|c| {
+        first(c, "—")
+    });
+    assert!(
+        open(&c),
+        "the settings stay open with the destination list open"
+    );
     click_on(&mut c, &mut g, "Detail");
-    assert_eq!(p.data[data::MATRIX + slot::DEST].get(), 2.0, "Detail picked");
-    assert!(open(&c), "the settings stay open after picking a destination");
+    assert_eq!(
+        p.data[data::MATRIX + slot::DEST].get(),
+        2.0,
+        "Detail picked"
+    );
+    assert!(
+        open(&c),
+        "the settings stay open after picking a destination"
+    );
 
     // Esc with a list open closes the list; again, the settings.
     click_on(&mut c, &mut g, "LFO 2");
@@ -7893,16 +10775,27 @@ struct SplitterRun {
 
 impl SplitterRun {
     fn note_ons(&self) -> Vec<(usize, u8)> {
-        self.sent.iter().filter(|(_, m)| m[0] & 0xF0 == 0x90 && m[2] > 0).map(|(f, m)| (*f, m[1])).collect()
+        self.sent
+            .iter()
+            .filter(|(_, m)| m[0] & 0xF0 == 0x90 && m[2] > 0)
+            .map(|(f, m)| (*f, m[1]))
+            .collect()
     }
 
     fn note_offs(&self) -> Vec<(usize, u8)> {
-        self.sent.iter().filter(|(_, m)| m[0] & 0xF0 == 0x80).map(|(f, m)| (*f, m[1])).collect()
+        self.sent
+            .iter()
+            .filter(|(_, m)| m[0] & 0xF0 == 0x80)
+            .map(|(f, m)| (*f, m[1]))
+            .collect()
     }
 
     /// RMS of the left side over [from, to) seconds.
     fn rms(&self, from: f32, to: f32) -> f32 {
-        let (a, b) = ((from * 48_000.0) as usize, ((to * 48_000.0) as usize).min(self.left.len()));
+        let (a, b) = (
+            (from * 48_000.0) as usize,
+            ((to * 48_000.0) as usize).min(self.left.len()),
+        );
         rms_of(&self.left[a..b])
     }
 }
@@ -7921,8 +10814,20 @@ impl SplitterRig {
         use crate::audio::engine::{Inputs, MAX_INPUTS, MidiBuf, ProcessCtx};
         SplitterRig {
             proc: crate::audio::modules::splitter::Splitter::new(p.clone(), 48_000.0),
-            ctx: ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing, restart: false },
-            inputs: Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: true }),
+            ctx: ProcessCtx {
+                sample_rate: 48_000.0,
+                smooth: 0.01,
+                beat: 0.0,
+                beats_per_sample: 2.0 / 48_000.0,
+                playing,
+                restart: false,
+            },
+            inputs: Box::new(Inputs {
+                bufs: [[[0.0; 64]; 2]; MAX_INPUTS],
+                connected: [false; MAX_INPUTS],
+                midi: MidiBuf::default(),
+                midi_connected: true,
+            }),
             outputs: vec![[[0.0f32; 64]; 2]; 1],
             frame: 0,
         }
@@ -7938,10 +10843,18 @@ impl SplitterRig {
             for (f, m) in midi.iter().filter(|(f, _)| (at..at + 64).contains(f)) {
                 self.inputs.midi.push(f - at, *m);
             }
-            self.proc.process(&self.ctx, &self.inputs, &mut self.outputs, 64);
+            self.proc
+                .process(&self.ctx, &self.inputs, &mut self.outputs, 64);
             run.left.extend_from_slice(&self.outputs[0][0]);
             run.right.extend_from_slice(&self.outputs[0][1]);
-            run.sent.extend(self.proc.midi_out().unwrap().events().iter().map(|e| (at + e.frame as usize, e.data)));
+            run.sent.extend(
+                self.proc
+                    .midi_out()
+                    .unwrap()
+                    .events()
+                    .iter()
+                    .map(|e| (at + e.frame as usize, e.data)),
+            );
             if self.ctx.playing {
                 self.ctx.beat += self.ctx.beats_per_sample * 64.0;
             }
@@ -7951,7 +10864,12 @@ impl SplitterRig {
     }
 }
 
-fn run_splitter(p: &Arc<ModuleParams>, blocks: usize, playing: bool, midi: &[(usize, [u8; 3])]) -> SplitterRun {
+fn run_splitter(
+    p: &Arc<ModuleParams>,
+    blocks: usize,
+    playing: bool,
+    midi: &[(usize, [u8; 3])],
+) -> SplitterRun {
     SplitterRig::new(p, playing).run(blocks, midi)
 }
 
@@ -7988,9 +10906,17 @@ fn splitter_cuts_its_sample_by_grid_transients_and_chance() {
     // Transients: where each ping starts, back to a zero crossing.
     let sample = splitter_test_sample(&[0.1, 0.35, 0.6, 0.85], 1.0);
     let regions = slicing::transients(&sample, 0.5, 32);
-    assert_eq!(regions.len(), 4, "one slice per ping, the silence before left out: {regions:?}");
+    assert_eq!(
+        regions.len(),
+        4,
+        "one slice per ping, the silence before left out: {regions:?}"
+    );
     for (r, want) in regions.iter().zip([0.1, 0.35, 0.6, 0.85]) {
-        assert!((r.0 - want).abs() < 0.008, "a cut at {} for a ping at {want}", r.0);
+        assert!(
+            (r.0 - want).abs() < 0.008,
+            "a cut at {} for a ping at {want}",
+            r.0
+        );
     }
     assert_eq!(regions[3].1, 1.0);
     // The strongest are kept when asked for fewer.
@@ -8004,7 +10930,10 @@ fn splitter_cuts_its_sample_by_grid_transients_and_chance() {
     }
     for &(a, b) in &random {
         let ms = (b - a) * 10_000.0;
-        assert!((7.9..=400.1).contains(&ms) && a >= 0.0 && b <= 1.0, "{ms} ms at {a}");
+        assert!(
+            (7.9..=400.1).contains(&ms) && a >= 0.0 && b <= 1.0,
+            "{ms} ms at {a}"
+        );
     }
 
     // Applied: the slices, their notes from C2, the pattern in order.
@@ -8015,12 +10944,18 @@ fn splitter_cuts_its_sample_by_grid_transients_and_chance() {
         assert_eq!(sp::get(&p, s, slice::SOURCE), 0.0);
         assert_eq!(sp::note(&p, s), Some(36 + s as u8));
     }
-    assert_eq!((0..6).map(|i| sp::step(&p, i)).collect::<Vec<_>>(), vec![Some(0), Some(1), Some(2), Some(3), Some(0), Some(1)]);
+    assert_eq!(
+        (0..6).map(|i| sp::step(&p, i)).collect::<Vec<_>>(),
+        vec![Some(0), Some(1), Some(2), Some(3), Some(0), Some(1)]
+    );
 
     // Cut by hand, then deleted: the pattern follows.
     let new = sp::add_slice(&p, 0.2, 0.1, 3).unwrap();
     assert_eq!((new, sp::count(&p), sp::selected(&p)), (4, 5, 4));
-    assert_eq!((sp::get(&p, 4, slice::START), sp::get(&p, 4, slice::END)), (0.1, 0.2));
+    assert_eq!(
+        (sp::get(&p, 4, slice::START), sp::get(&p, 4, slice::END)),
+        (0.1, 0.2)
+    );
     sp::set_step(&p, 7, Some(4));
     sp::delete_slice(&p, 1);
     assert_eq!(sp::count(&p), 4);
@@ -8040,14 +10975,26 @@ fn splitter_plays_its_atoms_on_the_grid_with_nothing_loaded() {
     let p = splitter_params();
     assert!(p.sample.get().is_none());
     let run = run_splitter(&p, 750, true, &[]);
-    assert!(run.left.iter().chain(&run.right).all(|y| y.is_finite() && y.abs() <= 1.0));
-    assert!(peak_of(&run.left) > 0.05, "the kit plays: {}", peak_of(&run.left));
+    assert!(
+        run.left
+            .iter()
+            .chain(&run.right)
+            .all(|y| y.is_finite() && y.abs() <= 1.0)
+    );
+    assert!(
+        peak_of(&run.left) > 0.05,
+        "the kit plays: {}",
+        peak_of(&run.left)
+    );
     assert!(!run.note_ons().is_empty(), "the steps go out on MIDI");
     // Stopped, nothing plays.
     let still = run_splitter(&p, 300, false, &[]);
     assert_eq!(peak_of(&still.left), 0.0);
     assert!(still.sent.is_empty());
-    assert_eq!(p.viz[crate::audio::modules::splitter::viz::STEP].get(), -1.0);
+    assert_eq!(
+        p.viz[crate::audio::modules::splitter::viz::STEP].get(),
+        -1.0
+    );
 }
 
 #[test]
@@ -8060,22 +11007,52 @@ fn splitter_steps_follow_the_board_grid() {
     sp::set(&p, 4, slice::REPEAT, 1.0);
     let run = run_splitter(&p, 400, true, &[]);
     let ons = run.note_ons();
-    assert_eq!(ons, vec![(0, 36), (6000, 37), (12000, 38), (18000, 39), (24000, 40)], "a slice per step, in order, on the grid");
+    assert_eq!(
+        ons,
+        vec![(0, 36), (6000, 37), (12000, 38), (18000, 39), (24000, 40)],
+        "a slice per step, in order, on the grid"
+    );
     // Each held for GATE (50% of a step).
     let offs = run.note_offs();
-    assert!(offs.iter().take(4).zip(&ons).all(|(off, on)| off.0 == on.0 + 3000 && off.1 == on.1), "{offs:?}");
+    assert!(
+        offs.iter()
+            .take(4)
+            .zip(&ons)
+            .all(|(off, on)| off.0 == on.0 + 3000 && off.1 == on.1),
+        "{offs:?}"
+    );
     assert!(p.viz[viz::STEP].get() >= 0.0);
-    assert_eq!(p.viz[viz::STEP_SLICE + 2].get(), 2.0, "the lane shows what each step played");
+    assert_eq!(
+        p.viz[viz::STEP_SLICE + 2].get(),
+        2.0,
+        "the lane shows what each step played"
+    );
 
     // Faster steps, swing, and a shorter pattern.
     p.data[data::RATE].set(6.0); // 1/32: 3000 frames
     p.data[data::LENGTH].set(3.0);
-    let ons: Vec<u8> = run_splitter(&p, 200, true, &[]).note_ons().iter().map(|o| o.1).collect();
-    assert_eq!(&ons[..5], &[36, 37, 38, 36, 37], "the pattern wraps at LENGTH");
+    let ons: Vec<u8> = run_splitter(&p, 200, true, &[])
+        .note_ons()
+        .iter()
+        .map(|o| o.1)
+        .collect();
+    assert_eq!(
+        &ons[..5],
+        &[36, 37, 38, 36, 37],
+        "the pattern wraps at LENGTH"
+    );
     p.data[data::LENGTH].set(16.0);
     p.set(sp::SWING, 1.0);
-    let frames: Vec<usize> = run_splitter(&p, 200, true, &[]).note_ons().iter().map(|o| o.0).collect();
-    assert_eq!(&frames[..4], &[0, 4500, 6000, 10500], "every other step half a step late");
+    let frames: Vec<usize> = run_splitter(&p, 200, true, &[])
+        .note_ons()
+        .iter()
+        .map(|o| o.0)
+        .collect();
+    assert_eq!(
+        &frames[..4],
+        &[0, 4500, 6000, 10500],
+        "every other step half a step late"
+    );
 
     // RUN off, or the board stopped: nothing.
     p.data[data::RUN].set(0.0);
@@ -8095,7 +11072,10 @@ fn splitter_midi_notes_strike_their_slices_and_note_offs_end_held_ones() {
 
     // A channel set: others are not heard.
     p.data[data::MIDI_CH].set(3.0);
-    assert_eq!(peak_of(&run_splitter(&p, 100, true, &[(0, [0x90, 38, 110])]).left), 0.0);
+    assert_eq!(
+        peak_of(&run_splitter(&p, 100, true, &[(0, [0x90, 38, 110])]).left),
+        0.0
+    );
     assert!(peak_of(&run_splitter(&p, 100, true, &[(0, [0x92, 38, 110])]).left) > 0.01);
     p.data[data::MIDI_CH].set(0.0);
 
@@ -8103,12 +11083,29 @@ fn splitter_midi_notes_strike_their_slices_and_note_offs_end_held_ones() {
     sp::set(&p, 0, slice::END, 1.0);
     sp::set(&p, 0, slice::RELEASE, 20.0);
     sp::set(&p, 0, slice::PLAY, 2.0);
-    let held = run_splitter(&p, 450, true, &[(0, [0x90, 36, 120]), (9600, [0x80, 36, 0])]);
+    let held = run_splitter(
+        &p,
+        450,
+        true,
+        &[(0, [0x90, 36, 120]), (9600, [0x80, 36, 0])],
+    );
     assert!(held.rms(0.05, 0.15) > 0.05, "it plays while held");
-    assert!(held.rms(0.3, 0.45) < 1e-4, "and stops after its note-off: {}", held.rms(0.3, 0.45));
+    assert!(
+        held.rms(0.3, 0.45) < 1e-4,
+        "and stops after its note-off: {}",
+        held.rms(0.3, 0.45)
+    );
     sp::set(&p, 0, slice::PLAY, 0.0);
-    let once = run_splitter(&p, 450, true, &[(0, [0x90, 36, 120]), (9600, [0x80, 36, 0])]);
-    assert!(once.rms(0.3, 0.45) > 0.05, "a ONE slice ignores the note-off");
+    let once = run_splitter(
+        &p,
+        450,
+        true,
+        &[(0, [0x90, 36, 120]), (9600, [0x80, 36, 0])],
+    );
+    assert!(
+        once.rms(0.3, 0.45) > 0.05,
+        "a ONE slice ignores the note-off"
+    );
 
     // LEARN takes the next note; CHROMA plays the selected slice.
     p.data[data::LEARN].set(3.0);
@@ -8119,10 +11116,18 @@ fn splitter_midi_notes_strike_their_slices_and_note_offs_end_held_ones() {
     let hits = p.viz[viz::HITS + 5].get();
     p.data[data::SELECTED].set(5.0);
     run_splitter(&p, 4, true, &[(0, [0x90, 90, 100])]);
-    assert_eq!(p.viz[viz::HITS + 5].get(), hits, "unmapped notes do nothing");
+    assert_eq!(
+        p.viz[viz::HITS + 5].get(),
+        hits,
+        "unmapped notes do nothing"
+    );
     p.data[data::CHROMA].set(1.0);
     run_splitter(&p, 4, true, &[(0, [0x90, 90, 100])]);
-    assert_eq!(p.viz[viz::HITS + 5].get(), hits + 1.0, "with CHROMA they play the selected slice");
+    assert_eq!(
+        p.viz[viz::HITS + 5].get(),
+        hits + 1.0,
+        "with CHROMA they play the selected slice"
+    );
 }
 
 #[test]
@@ -8133,7 +11138,13 @@ fn splitter_euclidean_and_probability_modes() {
     assert_eq!(hits, vec![0, 3, 6]);
     assert_eq!((0..16).filter(|&i| sp::euclid(5, 16, 1, i)).count(), 5);
     assert!(!sp::euclid(0, 16, 0, 0) && sp::euclid(1, 1, 0, 5));
-    assert_eq!((0..8).filter(|&i| sp::euclid(3, 8, 1, i)).collect::<Vec<_>>(), vec![1, 4, 7], "ROTATE turns it");
+    assert_eq!(
+        (0..8)
+            .filter(|&i| sp::euclid(3, 8, 1, i))
+            .collect::<Vec<_>>(),
+        vec![1, 4, 7],
+        "ROTATE turns it"
+    );
 
     let p = splitter_params();
     p.set(CHAOS, 0.0);
@@ -8150,13 +11161,22 @@ fn splitter_euclidean_and_probability_modes() {
     let ons = run_splitter(&p, 1500, true, &[]).note_ons();
     assert_eq!(ons.iter().filter(|o| o.1 == 36).count(), 6);
     assert_eq!(ons.iter().filter(|o| o.1 == 37).count(), 5);
-    assert!(ons.iter().any(|o| o == &(6000 * 3, 36)), "slice 1 on step 3");
+    assert!(
+        ons.iter().any(|o| o == &(6000 * 3, 36)),
+        "slice 1 on step 3"
+    );
 
     p.data[data::MODE].set(sp::PROB as f32);
     sp::set(&p, 0, slice::PROB, 100.0);
     sp::set(&p, 1, slice::PROB, 0.0);
     let ons = run_splitter(&p, 1500, true, &[]).note_ons();
-    assert_eq!((ons.iter().filter(|o| o.1 == 36).count(), ons.iter().filter(|o| o.1 == 37).count()), (16, 0));
+    assert_eq!(
+        (
+            ons.iter().filter(|o| o.1 == 36).count(),
+            ons.iter().filter(|o| o.1 == 37).count()
+        ),
+        (16, 0)
+    );
     // FILL thins every mode out.
     p.set(sp::FILL, 0.0);
     assert!(run_splitter(&p, 1500, true, &[]).note_ons().is_empty());
@@ -8170,7 +11190,11 @@ fn splitter_euclidean_and_probability_modes() {
     for s in 0..8 {
         sp::set(&p, s, slice::REPEAT, 1.0);
     }
-    let notes: Vec<u8> = run_splitter(&p, 1500, true, &[]).note_ons().iter().map(|o| o.1).collect();
+    let notes: Vec<u8> = run_splitter(&p, 1500, true, &[])
+        .note_ons()
+        .iter()
+        .map(|o| o.1)
+        .collect();
     assert_eq!(notes.len(), 16);
     assert_eq!(&notes[..4], &notes[4..8]);
     assert_eq!(&notes[..4], &notes[12..16]);
@@ -8186,14 +11210,20 @@ fn splitter_ratchets_strike_on_the_grid() {
     p.data[data::RATE].set(1.0); // 1/4
     sp::set(&p, 0, slice::REPEAT, 4.0);
     sp::set(&p, 0, slice::REP_RATE, 3.0); // 1/32: 3000 frames
-    let ons: Vec<usize> = run_splitter(&p, 300, true, &[]).note_ons().iter().map(|o| o.0).collect();
+    let ons: Vec<usize> = run_splitter(&p, 300, true, &[])
+        .note_ons()
+        .iter()
+        .map(|o| o.0)
+        .collect();
     assert_eq!(ons, vec![0, 3000, 6000, 9000]);
 
     // Each repeat FALLs quieter.
     sp::set(&p, 0, slice::FALL, 50.0);
     sp::set(&p, 0, slice::END, 0.02);
     let run = run_splitter(&p, 300, true, &[]);
-    let peaks: Vec<f32> = (0..4).map(|k| peak_of(&run.left[k * 3000..k * 3000 + 1500])).collect();
+    let peaks: Vec<f32> = (0..4)
+        .map(|k| peak_of(&run.left[k * 3000..k * 3000 + 1500]))
+        .collect();
     assert!(peaks.windows(2).all(|w| w[1] < w[0] * 0.8), "{peaks:?}");
 
     // A key let go takes a held slice's remaining repeats with it.
@@ -8201,44 +11231,110 @@ fn splitter_ratchets_strike_on_the_grid() {
     sp::set(&p, 0, slice::PLAY, 1.0);
     sp::set(&p, 0, slice::REPEAT, 8.0);
     sp::set(&p, 0, slice::REP_RATE, 3.0);
-    run_splitter(&p, 300, true, &[(0, [0x90, 36, 100]), (7000, [0x80, 36, 0])]);
-    assert_eq!(p.viz[viz::HITS].get(), 3.0, "strikes at 0, 3000 and 6000, then the key is let go");
+    run_splitter(
+        &p,
+        300,
+        true,
+        &[(0, [0x90, 36, 100]), (7000, [0x80, 36, 0])],
+    );
+    assert_eq!(
+        p.viz[viz::HITS].get(),
+        3.0,
+        "strikes at 0, 3000 and 6000, then the key is let go"
+    );
     sp::set(&p, 0, slice::PLAY, 0.0);
-    run_splitter(&p, 600, true, &[(0, [0x90, 36, 100]), (7000, [0x80, 36, 0])]);
-    assert_eq!(p.viz[viz::HITS].get(), 8.0, "a ONE slice's repeats all play");
+    run_splitter(
+        &p,
+        600,
+        true,
+        &[(0, [0x90, 36, 100]), (7000, [0x80, 36, 0])],
+    );
+    assert_eq!(
+        p.viz[viz::HITS].get(),
+        8.0,
+        "a ONE slice's repeats all play"
+    );
 }
 
 #[test]
 fn splitter_grains_lock_to_the_grid_with_sync() {
-    use crate::audio::modules::splitter::voice::{Clock, Holder, Settings, Src, Variation, Voice, nearest_density, window};
+    use crate::audio::modules::splitter::voice::{
+        Clock, Holder, Settings, Src, Variation, Voice, nearest_density, window,
+    };
     assert_eq!(nearest_density(3.6), 4.0);
     assert_eq!(nearest_density(0.2), 1.0);
     let ones = vec![1.0f32; 48_000];
-    let src = Src::Sample { l: &ones, r: &ones, rate: 48_000.0 };
+    let src = Src::Sample {
+        l: &ones,
+        r: &ones,
+        rate: 48_000.0,
+    };
     // 8 grains a second at 120 BPM: four a beat, on the sixteenths.
-    let s = Settings { end: 1.0, gain: 1.0, play: 1, attack: 0.0, release: 0.01, bits: 16.0, down: 1.0, grain: true, size: 0.002, density: 8.0, sync: true, freeze: true, ..Settings::default() };
+    let s = Settings {
+        end: 1.0,
+        gain: 1.0,
+        play: 1,
+        attack: 0.0,
+        release: 0.01,
+        bits: 16.0,
+        down: 1.0,
+        grain: true,
+        size: 0.002,
+        density: 8.0,
+        sync: true,
+        freeze: true,
+        ..Settings::default()
+    };
     let bps = 2.0 / 48_000.0;
     let mut voice = Voice::new(5);
     let start = 0.1;
-    voice.start(0, &s, &src, 48_000.0, 1.0, Holder::Panel, &Variation::NONE, &Clock { beat: start, beats_per_sample: bps, playing: true }, 1);
+    voice.start(
+        0,
+        &s,
+        &src,
+        48_000.0,
+        1.0,
+        Holder::Panel,
+        &Variation::NONE,
+        &Clock {
+            beat: start,
+            beats_per_sample: bps,
+            playing: true,
+        },
+        1,
+    );
     let w = window();
     let mut out = vec![0.0f32; 4 * 6000 + 64 * 10];
     let (mut l, mut r) = (vec![0.0f32; 64], vec![0.0f32; 64]);
     for (b, chunk) in out.chunks_mut(64).enumerate() {
         let beat = start + bps * (b * 64) as f64;
         voice.update(&s, &src, 48_000.0);
-        voice.sync_grains(&Clock { beat, beats_per_sample: bps, playing: true }, 48_000.0);
+        voice.sync_grains(
+            &Clock {
+                beat,
+                beats_per_sample: bps,
+                playing: true,
+            },
+            48_000.0,
+        );
         l.iter_mut().for_each(|x| *x = 0.0);
         r.iter_mut().for_each(|x| *x = 0.0);
         voice.render(&src, &mut l[..chunk.len()], &mut r[..chunk.len()], &w);
         chunk.copy_from_slice(&l[..chunk.len()]);
     }
     // Each grain peaks half its length (48 frames) after its grid line.
-    let peaks: Vec<usize> = (1..out.len() - 1).filter(|&i| out[i] > 0.01 && out[i] >= out[i - 1] && out[i] > out[i + 1]).collect();
-    let lines: Vec<usize> = (0..4).map(|k| ((0.25 * (k + 1) as f64 - start) / bps).round() as usize).collect();
+    let peaks: Vec<usize> = (1..out.len() - 1)
+        .filter(|&i| out[i] > 0.01 && out[i] >= out[i - 1] && out[i] > out[i + 1])
+        .collect();
+    let lines: Vec<usize> = (0..4)
+        .map(|k| ((0.25 * (k + 1) as f64 - start) / bps).round() as usize)
+        .collect();
     assert!(peaks.len() >= 4, "{peaks:?}");
     for (pk, line) in peaks.iter().zip(&lines) {
-        assert!((*pk as i64 - (*line as i64 + 48)).abs() <= 2, "a grain at {pk}, its line at {line}");
+        assert!(
+            (*pk as i64 - (*line as i64 + 48)).abs() <= 2,
+            "a grain at {pk}, its line at {line}"
+        );
     }
 }
 
@@ -8246,15 +11342,51 @@ fn splitter_grains_lock_to_the_grid_with_sync() {
 fn splitter_grains_crushing_and_extremes_stay_finite() {
     use crate::audio::modules::splitter::{self as sp, PITCH, SPREAD, data, slice, viz};
     let p = splitter_quiet();
-    p.sample.set(Some(Arc::new(splitter_test_sample(&[0.0, 0.2, 0.5], 1.0))));
+    p.sample
+        .set(Some(Arc::new(splitter_test_sample(&[0.0, 0.2, 0.5], 1.0))));
     sp::set(&p, 0, slice::SOURCE, 0.0);
     sp::set(&p, 0, slice::END, 1.0);
     let sets: [&[(usize, f32)]; 5] = [
-        &[(slice::GRAIN, 1.0), (slice::SIZE, 2.0), (slice::DENSITY, 400.0), (slice::SPRAY, 1.0), (slice::JITTER, 12.0), (slice::PLAY, 2.0)],
-        &[(slice::GRAIN, 1.0), (slice::FREEZE, 1.0), (slice::SYNC, 1.0), (slice::SIZE, 500.0), (slice::DENSITY, 1.0), (slice::REVERSE, 1.0), (slice::PITCH, 48.0)],
-        &[(slice::GRAIN, 1.0), (slice::PITCH, -48.0), (slice::BITS, 1.0), (slice::DOWN, 64.0), (slice::GAIN, 12.0), (slice::PLAY, 1.0)],
-        &[(slice::PLAY, 2.0), (slice::START, 0.5), (slice::END, 0.5), (slice::REPEAT, 16.0), (slice::REP_RATE, 6.0), (slice::RAMP, 12.0)],
-        &[(slice::REVERSE, 1.0), (slice::PITCH, 48.0), (slice::ATTACK, 0.0), (slice::RELEASE, 1.0), (slice::BITS, 2.0)],
+        &[
+            (slice::GRAIN, 1.0),
+            (slice::SIZE, 2.0),
+            (slice::DENSITY, 400.0),
+            (slice::SPRAY, 1.0),
+            (slice::JITTER, 12.0),
+            (slice::PLAY, 2.0),
+        ],
+        &[
+            (slice::GRAIN, 1.0),
+            (slice::FREEZE, 1.0),
+            (slice::SYNC, 1.0),
+            (slice::SIZE, 500.0),
+            (slice::DENSITY, 1.0),
+            (slice::REVERSE, 1.0),
+            (slice::PITCH, 48.0),
+        ],
+        &[
+            (slice::GRAIN, 1.0),
+            (slice::PITCH, -48.0),
+            (slice::BITS, 1.0),
+            (slice::DOWN, 64.0),
+            (slice::GAIN, 12.0),
+            (slice::PLAY, 1.0),
+        ],
+        &[
+            (slice::PLAY, 2.0),
+            (slice::START, 0.5),
+            (slice::END, 0.5),
+            (slice::REPEAT, 16.0),
+            (slice::REP_RATE, 6.0),
+            (slice::RAMP, 12.0),
+        ],
+        &[
+            (slice::REVERSE, 1.0),
+            (slice::PITCH, 48.0),
+            (slice::ATTACK, 0.0),
+            (slice::RELEASE, 1.0),
+            (slice::BITS, 2.0),
+        ],
     ];
     p.set(SPREAD, 1.0);
     for (i, set) in sets.iter().enumerate() {
@@ -8266,13 +11398,26 @@ fn splitter_grains_crushing_and_extremes_stay_finite() {
         }
         for pitch in [-24.0, 0.0, 24.0] {
             p.set(PITCH, pitch);
-            let midi: Vec<(usize, [u8; 3])> = (0..8).map(|s| (s * 700, [0x90, 36 + s as u8, 127])).collect();
+            let midi: Vec<(usize, [u8; 3])> = (0..8)
+                .map(|s| (s * 700, [0x90, 36 + s as u8, 127]))
+                .collect();
             let mut rig = SplitterRig::new(&p, true);
             let run = rig.run(400, &midi);
-            assert!(run.left.iter().chain(&run.right).all(|y| y.is_finite() && y.abs() <= 1.0), "set {i} at pitch {pitch}");
-            assert!(peak_of(&run.left) > 1e-3, "set {i} at pitch {pitch} is heard");
+            assert!(
+                run.left
+                    .iter()
+                    .chain(&run.right)
+                    .all(|y| y.is_finite() && y.abs() <= 1.0),
+                "set {i} at pitch {pitch}"
+            );
+            assert!(
+                peak_of(&run.left) > 1e-3,
+                "set {i} at pitch {pitch} is heard"
+            );
             if set.contains(&(slice::GRAIN, 1.0)) && set.contains(&(slice::PLAY, 2.0)) {
-                let grains = (0..viz::SHOWN_GRAINS).filter(|&g| p.viz[viz::GRAINS + 2 * g + 1].get() >= 0.0).count();
+                let grains = (0..viz::SHOWN_GRAINS)
+                    .filter(|&g| p.viz[viz::GRAINS + 2 * g + 1].get() >= 0.0)
+                    .count();
                 assert!(grains > 0, "set {i}: grains shown");
             }
         }
@@ -8280,7 +11425,9 @@ fn splitter_grains_crushing_and_extremes_stay_finite() {
     // Every voice at once, and more strikes than voices.
     let p = splitter_quiet();
     p.data[data::COUNT].set(8.0);
-    let midi: Vec<(usize, [u8; 3])> = (0..40).map(|k| (k * 64, [0x90, 36 + (k % 8) as u8, 127])).collect();
+    let midi: Vec<(usize, [u8; 3])> = (0..40)
+        .map(|k| (k * 64, [0x90, 36 + (k % 8) as u8, 127]))
+        .collect();
     let run = run_splitter(&p, 200, true, &midi);
     assert!(run.left.iter().all(|y| y.is_finite() && y.abs() <= 1.0));
     assert!(p.viz[viz::VOICES_ON].get() <= sp::VOICES as f32);
@@ -8289,7 +11436,14 @@ fn splitter_grains_crushing_and_extremes_stay_finite() {
 #[test]
 fn splitter_reads_wav_and_aiff() {
     use crate::audio::sample::decode;
-    fn wav(tag: u16, channels: u16, rate: u32, bits: u16, data: &[u8], extensible: bool) -> Vec<u8> {
+    fn wav(
+        tag: u16,
+        channels: u16,
+        rate: u32,
+        bits: u16,
+        data: &[u8],
+        extensible: bool,
+    ) -> Vec<u8> {
         let mut b = Vec::new();
         let fmt_len: u32 = if extensible { 40 } else { 16 };
         b.extend_from_slice(b"RIFF");
@@ -8327,7 +11481,14 @@ fn splitter_reads_wav_and_aiff() {
         out[2..].copy_from_slice(&mant.to_be_bytes());
         out
     }
-    fn aiff(kind: Option<&[u8; 4]>, channels: u16, rate: f64, bits: u16, frames: u32, data: &[u8]) -> Vec<u8> {
+    fn aiff(
+        kind: Option<&[u8; 4]>,
+        channels: u16,
+        rate: f64,
+        bits: u16,
+        frames: u32,
+        data: &[u8],
+    ) -> Vec<u8> {
         let comm_len: u32 = if kind.is_some() { 24 } else { 18 };
         let mut b = Vec::new();
         b.extend_from_slice(b"FORM");
@@ -8352,32 +11513,59 @@ fn splitter_reads_wav_and_aiff() {
     let near = |a: f32, b: f32| (a - b).abs() < 1.0 / 16_000.0;
     // 16-bit stereo.
     let frames: [[i16; 2]; 3] = [[16384, -16384], [32767, 0], [-32768, 8192]];
-    let data: Vec<u8> = frames.iter().flat_map(|f| f.iter().flat_map(|v| v.to_le_bytes())).collect();
+    let data: Vec<u8> = frames
+        .iter()
+        .flat_map(|f| f.iter().flat_map(|v| v.to_le_bytes()))
+        .collect();
     let s = decode(&wav(1, 2, 44_100, 16, &data, false), "a.wav").unwrap();
     assert_eq!((s.frames(), s.channels(), s.rate), (3, 2, 44_100.0));
-    assert!(near(s.left[0], 0.5) && near(s.right()[0], -0.5) && near(s.left[2], -1.0) && near(s.right()[2], 0.25));
+    assert!(
+        near(s.left[0], 0.5)
+            && near(s.right()[0], -0.5)
+            && near(s.left[2], -1.0)
+            && near(s.right()[2], 0.25)
+    );
     // 24-bit mono, as WAVE_FORMAT_EXTENSIBLE too.
-    let data: Vec<u8> = [0x40_0000i32, -0x20_0000].iter().flat_map(|v| v.to_le_bytes()[..3].to_vec()).collect();
+    let data: Vec<u8> = [0x40_0000i32, -0x20_0000]
+        .iter()
+        .flat_map(|v| v.to_le_bytes()[..3].to_vec())
+        .collect();
     for ext in [false, true] {
         let s = decode(&wav(1, 1, 48_000, 24, &data, ext), "b.wav").unwrap();
         assert_eq!((s.frames(), s.channels()), (2, 1));
-        assert!(near(s.left[0], 0.5) && near(s.left[1], -0.25), "{:?}", s.left);
+        assert!(
+            near(s.left[0], 0.5) && near(s.left[1], -0.25),
+            "{:?}",
+            s.left
+        );
     }
     // 32-bit float, and 8-bit (unsigned).
-    let data: Vec<u8> = [0.25f32, -0.75].iter().flat_map(|v| v.to_le_bytes()).collect();
+    let data: Vec<u8> = [0.25f32, -0.75]
+        .iter()
+        .flat_map(|v| v.to_le_bytes())
+        .collect();
     let s = decode(&wav(3, 1, 48_000, 32, &data, false), "c.wav").unwrap();
     assert!(near(s.left[0], 0.25) && near(s.left[1], -0.75));
     let s = decode(&wav(1, 1, 8_000, 8, &[192, 64], false), "d.wav").unwrap();
     assert!(near(s.left[0], 0.5) && near(s.left[1], -0.5));
     // AIFF: 16-bit big-endian at 44.1 kHz; AIFF-C little-endian and float.
-    let data: Vec<u8> = [16384i16, -8192].iter().flat_map(|v| v.to_be_bytes()).collect();
+    let data: Vec<u8> = [16384i16, -8192]
+        .iter()
+        .flat_map(|v| v.to_be_bytes())
+        .collect();
     let s = decode(&aiff(None, 1, 44_100.0, 16, 2, &data), "e.aif").unwrap();
     assert_eq!(s.rate, 44_100.0);
     assert!(near(s.left[0], 0.5) && near(s.left[1], -0.25));
-    let data: Vec<u8> = [16384i16, -8192].iter().flat_map(|v| v.to_le_bytes()).collect();
+    let data: Vec<u8> = [16384i16, -8192]
+        .iter()
+        .flat_map(|v| v.to_le_bytes())
+        .collect();
     let s = decode(&aiff(Some(b"sowt"), 1, 22_050.0, 16, 2, &data), "f.aifc").unwrap();
     assert!(near(s.left[0], 0.5) && near(s.left[1], -0.25) && s.rate == 22_050.0);
-    let data: Vec<u8> = [0.5f32, -0.125].iter().flat_map(|v| v.to_be_bytes()).collect();
+    let data: Vec<u8> = [0.5f32, -0.125]
+        .iter()
+        .flat_map(|v| v.to_be_bytes())
+        .collect();
     let s = decode(&aiff(Some(b"fl32"), 1, 96_000.0, 32, 2, &data), "g.aifc").unwrap();
     assert!(near(s.left[0], 0.5) && near(s.left[1], -0.125));
     // Not audio; too long (cut at 30 s).
@@ -8394,30 +11582,53 @@ fn splitter_keeps_its_sample_in_the_project() {
     let (mut g, a, _e) = setup();
     let id = g.add_module(ModuleKind::Splitter, pos2(0.0, 0.0), &a);
     let p = module_params(&g, id);
-    let mut l: Vec<f32> = (0..9_000).map(|i| ((i as f32) * 0.01).sin() * 0.7).collect();
+    let mut l: Vec<f32> = (0..9_000)
+        .map(|i| ((i as f32) * 0.01).sin() * 0.7)
+        .collect();
     l[5] = 1.0;
     let r: Vec<f32> = l.iter().map(|x| -x * 0.5).collect();
-    p.sample.set(Some(Arc::new(crate::audio::sample::Sample::new("loop.aif", 44_100.0, l, r))));
+    p.sample
+        .set(Some(Arc::new(crate::audio::sample::Sample::new(
+            "loop.aif", 44_100.0, l, r,
+        ))));
     crate::audio::modules::splitter::set(&p, 2, slice::PITCH, 7.0);
     p.data[data::MODE].set(3.0);
     let project = crate::project::snapshot(&g);
-    assert_eq!(project, crate::project::snapshot_cached(&g), "a sample compares equal to itself");
+    assert_eq!(
+        project,
+        crate::project::snapshot_cached(&g),
+        "a sample compares equal to itself"
+    );
     let json = serde_json::to_string(&project).unwrap();
     assert!(json.contains("\"pcm\"") && json.contains("loop.aif"));
     let project: crate::project::Project = serde_json::from_str(&json).unwrap();
     let (mut g2, a2, _e2) = setup();
     crate::project::restore(&mut g2, &project, &a2);
-    let id2 = g2.nodes.iter().find(|n| matches!(&n.kind, NodeKind::Module(m) if m.params.kind == ModuleKind::Splitter)).unwrap().id;
+    let id2 = g2
+        .nodes
+        .iter()
+        .find(|n| matches!(&n.kind, NodeKind::Module(m) if m.params.kind == ModuleKind::Splitter))
+        .unwrap()
+        .id;
     let q = module_params(&g2, id2);
     let (a_s, b_s) = (p.sample.get().unwrap(), q.sample.get().unwrap());
-    assert_eq!((b_s.name.as_str(), b_s.rate, b_s.channels(), b_s.frames()), ("loop.aif", 44_100.0, 2, 9_000));
+    assert_eq!(
+        (b_s.name.as_str(), b_s.rate, b_s.channels(), b_s.frames()),
+        ("loop.aif", 44_100.0, 2, 9_000)
+    );
     assert_eq!(a_s.left, b_s.left, "16-bit exact both ways");
     assert_eq!(a_s.right, b_s.right);
-    assert_eq!(crate::audio::modules::splitter::get(&q, 2, slice::PITCH), 7.0);
+    assert_eq!(
+        crate::audio::modules::splitter::get(&q, 2, slice::PITCH),
+        7.0
+    );
     assert_eq!(q.data[data::MODE].get(), 3.0);
     // A copy of the node shares the sample; one without keeps none.
     let copy = g2.duplicate(id2, &a2).unwrap();
-    assert!(Arc::ptr_eq(&module_params(&g2, copy).sample.get().unwrap(), &b_s));
+    assert!(Arc::ptr_eq(
+        &module_params(&g2, copy).sample.get().unwrap(),
+        &b_s
+    ));
     let none = g2.add_module(ModuleKind::Splitter, pos2(900.0, 0.0), &a2);
     assert!(module_params(&g2, none).sample.get().is_none());
     let json = serde_json::to_string(&crate::project::snapshot(&g2)).unwrap();
@@ -8451,7 +11662,10 @@ fn splitter_plays_a_loaded_sample_and_lets_it_go() {
     let plain = length(&mut rig);
     sp::set(&p, 1, slice::PITCH, 12.0);
     let up = length(&mut rig);
-    assert!((2_300..2_500).contains(&plain) && (1_100..1_300).contains(&up), "{plain} frames, an octave up {up}");
+    assert!(
+        (2_300..2_500).contains(&plain) && (1_100..1_300).contains(&up),
+        "{plain} frames, an octave up {up}"
+    );
     // Let go: its slices fall silent, the atoms play on.
     p.sample.set(None);
     let run = rig.run(100, &[(rig.frame, [0x90, 37, 127])]);
@@ -8468,7 +11682,11 @@ fn splitter_dice_throws_and_back_restores() {
     use crate::audio::modules::splitter::{count, data};
     let p = splitter_params();
     let all: Vec<usize> = (0..count(&p)).collect();
-    let snapshot = |p: &ModuleParams| (data::STEPS..data::LEN).map(|i| p.data[i].get()).collect::<Vec<f32>>();
+    let snapshot = |p: &ModuleParams| {
+        (data::STEPS..data::LEN)
+            .map(|i| p.data[i].get())
+            .collect::<Vec<f32>>()
+    };
     let start = snapshot(&p);
     throw_slices(&p, None, 7, 0.0, &all);
     assert_eq!(snapshot(&p), start, "CHANCE near nothing changes nothing");
@@ -8492,7 +11710,12 @@ fn splitter_dice_throws_and_back_restores() {
             assert!((f.lo..=f.hi).contains(&v), "slice {s} {} = {v}", f.name);
         }
     }
-    let run = run_splitter(&Arc::new(ModuleParams::new(ModuleKind::Splitter)), 10, true, &[]);
+    let run = run_splitter(
+        &Arc::new(ModuleParams::new(ModuleKind::Splitter)),
+        10,
+        true,
+        &[],
+    );
     assert!(run.left.iter().all(|y| y.is_finite()));
     before.restore(&p);
     assert_eq!(snapshot(&p), start, "BACK takes it all back");
@@ -8517,7 +11740,8 @@ fn splitter_panel_draws() {
     let mut time = 0.0;
     for k in 0..12 {
         if k == 6 {
-            p.sample.set(Some(Arc::new(splitter_test_sample(&[0.0, 0.3, 0.6], 1.0))));
+            p.sample
+                .set(Some(Arc::new(splitter_test_sample(&[0.0, 0.3, 0.6], 1.0))));
             sp::slicing::apply(&p, &sp::slicing::grid(6), 0);
         }
         p.data[data::TAB].set((k % 3) as f32);
@@ -8528,18 +11752,34 @@ fn splitter_panel_draws() {
         for frame in 0..4 {
             render_buf(&mut e, 4_800);
             time += 0.1;
-            let pointer = egui::Event::PointerMoved(pos2(150.0 + 160.0 * frame as f32, 100.0 + 50.0 * k as f32));
-            let input = egui::RawInput { time: Some(time), events: vec![pointer], ..Default::default() };
+            let pointer = egui::Event::PointerMoved(pos2(
+                150.0 + 160.0 * frame as f32,
+                100.0 + 50.0 * k as f32,
+            ));
+            let input = egui::RawInput {
+                time: Some(time),
+                events: vec![pointer],
+                ..Default::default()
+            };
             let mut out = ctx.run_ui(input, |ui| editor.show(ui, &mut g, &a));
             out.textures_delta.clear();
         }
     }
-    assert!(p.viz[viz::STEP].get() >= 0.0, "the steps played while drawn");
+    assert!(
+        p.viz[viz::STEP].get() >= 0.0,
+        "the steps played while drawn"
+    );
     // No slices at all draws too.
     p.data[data::COUNT].set(0.0);
     for tab in 0..3 {
         p.data[data::TAB].set(tab as f32);
-        let mut out = ctx.run_ui(egui::RawInput { time: Some(time + tab as f64), ..Default::default() }, |ui| editor.show(ui, &mut g, &a));
+        let mut out = ctx.run_ui(
+            egui::RawInput {
+                time: Some(time + tab as f64),
+                ..Default::default()
+            },
+            |ui| editor.show(ui, &mut g, &a),
+        );
         out.textures_delta.clear();
     }
     let (main, sub) = crate::ui::splitter::readout(&p);
@@ -8553,16 +11793,34 @@ fn splitter_panel_draws() {
 
 /// Runs Orrery from frame `from` of a 120 BPM grid for `frames`, returning
 /// its MIDI (absolute frames).
-fn run_orrery(o: &mut crate::audio::modules::orrery::Orrery, from: usize, frames: usize, playing: bool, restart: bool) -> Vec<(usize, [u8; 3])> {
+fn run_orrery(
+    o: &mut crate::audio::modules::orrery::Orrery,
+    from: usize,
+    frames: usize,
+    playing: bool,
+    restart: bool,
+) -> Vec<(usize, [u8; 3])> {
     run_orrery_with(o, from, frames, playing, restart, &[])
 }
 
 /// The same, with `midi` arriving on its MIDI cable (absolute frames).
-fn run_orrery_with(o: &mut crate::audio::modules::orrery::Orrery, from: usize, frames: usize, playing: bool, restart: bool, midi: &[(usize, [u8; 3])]) -> Vec<(usize, [u8; 3])> {
+fn run_orrery_with(
+    o: &mut crate::audio::modules::orrery::Orrery,
+    from: usize,
+    frames: usize,
+    playing: bool,
+    restart: bool,
+    midi: &[(usize, [u8; 3])],
+) -> Vec<(usize, [u8; 3])> {
     use crate::audio::engine::{Inputs, MAX_INPUTS, MidiBuf, ProcessCtx, Processor};
     const SR: f64 = 48_000.0;
     let bps = 2.0 / SR;
-    let mut inputs = Box::new(Inputs { bufs: [[[0.0; 64]; 2]; MAX_INPUTS], connected: [false; MAX_INPUTS], midi: MidiBuf::default(), midi_connected: true });
+    let mut inputs = Box::new(Inputs {
+        bufs: [[[0.0; 64]; 2]; MAX_INPUTS],
+        connected: [false; MAX_INPUTS],
+        midi: MidiBuf::default(),
+        midi_connected: true,
+    });
     let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
     let mut events = Vec::new();
     for done in (0..frames).step_by(64) {
@@ -8571,7 +11829,14 @@ fn run_orrery_with(o: &mut crate::audio::modules::orrery::Orrery, from: usize, f
         for (f, m) in midi.iter().filter(|(f, _)| (at..at + 64).contains(f)) {
             inputs.midi.push(f - at, *m);
         }
-        let ctx = ProcessCtx { sample_rate: SR as f32, smooth: 0.01, beat: at as f64 * bps, beats_per_sample: bps, playing, restart: restart && done == 0 };
+        let ctx = ProcessCtx {
+            sample_rate: SR as f32,
+            smooth: 0.01,
+            beat: at as f64 * bps,
+            beats_per_sample: bps,
+            playing,
+            restart: restart && done == 0,
+        };
         o.process(&ctx, &inputs, &mut outputs, 64);
         for e in o.midi_out().expect("sends MIDI").events() {
             events.push((at + e.frame as usize, e.data));
@@ -8581,7 +11846,10 @@ fn run_orrery_with(o: &mut crate::audio::modules::orrery::Orrery, from: usize, f
 }
 
 fn orrery(p: &Arc<ModuleParams>) -> crate::audio::modules::orrery::Orrery {
-    crate::audio::modules::orrery::Orrery::new(p.clone(), Arc::new(crate::audio::midi::MidiState::new()))
+    crate::audio::modules::orrery::Orrery::new(
+        p.clone(),
+        Arc::new(crate::audio::midi::MidiState::new()),
+    )
 }
 
 /// An Orrery with only the rings in `rings` playing.
@@ -8597,7 +11865,11 @@ fn orrery_with(rings: &[usize]) -> (Arc<ModuleParams>, crate::audio::modules::or
 
 /// The frames of the note-ons in `events` (on any channel).
 fn note_on_frames(events: &[(usize, [u8; 3])]) -> Vec<usize> {
-    events.iter().filter(|(_, m)| m[0] & 0xF0 == 0x90 && m[2] > 0).map(|(f, _)| *f).collect()
+    events
+        .iter()
+        .filter(|(_, m)| m[0] & 0xF0 == 0x90 && m[2] > 0)
+        .map(|(f, _)| *f)
+        .collect()
 }
 
 #[test]
@@ -8625,12 +11897,32 @@ fn orrery_plays_each_ring_on_its_channel_and_every_note_ends() {
     // Two bars at 120 BPM, 1/16: a step every 6 000 frames.
     let mut events = run_orrery(&mut o, 0, 2 * 96_000, true, true);
     events.extend(run_orrery(&mut o, 2 * 96_000, 4_800, false, false));
-    let kick: Vec<usize> = events.iter().filter(|(_, m)| m[0] == 0x99 && m[2] > 0).map(|(f, _)| f / 6_000).collect();
-    assert_eq!(kick, vec![0, 4, 7, 10, 13, 16, 20, 23, 26, 29], "E(5,16) on channel 10, twice");
-    let snare: Vec<usize> = events.iter().filter(|(_, m)| m[0] == 0x92 && m[2] > 0).map(|(f, _)| f / 6_000).collect();
+    let kick: Vec<usize> = events
+        .iter()
+        .filter(|(_, m)| m[0] == 0x99 && m[2] > 0)
+        .map(|(f, _)| f / 6_000)
+        .collect();
+    assert_eq!(
+        kick,
+        vec![0, 4, 7, 10, 13, 16, 20, 23, 26, 29],
+        "E(5,16) on channel 10, twice"
+    );
+    let snare: Vec<usize> = events
+        .iter()
+        .filter(|(_, m)| m[0] == 0x92 && m[2] > 0)
+        .map(|(f, _)| f / 6_000)
+        .collect();
     assert_eq!(snare, vec![4, 12, 20, 28], "the backbeat, on channel 3");
-    assert!(events.iter().all(|(_, m)| matches!(m[0], 0x99 | 0x89 | 0x92 | 0x82)));
-    assert_eq!(note_lengths(&events).len(), note_on_frames(&events).len(), "every note ends");
+    assert!(
+        events
+            .iter()
+            .all(|(_, m)| matches!(m[0], 0x99 | 0x89 | 0x92 | 0x82))
+    );
+    assert_eq!(
+        note_lengths(&events).len(),
+        note_on_frames(&events).len(),
+        "every note ends"
+    );
     // Events come out in order.
     assert!(events.windows(2).all(|w| w[0].0 <= w[1].0));
 }
@@ -8644,13 +11936,20 @@ fn orrery_steps_switched_by_hand_and_accents() {
     or::set(&p, 0, ring::VELOCITY, 80.0);
     p.set(or::ACCENT, 1.0);
     let events = run_orrery(&mut o, 0, 96_000, true, true);
-    let ons: Vec<(usize, u8)> = events.iter().filter(|(_, m)| m[0] & 0xF0 == 0x90).map(|(f, m)| (f / 6_000, m[2])).collect();
+    let ons: Vec<(usize, u8)> = events
+        .iter()
+        .filter(|(_, m)| m[0] & 0xF0 == 0x90)
+        .map(|(f, m)| (f / 6_000, m[2]))
+        .collect();
     assert_eq!(ons, vec![(0, 80), (1, 127), (7, 80), (10, 80), (13, 80)]);
     // STEPS lays the rhythm again; the accent on a step that stays a hit stays.
     or::set_step(&p, 0, 0, ACCENTED);
     or::set_steps(&p, 0, 8);
     assert_eq!(or::pulses(&p, 0), 5);
-    assert_eq!((0..8).map(|i| or::step(&p, 0, i)).collect::<Vec<_>>(), vec![2, 0, 1, 0, 1, 1, 0, 1]);
+    assert_eq!(
+        (0..8).map(|i| or::step(&p, 0, i)).collect::<Vec<_>>(),
+        vec![2, 0, 1, 0, 1, 1, 0, 1]
+    );
     or::invert(&p, 0);
     assert_eq!(or::hits(&p, 0), 3);
     or::clear(&p, 0);
@@ -8664,7 +11963,11 @@ fn orrery_rings_turn_by_steps_and_parts_of_steps() {
     let (p, mut o) = orrery_with(&[1]);
     or::set_rotation(&p, 1, 5.0);
     let frames = note_on_frames(&run_orrery(&mut o, 0, 96_000, true, true));
-    assert_eq!(frames.iter().map(|f| f / 6_000).collect::<Vec<_>>(), vec![5, 13], "the backbeat (4 and 12) turned a step on");
+    assert_eq!(
+        frames.iter().map(|f| f / 6_000).collect::<Vec<_>>(),
+        vec![5, 13],
+        "the backbeat (4 and 12) turned a step on"
+    );
     // Half a step: every hit half a step later.
     let (p, mut o) = orrery_with(&[1]);
     or::set_rotation(&p, 1, 4.5);
@@ -8685,10 +11988,24 @@ fn orrery_rings_turn_by_steps_and_parts_of_steps() {
     p.set(or::TWIST, 0.5);
     assert_eq!(or::turn(&p, 2), 1.0);
     let events = run_orrery(&mut o, 0, 48_000, true, true);
-    let at = |status: u8| events.iter().filter(|(_, m)| m[0] == status && m[2] > 0).map(|(f, _)| *f).collect::<Vec<_>>();
+    let at = |status: u8| {
+        events
+            .iter()
+            .filter(|(_, m)| m[0] == status && m[2] > 0)
+            .map(|(f, _)| *f)
+            .collect::<Vec<_>>()
+    };
     assert_eq!(at(0x99).len(), 4, "two rings, twice round");
-    let ring0: Vec<usize> = events.iter().filter(|(_, m)| m[0] == 0x99 && m[1] == or::note(&p, 0) && m[2] > 0).map(|(f, _)| *f).collect();
-    let ring2: Vec<usize> = events.iter().filter(|(_, m)| m[0] == 0x99 && m[1] == or::note(&p, 2) && m[2] > 0).map(|(f, _)| *f).collect();
+    let ring0: Vec<usize> = events
+        .iter()
+        .filter(|(_, m)| m[0] == 0x99 && m[1] == or::note(&p, 0) && m[2] > 0)
+        .map(|(f, _)| *f)
+        .collect();
+    let ring2: Vec<usize> = events
+        .iter()
+        .filter(|(_, m)| m[0] == 0x99 && m[1] == or::note(&p, 2) && m[2] > 0)
+        .map(|(f, _)| *f)
+        .collect();
     assert_eq!(ring0, vec![0, 24_000]);
     assert_eq!(ring2, vec![6_000, 30_000], "ring 3 a step later");
 }
@@ -8707,10 +12024,19 @@ fn orrery_cycle_mode_plays_polyrhythms() {
     or::set(&p, 1, ring::CHANNEL, 2.0);
     // One bar (4 beats, 96 000 frames): 3 against 4.
     let events = run_orrery(&mut o, 0, 96_000, true, true);
-    let at = |status: u8| events.iter().filter(|(_, m)| m[0] == status && m[2] > 0).map(|(f, _)| *f).collect::<Vec<_>>();
+    let at = |status: u8| {
+        events
+            .iter()
+            .filter(|(_, m)| m[0] == status && m[2] > 0)
+            .map(|(f, _)| *f)
+            .collect::<Vec<_>>()
+    };
     assert_eq!(at(0x99), vec![0, 32_000, 64_000], "three");
     assert_eq!(at(0x91), vec![0, 24_000, 48_000, 72_000], "four");
-    assert!(p.viz[or::viz::PHASE].get() / 3.0 - p.viz[or::viz::PHASE + 1].get() / 4.0 < 1e-3, "one hand for every ring");
+    assert!(
+        p.viz[or::viz::PHASE].get() / 3.0 - p.viz[or::viz::PHASE + 1].get() / 4.0 < 1e-3,
+        "one hand for every ring"
+    );
 }
 
 #[test]
@@ -8724,7 +12050,11 @@ fn orrery_is_silent_while_stopped_and_ends_its_notes() {
     let mut events = run_orrery(&mut o, 0, 3_000, true, true);
     assert!(!note_on_frames(&events).is_empty());
     events.extend(run_orrery(&mut o, 3_000, 640, false, false));
-    assert_eq!(note_lengths(&events).len(), note_on_frames(&events).len(), "Stop ends the notes");
+    assert_eq!(
+        note_lengths(&events).len(),
+        note_on_frames(&events).len(),
+        "Stop ends the notes"
+    );
     assert_eq!(p.viz[viz::STEP].get(), -1.0);
     assert_eq!(p.viz[viz::LIVE].get(), 0.0);
     // PLAY off is silent too.
@@ -8737,8 +12067,12 @@ fn orrery_dice_keeps_steps_notes_and_channels() {
     use crate::audio::modules::orrery::{self as or, ring};
     let p = Arc::new(ModuleParams::new(ModuleKind::Orrery));
     or::set(&p, 0, ring::CHANNEL, 5.0);
-    let before: Vec<(usize, u8, u8)> = (0..or::RINGS).map(|r| (or::steps(&p, r), or::note(&p, r), or::channel(&p, r))).collect();
-    let muted: Vec<Vec<u8>> = (4..or::RINGS).map(|r| (0..32).map(|i| or::step(&p, r, i)).collect()).collect();
+    let before: Vec<(usize, u8, u8)> = (0..or::RINGS)
+        .map(|r| (or::steps(&p, r), or::note(&p, r), or::channel(&p, r)))
+        .collect();
+    let muted: Vec<Vec<u8>> = (4..or::RINGS)
+        .map(|r| (0..32).map(|i| or::step(&p, r, i)).collect())
+        .collect();
     for seed in 1..20 {
         or::dice(&p, seed, None);
         for r in 0..4 {
@@ -8747,9 +12081,13 @@ fn orrery_dice_keeps_steps_notes_and_channels() {
             assert_eq!(or::hits(&p, r), k);
         }
     }
-    let after: Vec<(usize, u8, u8)> = (0..or::RINGS).map(|r| (or::steps(&p, r), or::note(&p, r), or::channel(&p, r))).collect();
+    let after: Vec<(usize, u8, u8)> = (0..or::RINGS)
+        .map(|r| (or::steps(&p, r), or::note(&p, r), or::channel(&p, r)))
+        .collect();
     assert_eq!(before, after);
-    let still: Vec<Vec<u8>> = (4..or::RINGS).map(|r| (0..32).map(|i| or::step(&p, r, i)).collect()).collect();
+    let still: Vec<Vec<u8>> = (4..or::RINGS)
+        .map(|r| (0..32).map(|i| or::step(&p, r, i)).collect())
+        .collect();
     assert_eq!(muted, still, "muted rings are left alone");
     or::dice(&p, 7, Some(6));
     assert!(or::hits(&p, 6) >= 1);
@@ -8774,8 +12112,15 @@ fn orrery_panel_draws() {
             or::select(&p, frame);
             render_buf(&mut e, 4_800);
             time += 0.1;
-            let pointer = egui::Event::PointerMoved(pos2(120.0 + 30.0 * frame as f32, 200.0 + 10.0 * frame as f32));
-            let input = egui::RawInput { time: Some(time), events: vec![pointer], ..Default::default() };
+            let pointer = egui::Event::PointerMoved(pos2(
+                120.0 + 30.0 * frame as f32,
+                200.0 + 10.0 * frame as f32,
+            ));
+            let input = egui::RawInput {
+                time: Some(time),
+                events: vec![pointer],
+                ..Default::default()
+            };
             let mut out = ctx.run_ui(input, |ui| editor.show(ui, &mut g, &a));
             out.textures_delta.clear();
         }
@@ -8788,7 +12133,13 @@ fn orrery_panel_draws() {
     for _ in 0..30 {
         render_buf(&mut e, 4_800);
         time += 0.1;
-        let mut out = ctx.run_ui(egui::RawInput { time: Some(time), ..Default::default() }, |ui| editor.show(ui, &mut g, &a));
+        let mut out = ctx.run_ui(
+            egui::RawInput {
+                time: Some(time),
+                ..Default::default()
+            },
+            |ui| editor.show(ui, &mut g, &a),
+        );
         out.textures_delta.clear();
     }
     assert_eq!(or::active(&p), Some(6));
@@ -8797,7 +12148,9 @@ fn orrery_panel_draws() {
 
 /// Draws Orrery's panel at the origin for one frame with `events`.
 fn orrery_frame(ctx: &egui::Context, g: &Graph, id: u32, t: f64, events: Vec<egui::Event>) {
-    let NodeKind::Module(m) = &g.node(id).unwrap().kind else { panic!("a module") };
+    let NodeKind::Module(m) = &g.node(id).unwrap().kind else {
+        panic!("a module")
+    };
     let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1000.0, 600.0));
     // The modifiers held: those of a button in this frame, else as they were.
     let held = events.iter().find_map(|e| match e {
@@ -8808,11 +12161,24 @@ fn orrery_frame(ctx: &egui::Context, g: &Graph, id: u32, t: f64, events: Vec<egu
     if let Some(m) = held {
         events.insert(0, egui::Event::ModifiersChanged(m));
     }
-    let input = egui::RawInput { time: Some(t), events, screen_rect: Some(screen), ..Default::default() };
+    let input = egui::RawInput {
+        time: Some(t),
+        events,
+        screen_rect: Some(screen),
+        ..Default::default()
+    };
     let mut out = ctx.run_ui(input, |ui| {
         let painter = ui.painter().clone();
         let hits = std::cell::RefCell::new(Vec::new());
-        let v = crate::ui::nodes::NodeView { ui, painter: &painter, min: pos2(0.0, 0.0), z: 1.0, node: id, hits: &hits, tempo: 120.0 };
+        let v = crate::ui::nodes::NodeView {
+            ui,
+            painter: &painter,
+            min: pos2(0.0, 0.0),
+            z: 1.0,
+            node: id,
+            hits: &hits,
+            tempo: 120.0,
+        };
         crate::ui::orrery::draw(&v, id, egui::Color32::LIGHT_BLUE, m, (false, false));
     });
     out.textures_delta.clear();
@@ -8822,7 +12188,7 @@ fn orrery_frame(ctx: &egui::Context, g: &Graph, id: u32, t: f64, events: Vec<egu
 /// whole steps, or freely with Shift.
 #[test]
 fn orrery_rings_turn_when_dragged() {
-    use crate::audio::modules::orrery::{self as or, OFF, ON, ACCENTED};
+    use crate::audio::modules::orrery::{self as or, ACCENTED, OFF, ON};
     use egui::{Event, Modifiers, PointerButton};
     let (mut g, a, _e) = setup();
     let id = g.add_module(ModuleKind::Orrery, pos2(0.0, 0.0), &a);
@@ -8837,12 +12203,23 @@ fn orrery_rings_turn_when_dragged() {
         *t += 1.0 / 60.0;
         orrery_frame(&ctx, &g, id, *t, events);
     };
-    let button = |q: egui::Pos2, pressed: bool, modifiers: Modifiers| Event::PointerButton { pos: q, button: PointerButton::Primary, pressed, modifiers };
-    let click = |q: egui::Pos2, modifiers: Modifiers, frame: &mut dyn FnMut(Vec<Event>, &mut f64), t: &mut f64| {
+    let button = |q: egui::Pos2, pressed: bool, modifiers: Modifiers| Event::PointerButton {
+        pos: q,
+        button: PointerButton::Primary,
+        pressed,
+        modifiers,
+    };
+    let click = |q: egui::Pos2,
+                 modifiers: Modifiers,
+                 frame: &mut dyn FnMut(Vec<Event>, &mut f64),
+                 t: &mut f64| {
         frame(vec![Event::PointerMoved(q)], t);
         frame(vec![button(q, true, modifiers)], t);
         frame(vec![button(q, false, modifiers)], t);
-        frame(vec![button(q + egui::vec2(400.0, 0.0), false, Modifiers::NONE)], t);
+        frame(
+            vec![button(q + egui::vec2(400.0, 0.0), false, Modifiers::NONE)],
+            t,
+        );
     };
 
     // The kick's step 4 sits at 3 o'clock on the outer ring: a hit, clicked off.
@@ -8855,7 +12232,12 @@ fn orrery_rings_turn_when_dragged() {
     assert_eq!(or::step(&p, 0, 4), ACCENTED);
 
     // Drag the snare's ring a quarter turn clockwise: four steps on.
-    let drag = |r: usize, from: f32, to: f32, modifiers: Modifiers, frame: &mut dyn FnMut(Vec<Event>, &mut f64), t: &mut f64| {
+    let drag = |r: usize,
+                from: f32,
+                to: f32,
+                modifiers: Modifiers,
+                frame: &mut dyn FnMut(Vec<Event>, &mut f64),
+                t: &mut f64| {
         let q0 = at(r, from);
         frame(vec![Event::PointerMoved(q0)], t);
         frame(vec![button(q0, true, modifiers)], t);
@@ -8865,7 +12247,10 @@ fn orrery_rings_turn_when_dragged() {
         }
         let q1 = at(r, to);
         frame(vec![button(q1, false, modifiers)], t);
-        frame(vec![button(q1 + egui::vec2(400.0, 0.0), false, Modifiers::NONE)], t);
+        frame(
+            vec![button(q1 + egui::vec2(400.0, 0.0), false, Modifiers::NONE)],
+            t,
+        );
     };
     assert_eq!(or::rotation(&p, 1), 4.0);
     drag(1, -90.0, 0.0, Modifiers::NONE, &mut frame, &mut t);
@@ -8879,7 +12264,12 @@ fn orrery_rings_turn_when_dragged() {
     let turned = or::rotation(&p, 1);
     assert!((turned - 0.5).abs() < 0.1, "half a step: {turned}");
     // The pattern itself is untouched by turning.
-    assert_eq!((0..16).filter(|&i| or::step(&p, 1, i) != OFF).collect::<Vec<_>>(), vec![0, 8]);
+    assert_eq!(
+        (0..16)
+            .filter(|&i| or::step(&p, 1, i) != OFF)
+            .collect::<Vec<_>>(),
+        vec![0, 8]
+    );
 }
 
 #[test]
@@ -8896,8 +12286,19 @@ fn orrery_patterns_keep_everything_but_notes_and_channels() {
     for k in 0..or::SLOTS {
         let s = or::factory(k);
         for r in 0..or::RINGS {
-            let (n, pulses) = (or::pattern_ring(&s, r, slot::STEPS) as usize, or::pattern_ring(&s, r, slot::PULSES) as usize);
-            assert_eq!((0..n).filter(|&i| or::pattern_step(&s, r, i) != OFF).count(), pulses, "{} ring {}", or::FACTORY_NAMES[k], r + 1);
+            let (n, pulses) = (
+                or::pattern_ring(&s, r, slot::STEPS) as usize,
+                or::pattern_ring(&s, r, slot::PULSES) as usize,
+            );
+            assert_eq!(
+                (0..n)
+                    .filter(|&i| or::pattern_step(&s, r, i) != OFF)
+                    .count(),
+                pulses,
+                "{} ring {}",
+                or::FACTORY_NAMES[k],
+                r + 1
+            );
         }
     }
     // Edit, keep it on button 3, change everything, recall it.
@@ -8941,7 +12342,13 @@ fn orrery_patterns_keep_everything_but_notes_and_channels() {
 fn orrery_recalls_land_on_the_launch_grid() {
     use crate::audio::modules::orrery::{self as or, BEAT, NOW};
     // 120 BPM: a beat is 24 000 frames, a bar 96 000.
-    let kicks = |events: &[(usize, [u8; 3])]| events.iter().filter(|(_, m)| m[0] == 0x99 && m[1] == 36 && m[2] > 0).map(|(f, _)| *f).collect::<Vec<_>>();
+    let kicks = |events: &[(usize, [u8; 3])]| {
+        events
+            .iter()
+            .filter(|(_, m)| m[0] == 0x99 && m[1] == 36 && m[2] > 0)
+            .map(|(f, _)| *f)
+            .collect::<Vec<_>>()
+    };
     let p = Arc::new(ModuleParams::new(ModuleKind::Orrery));
     let mut o = orrery(&p);
     run_orrery(&mut o, 0, 30_000, true, true);
@@ -8950,8 +12357,22 @@ fn orrery_recalls_land_on_the_launch_grid() {
     let events = run_orrery(&mut o, 30_000, 96_000 * 2 - 30_000, true, false);
     assert_eq!(or::active(&p), Some(1));
     let k = kicks(&events);
-    assert_eq!(k.iter().filter(|&&f| f < 96_000).copied().collect::<Vec<_>>(), vec![42_000, 60_000, 78_000], "Groove until the bar");
-    assert_eq!(k.iter().filter(|&&f| (96_000..192_000).contains(&f)).copied().collect::<Vec<_>>(), vec![96_000, 120_000, 144_000, 168_000], "then four on the floor");
+    assert_eq!(
+        k.iter()
+            .filter(|&&f| f < 96_000)
+            .copied()
+            .collect::<Vec<_>>(),
+        vec![42_000, 60_000, 78_000],
+        "Groove until the bar"
+    );
+    assert_eq!(
+        k.iter()
+            .filter(|&&f| (96_000..192_000).contains(&f))
+            .copied()
+            .collect::<Vec<_>>(),
+        vec![96_000, 120_000, 144_000, 168_000],
+        "then four on the floor"
+    );
     // BEAT: the next beat.
     p.data[or::data::LAUNCH].set(BEAT as f32);
     run_orrery(&mut o, 192_000, 8_000, true, false);
@@ -8982,7 +12403,14 @@ fn orrery_program_changes_recall_the_buttons() {
     let p = Arc::new(ModuleParams::new(ModuleKind::Orrery));
     let mut o = orrery(&p);
     // Program 3 (2 on the wire) on any channel; 9 and up are ignored.
-    run_orrery_with(&mut o, 0, 640, false, false, &[(100, [0xC4, 2, 0]), (200, [0xC0, 12, 0])]);
+    run_orrery_with(
+        &mut o,
+        0,
+        640,
+        false,
+        false,
+        &[(100, [0xC4, 2, 0]), (200, [0xC0, 12, 0])],
+    );
     assert_eq!(or::active(&p), Some(2));
     // While playing it waits for the bar.
     run_orrery_with(&mut o, 0, 24_000, true, true, &[(1_000, [0xC0, 5, 0])]);
@@ -8995,7 +12423,7 @@ fn orrery_program_changes_recall_the_buttons() {
 /// processor rests), Shift-click or STORE then a click keeps the rings.
 #[test]
 fn orrery_pattern_buttons_recall_and_store() {
-    use crate::audio::modules::orrery::{self as or, ON, OFF};
+    use crate::audio::modules::orrery::{self as or, OFF, ON};
     use egui::{Event, Modifiers, PointerButton};
     let (mut g, a, _e) = setup();
     let id = g.add_module(ModuleKind::Orrery, pos2(0.0, 0.0), &a);
@@ -9008,11 +12436,24 @@ fn orrery_pattern_buttons_recall_and_store() {
         orrery_frame(&ctx, &g, id, *t, events);
     };
     let click = |q: egui::Pos2, modifiers: Modifiers, t: &mut f64| {
-        let button = |pressed| Event::PointerButton { pos: q, button: PointerButton::Primary, pressed, modifiers };
+        let button = |pressed| Event::PointerButton {
+            pos: q,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers,
+        };
         frame(vec![Event::PointerMoved(q)], t);
         frame(vec![button(true)], t);
         frame(vec![button(false)], t);
-        frame(vec![Event::PointerButton { pos: pos2(900.0, 500.0), button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE }], t);
+        frame(
+            vec![Event::PointerButton {
+                pos: pos2(900.0, 500.0),
+                button: PointerButton::Primary,
+                pressed: false,
+                modifiers: Modifiers::NONE,
+            }],
+            t,
+        );
     };
     // Recall button 4 (Bossa): nothing processes here, so the panel takes it.
     click(slot(3), Modifiers::NONE, &mut t);
@@ -9039,4 +12480,613 @@ fn orrery_pattern_buttons_recall_and_store() {
     assert_eq!(or::active(&p), Some(1));
     assert_eq!(or::pending(&p), None, "storing does not recall");
     assert!(!or::edited(&p));
+}
+
+// ---------------------------------------------------------------------------
+// Sibyl
+// ---------------------------------------------------------------------------
+
+fn sibyl_params() -> Arc<ModuleParams> {
+    Arc::new(ModuleParams::new(ModuleKind::Sibyl))
+}
+
+/// Runs Sibyl at 120 BPM for `blocks`, with `midi` arriving at (frame,
+/// message); returns both channels.
+fn run_sibyl(
+    p: &Arc<ModuleParams>,
+    blocks: usize,
+    playing: bool,
+    midi: &[(usize, [u8; 3])],
+) -> (Vec<f32>, Vec<f32>) {
+    use crate::audio::engine::{Inputs, MAX_INPUTS, MidiBuf, ProcessCtx, Processor};
+    use crate::audio::modules::sibyl::Sibyl;
+    let mut proc = Sibyl::new(
+        p.clone(),
+        Arc::new(crate::audio::midi::MidiState::new()),
+        48_000.0,
+    );
+    let mut ctx = ProcessCtx {
+        sample_rate: 48_000.0,
+        smooth: 0.01,
+        beat: 0.0,
+        beats_per_sample: 2.0 / 48_000.0,
+        playing,
+        restart: false,
+    };
+    let mut inputs = Box::new(Inputs {
+        bufs: [[[0.0; 64]; 2]; MAX_INPUTS],
+        connected: [false; MAX_INPUTS],
+        midi: MidiBuf::default(),
+        midi_connected: true,
+    });
+    let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
+    let (mut l, mut r) = (Vec::new(), Vec::new());
+    for b in 0..blocks {
+        let at = b * 64;
+        inputs.midi.clear();
+        for (f, m) in midi.iter().filter(|(f, _)| (at..at + 64).contains(f)) {
+            inputs.midi.push(f - at, *m);
+        }
+        proc.process(&ctx, &inputs, &mut outputs, 64);
+        l.extend_from_slice(&outputs[0][0]);
+        r.extend_from_slice(&outputs[0][1]);
+        if playing {
+            ctx.beat += ctx.beats_per_sample * 64.0;
+        }
+    }
+    (l, r)
+}
+
+fn on(frame: usize, note: u8, vel: u8) -> (usize, [u8; 3]) {
+    (frame, [0x90, note, vel])
+}
+
+fn off(frame: usize, note: u8) -> (usize, [u8; 3]) {
+    (frame, [0x80, note, 0])
+}
+
+/// A bare patch: one saw, the filter wide open, no detune or drift, so
+/// what comes out can be measured.
+fn sibyl_bare() -> Arc<ModuleParams> {
+    use crate::audio::modules::sibyl::*;
+    let p = sibyl_params();
+    for (k, v) in [
+        (MIX_B, 0.0),
+        (CUTOFF, 20_000.0),
+        (RESO, 0.0),
+        (ENV_AMT, 0.0),
+        (KEY_AMT, 0.0),
+        (DETUNE, 0.0),
+        (A_MODEL, 2.0),
+        (B_MODEL, 2.0),
+        (ENV_MODEL, 0.0),
+        (FILTER_MODEL, 0.0),
+        (A_SUSTAIN, 1.0),
+        (AENV_VEL, 0.0),
+        (WM_FREQ_A, 0.0),
+        (WM_FREQ_B, 0.0),
+    ] {
+        p.set(k, v);
+    }
+    p
+}
+
+#[test]
+fn sibyl_plays_a_chord_warm_finite_and_in_range() {
+    let p = sibyl_params();
+    let midi = [
+        on(0, 48, 100),
+        on(0, 55, 100),
+        on(0, 60, 100),
+        on(0, 64, 100),
+        off(48_000, 48),
+        off(48_000, 55),
+        off(48_000, 60),
+        off(48_000, 64),
+    ];
+    let (l, r) = run_sibyl(&p, 1500, false, &midi);
+    assert!(l.iter().chain(&r).all(|x| x.is_finite()));
+    let peak = peak_of(&l).max(peak_of(&r));
+    assert!(peak > 0.1 && peak < 1.0, "peak {peak}");
+    // Stereo: the voices are spread, so the channels differ.
+    let diff: f32 = l.iter().zip(&r).map(|(a, b)| (a - b).abs()).sum::<f32>() / l.len() as f32;
+    assert!(diff > 1e-4, "voices are panned apart");
+    // After the release it falls silent.
+    let tail = &l[l.len() - 4800..];
+    assert!(peak_of(tail) < 1e-3, "released: {}", peak_of(tail));
+}
+
+#[test]
+fn sibyl_oscillators_are_in_tune() {
+    use crate::audio::modules::sibyl::*;
+    for (note, hz) in [(57u8, 220.0f32), (69, 440.0), (81, 880.0)] {
+        let p = sibyl_bare();
+        let (l, _) = run_sibyl(&p, 400, false, &[on(0, note, 127)]);
+        let f = crossings_per_second(&l[4800..]);
+        assert!((f - hz).abs() / hz < 0.01, "note {note}: {f} Hz");
+        // Osc B alone, a fifth up.
+        let p = sibyl_bare();
+        p.set(MIX_A, 0.0);
+        p.set(MIX_B, 1.0);
+        p.set(B_FREQ, 7.0);
+        p.set(B_FINE, 0.0);
+        let (l, _) = run_sibyl(&p, 400, false, &[on(0, note, 127)]);
+        let f = crossings_per_second(&l[4800..]);
+        let fifth = hz * 2f32.powf(7.0 / 12.0);
+        assert!(
+            (f - fifth).abs() / fifth < 0.01,
+            "osc B, note {note}: {f} Hz"
+        );
+    }
+}
+
+#[test]
+fn sibyl_saw_is_band_limited() {
+    // A high saw: the alias products below the fundamental stay small.
+    use crate::audio::modules::sibyl::*;
+    let p = sibyl_bare();
+    p.set(A_OCT, 3.0);
+    let (l, _) = run_sibyl(&p, 300, false, &[on(0, 96, 127)]);
+    let x = &l[4800..4800 + 8192];
+    // Energy below 1 kHz (none should be there: the fundamental is ~8.4 kHz).
+    let dft = |f: f32| {
+        let (mut re, mut im) = (0.0f32, 0.0f32);
+        for (i, v) in x.iter().enumerate() {
+            let a = std::f32::consts::TAU * f * i as f32 / 48_000.0;
+            re += v * a.cos();
+            im += v * a.sin();
+        }
+        (re * re + im * im).sqrt() / x.len() as f32
+    };
+    let fund = dft(8372.0);
+    let low = (1..20).map(|k| dft(50.0 * k as f32)).fold(0.0f32, f32::max);
+    assert!(low < fund * 0.03, "aliasing {low} vs {fund}");
+}
+
+#[test]
+fn sibyl_has_sixteen_voices_and_steals_the_oldest() {
+    use crate::audio::modules::sibyl::viz;
+    let p = sibyl_params();
+    let midi: Vec<_> = (0..17).map(|i| on(i * 64, 40 + i as u8 * 2, 100)).collect();
+    let _ = run_sibyl(&p, 16 * 1 + 40, false, &midi[..16]);
+    let active = (0..16)
+        .filter(|&i| p.viz[viz::NOTE + i].get() >= 0.0)
+        .count();
+    assert_eq!(active, 16);
+    let _ = run_sibyl(&p, 60, false, &midi);
+    let notes: Vec<f32> = (0..16).map(|i| p.viz[viz::NOTE + i].get()).collect();
+    assert!(notes.contains(&72.0), "the 17th note sounds");
+    assert!(!notes.contains(&40.0), "the first note was stolen");
+}
+
+#[test]
+fn sibyl_unison_stacks_voices_on_one_note() {
+    use crate::audio::modules::sibyl::*;
+    let p = sibyl_params();
+    p.set(UNISON, 1.0);
+    p.set(UNI_VOICES, 6.0);
+    p.set(NOTE_PRIO, 2.0);
+    let (l, _) = run_sibyl(&p, 200, false, &[on(0, 48, 100), on(3200, 55, 100)]);
+    let notes: Vec<f32> = (0..16).map(|i| p.viz[viz::NOTE + i].get()).collect();
+    assert_eq!(notes.iter().filter(|&&n| n == 55.0).count(), 6, "{notes:?}");
+    assert!(notes[6..].iter().all(|&n| n < 0.0));
+    assert!(l.iter().all(|x| x.is_finite()) && peak_of(&l) < 1.0);
+    // Low priority keeps the lower key.
+    let p = sibyl_params();
+    p.set(UNISON, 1.0);
+    p.set(NOTE_PRIO, 0.0);
+    let _ = run_sibyl(&p, 200, false, &[on(0, 48, 100), on(3200, 55, 100)]);
+    assert_eq!(p.viz[viz::NOTE].get(), 48.0);
+}
+
+#[test]
+fn sibyl_glide_slides_between_notes() {
+    use crate::audio::modules::sibyl::*;
+    let p = sibyl_bare();
+    p.set(UNISON, 1.0);
+    p.set(UNI_VOICES, 1.0);
+    p.set(NOTE_PRIO, 2.0);
+    p.set(GLIDE, 0.5);
+    let (l, _) = run_sibyl(&p, 3500, false, &[on(0, 57, 127), on(24_000, 69, 127)]);
+    let early = crossings_per_second(&l[24_000 + 2400..24_000 + 7200]);
+    let late = crossings_per_second(&l[l.len() - 9600..]);
+    assert!(early > 230.0 && early < 420.0, "gliding: {early}");
+    assert!((late - 440.0).abs() < 5.0, "arrived: {late}");
+}
+
+#[test]
+fn sibyl_filter_self_oscillates_past_sixty_percent() {
+    use crate::audio::modules::sibyl::*;
+    let p = sibyl_bare();
+    p.set(MIX_A, 0.0);
+    p.set(MIX_NOISE, 0.01);
+    p.set(CUTOFF, 1000.0);
+    p.set(RESO, 0.9);
+    let (l, _) = run_sibyl(&p, 800, false, &[on(0, 60, 127)]);
+    let tail = &l[24_000..];
+    assert!(rms_of(tail) > 0.02, "it sings: {}", rms_of(tail));
+    let f = crossings_per_second(tail);
+    assert!(f > 700.0 && f < 1300.0, "at the cutoff: {f}");
+    // Below 60 % the same patch is near silent.
+    p.set(RESO, 0.4);
+    let (l, _) = run_sibyl(&p, 800, false, &[on(0, 60, 127)]);
+    assert!(rms_of(&l[24_000..]) < 0.01);
+}
+
+#[test]
+fn sibyl_poly_mod_and_sync_change_the_sound() {
+    use crate::audio::modules::sibyl::*;
+    let base = sibyl_bare();
+    let (plain, _) = run_sibyl(&base, 300, false, &[on(0, 48, 127)]);
+    let p = sibyl_bare();
+    p.set(A_SYNC, 1.0);
+    p.set(A_FREQ, 7.0);
+    p.set(MIX_B, 0.0);
+    let (synced, _) = run_sibyl(&p, 300, false, &[on(0, 48, 127)]);
+    // Synced, A follows B's period (the note), whatever its own pitch.
+    let f = crossings_per_second(&synced[9600..]);
+    assert!(f > 120.0, "{f}");
+    assert!(synced.iter().all(|x| x.is_finite()));
+    let p = sibyl_bare();
+    p.set(PM_OSCB, 0.6);
+    p.set(PM_FREQ_A, 1.0);
+    let (fm, _) = run_sibyl(&p, 300, false, &[on(0, 48, 127)]);
+    let differ: f32 = plain[9600..]
+        .iter()
+        .zip(&fm[9600..])
+        .map(|(a, b)| (a - b).abs())
+        .sum();
+    assert!(differ > 10.0 && fm.iter().all(|x| x.is_finite() && x.abs() < 1.0));
+}
+
+#[test]
+fn sibyl_programs_load_store_and_restore() {
+    use crate::audio::modules::sibyl::*;
+    let p = sibyl_params();
+    load_program(&p, 8);
+    assert_eq!(program(&p), 8);
+    assert_eq!(program_name(&p, 8), bank::name(8));
+    assert!(!edited(&p));
+    p.set(CUTOFF, 4321.0);
+    assert!(edited(&p));
+    store_program(&p, 39);
+    assert_eq!(program(&p), 39);
+    assert!(!edited(&p));
+    load_program(&p, 0);
+    assert_ne!(p.get(CUTOFF), 4321.0);
+    load_program(&p, 39);
+    assert_eq!(p.get(CUTOFF), 4321.0);
+    restore_program(&p, 39);
+    load_program(&p, 39);
+    assert_eq!(p.get(CUTOFF), bank::value(39, CUTOFF));
+    // The master section stays where it is.
+    p.set(TUNE, 3.0);
+    load_program(&p, 5);
+    assert_eq!(p.get(TUNE), 3.0);
+    // Parameter names are unique (presets keep knobs by name).
+    let mut names: Vec<&str> = DEF.params.iter().map(|s| s.name).collect();
+    names.sort();
+    let before = names.len();
+    names.dedup();
+    assert_eq!(names.len(), before);
+    assert!(
+        DEF.params.iter().all(|s| s.problem().is_none()),
+        "{:?}",
+        DEF.params.iter().find_map(|s| s.problem())
+    );
+}
+
+#[test]
+fn sibyl_factory_programs_all_sound() {
+    use crate::audio::modules::sibyl::*;
+    for k in 0..PROGRAMS {
+        let p = sibyl_params();
+        load_program(&p, k);
+        for &(i, v) in bank::FACTORY[k].1 {
+            let s = &DEF.params[i];
+            assert!(
+                (s.min..=s.max).contains(&v),
+                "{}: {} = {v} out of range",
+                bank::name(k),
+                s.name
+            );
+        }
+        let midi = [
+            on(0, 48, 100),
+            on(0, 55, 100),
+            on(0, 60, 100),
+            on(0, 63, 100),
+            off(96_000, 48),
+            off(96_000, 55),
+            off(96_000, 60),
+            off(96_000, 63),
+        ];
+        let (l, r) = run_sibyl(&p, 2000, true, &midi);
+        assert!(
+            l.iter().chain(&r).all(|x| x.is_finite()),
+            "{}",
+            bank::name(k)
+        );
+        let peak = peak_of(&l).max(peak_of(&r));
+        let level = rms_of(&l[..96_000]);
+        eprintln!(
+            "LEVEL {k} {:.4} {:.4} {:.3} {}",
+            peak,
+            level,
+            p.get(VOLUME),
+            bank::name(k)
+        );
+        assert!(peak > 0.02, "{} is silent ({peak})", bank::name(k));
+        assert!(peak <= 1.0, "{} clips ({peak})", bank::name(k));
+    }
+}
+
+#[test]
+fn sibyl_arpeggiates_on_the_board_grid() {
+    use crate::audio::modules::sibyl::*;
+    let p = sibyl_bare();
+    p.set(ARP_ON, 1.0);
+    p.set(ARP_RATE, 5.0); // 1/16: 6000 frames at 120 BPM
+    p.set(ARP_GATE, 0.5);
+    p.set(A_SUSTAIN, 1.0);
+    p.set(A_RELEASE, 0.002);
+    let (l, _) = run_sibyl(
+        &p,
+        800,
+        true,
+        &[on(0, 60, 100), on(0, 64, 100), on(0, 67, 100)],
+    );
+    // Onsets: where the level rises after a gap.
+    let env: Vec<f32> = l.chunks(64).map(|c| peak_of(c)).collect();
+    let mut armed = true;
+    let mut starts = Vec::new();
+    for (i, &e) in env.iter().enumerate() {
+        if armed && e > 0.03 {
+            starts.push(i * 64);
+            armed = false;
+        } else if e < 0.005 {
+            armed = true;
+        }
+    }
+    assert!(starts.len() >= 6, "{starts:?}");
+    for w in starts.windows(2) {
+        let gap = w[1] as i64 - w[0] as i64;
+        assert!((gap - 6000).abs() <= 128, "steps every 1/16: {starts:?}");
+    }
+    // The notes go up: C, E, G.
+    let pitch = |from: usize| crossings_per_second(&l[from + 600..from + 2600]);
+    let (a, b, c) = (pitch(starts[0]), pitch(starts[1]), pitch(starts[2]));
+    assert!(a < b && b < c, "{a} {b} {c}");
+}
+
+#[test]
+fn sibyl_effects_run_in_their_order_and_stay_finite() {
+    use crate::audio::modules::sibyl::*;
+    let p = sibyl_params();
+    for k in [TAPE_ON, ECHO_ON, RESEQ_ON, PLATE_ON, COND_ON, DIST_ON] {
+        p.set(k, 1.0);
+    }
+    p.set(ECHO_REGEN, 1.0);
+    p.set(PLATE_DECAY, 1.0);
+    p.set(COND_GAIN, 1.0);
+    for (n, e) in [4, 3, 2, 1, 0].into_iter().enumerate() {
+        p.data[data::FX_ORDER + n].set(e as f32);
+    }
+    assert_eq!(fx_order(&p), [4, 3, 2, 1, 0]);
+    let midi = [
+        on(0, 36, 127),
+        on(0, 60, 127),
+        off(24_000, 36),
+        off(24_000, 60),
+    ];
+    let (l, r) = run_sibyl(&p, 3000, true, &midi);
+    assert!(l.iter().chain(&r).all(|x| x.is_finite()));
+    assert!(peak_of(&l).max(peak_of(&r)) <= 1.0);
+    // The echo and the plate keep ringing after the notes.
+    assert!(rms_of(&l[96_000..120_000]) > 1e-4);
+    // A broken order still lists each effect once.
+    p.data[data::FX_ORDER].set(2.0);
+    p.data[data::FX_ORDER + 1].set(2.0);
+    let order = fx_order(&p);
+    let mut sorted = order;
+    sorted.sort();
+    assert_eq!(sorted, [0, 1, 2, 3, 4]);
+}
+
+#[test]
+fn sibyl_matrix_moves_its_destination() {
+    use crate::audio::modules::sibyl::mods::{dest, src};
+    use crate::audio::modules::sibyl::*;
+    // Velocity → cutoff: a soft note is darker than a hard one.
+    let p = sibyl_bare();
+    p.set(CUTOFF, 300.0);
+    p.set(sp(0, slot::SOURCE), src::VELOCITY as f32);
+    p.set(sp(0, slot::DEST), dest::CUTOFF as f32);
+    p.set(sp(0, slot::DEPTH), 0.5);
+    p.set(AENV_VEL, 0.0);
+    let bright = |vel: u8| {
+        let (l, _) = run_sibyl(&p, 300, false, &[on(0, 48, vel)]);
+        let x = &l[9600..];
+        let d: Vec<f32> = x.windows(2).map(|w| w[1] - w[0]).collect();
+        rms_of(&d) / rms_of(x).max(1e-6)
+    };
+    let (hard, soft) = (bright(127), bright(20));
+    assert!(hard > soft * 2.0, "{hard} {soft}");
+    // Quantized LFO → pitch lands on semitones.
+    assert_eq!(
+        mods::quantize(1, 0.51 / 24.0 * 7.0),
+        4.0 / 24.0 * 0.0 + (0.51f32 * 7.0).round() / 24.0
+    );
+    assert_eq!(mods::quantize(7, 5.2 / 24.0), 4.0 / 24.0);
+    assert_eq!(mods::curve(3, -0.5), -0.25);
+    assert_eq!(mods::rectify(5, -1.0), 0.0);
+}
+
+#[test]
+fn sibyl_panel_draws() {
+    use crate::audio::modules::sibyl::{self as sb, data};
+    let shared = Arc::new(EngineShared::new());
+    shared.running.store(true, Ordering::Relaxed);
+    shared.tempo.set(120.0);
+    let (a, mut e) = audio::offline(shared, 48_000);
+    let mut g = Graph::default();
+    let id = g.add_module(ModuleKind::Sibyl, pos2(0.0, 0.0), &a);
+    let p = module_params(&g, id);
+    let mut editor = crate::ui::canvas::Editor::new();
+    let ctx = egui::Context::default();
+    let mut time = 0.0;
+    for (k, prog) in [0usize, 9, 17, 25, 33, 39].into_iter().enumerate() {
+        sb::load_program(&p, prog);
+        p.data[data::VIEW].set((k % 2) as f32);
+        p.data[data::LOWER].set(((k / 2) % 2) as f32);
+        p.viz[sb::viz::PANEL_KEY].set(61.0);
+        for frame in 0..4 {
+            render_buf(&mut e, 4_800);
+            time += 0.1;
+            let pointer = egui::Event::PointerMoved(pos2(
+                200.0 + 150.0 * frame as f32,
+                150.0 + 90.0 * k as f32,
+            ));
+            let input = egui::RawInput {
+                time: Some(time),
+                events: vec![pointer],
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| editor.show(ui, &mut g, &a));
+            out.textures_delta.clear();
+        }
+    }
+    assert_eq!(g.node(id).unwrap().size(), crate::ui::sibyl::SIZE);
+}
+
+#[test]
+fn sibyl_plate_rings_for_its_decay_and_stays_under_the_dry_sound() {
+    use crate::audio::engine::ProcessCtx;
+    use crate::audio::modules::sibyl::fx::{Chain, plate_rt60};
+    use crate::audio::modules::sibyl::mods::dest;
+    use crate::audio::modules::sibyl::*;
+    let ctx = ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat: 0.0, beats_per_sample: 2.0 / 48_000.0, playing: false, restart: false };
+    let base: [f32; PARAM_COUNT] = std::array::from_fn(|i| DEF.params[i].default);
+    let run = |s: &[f32; PARAM_COUNT], input: &dyn Fn(usize) -> f32, frames: usize| {
+        let mut chain = Chain::new(48_000.0);
+        let m = [0.0f32; dest::COUNT];
+        let mut out = Vec::new();
+        for b in 0..frames / 64 {
+            let mut l = [0.0f32; 64];
+            let mut r = [0.0f32; 64];
+            for i in 0..64 {
+                l[i] = input(b * 64 + i);
+                r[i] = l[i];
+            }
+            chain.process(s, &[0, 1, 2, 3, 4], &m, &ctx, &mut l, &mut r, 64);
+            out.extend_from_slice(&l);
+        }
+        out
+    };
+    // DECAY in the middle rings about two seconds (to −60 dB).
+    assert!((plate_rt60(0.55) - 2.06).abs() < 0.1);
+    let mut s = base;
+    s[PLATE_ON] = 1.0;
+    s[PLATE_MIX] = 1.0;
+    s[PLATE_PRE] = 0.0;
+    s[PLATE_DECAY] = 0.55;
+    let burst = |i: usize| if i < 480 { if (i / 7) % 2 == 0 { 0.5 } else { -0.5 } } else { 0.0 };
+    let out = run(&s, &burst, 48_000 * 5);
+    let win: Vec<f32> = out.chunks(480).map(rms_of).collect();
+    let peak = win.iter().cloned().fold(0.0f32, f32::max);
+    let at = win.iter().position(|&w| w == peak).unwrap();
+    let t60 = win.iter().enumerate().skip(at).find(|(_, w)| **w < peak * 0.001).map(|(i, _)| i as f32 * 0.01).unwrap_or(9.0);
+    assert!((1.2..3.0).contains(&t60), "RT60 {t60}");
+    // DRY/WET 20 %: the dry sound leads.
+    s[PLATE_MIX] = 0.2;
+    let tone = |i: usize| ((i as f32 * 220.0 / 48_000.0).fract() * 2.0 - 1.0) * 0.3;
+    let out = run(&s, &tone, 48_000 * 2);
+    let (dry_gain, _) = audioboard_node::dsp::mix_gains(0.2);
+    let wet: Vec<f32> = out.iter().enumerate().map(|(i, y)| y - tone(i) * dry_gain).collect();
+    let dry: Vec<f32> = (0..out.len()).map(|i| tone(i) * dry_gain).collect();
+    assert!(rms_of(&wet[48_000..]) < 0.6 * rms_of(&dry[48_000..]), "wet {} dry {}", rms_of(&wet[48_000..]), rms_of(&dry[48_000..]));
+}
+
+#[test]
+fn sibyl_names_follow_programs_and_recording() {
+    use crate::audio::modules::sibyl::*;
+    let p = sibyl_params();
+    load_program(&p, 40);
+    assert_eq!(sound_name(&p), "Rubber Steps");
+    set_sound_name(&p, "Mon arpège très long qui dépasse");
+    assert_eq!(sound_name(&p).chars().count(), NAME_LEN, "names keep {NAME_LEN} characters");
+    assert!(sound_name(&p).starts_with("Mon arpège"));
+    // RECORD keeps the name and the effects' order with the program.
+    set_sound_name(&p, "Night Bounce");
+    for (n, e) in [3, 2, 1, 0, 4].into_iter().enumerate() {
+        p.data[data::FX_ORDER + n].set(e as f32);
+    }
+    store_program(&p, 47);
+    load_program(&p, 0);
+    assert_eq!(sound_name(&p), bank::name(0));
+    load_program(&p, 47);
+    assert_eq!(sound_name(&p), "Night Bounce");
+    assert_eq!(program_name(&p, 47), "Night Bounce");
+    assert_eq!(fx_order(&p), [3, 2, 1, 0, 4]);
+    restore_program(&p, 47);
+    assert_eq!(program_name(&p, 47), bank::name(47));
+}
+
+#[test]
+fn sibyl_presets_keep_the_sound_not_the_programs_or_the_master() {
+    use crate::audio::modules::sibyl::*;
+    use crate::ui::sibyl::library;
+    let p = sibyl_params();
+    load_program(&p, 9);
+    p.set(CUTOFF, 1234.0);
+    p.set(TUNE, 2.0);
+    p.set(VOICES, 7.0);
+    for (n, e) in [4, 3, 2, 1, 0].into_iter().enumerate() {
+        p.data[data::FX_ORDER + n].set(e as f32);
+    }
+    let preset = library::capture(&p, "  My Pad  ", 1);
+    assert_eq!(preset.name, "My Pad");
+    assert_eq!(library::category(&preset), 1);
+    assert!(preset.data.is_empty(), "no programs in a preset");
+    assert!(!preset.params.contains_key(DEF.params[TUNE].name), "the master section stays out");
+
+    // Another node with a recorded program and its own master settings.
+    let q = sibyl_params();
+    load_program(&q, 20);
+    store_program(&q, 3);
+    q.set(TUNE, -5.0);
+    q.set(VOICES, 12.0);
+    let stored: Vec<f32> = (0..PARAM_COUNT).map(|i| q.data[data::STORE + 3 * PARAM_COUNT + i].get()).collect();
+    library::apply(&q, &preset);
+    assert_eq!(q.get(CUTOFF), 1234.0);
+    assert_eq!(fx_order(&q), [4, 3, 2, 1, 0]);
+    assert_eq!(sound_name(&q), "My Pad");
+    assert_eq!(q.get(TUNE), -5.0);
+    assert_eq!(q.get(VOICES), 12.0);
+    let after: Vec<f32> = (0..PARAM_COUNT).map(|i| q.data[data::STORE + 3 * PARAM_COUNT + i].get()).collect();
+    assert_eq!(stored, after, "the recorded program is untouched");
+    assert!(q.data[data::USER + 3].get() > 0.5);
+
+    // A preset from the panel's first menu (every extra setting kept).
+    let old = crate::presets::ModulePreset::capture(&p, "Old one");
+    let r = sibyl_params();
+    store_program(&r, 5);
+    library::apply(&r, &old);
+    assert_eq!(r.get(CUTOFF), 1234.0);
+    assert_eq!(fx_order(&r), [4, 3, 2, 1, 0]);
+    assert!(r.data[data::USER + 5].get() > 0.5, "its programs are not overwritten");
+    assert_eq!(library::category(&old), 7);
+
+    // Files: export, import, merge by name.
+    let dir = std::env::temp_dir().join(format!("sibyl-presets-{}", std::process::id()));
+    let path = dir.join("bounce.json");
+    library::export(&path, &[preset.clone(), library::capture(&p, "Second", 6)]).unwrap();
+    let back = library::import(&path);
+    assert_eq!(back.len(), 2);
+    assert_eq!(back[0], preset);
+    let mut list = vec![library::capture(&q, "Second", 0)];
+    library::merge(&mut list, back);
+    assert_eq!(list.len(), 2);
+    assert_eq!(library::category(list.iter().find(|x| x.name == "Second").unwrap()), 6, "same name: replaced");
+    let _ = std::fs::remove_dir_all(dir);
 }

@@ -12,7 +12,13 @@ fn main() {
         .flag("-Wno-deprecated-declarations")
         .flag("-Wno-unused-parameter")
         .compile("audioboard_au");
-    for framework in ["AVFoundation", "AudioToolbox", "CoreAudioKit", "AppKit", "Foundation"] {
+    for framework in [
+        "AVFoundation",
+        "AudioToolbox",
+        "CoreAudioKit",
+        "AppKit",
+        "Foundation",
+    ] {
         println!("cargo:rustc-link-lib=framework={framework}");
     }
 }

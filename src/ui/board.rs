@@ -11,8 +11,8 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use egui::{
-    Align2, Color32, CursorIcon, FontId, Id, Mesh, Painter, Pos2, Rect, Response, RichText, Sense, Shape, Stroke, StrokeKind,
-    TextureHandle, TextureOptions, Ui, Vec2, pos2, vec2,
+    Align2, Color32, CursorIcon, FontId, Id, Mesh, Painter, Pos2, Rect, Response, RichText, Sense,
+    Shape, Stroke, StrokeKind, TextureHandle, TextureOptions, Ui, Vec2, pos2, vec2,
 };
 
 use super::theme::{self, alpha};
@@ -62,7 +62,14 @@ pub struct Preset {
 }
 
 pub const PRESETS: &[Preset] = &[
-    Preset { id: "graphite", label: "Graphite", fill: theme::BG, grid: Grid::Lines, minor: theme::GRID_MINOR, major: theme::GRID_MAJOR },
+    Preset {
+        id: "graphite",
+        label: "Graphite",
+        fill: theme::BG,
+        grid: Grid::Lines,
+        minor: theme::GRID_MINOR,
+        major: theme::GRID_MAJOR,
+    },
     Preset {
         id: "dots",
         label: "Dots",
@@ -111,7 +118,14 @@ pub const PRESETS: &[Preset] = &[
         minor: Color32::from_rgb(30, 24, 39),
         major: Color32::from_rgb(40, 32, 52),
     },
-    Preset { id: "plain", label: "Plain", fill: theme::BG, grid: Grid::None, minor: theme::BG, major: theme::BG },
+    Preset {
+        id: "plain",
+        label: "Plain",
+        fill: theme::BG,
+        grid: Grid::None,
+        minor: theme::BG,
+        major: theme::BG,
+    },
 ];
 
 /// A preset by id (the default for one that isn't known).
@@ -141,14 +155,22 @@ fn draw_grid(p: &Painter, rect: Rect, view: View, style: Grid, minor: Color32, m
             let mut x = first(view.origin.x, rect.left());
             while x < rect.right() {
                 let x0 = snap(x);
-                let c = if strong(x, view.origin.x) { major } else { minor };
+                let c = if strong(x, view.origin.x) {
+                    major
+                } else {
+                    minor
+                };
                 mesh.add_colored_rect(Rect::from_x_y_ranges(x0..=x0 + 1.0, rect.y_range()), c);
                 x += step;
             }
             let mut y = first(view.origin.y, rect.top());
             while y < rect.bottom() {
                 let y0 = snap(y);
-                let c = if strong(y, view.origin.y) { major } else { minor };
+                let c = if strong(y, view.origin.y) {
+                    major
+                } else {
+                    minor
+                };
                 mesh.add_colored_rect(Rect::from_x_y_ranges(rect.x_range(), y0..=y0 + 1.0), c);
                 y += step;
             }
@@ -162,7 +184,10 @@ fn draw_grid(p: &Painter, rect: Rect, view: View, style: Grid, minor: Color32, m
                 while y < rect.bottom() {
                     let on = sx && strong(y, view.origin.y);
                     let side = if on { 3.0 } else { 2.0 };
-                    mesh.add_colored_rect(Rect::from_center_size(pos2(snap(x), snap(y)), vec2(side, side)), if on { major } else { minor });
+                    mesh.add_colored_rect(
+                        Rect::from_center_size(pos2(snap(x), snap(y)), vec2(side, side)),
+                        if on { major } else { minor },
+                    );
                     y += step;
                 }
                 x += step;
@@ -205,8 +230,14 @@ pub const BUILTINS: &[(&str, &str)] = &[
 pub const EXAMPLES: &[(&str, &[u8])] = &[
     ("Vinyl", include_bytes!("../../assets/stickers/vinyl.svg")),
     ("Synth", include_bytes!("../../assets/stickers/synth.svg")),
-    ("Rain cloud", include_bytes!("../../assets/stickers/cloud.svg")),
-    ("Patch cable", include_bytes!("../../assets/stickers/cable.svg")),
+    (
+        "Rain cloud",
+        include_bytes!("../../assets/stickers/cloud.svg"),
+    ),
+    (
+        "Patch cable",
+        include_bytes!("../../assets/stickers/cable.svg"),
+    ),
 ];
 
 /// Height over width of a design.
@@ -219,7 +250,11 @@ pub fn builtin_aspect(name: &str) -> f32 {
 }
 
 fn builtin_width(name: &str) -> f32 {
-    if name.starts_with("tag-") { 190.0 } else { STICKER_WIDTH }
+    if name.starts_with("tag-") {
+        190.0
+    } else {
+        STICKER_WIDTH
+    }
 }
 
 /// Draws in a sticker's own space: (−0.5, −0.5) is its top-left corner,
@@ -238,7 +273,14 @@ impl<'a> Pen<'a> {
     fn new(p: &'a Painter, c: Pos2, size: Vec2, degrees: f32) -> Self {
         let angle = degrees.to_radians();
         let (sin, cos) = angle.sin_cos();
-        Self { p, c, x: vec2(cos, sin) * size.x, y: vec2(-sin, cos) * size.y, s: size.x.min(size.y), angle }
+        Self {
+            p,
+            c,
+            x: vec2(cos, sin) * size.x,
+            y: vec2(-sin, cos) * size.y,
+            s: size.x.min(size.y),
+            angle,
+        }
     }
 
     fn at(&self, u: f32, v: f32) -> Pos2 {
@@ -260,21 +302,43 @@ impl<'a> Pen<'a> {
 
     fn line(&self, pts: &[(f32, f32)], w: f32, col: Color32) {
         let stroke = self.stroke(w, col);
-        self.p.add(Shape::line(blunt(pts.iter().map(|&(u, v)| self.at(u, v)).collect(), false, stroke.width), stroke));
+        self.p.add(Shape::line(
+            blunt(
+                pts.iter().map(|&(u, v)| self.at(u, v)).collect(),
+                false,
+                stroke.width,
+            ),
+            stroke,
+        ));
     }
 
     fn closed(&self, pts: &[(f32, f32)], w: f32, col: Color32) {
         let stroke = self.stroke(w, col);
-        self.p.add(Shape::closed_line(blunt(pts.iter().map(|&(u, v)| self.at(u, v)).collect(), true, stroke.width), stroke));
+        self.p.add(Shape::closed_line(
+            blunt(
+                pts.iter().map(|&(u, v)| self.at(u, v)).collect(),
+                true,
+                stroke.width,
+            ),
+            stroke,
+        ));
     }
 
     /// A convex shape, filled and outlined.
     fn convex(&self, pts: &[(f32, f32)], fill: Color32, w: f32, col: Color32) {
-        self.p.add(Shape::convex_polygon(pts.iter().map(|&(u, v)| self.at(u, v)).collect(), fill, self.stroke(w, col)));
+        self.p.add(Shape::convex_polygon(
+            pts.iter().map(|&(u, v)| self.at(u, v)).collect(),
+            fill,
+            self.stroke(w, col),
+        ));
     }
 
     fn circle(&self, u: f32, v: f32, r: f32, fill: Color32, w: f32, col: Color32) {
-        let stroke = if w > 0.0 { self.stroke(w, col) } else { Stroke::NONE };
+        let stroke = if w > 0.0 {
+            self.stroke(w, col)
+        } else {
+            Stroke::NONE
+        };
         self.p.circle(self.at(u, v), r * self.s, fill, stroke);
     }
 
@@ -282,7 +346,9 @@ impl<'a> Pen<'a> {
     /// (clockwise from up).
     fn arc(&self, u: f32, v: f32, r: f32, a0: f32, a1: f32) -> Vec<(f32, f32)> {
         let n = ((a1 - a0).abs() / 6.0).ceil().max(4.0) as usize;
-        (0..=n).map(|k| self.polar(u, v, r, a0 + (a1 - a0) * k as f32 / n as f32)).collect()
+        (0..=n)
+            .map(|k| self.polar(u, v, r, a0 + (a1 - a0) * k as f32 / n as f32))
+            .collect()
     }
 
     /// A rectangle with rounded corners, (u0, v0)–(u1, v1), corner radius
@@ -292,7 +358,12 @@ impl<'a> Pen<'a> {
         let l = self.s / self.y.length().max(1e-3);
         let (ru, rv) = ((r * k).min((u1 - u0) / 2.0), (r * l).min((v1 - v0) / 2.0));
         let mut pts = Vec::new();
-        for (cu, cv, a0) in [(u1 - ru, v0 + rv, 0.0f32), (u1 - ru, v1 - rv, 90.0), (u0 + ru, v1 - rv, 180.0), (u0 + ru, v0 + rv, 270.0)] {
+        for (cu, cv, a0) in [
+            (u1 - ru, v0 + rv, 0.0f32),
+            (u1 - ru, v1 - rv, 90.0),
+            (u0 + ru, v1 - rv, 180.0),
+            (u0 + ru, v0 + rv, 270.0),
+        ] {
             for j in 0..=6 {
                 let a = (a0 + 90.0 * j as f32 / 6.0).to_radians();
                 pts.push((cu + ru * a.sin(), cv - rv * a.cos()));
@@ -304,13 +375,22 @@ impl<'a> Pen<'a> {
     /// Text centred on (u, v), `size` tall at most and no wider than
     /// `max_w` (in width units).
     fn text(&self, u: f32, v: f32, text: &str, size: f32, max_w: f32, col: Color32) {
-        let mut galley = self.p.layout_no_wrap(text.to_owned(), theme::strong(size * self.s), col);
+        let mut galley = self
+            .p
+            .layout_no_wrap(text.to_owned(), theme::strong(size * self.s), col);
         let room = max_w * self.x.length();
         if galley.size().x > room && room > 0.0 {
-            galley = self.p.layout_no_wrap(text.to_owned(), theme::strong(size * self.s * room / galley.size().x), col);
+            galley = self.p.layout_no_wrap(
+                text.to_owned(),
+                theme::strong(size * self.s * room / galley.size().x),
+                col,
+            );
         }
         let pos = self.at(u, v) - galley.size() * 0.5;
-        self.p.add(egui::epaint::TextShape::new(pos, galley, col).with_angle_and_anchor(self.angle, Align2::CENTER_CENTER));
+        self.p.add(
+            egui::epaint::TextShape::new(pos, galley, col)
+                .with_angle_and_anchor(self.angle, Align2::CENTER_CENTER),
+        );
     }
 }
 
@@ -324,7 +404,14 @@ fn accent(i: usize) -> Color32 {
 /// Draws a built-in design filling `size` around `c`, turned `degrees`.
 pub fn draw_builtin(p: &Painter, c: Pos2, size: Vec2, degrees: f32, name: &str) {
     let pen = Pen::new(p, c, size, degrees);
-    let (blue, rose, green, violet, orange, teal) = (accent(0), accent(1), accent(2), accent(3), accent(4), accent(5));
+    let (blue, rose, green, violet, orange, teal) = (
+        accent(0),
+        accent(1),
+        accent(2),
+        accent(3),
+        accent(4),
+        accent(5),
+    );
     let yellow = theme::SOLO;
     let ink = theme::TEXT;
     let badge = |col: Color32| pen.circle(0.0, 0.0, 0.47, BADGE, 0.035, col);
@@ -333,10 +420,12 @@ pub fn draw_builtin(p: &Painter, c: Pos2, size: Vec2, degrees: f32, name: &str) 
         "wave" => {
             badge(blue);
             let wave = |phase: f32, amp: f32| -> Vec<(f32, f32)> {
-                (0..=48).map(|k| {
-                    let u = -0.3 + 0.6 * k as f32 / 48.0;
-                    (u, amp * (u / 0.3 * std::f32::consts::TAU + phase).sin())
-                }).collect()
+                (0..=48)
+                    .map(|k| {
+                        let u = -0.3 + 0.6 * k as f32 / 48.0;
+                        (u, amp * (u / 0.3 * std::f32::consts::TAU + phase).sin())
+                    })
+                    .collect()
             };
             pen.line(&wave(0.9, 0.09), 0.03, alpha(blue, 0.45));
             pen.line(&wave(0.0, 0.15), w, blue);
@@ -360,10 +449,20 @@ pub fn draw_builtin(p: &Painter, c: Pos2, size: Vec2, degrees: f32, name: &str) 
             // Start each circle opposite the part that is cut away, so what
             // is kept is one run.
             let bite = deg(bu, bv);
-            let outer: Vec<(f32, f32)> = pen.arc(0.0, 0.0, r1, bite, bite + 360.0).into_iter().filter(|q| !in_bite(*q)).collect();
+            let outer: Vec<(f32, f32)> = pen
+                .arc(0.0, 0.0, r1, bite, bite + 360.0)
+                .into_iter()
+                .filter(|q| !in_bite(*q))
+                .collect();
             let toward = deg(-bu, -bv);
-            let mut inner: Vec<(f32, f32)> = pen.arc(bu, bv, r2, toward + 180.0, toward + 540.0).into_iter().filter(|q| in_moon(*q)).collect();
-            if let (Some(last), Some(first), Some(end)) = (outer.last(), inner.first(), inner.last()) {
+            let mut inner: Vec<(f32, f32)> = pen
+                .arc(bu, bv, r2, toward + 180.0, toward + 540.0)
+                .into_iter()
+                .filter(|q| in_moon(*q))
+                .collect();
+            if let (Some(last), Some(first), Some(end)) =
+                (outer.last(), inner.first(), inner.last())
+            {
                 let d = |a: &(f32, f32), b: &(f32, f32)| (a.0 - b.0).powi(2) + (a.1 - b.1).powi(2);
                 if d(last, end) < d(last, first) {
                     inner.reverse();
@@ -379,7 +478,11 @@ pub fn draw_builtin(p: &Painter, c: Pos2, size: Vec2, degrees: f32, name: &str) 
         "cassette" => {
             let body = pen.rounded(-0.48, -0.47, 0.48, 0.47, 0.06);
             pen.convex(&body, BADGE, 0.035, orange);
-            pen.closed(&pen.rounded(-0.38, -0.36, 0.38, 0.16, 0.03), 0.025, alpha(orange, 0.7));
+            pen.closed(
+                &pen.rounded(-0.38, -0.36, 0.38, 0.16, 0.03),
+                0.025,
+                alpha(orange, 0.7),
+            );
             pen.line(&[(-0.3, -0.24), (0.3, -0.24)], 0.02, alpha(ink, 0.5));
             for u in [-0.19, 0.19] {
                 pen.circle(u, -0.02, 0.13, BADGE, 0.035, orange);
@@ -390,7 +493,11 @@ pub fn draw_builtin(p: &Painter, c: Pos2, size: Vec2, degrees: f32, name: &str) 
                 }
             }
             pen.line(&[(-0.06, -0.02), (0.06, -0.02)], 0.02, alpha(orange, 0.6));
-            pen.closed(&[(-0.28, 0.47), (-0.2, 0.27), (0.2, 0.27), (0.28, 0.47)], 0.03, orange);
+            pen.closed(
+                &[(-0.28, 0.47), (-0.2, 0.27), (0.2, 0.27), (0.28, 0.47)],
+                0.03,
+                orange,
+            );
             for u in [-0.1, 0.1] {
                 pen.circle(u, 0.37, 0.025, BADGE, 0.02, orange);
             }
@@ -399,7 +506,10 @@ pub fn draw_builtin(p: &Painter, c: Pos2, size: Vec2, degrees: f32, name: &str) 
             badge(teal);
             for k in 0..11 {
                 let a = -135.0 + 27.0 * k as f32;
-                let (o, i) = (pen.polar(0.0, 0.0, 0.41, a), pen.polar(0.0, 0.0, if k % 5 == 0 { 0.33 } else { 0.36 }, a));
+                let (o, i) = (
+                    pen.polar(0.0, 0.0, 0.41, a),
+                    pen.polar(0.0, 0.0, if k % 5 == 0 { 0.33 } else { 0.36 }, a),
+                );
                 pen.line(&[i, o], 0.025, alpha(ink, 0.6));
             }
             pen.line(&pen.arc(0.0, 0.0, 0.3, -135.0, 45.0), 0.04, orange);
@@ -410,32 +520,61 @@ pub fn draw_builtin(p: &Painter, c: Pos2, size: Vec2, degrees: f32, name: &str) 
         }
         "bolt" => {
             badge(yellow);
-            pen.closed(&[(0.07, -0.36), (-0.17, 0.05), (-0.01, 0.05), (-0.07, 0.36), (0.18, -0.07), (0.02, -0.07)], w, yellow);
+            pen.closed(
+                &[
+                    (0.07, -0.36),
+                    (-0.17, 0.05),
+                    (-0.01, 0.05),
+                    (-0.07, 0.36),
+                    (0.18, -0.07),
+                    (0.02, -0.07),
+                ],
+                w,
+                yellow,
+            );
         }
         "mushroom" => {
             badge(rose);
             let mut cap = pen.arc(0.0, 0.04, 0.3, -90.0, 90.0);
             cap.push((0.3, 0.04));
             pen.convex(&cap, BADGE, w, rose);
-            for (u, v, r) in [(-0.14, -0.08, 0.045), (0.06, -0.16, 0.05), (0.17, -0.03, 0.035), (-0.02, -0.03, 0.03)] {
+            for (u, v, r) in [
+                (-0.14, -0.08, 0.045),
+                (0.06, -0.16, 0.05),
+                (0.17, -0.03, 0.035),
+                (-0.02, -0.03, 0.03),
+            ] {
                 pen.circle(u, v, r, Color32::TRANSPARENT, 0.025, ink);
             }
-            pen.closed(&[(-0.08, 0.04), (0.08, 0.04), (0.1, 0.27), (-0.1, 0.27)], w, rose);
+            pen.closed(
+                &[(-0.08, 0.04), (0.08, 0.04), (0.1, 0.27), (-0.1, 0.27)],
+                w,
+                rose,
+            );
             pen.line(&[(-0.24, 0.31), (0.24, 0.31)], 0.03, green);
         }
         "planet" => {
             badge(green);
             let ring = |a0: f32, a1: f32| -> Vec<(f32, f32)> {
                 let tilt = (-18.0f32).to_radians();
-                (0..=40).map(|k| {
-                    let t = (a0 + (a1 - a0) * k as f32 / 40.0).to_radians();
-                    let (x, y) = (0.4 * t.cos(), 0.11 * t.sin());
-                    (x * tilt.cos() - y * tilt.sin(), x * tilt.sin() + y * tilt.cos())
-                }).collect()
+                (0..=40)
+                    .map(|k| {
+                        let t = (a0 + (a1 - a0) * k as f32 / 40.0).to_radians();
+                        let (x, y) = (0.4 * t.cos(), 0.11 * t.sin());
+                        (
+                            x * tilt.cos() - y * tilt.sin(),
+                            x * tilt.sin() + y * tilt.cos(),
+                        )
+                    })
+                    .collect()
             };
             pen.line(&ring(180.0, 360.0), 0.035, alpha(orange, 0.7));
             pen.circle(0.0, 0.0, 0.21, BADGE, w, green);
-            pen.line(&pen.arc(0.0, 0.0, 0.14, 200.0, 280.0), 0.025, alpha(green, 0.6));
+            pen.line(
+                &pen.arc(0.0, 0.0, 0.14, 200.0, 280.0),
+                0.025,
+                alpha(green, 0.6),
+            );
             pen.line(&ring(0.0, 180.0), 0.035, orange);
             pen.circle(0.29, -0.29, 0.035, Color32::TRANSPARENT, 0.025, ink);
         }
@@ -445,12 +584,19 @@ pub fn draw_builtin(p: &Painter, c: Pos2, size: Vec2, degrees: f32, name: &str) 
                 .map(|k| {
                     let t = std::f32::consts::TAU * k as f32 / 64.0;
                     let x = 16.0 * t.sin().powi(3);
-                    let y = 13.0 * t.cos() - 5.0 * (2.0 * t).cos() - 2.0 * (3.0 * t).cos() - (4.0 * t).cos();
+                    let y = 13.0 * t.cos()
+                        - 5.0 * (2.0 * t).cos()
+                        - 2.0 * (3.0 * t).cos()
+                        - (4.0 * t).cos();
                     (x / 16.0 * 0.28, -y / 16.0 * 0.28 + 0.02)
                 })
                 .collect();
             pen.closed(&pts, w, rose);
-            pen.line(&pen.arc(-0.12, -0.1, 0.07, 280.0, 340.0), 0.03, alpha(ink, 0.6));
+            pen.line(
+                &pen.arc(-0.12, -0.1, 0.07, 280.0, 340.0),
+                0.03,
+                alpha(ink, 0.6),
+            );
         }
         "sparkle" => {
             badge(yellow);
@@ -464,11 +610,24 @@ pub fn draw_builtin(p: &Painter, c: Pos2, size: Vec2, degrees: f32, name: &str) 
             for (u0, u1) in [(-0.34, -0.19), (0.19, 0.34)] {
                 pen.convex(&pen.rounded(u0, 0.02, u1, 0.3, 0.05), BADGE, w, blue);
             }
-            pen.line(&pen.arc(0.0, 0.16, 0.08, -60.0, 60.0), 0.025, alpha(teal, 0.8));
-            pen.line(&pen.arc(0.0, 0.16, 0.13, -50.0, 50.0), 0.025, alpha(teal, 0.5));
+            pen.line(
+                &pen.arc(0.0, 0.16, 0.08, -60.0, 60.0),
+                0.025,
+                alpha(teal, 0.8),
+            );
+            pen.line(
+                &pen.arc(0.0, 0.16, 0.13, -50.0, 50.0),
+                0.025,
+                alpha(teal, 0.5),
+            );
         }
         "speaker" => {
-            pen.convex(&pen.rounded(-0.47, -0.47, 0.47, 0.47, 0.12), BADGE, 0.035, orange);
+            pen.convex(
+                &pen.rounded(-0.47, -0.47, 0.47, 0.47, 0.12),
+                BADGE,
+                0.035,
+                orange,
+            );
             pen.closed(&pen.rounded(-0.27, -0.37, 0.27, 0.37, 0.05), w, orange);
             pen.circle(0.0, -0.19, 0.07, Color32::TRANSPARENT, 0.035, orange);
             pen.circle(0.0, 0.12, 0.17, Color32::TRANSPARENT, w, orange);
@@ -481,11 +640,16 @@ pub fn draw_builtin(p: &Painter, c: Pos2, size: Vec2, degrees: f32, name: &str) 
             let len = (axis.0 * axis.0 + axis.1 * axis.1).sqrt();
             let n = (-axis.1 / len, axis.0 / len);
             let side = |sign: f32| -> Vec<(f32, f32)> {
-                (0..=24).map(|k| {
-                    let s = k as f32 / 24.0;
-                    let wdt = 0.17 * (std::f32::consts::PI * s).sin() * (1.0 - 0.3 * s);
-                    (b.0 + axis.0 * s + n.0 * wdt * sign, b.1 + axis.1 * s + n.1 * wdt * sign)
-                }).collect()
+                (0..=24)
+                    .map(|k| {
+                        let s = k as f32 / 24.0;
+                        let wdt = 0.17 * (std::f32::consts::PI * s).sin() * (1.0 - 0.3 * s);
+                        (
+                            b.0 + axis.0 * s + n.0 * wdt * sign,
+                            b.1 + axis.1 * s + n.1 * wdt * sign,
+                        )
+                    })
+                    .collect()
             };
             let mut outline = side(1.0);
             outline.extend(side(-1.0).into_iter().rev());
@@ -494,7 +658,10 @@ pub fn draw_builtin(p: &Painter, c: Pos2, size: Vec2, degrees: f32, name: &str) 
             for s in [0.3f32, 0.5, 0.7] {
                 let m = (b.0 + axis.0 * s, b.1 + axis.1 * s);
                 for sign in [1.0, -1.0] {
-                    let e = (m.0 + axis.0 * 0.14 + n.0 * 0.1 * sign, m.1 + axis.1 * 0.14 + n.1 * 0.1 * sign);
+                    let e = (
+                        m.0 + axis.0 * 0.14 + n.0 * 0.1 * sign,
+                        m.1 + axis.1 * 0.14 + n.1 * 0.1 * sign,
+                    );
                     pen.line(&[m, e], 0.022, alpha(green, 0.7));
                 }
             }
@@ -505,16 +672,22 @@ pub fn draw_builtin(p: &Painter, c: Pos2, size: Vec2, degrees: f32, name: &str) 
             for k in 0..12 {
                 let a = 30.0 * k as f32;
                 let outer = if k % 2 == 0 { 0.37 } else { 0.31 };
-                pen.line(&[pen.polar(0.0, 0.0, 0.23, a), pen.polar(0.0, 0.0, outer, a)], 0.035, orange);
+                pen.line(
+                    &[pen.polar(0.0, 0.0, 0.23, a), pen.polar(0.0, 0.0, outer, a)],
+                    0.035,
+                    orange,
+                );
             }
         }
         "eye" => {
             badge(teal);
             let lens = |sign: f32| -> Vec<(f32, f32)> {
-                (0..=32).map(|k| {
-                    let u = -0.34 + 0.68 * k as f32 / 32.0;
-                    (u, sign * 0.2 * (1.0 - (u / 0.34).powi(2)))
-                }).collect()
+                (0..=32)
+                    .map(|k| {
+                        let u = -0.34 + 0.68 * k as f32 / 32.0;
+                        (u, sign * 0.2 * (1.0 - (u / 0.34).powi(2)))
+                    })
+                    .collect()
             };
             let mut outline = lens(-1.0);
             outline.extend(lens(1.0).into_iter().rev());
@@ -533,7 +706,12 @@ pub fn draw_builtin(p: &Painter, c: Pos2, size: Vec2, degrees: f32, name: &str) 
                 "tag-noinput" => ("NO INPUT", rose),
                 _ => ("TAG", blue),
             };
-            pen.convex(&pen.rounded(-0.49, -0.46, 0.49, 0.46, 0.5), BADGE, 0.06, col);
+            pen.convex(
+                &pen.rounded(-0.49, -0.46, 0.49, 0.46, 0.5),
+                BADGE,
+                0.06,
+                col,
+            );
             pen.circle(-0.36, 0.0, 0.12, col, 0.0, col);
             pen.text(0.07, 0.02, text, 0.5, 0.66, col);
         }
@@ -580,7 +758,9 @@ fn sparkle(pen: &Pen, u: f32, v: f32, r: f32, w: f32, col: Color32) {
         let ctrl = pen.polar(u, v, r * 0.12, a + 45.0);
         for j in 0..8 {
             let t = j as f32 / 8.0;
-            let q = |p0: f32, p1: f32, p2: f32| (1.0 - t).powi(2) * p0 + 2.0 * (1.0 - t) * t * p1 + t * t * p2;
+            let q = |p0: f32, p1: f32, p2: f32| {
+                (1.0 - t).powi(2) * p0 + 2.0 * (1.0 - t) * t * p1 + t * t * p2
+            };
             pts.push((q(tip.0, ctrl.0, next.0), q(tip.1, ctrl.1, next.1)));
         }
     }
@@ -664,7 +844,8 @@ fn corners(c: Pos2, size: Vec2, degrees: f32) -> [Pos2; 4] {
 }
 
 fn bounds(pts: &[Pos2]) -> Rect {
-    pts.iter().fold(Rect::NOTHING, |r, p| r.union(Rect::from_min_max(*p, *p)))
+    pts.iter()
+        .fold(Rect::NOTHING, |r, p| r.union(Rect::from_min_max(*p, *p)))
 }
 
 /// Whether `p` is inside the quad.
@@ -677,9 +858,19 @@ fn inside(quad: &[Pos2; 4], p: Pos2) -> bool {
 impl BoardUi {
     /// A texture for `id` drawn about `px` pixels on its longest side
     /// (raster images: their own size, whatever `px`).
-    fn texture(&mut self, ctx: &egui::Context, board: &Board, id: &str, px: u32) -> Option<TextureHandle> {
+    fn texture(
+        &mut self,
+        ctx: &egui::Context,
+        board: &Board,
+        id: &str,
+        px: u32,
+    ) -> Option<TextureHandle> {
         let blob = board.images.get(id)?;
-        let level = if blob.svg { px.clamp(64, 2048).next_power_of_two().min(2048) } else { 0 };
+        let level = if blob.svg {
+            px.clamp(64, 2048).next_power_of_two().min(2048)
+        } else {
+            0
+        };
         let key = (id.to_owned(), level);
         if let Some(t) = self.textures.get(&key) {
             return Some(t.clone());
@@ -691,7 +882,10 @@ impl BoardUi {
         } else {
             egui::ColorImage::from_rgba_unmultiplied(size, &rgba)
         };
-        let options = TextureOptions { mipmap_mode: Some(egui::TextureFilter::Linear), ..TextureOptions::LINEAR };
+        let options = TextureOptions {
+            mipmap_mode: Some(egui::TextureFilter::Linear),
+            ..TextureOptions::LINEAR
+        };
         let texture = ctx.load_texture(format!("board-{id}-{level}"), image, options);
         self.textures.insert(key, texture.clone());
         Some(texture)
@@ -699,7 +893,8 @@ impl BoardUi {
 
     /// Lets go of textures for images the board no longer has.
     fn forget_textures(&mut self, board: &Board) {
-        self.textures.retain(|(id, _), _| board.images.contains_key(id));
+        self.textures
+            .retain(|(id, _), _| board.images.contains_key(id));
     }
 
     /// The background: the preset's colour, the image (filling the view,
@@ -710,7 +905,8 @@ impl BoardUi {
         p.rect_filled(rect, 0.0, preset.fill);
         let image = bg.image.as_ref().and_then(|id| {
             let px = (rect.width().max(rect.height()) * ui.ctx().pixels_per_point()) as u32;
-            self.texture(ui.ctx(), board, id, px).map(|t| (t, board.images[id].clone()))
+            self.texture(ui.ctx(), board, id, px)
+                .map(|t| (t, board.images[id].clone()))
         });
         if let Some((texture, blob)) = &image {
             // Cover: the whole view, cropped to keep the image's shape.
@@ -727,8 +923,16 @@ impl BoardUi {
             p.rect_filled(rect, 0.0, alpha(preset.fill, bg.dim.clamp(0.0, 0.95)));
         }
         if bg.grid {
-            let (minor, major) = if image.is_some() { (alpha(theme::TEXT, 0.05), alpha(theme::TEXT, 0.10)) } else { (preset.minor, preset.major) };
-            let style = if preset.grid == Grid::None && image.is_some() { Grid::None } else { preset.grid };
+            let (minor, major) = if image.is_some() {
+                (alpha(theme::TEXT, 0.05), alpha(theme::TEXT, 0.10))
+            } else {
+                (preset.minor, preset.major)
+            };
+            let style = if preset.grid == Grid::None && image.is_some() {
+                Grid::None
+            } else {
+                preset.grid
+            };
             draw_grid(p, rect, view, style, minor, major);
         }
     }
@@ -772,22 +976,36 @@ impl BoardUi {
                 continue;
             }
             match &s.art {
-                Art::Builtin(name) if size.x.min(size.y) >= 6.0 => draw_builtin(p, c, size, s.rotation, name),
+                Art::Builtin(name) if size.x.min(size.y) >= 6.0 => {
+                    draw_builtin(p, c, size, s.rotation, name)
+                }
                 Art::Builtin(_) => {}
                 Art::Image(id) => {
                     let px = (size.x.max(size.y) * ui.ctx().pixels_per_point()) as u32;
                     match self.texture(ui.ctx(), board, id, px) {
                         Some(t) => {
                             let mut mesh = Mesh::with_texture(t.id());
-                            let uvs = [pos2(0.0, 0.0), pos2(1.0, 0.0), pos2(1.0, 1.0), pos2(0.0, 1.0)];
+                            let uvs = [
+                                pos2(0.0, 0.0),
+                                pos2(1.0, 0.0),
+                                pos2(1.0, 1.0),
+                                pos2(0.0, 1.0),
+                            ];
                             for (q, uv) in quad.iter().zip(uvs) {
-                                mesh.vertices.push(egui::epaint::Vertex { pos: *q, uv, color: Color32::WHITE });
+                                mesh.vertices.push(egui::epaint::Vertex {
+                                    pos: *q,
+                                    uv,
+                                    color: Color32::WHITE,
+                                });
                             }
                             mesh.indices.extend([0, 1, 2, 0, 2, 3]);
                             p.add(Shape::mesh(mesh));
                         }
                         None => {
-                            p.add(Shape::closed_line(quad.to_vec(), Stroke::new(1.0, theme::TEXT_FAINT)));
+                            p.add(Shape::closed_line(
+                                quad.to_vec(),
+                                Stroke::new(1.0, theme::TEXT_FAINT),
+                            ));
                         }
                     }
                 }
@@ -795,16 +1013,24 @@ impl BoardUi {
             if s.locked {
                 continue;
             }
-            let resp = ui.interact(area, Id::unique(("board_sticker", s.id)), Sense::CLICK | Sense::DRAG);
+            let resp = ui.interact(
+                area,
+                Id::unique(("board_sticker", s.id)),
+                Sense::CLICK | Sense::DRAG,
+            );
             let on_art = pointer.is_some_and(|q| inside(&quad, q));
             if resp.hovered() && on_art {
                 out.hovered = true;
                 ui.ctx().set_cursor_icon(CursorIcon::Grab);
                 if self.selected != Some(s.id) {
-                    p.add(Shape::closed_line(quad.to_vec(), Stroke::new(1.0, alpha(theme::ACCENT, 0.45))));
+                    p.add(Shape::closed_line(
+                        quad.to_vec(),
+                        Stroke::new(1.0, alpha(theme::ACCENT, 0.45)),
+                    ));
                 }
             }
-            if (resp.clicked() && !ctrl_click) || resp.drag_started_by(egui::PointerButton::Primary) {
+            if (resp.clicked() && !ctrl_click) || resp.drag_started_by(egui::PointerButton::Primary)
+            {
                 self.selected = Some(s.id);
                 nodes.clear();
             }
@@ -821,7 +1047,9 @@ impl BoardUi {
                 }
                 ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
             }
-            if resp.dragged_by(egui::PointerButton::Secondary) || resp.dragged_by(egui::PointerButton::Middle) {
+            if resp.dragged_by(egui::PointerButton::Secondary)
+                || resp.dragged_by(egui::PointerButton::Middle)
+            {
                 out.pan += resp.drag_delta();
             }
             let open = resp.secondary_clicked() || (ctrl_click && resp.clicked());
@@ -845,21 +1073,50 @@ impl BoardUi {
             let size = vec2(s.width, s.width * aspect) * view.zoom;
             let c = view.to_screen(pos2(s.pos[0], s.pos[1]));
             let quad = corners(c, size, s.rotation);
-            p.add(Shape::closed_line(quad.to_vec(), Stroke::new(1.0, theme::ACCENT)));
+            p.add(Shape::closed_line(
+                quad.to_vec(),
+                Stroke::new(1.0, theme::ACCENT),
+            ));
             let resize_at = quad[2];
             let out_dir = (quad[1] - c).normalized();
             let rotate_at = quad[1] + out_dir * 14.0;
-            p.line_segment([quad[1], rotate_at], Stroke::new(1.0, alpha(theme::ACCENT, 0.6)));
-            let resize = ui.interact(Rect::from_center_size(resize_at, vec2(16.0, 16.0)), Id::unique(("board_resize", id)), Sense::DRAG);
-            let rotate = ui.interact(Rect::from_center_size(rotate_at, vec2(16.0, 16.0)), Id::unique(("board_rotate", id)), Sense::DRAG);
+            p.line_segment(
+                [quad[1], rotate_at],
+                Stroke::new(1.0, alpha(theme::ACCENT, 0.6)),
+            );
+            let resize = ui.interact(
+                Rect::from_center_size(resize_at, vec2(16.0, 16.0)),
+                Id::unique(("board_resize", id)),
+                Sense::DRAG,
+            );
+            let rotate = ui.interact(
+                Rect::from_center_size(rotate_at, vec2(16.0, 16.0)),
+                Id::unique(("board_rotate", id)),
+                Sense::DRAG,
+            );
             let hot = |r: &Response| r.hovered() || r.dragged();
-            p.rect(Rect::from_center_size(resize_at, vec2(8.0, 8.0)), 1.5, if hot(&resize) { theme::ACCENT } else { BADGE }, Stroke::new(1.2, theme::ACCENT), StrokeKind::Middle);
-            p.circle(rotate_at, 4.5, if hot(&rotate) { theme::ACCENT } else { BADGE }, Stroke::new(1.2, theme::ACCENT));
+            p.rect(
+                Rect::from_center_size(resize_at, vec2(8.0, 8.0)),
+                1.5,
+                if hot(&resize) { theme::ACCENT } else { BADGE },
+                Stroke::new(1.2, theme::ACCENT),
+                StrokeKind::Middle,
+            );
+            p.circle(
+                rotate_at,
+                4.5,
+                if hot(&rotate) { theme::ACCENT } else { BADGE },
+                Stroke::new(1.2, theme::ACCENT),
+            );
             if hot(&resize) || hot(&rotate) {
                 out.hovered = true;
             }
-            let resize = resize.on_hover_cursor(CursorIcon::ResizeNwSe).on_hover_text("Drag to resize");
-            let rotate = rotate.on_hover_cursor(CursorIcon::Alias).on_hover_text("Drag to rotate (Shift: 15° steps)");
+            let resize = resize
+                .on_hover_cursor(CursorIcon::ResizeNwSe)
+                .on_hover_text("Drag to resize");
+            let rotate = rotate
+                .on_hover_cursor(CursorIcon::Alias)
+                .on_hover_text("Drag to rotate (Shift: 15° steps)");
             if let Some(q) = pointer {
                 if resize.drag_started() {
                     self.drag = Some(Drag::Resize(id, s.width, (q - c).length().max(1.0)));
@@ -889,7 +1146,8 @@ impl BoardUi {
             // Delete and Esc act on the sticker while it is selected.
             if ui.memory(|m| m.focused().is_none()) {
                 let (delete, escape) = ui.input_mut(|i| {
-                    let d = i.consume_key(egui::Modifiers::NONE, egui::Key::Delete) || i.consume_key(egui::Modifiers::NONE, egui::Key::Backspace);
+                    let d = i.consume_key(egui::Modifiers::NONE, egui::Key::Delete)
+                        || i.consume_key(egui::Modifiers::NONE, egui::Key::Backspace);
                     (d, i.key_pressed(egui::Key::Escape))
                 });
                 if delete {
@@ -911,14 +1169,25 @@ impl BoardUi {
         for command in std::mem::take(&mut self.commands) {
             match command {
                 Command::AddBuiltin(name, at) => {
-                    self.selected = Some(board.add(Art::Builtin(name.to_owned()), [at.x, at.y], builtin_width(name)));
+                    self.selected = Some(board.add(
+                        Art::Builtin(name.to_owned()),
+                        [at.x, at.y],
+                        builtin_width(name),
+                    ));
                 }
                 Command::AddFiles(at) => {
-                    let mut dialog = rfd::FileDialog::new().set_title("Add stickers").add_filter("Images", &["png", "jpg", "jpeg", "svg", "svgz", "webp"]);
+                    let mut dialog = rfd::FileDialog::new()
+                        .set_title("Add stickers")
+                        .add_filter("Images", &["png", "jpg", "jpeg", "svg", "svgz", "webp"]);
                     if let Some(dir) = stickers_dir().filter(|d| d.exists()) {
                         dialog = dialog.set_directory(dir);
                     }
-                    for (k, path) in dialog.pick_files().unwrap_or_default().into_iter().enumerate() {
+                    for (k, path) in dialog
+                        .pick_files()
+                        .unwrap_or_default()
+                        .into_iter()
+                        .enumerate()
+                    {
                         let at = at + vec2(28.0, 28.0) * k as f32;
                         self.add_image_file(board, &path, at, notices);
                     }
@@ -927,7 +1196,9 @@ impl BoardUi {
                 Command::AddExample(i, at) => {
                     if let Some((name, bytes)) = EXAMPLES.get(i) {
                         match board.import_image(bytes, STICKER_MAX_PX, false) {
-                            Ok(id) => self.selected = Some(board.add(Art::Image(id), [at.x, at.y], 170.0)),
+                            Ok(id) => {
+                                self.selected = Some(board.add(Art::Image(id), [at.x, at.y], 170.0))
+                            }
                             Err(e) => notices.push(format!("Could not add {name}: {e}")),
                         }
                     }
@@ -939,12 +1210,17 @@ impl BoardUi {
                         .add_filter("Images", &["png", "jpg", "jpeg", "svg", "svgz", "webp"])
                         .pick_file();
                     if let Some(path) = picked {
-                        match std::fs::read(&path).map_err(|e| e.to_string()).and_then(|b| board.import_image(&b, BACKGROUND_MAX_PX, true)) {
+                        match std::fs::read(&path)
+                            .map_err(|e| e.to_string())
+                            .and_then(|b| board.import_image(&b, BACKGROUND_MAX_PX, true))
+                        {
                             Ok(id) => {
                                 board.background.image = Some(id);
                                 board.prune();
                             }
-                            Err(e) => notices.push(format!("Could not use {}: {e}", file_name(&path))),
+                            Err(e) => {
+                                notices.push(format!("Could not use {}: {e}", file_name(&path)))
+                            }
                         }
                     }
                 }
@@ -965,7 +1241,10 @@ impl BoardUi {
                             } else {
                                 "xdg-open"
                             };
-                            std::process::Command::new(opener).arg(&dir).spawn().map(|_| ())
+                            std::process::Command::new(opener)
+                                .arg(&dir)
+                                .spawn()
+                                .map(|_| ())
                         });
                         if let Err(e) = opened {
                             notices.push(format!("Could not open {}: {e}", dir.display()));
@@ -1001,12 +1280,25 @@ impl BoardUi {
         self.forget_textures(board);
     }
 
-    fn add_image_file(&mut self, board: &mut Board, path: &std::path::Path, at: Pos2, notices: &mut Vec<String>) {
-        match std::fs::read(path).map_err(|e| e.to_string()).and_then(|b| board.import_image(&b, STICKER_MAX_PX, false)) {
+    fn add_image_file(
+        &mut self,
+        board: &mut Board,
+        path: &std::path::Path,
+        at: Pos2,
+        notices: &mut Vec<String>,
+    ) {
+        match std::fs::read(path)
+            .map_err(|e| e.to_string())
+            .and_then(|b| board.import_image(&b, STICKER_MAX_PX, false))
+        {
             Ok(id) => {
                 let blob = &board.images[&id];
                 // Its own size, within reason; an SVG a little larger.
-                let width = if blob.svg { 180.0 } else { (blob.w as f32).clamp(80.0, 280.0) };
+                let width = if blob.svg {
+                    180.0
+                } else {
+                    (blob.w as f32).clamp(80.0, 280.0)
+                };
                 self.selected = Some(board.add(Art::Image(id), [at.x, at.y], width));
             }
             Err(e) => notices.push(format!("Could not add {}: {e}", file_name(path))),
@@ -1015,23 +1307,60 @@ impl BoardUi {
 
     /// Image files dropped on the canvas become stickers where they land;
     /// while they hover, the canvas says so.
-    fn take_drops(&mut self, ui: &Ui, board: &mut Board, view: View, rect: Rect, notices: &mut Vec<String>) {
-        let (hovering, dropped, pointer) = ui.input(|i| (!i.raw.hovered_files.is_empty(), i.raw.dropped_files.clone(), i.pointer.hover_pos()));
+    fn take_drops(
+        &mut self,
+        ui: &Ui,
+        board: &mut Board,
+        view: View,
+        rect: Rect,
+        notices: &mut Vec<String>,
+    ) {
+        let (hovering, dropped, pointer) = ui.input(|i| {
+            (
+                !i.raw.hovered_files.is_empty(),
+                i.raw.dropped_files.clone(),
+                i.pointer.hover_pos(),
+            )
+        });
         if hovering {
             let p = ui.painter_at(rect);
-            p.rect(rect.shrink(6.0), 10.0, alpha(theme::ACCENT, 0.05), Stroke::new(1.5, alpha(theme::ACCENT, 0.7)), StrokeKind::Inside);
-            p.text(rect.center(), Align2::CENTER_CENTER, "Drop images to add them as stickers (PNG, JPG, SVG)", FontId::proportional(13.0), theme::TEXT);
+            p.rect(
+                rect.shrink(6.0),
+                10.0,
+                alpha(theme::ACCENT, 0.05),
+                Stroke::new(1.5, alpha(theme::ACCENT, 0.7)),
+                StrokeKind::Inside,
+            );
+            p.text(
+                rect.center(),
+                Align2::CENTER_CENTER,
+                "Drop images to add them as stickers (PNG, JPG, SVG)",
+                FontId::proportional(13.0),
+                theme::TEXT,
+            );
         }
-        let at = view.to_world(pointer.filter(|q| rect.contains(*q)).unwrap_or(rect.center()));
+        let at = view.to_world(
+            pointer
+                .filter(|q| rect.contains(*q))
+                .unwrap_or(rect.center()),
+        );
         for (k, file) in dropped.iter().enumerate() {
             let at = at + vec2(28.0, 28.0) * k as f32;
             let path = file.path();
             let name = file_name(path);
-            let bytes = if crate::board::is_image_path(path) { file.bytes() } else { Err("not a PNG, JPG, SVG or WebP image".to_owned()) };
+            let bytes = if crate::board::is_image_path(path) {
+                file.bytes()
+            } else {
+                Err("not a PNG, JPG, SVG or WebP image".to_owned())
+            };
             match bytes.and_then(|b| board.import_image(&b, STICKER_MAX_PX, false)) {
                 Ok(id) => {
                     let blob = &board.images[&id];
-                    let width = if blob.svg { 180.0 } else { (blob.w as f32).clamp(80.0, 280.0) };
+                    let width = if blob.svg {
+                        180.0
+                    } else {
+                        (blob.w as f32).clamp(80.0, 280.0)
+                    };
                     self.selected = Some(board.add(Art::Image(id), [at.x, at.y], width));
                 }
                 Err(e) => notices.push(format!("Could not add {name}: {e}")),
@@ -1048,7 +1377,11 @@ impl BoardUi {
             self.folder = stickers_dir()
                 .and_then(|d| std::fs::read_dir(d).ok())
                 .map(|entries| {
-                    let mut files: Vec<PathBuf> = entries.flatten().map(|e| e.path()).filter(|p| crate::board::is_image_path(p)).collect();
+                    let mut files: Vec<PathBuf> = entries
+                        .flatten()
+                        .map(|e| e.path())
+                        .filter(|p| crate::board::is_image_path(p))
+                        .collect();
                     files.sort();
                     files
                 })
@@ -1057,44 +1390,63 @@ impl BoardUi {
         ui.separator();
         let commands = &mut self.commands;
         let folder = &self.folder;
-        ui.menu_button(RichText::new("Stickers").color(theme::TEXT).size(12.5), |ui| {
-            sticker_picker(ui, at, commands);
-            ui.separator();
-            if super::canvas::menu_item(ui, "Image file…", "PNG · JPG · SVG") {
-                commands.push(Command::AddFiles(at));
-                ui.close();
-            }
-            ui.label(RichText::new("EXAMPLE FILES").size(9.5).color(theme::TEXT_FAINT));
-            for (i, (name, _)) in EXAMPLES.iter().enumerate() {
-                if super::canvas::menu_item(ui, name, "SVG") {
-                    commands.push(Command::AddExample(i, at));
+        ui.menu_button(
+            RichText::new("Stickers").color(theme::TEXT).size(12.5),
+            |ui| {
+                sticker_picker(ui, at, commands);
+                ui.separator();
+                if super::canvas::menu_item(ui, "Image file…", "PNG · JPG · SVG") {
+                    commands.push(Command::AddFiles(at));
                     ui.close();
                 }
-            }
-            if !folder.is_empty() {
-                ui.label(RichText::new("YOUR STICKERS").size(9.5).color(theme::TEXT_FAINT));
-                for path in folder.iter().take(24) {
-                    if super::canvas::menu_item(ui, &file_name(path), "") {
-                        commands.push(Command::AddPath(path.clone(), at));
+                ui.label(
+                    RichText::new("EXAMPLE FILES")
+                        .size(9.5)
+                        .color(theme::TEXT_FAINT),
+                );
+                for (i, (name, _)) in EXAMPLES.iter().enumerate() {
+                    if super::canvas::menu_item(ui, name, "SVG") {
+                        commands.push(Command::AddExample(i, at));
                         ui.close();
                     }
                 }
-            }
-            if super::canvas::menu_item(ui, "Open stickers folder", "") {
-                commands.push(Command::RevealFolder);
-                ui.close();
-            }
-            if board.stickers.iter().any(|s| s.locked) && super::canvas::menu_item(ui, "Unlock all stickers", "") {
-                commands.push(Command::UnlockAll);
-                ui.close();
-            }
-        });
-        ui.menu_button(RichText::new("Background").color(theme::TEXT).size(12.5), |ui| background_picker(ui, board, commands));
+                if !folder.is_empty() {
+                    ui.label(
+                        RichText::new("YOUR STICKERS")
+                            .size(9.5)
+                            .color(theme::TEXT_FAINT),
+                    );
+                    for path in folder.iter().take(24) {
+                        if super::canvas::menu_item(ui, &file_name(path), "") {
+                            commands.push(Command::AddPath(path.clone(), at));
+                            ui.close();
+                        }
+                    }
+                }
+                if super::canvas::menu_item(ui, "Open stickers folder", "") {
+                    commands.push(Command::RevealFolder);
+                    ui.close();
+                }
+                if board.stickers.iter().any(|s| s.locked)
+                    && super::canvas::menu_item(ui, "Unlock all stickers", "")
+                {
+                    commands.push(Command::UnlockAll);
+                    ui.close();
+                }
+            },
+        );
+        ui.menu_button(
+            RichText::new("Background").color(theme::TEXT).size(12.5),
+            |ui| background_picker(ui, board, commands),
+        );
     }
 }
 
 fn file_name(path: &std::path::Path) -> String {
-    path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned())
+    path.file_name().map_or_else(
+        || path.display().to_string(),
+        |n| n.to_string_lossy().into_owned(),
+    )
 }
 
 /// A sticker's own menu.
@@ -1118,8 +1470,14 @@ fn sticker_menu(ui: &mut Ui, id: u32, commands: &mut Vec<Command>) {
 /// The built-in designs as a grid of tiles; a click adds one at `at`.
 fn sticker_picker(ui: &mut Ui, at: Pos2, commands: &mut Vec<Command>) {
     ui.label(RichText::new("STICKERS").size(9.5).color(theme::TEXT_FAINT));
-    let icons: Vec<&(&str, &str)> = BUILTINS.iter().filter(|(id, _)| !id.starts_with("tag-")).collect();
-    let tags: Vec<&(&str, &str)> = BUILTINS.iter().filter(|(id, _)| id.starts_with("tag-")).collect();
+    let icons: Vec<&(&str, &str)> = BUILTINS
+        .iter()
+        .filter(|(id, _)| !id.starts_with("tag-"))
+        .collect();
+    let tags: Vec<&(&str, &str)> = BUILTINS
+        .iter()
+        .filter(|(id, _)| id.starts_with("tag-"))
+        .collect();
     let mut tile = |ui: &mut Ui, id: &'static str, label: &str, size: Vec2| {
         let (rect, resp) = ui.allocate_exact_size(size, Sense::CLICK);
         let p = ui.painter();
@@ -1128,9 +1486,17 @@ fn sticker_picker(ui: &mut Ui, at: Pos2, commands: &mut Vec<Command>) {
         }
         let inner = rect.shrink(5.0);
         let aspect = builtin_aspect(id);
-        let art = if inner.height() / inner.width() > aspect { vec2(inner.width(), inner.width() * aspect) } else { vec2(inner.height() / aspect, inner.height()) };
+        let art = if inner.height() / inner.width() > aspect {
+            vec2(inner.width(), inner.width() * aspect)
+        } else {
+            vec2(inner.height() / aspect, inner.height())
+        };
         draw_builtin(p, rect.center(), art, 0.0, id);
-        if resp.on_hover_text(label).on_hover_cursor(CursorIcon::PointingHand).clicked() {
+        if resp
+            .on_hover_text(label)
+            .on_hover_cursor(CursorIcon::PointingHand)
+            .clicked()
+        {
             commands.push(Command::AddBuiltin(id, at));
             ui.close();
         }
@@ -1157,7 +1523,11 @@ fn sticker_picker(ui: &mut Ui, at: Pos2, commands: &mut Vec<Command>) {
 /// the grid.
 fn background_picker(ui: &mut Ui, board: &Board, commands: &mut Vec<Command>) {
     let bg = &board.background;
-    ui.label(RichText::new("BACKGROUND").size(9.5).color(theme::TEXT_FAINT));
+    ui.label(
+        RichText::new("BACKGROUND")
+            .size(9.5)
+            .color(theme::TEXT_FAINT),
+    );
     for row in PRESETS.chunks(4) {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 4.0;
@@ -1166,12 +1536,39 @@ fn background_picker(ui: &mut Ui, board: &Board, commands: &mut Vec<Command>) {
                 let swatch = Rect::from_min_size(rect.min + vec2(2.0, 2.0), vec2(60.0, 38.0));
                 let p = ui.painter();
                 p.rect_filled(swatch, 5.0, preset.fill);
-                let view = View { origin: swatch.min, zoom: 0.5 };
-                draw_grid(&p.with_clip_rect(swatch.shrink(1.0)), swatch, view, preset.grid, preset.major, theme::mix(preset.major, theme::TEXT, 0.2));
+                let view = View {
+                    origin: swatch.min,
+                    zoom: 0.5,
+                };
+                draw_grid(
+                    &p.with_clip_rect(swatch.shrink(1.0)),
+                    swatch,
+                    view,
+                    preset.grid,
+                    preset.major,
+                    theme::mix(preset.major, theme::TEXT, 0.2),
+                );
                 let on = bg.preset == preset.id;
-                let border = if on { theme::ACCENT } else if resp.hovered() { theme::CONTROL_HI } else { theme::NODE_BORDER };
-                p.rect_stroke(swatch, 5.0, Stroke::new(if on { 1.5 } else { 1.0 }, border), StrokeKind::Inside);
-                p.text(pos2(rect.center().x, rect.bottom() - 8.0), Align2::CENTER_CENTER, preset.label, FontId::proportional(10.0), if on { theme::TEXT } else { theme::TEXT_DIM });
+                let border = if on {
+                    theme::ACCENT
+                } else if resp.hovered() {
+                    theme::CONTROL_HI
+                } else {
+                    theme::NODE_BORDER
+                };
+                p.rect_stroke(
+                    swatch,
+                    5.0,
+                    Stroke::new(if on { 1.5 } else { 1.0 }, border),
+                    StrokeKind::Inside,
+                );
+                p.text(
+                    pos2(rect.center().x, rect.bottom() - 8.0),
+                    Align2::CENTER_CENTER,
+                    preset.label,
+                    FontId::proportional(10.0),
+                    if on { theme::TEXT } else { theme::TEXT_DIM },
+                );
                 if resp.on_hover_cursor(CursorIcon::PointingHand).clicked() {
                     commands.push(Command::Preset(preset.id));
                 }
@@ -1179,7 +1576,15 @@ fn background_picker(ui: &mut Ui, board: &Board, commands: &mut Vec<Command>) {
         });
     }
     ui.separator();
-    if super::canvas::menu_item(ui, if bg.image.is_some() { "Change image…" } else { "Image…" }, "PNG · JPG · SVG") {
+    if super::canvas::menu_item(
+        ui,
+        if bg.image.is_some() {
+            "Change image…"
+        } else {
+            "Image…"
+        },
+        "PNG · JPG · SVG",
+    ) {
         commands.push(Command::BackgroundImage);
         ui.close();
     }
@@ -1191,13 +1596,20 @@ fn background_picker(ui: &mut Ui, board: &Board, commands: &mut Vec<Command>) {
         ui.horizontal(|ui| {
             ui.label(RichText::new("Veil").size(11.5).color(theme::TEXT_DIM));
             let mut dim = bg.dim;
-            if ui.add(egui::Slider::new(&mut dim, 0.0..=0.95).show_value(false)).on_hover_text("How much the colour veils the image, so nodes stay readable").changed() {
+            if ui
+                .add(egui::Slider::new(&mut dim, 0.0..=0.95).show_value(false))
+                .on_hover_text("How much the colour veils the image, so nodes stay readable")
+                .changed()
+            {
                 commands.push(Command::Dim(dim));
             }
         });
     }
     let mut grid = bg.grid;
-    if ui.checkbox(&mut grid, RichText::new("Grid").size(12.0)).changed() {
+    if ui
+        .checkbox(&mut grid, RichText::new("Grid").size(12.0))
+        .changed()
+    {
         commands.push(Command::Grid(grid));
     }
 }
@@ -1222,11 +1634,16 @@ mod tests {
     fn example_files_are_readable_svgs() {
         let mut b = Board::default();
         for (name, bytes) in EXAMPLES {
-            let id = b.import_image(bytes, STICKER_MAX_PX, false).unwrap_or_else(|e| panic!("{name}: {e}"));
+            let id = b
+                .import_image(bytes, STICKER_MAX_PX, false)
+                .unwrap_or_else(|e| panic!("{name}: {e}"));
             let blob = &b.images[&id];
             assert!(blob.svg && blob.w > 0 && blob.h > 0, "{name}");
             let (_, _, _, px) = crate::board::decode_rgba(blob, 256).unwrap();
-            assert!(px.chunks(4).any(|p| p[3] == 0), "{name}: has a transparent background");
+            assert!(
+                px.chunks(4).any(|p| p[3] == 0),
+                "{name}: has a transparent background"
+            );
             assert!(px.chunks(4).any(|p| p[3] == 255), "{name}: draws something");
         }
     }
@@ -1256,7 +1673,10 @@ mod tests {
                 let rect = ui.max_rect();
                 let bg = ui.interact(rect, Id::unique("bg"), Sense::CLICK | Sense::DRAG);
                 let p = ui.painter_at(rect);
-                let view = View { origin: rect.min, zoom: 1.0 };
+                let view = View {
+                    origin: rect.min,
+                    zoom: 1.0,
+                };
                 st.draw_background(ui, &p, rect, view, board);
                 let mut notices = Vec::new();
                 outcome = st.show(ui, &p, rect, view, board, &bg, nodes, &mut notices);
@@ -1267,22 +1687,44 @@ mod tests {
     }
 
     fn button(pos: Pos2, button: egui::PointerButton, pressed: bool) -> egui::Event {
-        egui::Event::PointerButton { pos, button, pressed, modifiers: egui::Modifiers::NONE }
+        egui::Event::PointerButton {
+            pos,
+            button,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        }
     }
 
     #[test]
     fn stickers_are_picked_moved_resized_and_deleted() {
         use egui::PointerButton::{Primary, Secondary};
-        let mut rig = Rig { ctx: egui::Context::default(), ui: BoardUi::default(), board: Board::default(), nodes: HashSet::new(), time: 0.0 };
-        let id = rig.board.add(Art::Builtin("moon".into()), [200.0, 200.0], 100.0);
+        let mut rig = Rig {
+            ctx: egui::Context::default(),
+            ui: BoardUi::default(),
+            board: Board::default(),
+            nodes: HashSet::new(),
+            time: 0.0,
+        };
+        let id = rig
+            .board
+            .add(Art::Builtin("moon".into()), [200.0, 200.0], 100.0);
         rig.nodes.insert(7);
         rig.frame(vec![]);
         // Over it: the canvas menu must stay shut.
-        assert!(rig.frame(vec![egui::Event::PointerMoved(pos2(200.0, 200.0))]).hovered);
-        assert!(!rig.frame(vec![egui::Event::PointerMoved(pos2(500.0, 350.0))]).hovered);
+        assert!(
+            rig.frame(vec![egui::Event::PointerMoved(pos2(200.0, 200.0))])
+                .hovered
+        );
+        assert!(
+            !rig.frame(vec![egui::Event::PointerMoved(pos2(500.0, 350.0))])
+                .hovered
+        );
 
         // A click picks it, and drops the node selection.
-        rig.frame(vec![egui::Event::PointerMoved(pos2(200.0, 200.0)), button(pos2(200.0, 200.0), Primary, true)]);
+        rig.frame(vec![
+            egui::Event::PointerMoved(pos2(200.0, 200.0)),
+            button(pos2(200.0, 200.0), Primary, true),
+        ]);
         rig.frame(vec![button(pos2(200.0, 200.0), Primary, false)]);
         rig.frame(vec![]);
         assert_eq!(rig.ui.selected, Some(id));
@@ -1291,11 +1733,18 @@ mod tests {
         // Dragged 60 to the right and 30 down.
         rig.frame(vec![button(pos2(200.0, 200.0), Primary, true)]);
         for k in 1..=6 {
-            rig.frame(vec![egui::Event::PointerMoved(pos2(200.0 + 10.0 * k as f32, 200.0 + 5.0 * k as f32))]);
+            rig.frame(vec![egui::Event::PointerMoved(pos2(
+                200.0 + 10.0 * k as f32,
+                200.0 + 5.0 * k as f32,
+            ))]);
         }
         rig.frame(vec![button(pos2(260.0, 230.0), Primary, false)]);
         let s = rig.board.sticker(id).unwrap();
-        assert!((s.pos[0] - 260.0).abs() < 12.0 && (s.pos[1] - 230.0).abs() < 8.0, "{:?}", s.pos);
+        assert!(
+            (s.pos[0] - 260.0).abs() < 12.0 && (s.pos[1] - 230.0).abs() < 8.0,
+            "{:?}",
+            s.pos
+        );
 
         // The resize handle, at its bottom-right corner, doubles it.
         let s = rig.board.sticker(id).unwrap().clone();
@@ -1303,41 +1752,79 @@ mod tests {
         rig.frame(vec![egui::Event::PointerMoved(corner)]);
         rig.frame(vec![button(corner, Primary, true)]);
         for k in 1..=10 {
-            rig.frame(vec![egui::Event::PointerMoved(corner + vec2(5.0, 5.0) * k as f32)]);
+            rig.frame(vec![egui::Event::PointerMoved(
+                corner + vec2(5.0, 5.0) * k as f32,
+            )]);
         }
         rig.frame(vec![button(corner + vec2(50.0, 50.0), Primary, false)]);
         let w = rig.board.sticker(id).unwrap().width;
         assert!((w - 200.0).abs() < 25.0, "width {w}");
 
         // A right-drag on it pans the canvas instead.
-        let at = pos2(rig.board.sticker(id).unwrap().pos[0], rig.board.sticker(id).unwrap().pos[1]);
-        rig.frame(vec![egui::Event::PointerMoved(at), button(at, Secondary, true)]);
+        let at = pos2(
+            rig.board.sticker(id).unwrap().pos[0],
+            rig.board.sticker(id).unwrap().pos[1],
+        );
+        rig.frame(vec![
+            egui::Event::PointerMoved(at),
+            button(at, Secondary, true),
+        ]);
         let mut pan = Vec2::ZERO;
         for k in 1..=5 {
-            pan += rig.frame(vec![egui::Event::PointerMoved(at + vec2(0.0, 8.0 * k as f32))]).pan;
+            pan += rig
+                .frame(vec![egui::Event::PointerMoved(
+                    at + vec2(0.0, 8.0 * k as f32),
+                )])
+                .pan;
         }
         rig.frame(vec![button(at + vec2(0.0, 40.0), Secondary, false)]);
         assert!(pan.y > 20.0, "panned {pan:?}");
 
         // Delete removes the selected sticker.
-        rig.frame(vec![egui::Event::Key { key: egui::Key::Delete, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::NONE }]);
+        rig.frame(vec![egui::Event::Key {
+            key: egui::Key::Delete,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        }]);
         assert!(rig.board.stickers.is_empty());
         assert_eq!(rig.ui.selected, None);
     }
 
     #[test]
     fn locked_stickers_let_the_pointer_through() {
-        let mut rig = Rig { ctx: egui::Context::default(), ui: BoardUi::default(), board: Board::default(), nodes: HashSet::new(), time: 0.0 };
-        let id = rig.board.add(Art::Builtin("sun".into()), [200.0, 200.0], 100.0);
+        let mut rig = Rig {
+            ctx: egui::Context::default(),
+            ui: BoardUi::default(),
+            board: Board::default(),
+            nodes: HashSet::new(),
+            time: 0.0,
+        };
+        let id = rig
+            .board
+            .add(Art::Builtin("sun".into()), [200.0, 200.0], 100.0);
         rig.ui.commands.push(Command::Lock(id));
         rig.frame(vec![]);
-        assert!(!rig.frame(vec![egui::Event::PointerMoved(pos2(200.0, 200.0))]).hovered);
+        assert!(
+            !rig.frame(vec![egui::Event::PointerMoved(pos2(200.0, 200.0))])
+                .hovered
+        );
         rig.ui.commands.push(Command::UnlockAll);
         rig.frame(vec![]);
-        assert!(rig.frame(vec![egui::Event::PointerMoved(pos2(201.0, 200.0))]).hovered);
+        assert!(
+            rig.frame(vec![egui::Event::PointerMoved(pos2(201.0, 200.0))])
+                .hovered
+        );
         // Restacking and turning, from its menu.
-        let other = rig.board.add(Art::Builtin("eye".into()), [400.0, 200.0], 100.0);
-        rig.ui.commands.extend([Command::Back(other), Command::RotateBy(id, 15.0), Command::RotateBy(id, 180.0)]);
+        let other = rig
+            .board
+            .add(Art::Builtin("eye".into()), [400.0, 200.0], 100.0);
+        rig.ui.commands.extend([
+            Command::Back(other),
+            Command::RotateBy(id, 15.0),
+            Command::RotateBy(id, 180.0),
+        ]);
         rig.frame(vec![]);
         assert_eq!(rig.board.stickers[0].id, other);
         assert_eq!(rig.board.sticker(id).unwrap().rotation, -165.0);
@@ -1353,7 +1840,10 @@ mod tests {
         let q = corners(pos2(100.0, 100.0), vec2(40.0, 20.0), 90.0);
         assert!(inside(&q, pos2(100.0, 115.0)));
         assert!(!inside(&q, pos2(115.0, 100.0)));
-        let v = View { origin: pos2(10.0, 20.0), zoom: 2.0 };
+        let v = View {
+            origin: pos2(10.0, 20.0),
+            zoom: 2.0,
+        };
         assert_eq!(v.to_world(v.to_screen(pos2(3.0, 4.0))), pos2(3.0, 4.0));
     }
 
@@ -1364,7 +1854,11 @@ mod tests {
         let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
             let p = ui.painter();
             for (id, _) in BUILTINS.iter().chain(&[("unknown", "?")]) {
-                for (size, deg) in [(vec2(150.0, 150.0), 0.0), (vec2(12.0, 4.0), 33.0), (vec2(400.0, 136.0), -170.0)] {
+                for (size, deg) in [
+                    (vec2(150.0, 150.0), 0.0),
+                    (vec2(12.0, 4.0), 33.0),
+                    (vec2(400.0, 136.0), -170.0),
+                ] {
                     draw_builtin(p, pos2(200.0, 200.0), size, deg, id);
                 }
             }

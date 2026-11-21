@@ -53,7 +53,10 @@ impl Offer {
     }
 
     pub fn degrees(&self) -> impl Iterator<Item = (i32, f32)> + '_ {
-        self.degrees[..self.len].iter().zip(&self.weights[..self.len]).map(|(&d, &w)| (d as i32, w))
+        self.degrees[..self.len]
+            .iter()
+            .zip(&self.weights[..self.len])
+            .map(|(&d, &w)| (d as i32, w))
     }
 }
 
@@ -64,12 +67,42 @@ impl Offer {
 /// Life-like rules: (name, what it does, born with, survives with), the
 /// last two as bit masks of neighbour counts.
 pub const LIFE_RULES: [(&str, &str, u16, u16); 6] = [
-    ("LIFE", "B3/S23 · Conway's Game of Life: gliders, blinkers, still lifes", 1 << 3, 1 << 2 | 1 << 3),
-    ("HIGHLIFE", "B36/S23 · Life with replicators", 1 << 3 | 1 << 6, 1 << 2 | 1 << 3),
-    ("DAY&NIGHT", "B3678/S34678 · blobs that grow and melt", 1 << 3 | 1 << 6 | 1 << 7 | 1 << 8, 1 << 3 | 1 << 4 | 1 << 6 | 1 << 7 | 1 << 8),
-    ("AMOEBA", "B357/S1358 · restless, spreading shapes", 1 << 3 | 1 << 5 | 1 << 7, 1 << 1 | 1 << 3 | 1 << 5 | 1 << 8),
-    ("MAZE", "B3/S12345 · grows into corridors, then holds", 1 << 3, 0b11_1110),
-    ("SEEDS", "B2/S · every cell lives one generation: sparks", 1 << 2, 0),
+    (
+        "LIFE",
+        "B3/S23 · Conway's Game of Life: gliders, blinkers, still lifes",
+        1 << 3,
+        1 << 2 | 1 << 3,
+    ),
+    (
+        "HIGHLIFE",
+        "B36/S23 · Life with replicators",
+        1 << 3 | 1 << 6,
+        1 << 2 | 1 << 3,
+    ),
+    (
+        "DAY&NIGHT",
+        "B3678/S34678 · blobs that grow and melt",
+        1 << 3 | 1 << 6 | 1 << 7 | 1 << 8,
+        1 << 3 | 1 << 4 | 1 << 6 | 1 << 7 | 1 << 8,
+    ),
+    (
+        "AMOEBA",
+        "B357/S1358 · restless, spreading shapes",
+        1 << 3 | 1 << 5 | 1 << 7,
+        1 << 1 | 1 << 3 | 1 << 5 | 1 << 8,
+    ),
+    (
+        "MAZE",
+        "B3/S12345 · grows into corridors, then holds",
+        1 << 3,
+        0b11_1110,
+    ),
+    (
+        "SEEDS",
+        "B2/S · every cell lives one generation: sparks",
+        1 << 2,
+        0,
+    ),
 ];
 
 /// Shapes sown into a world that died or settled: (x, y) cells.
@@ -94,7 +127,13 @@ pub struct Life {
 
 impl Life {
     pub fn new(rows: [u16; H]) -> Self {
-        let mut life = Self { rows: [0; H], age: [[0; W]; H], generation: 0, recent: [u64::MAX; 8], stale: 0 };
+        let mut life = Self {
+            rows: [0; H],
+            age: [[0; W]; H],
+            generation: 0,
+            recent: [u64::MAX; 8],
+            stale: 0,
+        };
         life.load(rows);
         life
     }
@@ -158,13 +197,21 @@ impl Life {
         for (y, row) in next.iter().enumerate() {
             for x in 0..W {
                 let age = &mut self.age[y][x];
-                *age = if row >> x & 1 == 1 { age.saturating_add(1) } else { 0 };
+                *age = if row >> x & 1 == 1 {
+                    age.saturating_add(1)
+                } else {
+                    0
+                };
             }
         }
         self.rows = next;
         self.generation = self.generation.wrapping_add(1);
         let print = fingerprint(&self.rows);
-        self.stale = if self.recent.contains(&print) { self.stale + 1 } else { 0 };
+        self.stale = if self.recent.contains(&print) {
+            self.stale + 1
+        } else {
+            0
+        };
         self.recent[self.generation as usize % self.recent.len()] = print;
     }
 
@@ -200,7 +247,10 @@ impl Life {
             for x in 0..W {
                 if self.alive(x, y) {
                     if k == 0 {
-                        return ((x + W - 1 + pick(rng, 3)) % W, (y + H - 1 + pick(rng, 3)) % H);
+                        return (
+                            (x + W - 1 + pick(rng, 3)) % W,
+                            (y + H - 1 + pick(rng, 3)) % H,
+                        );
                     }
                     k -= 1;
                 }
@@ -211,7 +261,10 @@ impl Life {
 
     fn sow(&mut self, rng: &mut Rng) {
         let shape = SHAPES[(rng.unit() * SHAPES.len() as f32) as usize % SHAPES.len()];
-        let (ox, oy) = ((rng.unit() * W as f32) as usize, (rng.unit() * H as f32) as usize);
+        let (ox, oy) = (
+            (rng.unit() * W as f32) as usize,
+            (rng.unit() * H as f32) as usize,
+        );
         let (flip_x, flip_y) = (rng.unit() < 0.5, rng.unit() < 0.5);
         for &(x, y) in shape {
             let x = if flip_x { 3 - x } else { x };
@@ -233,14 +286,17 @@ impl Life {
             }
         }
         if offer.len > 0 {
-            offer.energy = 0.6 * (offer.len as f32 / 5.0).min(1.0) + 0.4 * young as f32 / offer.len as f32;
+            offer.energy =
+                0.6 * (offer.len as f32 / 5.0).min(1.0) + 0.4 * young as f32 / offer.len as f32;
         }
         offer
     }
 }
 
 fn fingerprint(rows: &[u16; H]) -> u64 {
-    rows.iter().fold(0xCBF2_9CE4_8422_2325u64, |h, &r| (h ^ r as u64).wrapping_mul(0x0100_0000_01B3))
+    rows.iter().fold(0xCBF2_9CE4_8422_2325u64, |h, &r| {
+        (h ^ r as u64).wrapping_mul(0x0100_0000_01B3)
+    })
 }
 
 /// A random start for LIFE: about a fifth of the cells alive.
@@ -262,9 +318,15 @@ pub fn soup(seed: u32) -> [u16; H] {
 
 /// Elementary automaton rules (Wolfram's numbering).
 pub const CASCADE_RULES: [(u8, &str); 8] = [
-    (90, "Sierpiński's triangle: each cell the sum of its neighbours"),
+    (
+        90,
+        "Sierpiński's triangle: each cell the sum of its neighbours",
+    ),
     (30, "chaos from order: a rule used to make random numbers"),
-    (110, "structures that move and collide (it can compute anything)"),
+    (
+        110,
+        "structures that move and collide (it can compute anything)",
+    ),
     (150, "a denser fractal, symmetric"),
     (45, "noisy stripes"),
     (73, "walls with chatter between them"),
@@ -285,7 +347,12 @@ pub struct Cascade {
 
 impl Cascade {
     pub fn new(start: u16) -> Self {
-        let mut cascade = Self { rows: [0; HISTORY], head: 0, start, generation: 0 };
+        let mut cascade = Self {
+            rows: [0; HISTORY],
+            head: 0,
+            start,
+            generation: 0,
+        };
         cascade.reset(start);
         cascade
     }
@@ -320,7 +387,11 @@ impl Cascade {
         }
         let random_cell = |rng: &mut Rng| 1u16 << ((rng.unit() * W as f32) as usize % W);
         if next == 0 || next == u16::MAX {
-            next = if mutate > 0.0 { random_cell(rng) } else { self.start };
+            next = if mutate > 0.0 {
+                random_cell(rng)
+            } else {
+                self.start
+            };
         }
         if mutate > 0.0 && rng.unit() < mutate * 0.5 {
             next ^= random_cell(rng);
@@ -333,7 +404,10 @@ impl Cascade {
     /// The newest generation's cells.
     pub fn offer(&self) -> Offer {
         let row = self.row(0);
-        let mut offer = Offer { cells: row, ..Default::default() };
+        let mut offer = Offer {
+            cells: row,
+            ..Default::default()
+        };
         for x in 0..W {
             if row >> x & 1 == 1 {
                 // Cells that just changed state count more.
@@ -359,7 +433,9 @@ pub fn first_row(seed: u32) -> u16 {
 /// Read from the top bit down, a 1 steps up and a 0 turns the melody over.
 pub fn series(n: u64) -> i32 {
     let bits = u64::BITS - n.leading_zeros();
-    (0..bits).rev().fold(0, |v, k| if n >> k & 1 == 1 { v + 1 } else { -v })
+    (0..bits)
+        .rev()
+        .fold(0, |v, k| if n >> k & 1 == 1 { v + 1 } else { -v })
 }
 
 /// `d` reflected into `lo..=hi`.
@@ -381,7 +457,10 @@ pub struct Tree {
 
 impl Tree {
     pub fn new(start: u64) -> Self {
-        Self { n: start % TREE_WRAP, played: start % TREE_WRAP }
+        Self {
+            n: start % TREE_WRAP,
+            played: start % TREE_WRAP,
+        }
     }
 
     pub fn reset(&mut self, start: u64) {
@@ -393,7 +472,11 @@ impl Tree {
     pub fn offer(&self, interval: i32, span: i32) -> Offer {
         let mut offer = Offer::default();
         let half = (span / 2).max(1);
-        let d = fold(CENTRE + series(self.n) * interval, CENTRE - half, CENTRE + half);
+        let d = fold(
+            CENTRE + series(self.n) * interval,
+            CENTRE - half,
+            CENTRE + half,
+        );
         offer.push(d, 1.0);
         // Terms deeper in the tree (n divisible by more twos) are accents.
         offer.energy = 0.45 + 0.55 * (self.n.trailing_zeros().min(6) as f32 / 6.0);
@@ -403,7 +486,11 @@ impl Tree {
     /// On by STRIDE terms; with MUTATE it sometimes jumps elsewhere in the
     /// series (a branch it had not taken).
     pub fn advance(&mut self, stride: u64, rng: &mut Rng, mutate: f32) {
-        let jump = if mutate > 0.0 && rng.unit() < mutate * 0.25 { 1 + (rng.unit() * 31.0) as u64 } else { 1 };
+        let jump = if mutate > 0.0 && rng.unit() < mutate * 0.25 {
+            1 + (rng.unit() * 31.0) as u64
+        } else {
+            1
+        };
         self.played = self.n;
         self.n = (self.n + stride.max(1) * jump) % TREE_WRAP;
     }
@@ -438,7 +525,10 @@ pub fn julia_c(shape: f32, chaos: f32, morph: f32, beat: f64) -> Complex {
     let a = turns * TAU;
     let r = 0.9 + 0.2 * chaos.clamp(0.0, 1.0);
     // The cardioid's edge: e^{ia}/2 − e^{2ia}/4.
-    (r * (0.5 * a.cos() - 0.25 * (2.0 * a).cos()), r * (0.5 * a.sin() - 0.25 * (2.0 * a).sin()))
+    (
+        r * (0.5 * a.cos() - 0.25 * (2.0 * a).cos()),
+        r * (0.5 * a.sin() - 0.25 * (2.0 * a).sin()),
+    )
 }
 
 /// The fixed point of z → z² + c that orbits circle round (attracting
@@ -467,7 +557,16 @@ pub struct Julia {
 
 impl Julia {
     pub fn new(seed: u32) -> Self {
-        let mut julia = Self { z: (0.0, 0.0), c: (0.0, 0.0), fix: (0.0, 0.0), phrase: 0, trail: [(0.0, 0.0); TRAIL], trail_pos: 0, seed, done: false };
+        let mut julia = Self {
+            z: (0.0, 0.0),
+            c: (0.0, 0.0),
+            fix: (0.0, 0.0),
+            phrase: 0,
+            trail: [(0.0, 0.0); TRAIL],
+            trail_pos: 0,
+            seed,
+            done: false,
+        };
         julia.reset(seed);
         julia
     }
@@ -560,7 +659,11 @@ mod tests {
     fn life_blinks_and_glides() {
         let mut life = Life::new(rows(&[(4, 5), (5, 5), (6, 5)]));
         life.step(0);
-        assert_eq!(life.rows, rows(&[(5, 4), (5, 5), (5, 6)]), "a blinker turns");
+        assert_eq!(
+            life.rows,
+            rows(&[(5, 4), (5, 5), (5, 6)]),
+            "a blinker turns"
+        );
         life.step(0);
         assert_eq!(life.rows, rows(&[(4, 5), (5, 5), (6, 5)]));
         assert_eq!(life.age[5][5], 3, "its middle never died");
@@ -616,7 +719,15 @@ mod tests {
             cascade.step(0, &mut rng, 0.0);
             seen.push(cascade.row(0));
         }
-        assert_eq!(seen, [0b101 << 7, 0b1_0001 << 6, 0b101_0101 << 5, 0b1_0000_0001 << 4]);
+        assert_eq!(
+            seen,
+            [
+                0b101 << 7,
+                0b1_0001 << 6,
+                0b101_0101 << 5,
+                0b1_0000_0001 << 4
+            ]
+        );
         assert_eq!(cascade.row(4), 1 << 8, "the history goes back to the start");
         let offer = cascade.offer();
         assert_eq!(offer.degrees().map(|d| d.0).collect::<Vec<_>>(), [4, 12]);
@@ -656,12 +767,17 @@ mod tests {
         assert_eq!(notes, 400, "it never escapes");
         assert!(julia.phrase > 0, "it settled, more than once");
         let z = mul(fix, fix);
-        assert!((z.0 + julia.c.0 - fix.0).abs() < 1e-5 && (z.1 + julia.c.1 - fix.1).abs() < 1e-5, "z* = z*² + c");
+        assert!(
+            (z.0 + julia.c.0 - fix.0).abs() < 1e-5 && (z.1 + julia.c.1 - fix.1).abs() < 1e-5,
+            "z* = z*² + c"
+        );
 
         // Past the edge, away from the bulbs, it escapes: rests.
         let mut julia = Julia::new(5);
         julia.set_c((0.45, 0.1));
-        let rests = (0..40).filter(|_| julia.step(12, &mut rng, 0.0).is_empty()).count();
+        let rests = (0..40)
+            .filter(|_| julia.step(12, &mut rng, 0.0).is_empty())
+            .count();
         assert!(rests > 3);
         assert!(escape((0.0, 0.0), (0.45, 0.1), 40) < 1.0);
         assert_eq!(escape((0.0, 0.0), (-0.1, 0.1), 40), 1.0);

@@ -161,7 +161,11 @@ pub fn set_flag(p: &ModuleParams, d: usize, on: bool) {
 /// than a halving).
 pub fn echo_time(p: &ModuleParams) -> f32 {
     let t = p.get(TIME);
-    if flag(p, data::WARP) { 0.05 + (t - 0.05) / 4.0 } else { t }
+    if flag(p, data::WARP) {
+        0.05 + (t - 0.05) / 4.0
+    } else {
+        t
+    }
 }
 
 fn db_gain(db: f32) -> f32 {
@@ -185,7 +189,11 @@ pub fn reverb_trim(mix: f32, decay: f32) -> f32 {
 pub fn format(p: &ModuleParams, i: usize) -> String {
     let v = p.get(i);
     match i {
-        FREQ => format!("{} · {}", note_label(v.round() as i32), format_hz(note_hz(v))),
+        FREQ => format!(
+            "{} · {}",
+            note_label(v.round() as i32),
+            format_hz(note_hz(v))
+        ),
         TIME => format_seconds(echo_time(p)),
         DRIVE => format!("+{:.1} dB", 12.0 * v),
         INTERVAL2 | INTERVAL3 => format!("{:+} st", v.round() as i32),
@@ -203,49 +211,211 @@ pub const FACTORY: [Sound; 16] = [
     ("Default", &[], PLAIN),
     (
         "Cellar",
-        &[(FREQ, 20.5), (FEEDBACK, -2.4), (BODY, 0.0567), (LOWPASS, 1035.0), (HIGHPASS, 18.2), (MIX, 0.35), (DECAY, 0.94), (SEND, 0.15), (TIME, 1.83), (REPEATS, 0.53)],
+        &[
+            (FREQ, 20.5),
+            (FEEDBACK, -2.4),
+            (BODY, 0.0567),
+            (LOWPASS, 1035.0),
+            (HIGHPASS, 18.2),
+            (MIX, 0.35),
+            (DECAY, 0.94),
+            (SEND, 0.15),
+            (TIME, 1.83),
+            (REPEATS, 0.53),
+        ],
         PLAIN,
     ),
     (
         "Whistle",
-        &[(FREQ, 60.8), (FEEDBACK, -9.6), (BODY, 0.0032), (LOWPASS, 18_000.0), (HIGHPASS, 81.0), (MIX, 0.45), (DECAY, 0.92), (SEND, 0.3), (TIME, 0.84), (REPEATS, 0.68)],
+        &[
+            (FREQ, 60.8),
+            (FEEDBACK, -9.6),
+            (BODY, 0.0032),
+            (LOWPASS, 18_000.0),
+            (HIGHPASS, 81.0),
+            (MIX, 0.45),
+            (DECAY, 0.92),
+            (SEND, 0.3),
+            (TIME, 0.84),
+            (REPEATS, 0.68),
+        ],
         PLAIN,
     ),
-    ("Nave", &[(FREQ, 41.2), (FEEDBACK, -3.8), (BODY, 0.031), (LOWPASS, 6370.0), (HIGHPASS, 24.6), (MIX, 0.85), (DECAY, 0.985), (TIME, 2.14), (REPEATS, 0.53)], PLAIN),
-    ("Drift", &[(FREQ, 44.0), (FEEDBACK, -9.6), (BODY, 0.0131), (LOWPASS, 2920.0), (HIGHPASS, 44.7), (MIX, 0.15), (SEND, 0.8), (TIME, 1.55), (REPEATS, 1.28)], PLAIN),
+    (
+        "Nave",
+        &[
+            (FREQ, 41.2),
+            (FEEDBACK, -3.8),
+            (BODY, 0.031),
+            (LOWPASS, 6370.0),
+            (HIGHPASS, 24.6),
+            (MIX, 0.85),
+            (DECAY, 0.985),
+            (TIME, 2.14),
+            (REPEATS, 0.53),
+        ],
+        PLAIN,
+    ),
+    (
+        "Drift",
+        &[
+            (FREQ, 44.0),
+            (FEEDBACK, -9.6),
+            (BODY, 0.0131),
+            (LOWPASS, 2920.0),
+            (HIGHPASS, 44.7),
+            (MIX, 0.15),
+            (SEND, 0.8),
+            (TIME, 1.55),
+            (REPEATS, 1.28),
+        ],
+        PLAIN,
+    ),
     (
         "Warp",
-        &[(FREQ, 35.6), (LOWPASS, 2255.0), (DECAY, 0.9), (SEND, 0.75), (TIME, 2.48), (REPEATS, 1.2)],
+        &[
+            (FREQ, 35.6),
+            (LOWPASS, 2255.0),
+            (DECAY, 0.9),
+            (SEND, 0.75),
+            (TIME, 2.48),
+            (REPEATS, 1.2),
+        ],
         [true, false, false, false, false, true],
     ),
     (
         "Undertow",
-        &[(FREQ, 27.2), (FEEDBACK, 1.2), (BODY, 0.0725), (LOWPASS, 475.0), (HIGHPASS, 18.2), (MIX, 0.5), (DECAY, 0.95), (SEND, 0.4), (TIME, 2.83), (REPEATS, 0.83)],
+        &[
+            (FREQ, 27.2),
+            (FEEDBACK, 1.2),
+            (BODY, 0.0725),
+            (LOWPASS, 475.0),
+            (HIGHPASS, 18.2),
+            (MIX, 0.5),
+            (DECAY, 0.95),
+            (SEND, 0.4),
+            (TIME, 2.83),
+            (REPEATS, 0.83),
+        ],
         PLAIN,
     ),
     (
         "Howl",
-        &[(FREQ, 52.4), (FEEDBACK, 8.4), (BODY, 0.002), (LOWPASS, 18_000.0), (HIGHPASS, 60.3), (MIX, 0.1), (DECAY, 0.79), (SEND, 0.1), (TIME, 0.5), (REPEATS, 0.45)],
+        &[
+            (FREQ, 52.4),
+            (FEEDBACK, 8.4),
+            (BODY, 0.002),
+            (LOWPASS, 18_000.0),
+            (HIGHPASS, 60.3),
+            (MIX, 0.1),
+            (DECAY, 0.79),
+            (SEND, 0.1),
+            (TIME, 0.5),
+            (REPEATS, 0.45),
+        ],
         PLAIN,
     ),
-    ("Small room", &[(FREQ, 32.8), (FEEDBACK, -15.4), (BODY, 0.0258), (LOWPASS, 2255.0), (HIGHPASS, 60.3), (MIX, 0.5), (SEND, 0.0), (REPEATS, 0.0)], PLAIN),
-    ("Keys", &[(FREQ, 38.4), (LOWPASS, 6370.0), (MIX, 0.35), (DECAY, 0.9), (REPEATS, 0.45)], [false, false, true, true, false, true]),
+    (
+        "Small room",
+        &[
+            (FREQ, 32.8),
+            (FEEDBACK, -15.4),
+            (BODY, 0.0258),
+            (LOWPASS, 2255.0),
+            (HIGHPASS, 60.3),
+            (MIX, 0.5),
+            (SEND, 0.0),
+            (REPEATS, 0.0),
+        ],
+        PLAIN,
+    ),
+    (
+        "Keys",
+        &[
+            (FREQ, 38.4),
+            (LOWPASS, 6370.0),
+            (MIX, 0.35),
+            (DECAY, 0.9),
+            (REPEATS, 0.45),
+        ],
+        [false, false, true, true, false, true],
+    ),
     (
         "Resonator (IN)",
-        &[(FREQ, 44.0), (FEEDBACK, -31.2), (BODY, 0.021), (LOWPASS, 8260.0), (MIX, 0.35), (DECAY, 0.9), (REPEATS, 0.45), (INPUT, 1.2)],
+        &[
+            (FREQ, 44.0),
+            (FEEDBACK, -31.2),
+            (BODY, 0.021),
+            (LOWPASS, 8260.0),
+            (MIX, 0.35),
+            (DECAY, 0.9),
+            (REPEATS, 0.45),
+            (INPUT, 1.2),
+        ],
         [false, false, true, false, false, true],
     ),
-    ("Init", &[(FEEDBACK, -60.0), (MIX, 0.0), (SEND, 0.0), (REPEATS, 0.0)], PLAIN),
-    ("Fifths", &[(FREQ, 38.4), (LOWPASS, 8260.0), (HIGHPASS, 24.6), (MIX, 0.35), (DECAY, 0.9), (REPEATS, 0.53)], [false, false, false, false, true, true]),
+    (
+        "Init",
+        &[(FEEDBACK, -60.0), (MIX, 0.0), (SEND, 0.0), (REPEATS, 0.0)],
+        PLAIN,
+    ),
+    (
+        "Fifths",
+        &[
+            (FREQ, 38.4),
+            (LOWPASS, 8260.0),
+            (HIGHPASS, 24.6),
+            (MIX, 0.35),
+            (DECAY, 0.9),
+            (REPEATS, 0.53),
+        ],
+        [false, false, false, false, true, true],
+    ),
     (
         "Sympathetic",
-        &[(FREQ, 27.2), (FEEDBACK, -3.8), (BODY, 0.0168), (LOWPASS, 3790.0), (HIGHPASS, 20.5), (MIX, 0.45), (DECAY, 0.94), (SEND, 0.15), (TIME, 1.83), (REPEATS, 0.45), (COUPLING, 0.4), (INTERVAL3, 16.0)],
+        &[
+            (FREQ, 27.2),
+            (FEEDBACK, -3.8),
+            (BODY, 0.0168),
+            (LOWPASS, 3790.0),
+            (HIGHPASS, 20.5),
+            (MIX, 0.45),
+            (DECAY, 0.94),
+            (SEND, 0.15),
+            (TIME, 1.83),
+            (REPEATS, 0.45),
+            (COUPLING, 0.4),
+            (INTERVAL3, 16.0),
+        ],
         [false, false, false, false, true, false],
     ),
-    ("Chord keys", &[(FREQ, 38.4), (LOWPASS, 6370.0), (MIX, 0.1), (DECAY, 0.9), (REPEATS, 0.45), (COUPLING, 0.8)], [false, false, true, true, true, true]),
+    (
+        "Chord keys",
+        &[
+            (FREQ, 38.4),
+            (LOWPASS, 6370.0),
+            (MIX, 0.1),
+            (DECAY, 0.9),
+            (REPEATS, 0.45),
+            (COUPLING, 0.8),
+        ],
+        [false, false, true, true, true, true],
+    ),
     (
         "Embers",
-        &[(FREQ, 35.6), (BODY, 0.0131), (LOWPASS, 4910.0), (HIGHPASS, 24.6), (MIX, 0.2), (DECAY, 0.88), (SEND, 0.55), (TIME, 1.05), (REPEATS, 0.69), (DRIVE, 0.8), (TONE, 300.0)],
+        &[
+            (FREQ, 35.6),
+            (BODY, 0.0131),
+            (LOWPASS, 4910.0),
+            (HIGHPASS, 24.6),
+            (MIX, 0.2),
+            (DECAY, 0.88),
+            (SEND, 0.55),
+            (TIME, 1.05),
+            (REPEATS, 0.69),
+            (DRIVE, 0.8),
+            (TONE, 300.0),
+        ],
         [false, true, false, false, false, true],
     ),
 ];
@@ -330,7 +500,10 @@ impl Loop {
     fn new(sr: f32, seed: u32) -> Self {
         let body = (LONGEST_BODY * sr) as usize + 8;
         Self {
-            strings: [Strand::new(sr, note_hz(LOWEST) * 0.9), Strand::new(sr, note_hz(LOWEST) * 0.9)],
+            strings: [
+                Strand::new(sr, note_hz(LOWEST) * 0.9),
+                Strand::new(sr, note_hz(LOWEST) * 0.9),
+            ],
             body: [DelayLine::new(body), DelayLine::new(body)],
             delay: 0.01 * sr,
             target: 0.01 * sr,
@@ -372,7 +545,14 @@ impl Loop {
 
     /// Sample `i` of the block, with `noise` the floor's level now.
     #[inline]
-    fn process(&mut self, noise: f32, input: f32, couple: [f32; 2], k_gain: f32, i: usize) -> [f32; 2] {
+    fn process(
+        &mut self,
+        noise: f32,
+        input: f32,
+        couple: [f32; 2],
+        k_gain: f32,
+        i: usize,
+    ) -> [f32; 2] {
         self.delay += (self.target - self.delay) * self.lag;
         self.gain += (self.gain_target - self.gain) * k_gain;
         let floor = self.rng.bipolar() * noise;
@@ -493,7 +673,8 @@ impl Processor for Larsen {
             }
             self.midi_cursor = self.midi.stream_head();
         } else {
-            self.midi.read_stream(&mut self.midi_cursor, |msg| keys.handle(msg));
+            self.midi
+                .read_stream(&mut self.midi_cursor, |msg| keys.handle(msg));
         }
         // FREQ moved with no key down takes the pitch back.
         let freq = p.get(FREQ);
@@ -511,7 +692,11 @@ impl Processor for Larsen {
         let running = ctx.playing || held;
 
         // Each string's note, and whether its loop is open.
-        let mut target = [freq, freq + p.get(INTERVAL2).round(), freq + p.get(INTERVAL3).round()];
+        let mut target = [
+            freq,
+            freq + p.get(INTERVAL2).round(),
+            freq + p.get(INTERVAL3).round(),
+        ];
         let mut open = [running; STRINGS];
         for s in 0..STRINGS {
             let (note, down) = match (midi, poly) {
@@ -549,7 +734,13 @@ impl Processor for Larsen {
             self.poly_running = true;
             self.note[1..].copy_from_slice(&target[1..]);
         }
-        let glide = |tau: f32| if first { 1.0 } else { 1.0 - (-secs / tau).exp() };
+        let glide = |tau: f32| {
+            if first {
+                1.0
+            } else {
+                1.0 - (-secs / tau).exp()
+            }
+        };
         for (note, t) in self.note.iter_mut().zip(target) {
             *note += (t - *note) * glide(PITCH_GLIDE);
         }
@@ -567,7 +758,11 @@ impl Processor for Larsen {
             lp.lp.set(Kind::Low, self.lp_hz, 0.9, sr);
             lp.hp.set(Kind::High, self.hp_hz, 0.9, sr);
             let to = if tuned { 1.0 } else { 0.0 };
-            self.blend[s] = if first || !poly { to } else { self.blend[s] + (to - self.blend[s]).clamp(-secs / TUNING_FADE, secs / TUNING_FADE) };
+            self.blend[s] = if first || !poly {
+                to
+            } else {
+                self.blend[s] + (to - self.blend[s]).clamp(-secs / TUNING_FADE, secs / TUNING_FADE)
+            };
             // The string's filters lag a little: shorten it by as much, so
             // that it rings on the note.
             let string = Strand::response(sr, w);
@@ -589,11 +784,17 @@ impl Processor for Larsen {
                 }
                 lp.makeup = (1.0 / outer.abs().max(1e-3)).min(MAX_MAKEUP);
                 lp.couple_makeup = COUPLING_MAKEUP * (COUPLING_BODY / self.body).min(1.0).powi(3);
-                ((whole * t + outer.arg() / (TAU * f)).max(1.0 / sr), TUNED_LAG)
+                (
+                    (whole * t + outer.arg() / (TAU * f)).max(1.0 / sr),
+                    TUNED_LAG,
+                )
             } else {
                 lp.tracking = false;
                 // The others' BODY follows their interval.
-                (self.body * ((self.note[0] - self.note[s]) / 12.0).exp2(), BODY_LAG)
+                (
+                    self.body * ((self.note[0] - self.note[s]) / 12.0).exp2(),
+                    BODY_LAG,
+                )
             };
             lp.target = (delay * sr).min(LONGEST_BODY * sr);
             lp.lag = 1.0 / (lag * sr);
@@ -606,8 +807,19 @@ impl Processor for Larsen {
             }
             p.viz[viz::BODY + s].set(lp.target / sr);
         }
-        let shape = Shape { drive: p.get(DRIVE), tone: p.get(TONE), width: p.get(WIDTH), level: db_gain(p.get(GAIN)) };
-        self.echo.set(echo_time(&p), p.get(REPEATS), flag(&p, data::PONG), shape, first);
+        let shape = Shape {
+            drive: p.get(DRIVE),
+            tone: p.get(TONE),
+            width: p.get(WIDTH),
+            level: db_gain(p.get(GAIN)),
+        };
+        self.echo.set(
+            echo_time(&p),
+            p.get(REPEATS),
+            flag(&p, data::PONG),
+            shape,
+            first,
+        );
 
         let k = ctx.smooth;
         let k_gain = 1.0 - (-1.0 / (FILTER_GLIDE * sr)).exp();
@@ -618,7 +830,8 @@ impl Processor for Larsen {
         let coupling_t = MAX_COUPLING * p.get(COUPLING) * p.get(COUPLING);
         let noise_t = if running || !input_silent { NOISE } else { 0.0 };
         if first {
-            (self.send, self.level, self.input, self.coupling) = (send_t, level_t, input_t, coupling_t);
+            (self.send, self.level, self.input, self.coupling) =
+                (send_t, level_t, input_t, coupling_t);
         }
         // The limiter: fast to catch a peak, a second to let go.
         let attack = 1.0 - (-1.0 / (0.0004 * sr)).exp();
@@ -635,7 +848,11 @@ impl Processor for Larsen {
             self.noise += (noise_t - self.noise) * k_noise;
             let x = input.map_or(0.0, |b| 0.5 * (b[0][i] + b[1][i])) * self.input;
             let (l, r) = if self.poly_running {
-                self.poly = if poly { (self.poly + poly_step).min(1.0) } else { (self.poly - poly_step).max(0.0) };
+                self.poly = if poly {
+                    (self.poly + poly_step).min(1.0)
+                } else {
+                    (self.poly - poly_step).max(0.0)
+                };
                 // Each loop hears the other two as they were a sample ago.
                 let taps = [self.loops[0].tap, self.loops[1].tap, self.loops[2].tap];
                 let weight = [1.0, self.poly, self.poly];
@@ -644,15 +861,21 @@ impl Processor for Larsen {
                     let (a, b) = ((s + 1) % STRINGS, (s + 2) % STRINGS);
                     let gain = self.coupling * receive[s];
                     let lp = &mut self.loops[s];
-                    let mut c = std::array::from_fn(|ch| gain * (weight[a] * taps[a][ch] + weight[b] * taps[b][ch]));
+                    let mut c = std::array::from_fn(|ch| {
+                        gain * (weight[a] * taps[a][ch] + weight[b] * taps[b][ch])
+                    });
                     if tuned {
-                        c = [lp.couple.process(c[0], 0) * lp.couple_makeup, lp.couple.process(c[1], 1) * lp.couple_makeup];
+                        c = [
+                            lp.couple.process(c[0], 0) * lp.couple_makeup,
+                            lp.couple.process(c[1], 1) * lp.couple_makeup,
+                        ];
                     }
                     *o = lp.process(self.noise, x, c, k_gain, i);
                     levels[s] = levels[s].max(o[0].abs()).max(o[1].abs());
                 }
                 let scale = 1.0 + self.poly * (INV_SQRT_3 - 1.0);
-                let mono = |ch: usize| (outs[0][ch] + self.poly * (outs[1][ch] + outs[2][ch])) * scale;
+                let mono =
+                    |ch: usize| (outs[0][ch] + self.poly * (outs[1][ch] + outs[2][ch])) * scale;
                 (mono(0), mono(1))
             } else {
                 let o = self.loops[0].process(self.noise, x, [0.0; 2], k_gain, i);
@@ -664,8 +887,15 @@ impl Processor for Larsen {
             let (ol, or) = ((l + wl) * gain, (r + wr) * gain);
             let a = ol.abs().max(or.abs());
             self.limit += (a - self.limit) * if a > self.limit { attack } else { release };
-            let g = if self.limit > 1.0 { 1.0 / self.limit } else { 1.0 };
-            let (ol, or) = (soft_limit(ol * g).clamp(-1.0, 1.0), soft_limit(or * g).clamp(-1.0, 1.0));
+            let g = if self.limit > 1.0 {
+                1.0 / self.limit
+            } else {
+                1.0
+            };
+            let (ol, or) = (
+                soft_limit(ol * g).clamp(-1.0, 1.0),
+                soft_limit(or * g).clamp(-1.0, 1.0),
+            );
             out[0][i] = ol;
             out[1][i] = or;
             peak = peak.max(ol.abs()).max(or.abs());
@@ -679,7 +909,11 @@ impl Processor for Larsen {
         }
 
         // A loop this wild must never keep a NaN.
-        if !out[0][..n].iter().chain(&out[1][..n]).all(|s| s.is_finite()) {
+        if !out[0][..n]
+            .iter()
+            .chain(&out[1][..n])
+            .all(|s| s.is_finite())
+        {
             self.recover();
             silence(outputs, n);
             peak = 0.0;

@@ -53,13 +53,31 @@ pub const FREQ_RANGE: (f32, f32) = (16.0, 21_000.0);
 macro_rules! band_params {
     ($n:literal, $freq:expr, $q:expr) => {
         [
-            ParamSpec::log(concat!("B", $n, " FREQ"), FREQ_RANGE.0, FREQ_RANGE.1, $freq, Unit::Hz),
+            ParamSpec::log(
+                concat!("B", $n, " FREQ"),
+                FREQ_RANGE.0,
+                FREQ_RANGE.1,
+                $freq,
+                Unit::Hz,
+            ),
             ParamSpec::log(concat!("B", $n, " Q"), 0.4, 60.0, $q, Unit::Q),
             ParamSpec::lin(concat!("B", $n, " GAIN"), -18.0, 18.0, 0.0, Unit::Db).bipolar(),
             ParamSpec::lin(concat!("B", $n, " RANGE"), -18.0, 18.0, 0.0, Unit::Db).bipolar(),
             ParamSpec::lin(concat!("B", $n, " THRESHOLD"), -60.0, 0.0, -20.0, Unit::Db),
-            ParamSpec::log(concat!("B", $n, " ATTACK"), 0.0005, 0.5, 0.015, Unit::Seconds),
-            ParamSpec::log(concat!("B", $n, " RELEASE"), 0.005, 5.0, 0.16, Unit::Seconds),
+            ParamSpec::log(
+                concat!("B", $n, " ATTACK"),
+                0.0005,
+                0.5,
+                0.015,
+                Unit::Seconds,
+            ),
+            ParamSpec::log(
+                concat!("B", $n, " RELEASE"),
+                0.005,
+                5.0,
+                0.16,
+                Unit::Seconds,
+            ),
         ]
     };
 }
@@ -106,9 +124,20 @@ pub const LP: usize = BANDS + 1;
 /// Analyzer settings.
 pub const RTA_POINTS: [&str; 4] = ["PRE", "POST", "SC", "OFF"];
 pub const RTA_SOURCES: [&str; 4] = ["L", "R", "L+R", "SIDES"];
-pub const BANDINGS: [(&str, f32); 5] = [("1/24", 24.0), ("1/12", 12.0), ("1/6", 6.0), ("1/3", 3.0), ("1 OCT", 1.0)];
+pub const BANDINGS: [(&str, f32); 5] = [
+    ("1/24", 24.0),
+    ("1/12", 12.0),
+    ("1/6", 6.0),
+    ("1/3", 3.0),
+    ("1 OCT", 1.0),
+];
 /// Averaging: (label, seconds).
-pub const AVERAGING: [(&str, f32); 4] = [("FAST", 0.05), ("MEDIUM", 0.2), ("SLOW", 0.6), ("SLOWEST", 2.0)];
+pub const AVERAGING: [(&str, f32); 4] = [
+    ("FAST", 0.05),
+    ("MEDIUM", 0.2),
+    ("SLOW", 0.6),
+    ("SLOWEST", 2.0),
+];
 
 /// What `ModuleParams::data` holds besides the knobs.
 pub mod data {
@@ -246,7 +275,8 @@ pub(crate) fn amp(db: f32) -> f32 {
 /// Frequency as the bilinear transform warps it, relative to `f0`.
 fn warped(f: f32, f0: f32, sr: f32) -> f32 {
     let nyq = sr * 0.4999;
-    fastmath::tan_turns(f.min(nyq) / (2.0 * sr)) / fastmath::tan_turns(f0.clamp(1.0, nyq) / (2.0 * sr))
+    fastmath::tan_turns(f.min(nyq) / (2.0 * sr))
+        / fastmath::tan_turns(f0.clamp(1.0, nyq) / (2.0 * sr))
 }
 
 /// A band's gain in dB at `f`, set to `db` (its gain plus its dynamics).
@@ -255,7 +285,8 @@ pub fn band_db(kind: usize, f0: f32, q: f32, db: f32, f: f32, sr: f32) -> f32 {
     let a = amp(db);
     let q = shelf_q(kind, q);
     let w2 = w * w;
-    let mag2 = |nr: f32, ni: f32, dr: f32, di: f32| (nr * nr + ni * ni) / (dr * dr + di * di).max(1e-20);
+    let mag2 =
+        |nr: f32, ni: f32, dr: f32, di: f32| (nr * nr + ni * ni) / (dr * dr + di * di).max(1e-20);
     let m2 = match kind {
         LOW_SHELF => {
             let sa = a.sqrt() / q * w;
@@ -309,7 +340,14 @@ impl Coeffs {
     pub(crate) fn svf(g: f32, k: f32, m: (f32, f32, f32)) -> Self {
         let a1 = 1.0 / (1.0 + g * (g + k));
         let a2 = g * a1;
-        Self { a1, a2, a3: g * a2, m0: m.0, m1: m.1, m2: m.2 }
+        Self {
+            a1,
+            a2,
+            a3: g * a2,
+            m0: m.0,
+            m1: m.1,
+            m2: m.2,
+        }
     }
 
     /// A band of type `kind`: `g` is tan(π·f/sr), `a` the amplitude.
@@ -363,7 +401,11 @@ fn on_mode(mode: usize, x: (f32, f32), mut f: impl FnMut(usize, f32) -> f32) -> 
     match mode {
         MID | SIDE => {
             let (m, s) = to_ms(x.0, x.1);
-            let (m, s) = if mode == MID { (f(0, m), s) } else { (m, f(0, s)) };
+            let (m, s) = if mode == MID {
+                (f(0, m), s)
+            } else {
+                (m, f(0, s))
+            };
             (m + s, m - s)
         }
         _ => (f(0, x.0), f(1, x.1)),
@@ -386,7 +428,12 @@ struct Pass {
 }
 
 /// Q of the SVF stages for 12, 18 and 24 dB/octave.
-const STAGES: [&[f32]; 4] = [&[], &[std::f32::consts::FRAC_1_SQRT_2], &[1.0], &[0.541_196_1, 1.306_563]];
+const STAGES: [&[f32]; 4] = [
+    &[],
+    &[std::f32::consts::FRAC_1_SQRT_2],
+    &[1.0],
+    &[0.541_196_1, 1.306_563],
+];
 
 impl Pass {
     fn new(high: bool, freq: f32) -> Self {
@@ -637,7 +684,9 @@ impl Processor for Equalizer {
 
             for (b, (band, s)) in self.bands.iter_mut().zip(&sets).enumerate() {
                 let soloed = solo == Some(b);
-                let working = (s.on && (s.gain != 0.0 || s.range != 0.0)) || band.gain.abs() > 1e-3 || band.dynamic.abs() > 1e-3;
+                let working = (s.on && (s.gain != 0.0 || s.range != 0.0))
+                    || band.gain.abs() > 1e-3
+                    || band.dynamic.abs() > 1e-3;
                 if !working && !soloed {
                     if band.active {
                         // Rests: start clean when it comes back.
@@ -686,7 +735,11 @@ impl Processor for Equalizer {
                     heard = Some((dl, dr));
                 }
                 let a = dl.abs().max(dr.abs());
-                let k = if a > band.follower { s.attack } else { s.release };
+                let k = if a > band.follower {
+                    s.attack
+                } else {
+                    s.release
+                };
                 band.follower += (a - band.follower) * k;
 
                 if update {
@@ -724,7 +777,10 @@ impl Processor for Equalizer {
             approach(&mut self.mix, mix_t, ctx.smooth);
             approach(&mut self.out, out_t, ctx.smooth);
             let gain = amp(self.out * 2.0);
-            let (wl, wr) = heard.unwrap_or((dry_l + (x.0 - dry_l) * self.mix, dry_r + (x.1 - dry_r) * self.mix));
+            let (wl, wr) = heard.unwrap_or((
+                dry_l + (x.0 - dry_l) * self.mix,
+                dry_r + (x.1 - dry_r) * self.mix,
+            ));
             let yl = soft_limit(wl * gain);
             let yr = soft_limit(wr * gain);
             outputs[0][0][i] = yl;
@@ -789,6 +845,9 @@ mod tests {
         assert!((dynamic_gain(4.0, -6.0) + 4.0).abs() < 1e-6);
         assert_eq!(dynamic_gain(20.0, -6.0), -6.0);
         assert_eq!(dynamic_gain(20.0, 3.0), 3.0);
-        assert!(dynamic_gain(0.0, -6.0) < 0.0 && dynamic_gain(0.0, -6.0) > -1.0, "soft knee");
+        assert!(
+            dynamic_gain(0.0, -6.0) < 0.0 && dynamic_gain(0.0, -6.0) > -1.0,
+            "soft knee"
+        );
     }
 }

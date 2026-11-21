@@ -178,8 +178,16 @@ pub const FEEDBACK_DIVS: DivRange = (4, 15);
 
 /// SCAN's speeds with SYNC, times the buffer's own (so the scan stays
 /// locked to the transport).
-pub const SCAN_RATIOS: [(&str, f32); 8] =
-    [("−2×", -2.0), ("−1×", -1.0), ("−½×", -0.5), ("−¼×", -0.25), ("¼×", 0.25), ("½×", 0.5), ("1×", 1.0), ("2×", 2.0)];
+pub const SCAN_RATIOS: [(&str, f32); 8] = [
+    ("−2×", -2.0),
+    ("−1×", -1.0),
+    ("−½×", -0.5),
+    ("−¼×", -0.25),
+    ("¼×", 0.25),
+    ("½×", 0.5),
+    ("1×", 1.0),
+    ("2×", 2.0),
+];
 pub const SCAN_RANGE: DivRange = (0, 7);
 
 /// Free (unsynced) ranges of the settings that can also be synced.
@@ -207,11 +215,25 @@ pub fn log_range(v: f32, (lo, hi): (f32, f32)) -> f32 {
 }
 
 /// Buffer lengths: (label, beats).
-pub const BUFFERS: [(&str, f64); 5] = [("1/4", 1.0), ("1/2", 2.0), ("1 bar", 4.0), ("2 bars", 8.0), ("4 bars", 16.0)];
+pub const BUFFERS: [(&str, f64); 5] = [
+    ("1/4", 1.0),
+    ("1/2", 2.0),
+    ("1 bar", 4.0),
+    ("2 bars", 8.0),
+    ("4 bars", 16.0),
+];
 
 /// Timeline multipliers: (label, factor).
-pub const MULTIPLIERS: [(&str, f64); 8] =
-    [("×1/4", 0.25), ("×1/2", 0.5), ("×1", 1.0), ("×2", 2.0), ("×3", 3.0), ("×4", 4.0), ("×8", 8.0), ("×16", 16.0)];
+pub const MULTIPLIERS: [(&str, f64); 8] = [
+    ("×1/4", 0.25),
+    ("×1/2", 0.5),
+    ("×1", 1.0),
+    ("×2", 2.0),
+    ("×3", 3.0),
+    ("×4", 4.0),
+    ("×8", 8.0),
+    ("×16", 16.0),
+];
 
 const PARAMS: [ParamSpec; PARAM_COUNT] = [
     ParamSpec::log("IN", M24, P12, 1.0, Unit::Decibel),
@@ -221,9 +243,21 @@ const PARAMS: [ParamSpec; PARAM_COUNT] = [
     ParamSpec::log("GRAINS HI", 20.0, 20_000.0, 20_000.0, Unit::Hz),
     ParamSpec::lin("BUFFER", 0.0, 4.0, 2.0, Unit::Integer),
     // Grain layer 1: a rhythmic granular delay a quarter note behind.
-    ParamSpec::lin("G1 PLAYHEAD", 0.0, 1.0, div_norm(10, OFFSET_DIVS), Unit::Percent),
+    ParamSpec::lin(
+        "G1 PLAYHEAD",
+        0.0,
+        1.0,
+        div_norm(10, OFFSET_DIVS),
+        Unit::Percent,
+    ),
     ParamSpec::lin("G1 RANGE", 0.0, 1.0, 0.1, Unit::Percent),
-    ParamSpec::lin("G1 DENSITY", 0.0, 1.0, div_norm(4, DENSITY_DIVS), Unit::Percent),
+    ParamSpec::lin(
+        "G1 DENSITY",
+        0.0,
+        1.0,
+        div_norm(4, DENSITY_DIVS),
+        Unit::Percent,
+    ),
     ParamSpec::lin("G1 SIZE", 0.0, 1.0, div_norm(7, SIZE_DIVS), Unit::Percent),
     ParamSpec::lin("G1 CHAOS", 0.0, 1.0, 0.2, Unit::Percent),
     ParamSpec::lin("G1 DIRECTION", -1.0, 1.0, 1.0, Unit::Percent).bipolar(),
@@ -236,7 +270,13 @@ const PARAMS: [ParamSpec; PARAM_COUNT] = [
     // Grain layer 2: sparkles an octave up, scattered across the buffer.
     ParamSpec::lin("G2 PLAYHEAD", 0.0, 1.0, 0.25, Unit::Percent),
     ParamSpec::lin("G2 RANGE", 0.0, 1.0, 0.2, Unit::Percent),
-    ParamSpec::lin("G2 DENSITY", 0.0, 1.0, div_norm(7, DENSITY_DIVS), Unit::Percent),
+    ParamSpec::lin(
+        "G2 DENSITY",
+        0.0,
+        1.0,
+        div_norm(7, DENSITY_DIVS),
+        Unit::Percent,
+    ),
     ParamSpec::lin("G2 SIZE", 0.0, 1.0, div_norm(4, SIZE_DIVS), Unit::Percent),
     ParamSpec::lin("G2 CHAOS", 0.0, 1.0, 0.4, Unit::Percent),
     ParamSpec::lin("G2 DIRECTION", -1.0, 1.0, 0.0, Unit::Percent).bipolar(),
@@ -257,7 +297,13 @@ const PARAMS: [ParamSpec; PARAM_COUNT] = [
     ParamSpec::lin("REPEAT TRIGGER", 10.0, 17.0, 15.0, Unit::Integer),
     ParamSpec::lin("REPEAT OFFSET", 0.0, 1.0, 0.25, Unit::Percent),
     ParamSpec::lin("REPEAT DUCK", 0.0, 1.0, 0.8, Unit::Percent),
-    ParamSpec::lin("REPEAT RATE", 0.0, 1.0, div_norm(4, REPEAT_DIVS), Unit::Percent),
+    ParamSpec::lin(
+        "REPEAT RATE",
+        0.0,
+        1.0,
+        div_norm(4, REPEAT_DIVS),
+        Unit::Percent,
+    ),
     ParamSpec::log("REPEAT VOLUME", M60, P6, 1.0, Unit::Decibel),
     ParamSpec::log("SPACE LENGTH", 0.3, 20.0, 2.5, Unit::Seconds),
     ParamSpec::lin("SPACE MIX", 0.0, 1.0, 0.2, Unit::Percent),
@@ -280,9 +326,27 @@ const PARAMS: [ParamSpec; PARAM_COUNT] = [
     ParamSpec::lin("TIME", 0.0, 1.0, div_norm(15, TIME_DIVS), Unit::Percent),
     ParamSpec::lin("MULTIPLIER", 0.0, 7.0, 5.0, Unit::Integer),
     ParamSpec::lin("PATH OFFSET", 0.0, 1.0, 0.0, Unit::Percent),
-    ParamSpec::lin("SWARM RATE", SWARM_DIVS.0 as f32, SWARM_DIVS.1 as f32, 2.0, Unit::Integer),
-    ParamSpec::lin("GLIDE TIME", GLIDE_DIVS.0 as f32, GLIDE_DIVS.1 as f32, 10.0, Unit::Integer),
-    ParamSpec::lin("FEEDBACK TIME", FEEDBACK_DIVS.0 as f32, FEEDBACK_DIVS.1 as f32, 10.0, Unit::Integer),
+    ParamSpec::lin(
+        "SWARM RATE",
+        SWARM_DIVS.0 as f32,
+        SWARM_DIVS.1 as f32,
+        2.0,
+        Unit::Integer,
+    ),
+    ParamSpec::lin(
+        "GLIDE TIME",
+        GLIDE_DIVS.0 as f32,
+        GLIDE_DIVS.1 as f32,
+        10.0,
+        Unit::Integer,
+    ),
+    ParamSpec::lin(
+        "FEEDBACK TIME",
+        FEEDBACK_DIVS.0 as f32,
+        FEEDBACK_DIVS.1 as f32,
+        10.0,
+        Unit::Integer,
+    ),
 ];
 
 /// HOLD at (or near) its maximum: the sliders never return.
@@ -307,11 +371,23 @@ pub const OFFSET_MS: usize = 3;
 pub const OFFSET_PCT: usize = 4;
 /// (Button, long name).
 pub const PLAYHEAD_MODES: [(&str, &str); 5] = [
-    ("MAN", "Manual: grains come from the PLAYHEAD position in the buffer"),
-    ("SCAN", "Scan: the playhead moves through the buffer, forwards or backwards"),
-    ("SYNC", "Offset (sync): a note value behind the recording, a granular delay"),
+    (
+        "MAN",
+        "Manual: grains come from the PLAYHEAD position in the buffer",
+    ),
+    (
+        "SCAN",
+        "Scan: the playhead moves through the buffer, forwards or backwards",
+    ),
+    (
+        "SYNC",
+        "Offset (sync): a note value behind the recording, a granular delay",
+    ),
     ("MS", "Offset (ms): milliseconds behind the recording"),
-    ("%", "Offset (%): a fraction of the buffer behind the recording"),
+    (
+        "%",
+        "Offset (%): a fraction of the buffer behind the recording",
+    ),
 ];
 
 /// Pitch modes: the intervals PITCH and SPREAD snap to.
@@ -452,7 +528,9 @@ const DATA: [f32; data::LEN] = {
         d[data::ROUTING + i] = i as f32;
         i += 1;
     }
-    const PATTERN: [f32; 16] = [1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1.0];
+    const PATTERN: [f32; 16] = [
+        1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1.0,
+    ];
     let mut i = 0;
     while i < GATE_MAX {
         d[data::GATE_PATTERN + i] = PATTERN[i % 16];
@@ -607,7 +685,11 @@ pub fn routing(p: &ModuleParams) -> [usize; 4] {
     for &s in &order {
         seen[s] = true;
     }
-    if seen.iter().all(|&s| s) { order } else { [GRAINS, GATE, REPEAT, SPACE] }
+    if seen.iter().all(|&s| s) {
+        order
+    } else {
+        [GRAINS, GATE, REPEAT, SPACE]
+    }
 }
 
 /// A parameter's hexagon mapping: (slot, min, max).
@@ -617,7 +699,9 @@ pub fn mapping(p: &ModuleParams, i: usize) -> Option<(usize, f32, f32)> {
     }
     let at = data::MAP + i * 3;
     let slot = p.data[at].get().round();
-    (1.0..=AUDIO_SLOT as f32).contains(&slot).then(|| (slot as usize, p.data[at + 1].get(), p.data[at + 2].get()))
+    (1.0..=AUDIO_SLOT as f32)
+        .contains(&slot)
+        .then(|| (slot as usize, p.data[at + 1].get(), p.data[at + 2].get()))
 }
 
 pub fn set_mapping(p: &ModuleParams, i: usize, m: Option<(usize, f32, f32)>) {
@@ -658,14 +742,29 @@ fn level(g: f32) -> f32 {
 
 /// The DRY / WET / VOLUME readout.
 fn format_level(g: f32) -> String {
-    if level(g) == 0.0 { "-inf dB".to_owned() } else { format_db(gain_to_db(g)) }
+    if level(g) == 0.0 {
+        "-inf dB".to_owned()
+    } else {
+        format_db(gain_to_db(g))
+    }
 }
 
 /// Short knob label.
 pub fn label(i: usize) -> &'static str {
     if (LAYER0..GATE_STEPS).contains(&i) {
         return [
-            "PLAYHEAD", "RANGE", "DENSITY", "SIZE", "CHAOS", "DIRECTION", "PITCH", "SPREAD", "WIDTH", "SHAPE", "DRY", "WET",
+            "PLAYHEAD",
+            "RANGE",
+            "DENSITY",
+            "SIZE",
+            "CHAOS",
+            "DIRECTION",
+            "PITCH",
+            "SPREAD",
+            "WIDTH",
+            "SHAPE",
+            "DRY",
+            "WET",
         ][(i - LAYER0) % layer::COUNT];
     }
     match i {
@@ -754,7 +853,11 @@ pub fn format(p: &ModuleParams, i: usize, v: f32) -> String {
             layer::DENSITY if on(p, data::DENSITY_SYNC + k) => div(v, DENSITY_DIVS),
             layer::DENSITY => {
                 let hz = log_range(v, DENSITY_HZ);
-                if hz < 10.0 { format!("{hz:.1}/s") } else { format!("{hz:.0}/s") }
+                if hz < 10.0 {
+                    format!("{hz:.1}/s")
+                } else {
+                    format!("{hz:.0}/s")
+                }
             }
             layer::SIZE if on(p, data::SIZE_SYNC + k) => div(v, SIZE_DIVS),
             layer::SIZE => format_seconds(log_range(v, SIZE_S)),
@@ -769,20 +872,29 @@ pub fn format(p: &ModuleParams, i: usize, v: f32) -> String {
     match i {
         IN | OUT | AR_GAIN | AR_THRESHOLD => format_db(gain_to_db(v)),
         LO | HI | REP_LO | REP_HI => format_hz(v),
-        BUFFER => BUFFERS[(v.round().max(0.0) as usize).min(BUFFERS.len() - 1)].0.to_owned(),
+        BUFFER => BUFFERS[(v.round().max(0.0) as usize).min(BUFFERS.len() - 1)]
+            .0
+            .to_owned(),
         GATE_STEPS | REP_AMOUNT => format!("{:.0}", v.round()),
-        GATE_RATE | REP_TRIGGER => DIVS[(v.round().max(0.0) as usize).min(DIVS.len() - 1)].0.to_owned(),
+        GATE_RATE | REP_TRIGGER => DIVS[(v.round().max(0.0) as usize).min(DIVS.len() - 1)]
+            .0
+            .to_owned(),
         REP_RATE if on(p, data::REPEAT_SYNC) => div(v, REPEAT_DIVS),
         REP_RATE => format_seconds(log_range(v, REPEAT_S)),
         REP_VOLUME => format_level(v),
         SPACE_LENGTH if on(p, data::SPACE_SYNC) => div(PARAMS[SPACE_LENGTH].to_norm(v), SPACE_DIVS),
         SPACE_LENGTH | AR_ATTACK | AR_RELEASE | CUR_RELEASE => format_seconds(v),
-        SWARM_RATE | GLIDE_TIME | FEEDBACK_TIME => DIVS[(v.round().max(0.0) as usize).min(DIVS.len() - 1)].0.to_owned(),
+        SWARM_RATE | GLIDE_TIME | FEEDBACK_TIME => DIVS
+            [(v.round().max(0.0) as usize).min(DIVS.len() - 1)]
+        .0
+        .to_owned(),
         CUR_HOLD if v >= HOLD_FOREVER => "∞".to_owned(),
         CUR_HOLD => format_seconds(v),
         TL_TIME if on(p, data::TIME_SYNC) => div(v, TIME_DIVS),
         TL_TIME => format_seconds(log_range(v, TIME_S)),
-        TL_MULT => MULTIPLIERS[(v.round().max(0.0) as usize).min(MULTIPLIERS.len() - 1)].0.to_owned(),
+        TL_MULT => MULTIPLIERS[(v.round().max(0.0) as usize).min(MULTIPLIERS.len() - 1)]
+            .0
+            .to_owned(),
         GLIDE if v.abs() < 0.005 => "none".to_owned(),
         GLIDE => format!("{:+.0} st", v * GLIDE_OCTAVES * 12.0),
         SWARM => format!("×{}", swarm_most(v)),
@@ -807,9 +919,15 @@ fn note(index: f32) -> f64 {
 
 /// The nearest note's name ("A2").
 fn note_name(hz: f32) -> String {
-    const NAMES: [&str; 12] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+    const NAMES: [&str; 12] = [
+        "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
+    ];
     let n = (69.0 + 12.0 * (hz / 440.0).log2()).round() as i32;
-    format!("{}{}", NAMES[n.rem_euclid(12) as usize], n.div_euclid(12) - 1)
+    format!(
+        "{}{}",
+        NAMES[n.rem_euclid(12) as usize],
+        n.div_euclid(12) - 1
+    )
 }
 
 /// A parameter's spec.
@@ -868,7 +986,11 @@ impl Band {
         let svf = |fc: f32| {
             let g = fastmath::tan_turns(fc.clamp(10.0, sr * 0.45) / (2.0 * sr));
             let a1 = 1.0 / (1.0 + g * (g + SQRT_2));
-            Svf { a1, a2: g * a1, a3: g * g * a1 }
+            Svf {
+                a1,
+                a2: g * a1,
+                a3: g * g * a1,
+            }
         };
         self.hp = (lo > 21.0).then(|| svf(lo));
         self.lp = (hi < 19_500.0).then(|| svf(hi));
@@ -973,7 +1095,11 @@ impl Frakture {
                 p.viz[viz::EFFECTIVE + i].set(-1.0);
                 continue;
             };
-            let live = if slot == AUDIO_SLOT { self.motion.env } else { self.motion.values[slot - 1] };
+            let live = if slot == AUDIO_SLOT {
+                self.motion.env
+            } else {
+                self.motion.values[slot - 1]
+            };
             let norm = (lo + (hi - lo) * live).clamp(0.0, 1.0);
             self.vals[i] = spec.denorm(norm);
             p.viz[viz::EFFECTIVE + i].set(norm);
@@ -998,7 +1124,9 @@ impl Frakture {
             };
             let head = at(layer::PLAYHEAD);
             let playhead = match choice(p, data::PLAYHEAD_MODE + k, 5) {
-                SCAN if on(p, data::SCAN_SYNC + k) => Playhead::ScanSync(SCAN_RATIOS[pick(head, SCAN_RANGE)].1),
+                SCAN if on(p, data::SCAN_SYNC + k) => {
+                    Playhead::ScanSync(SCAN_RATIOS[pick(head, SCAN_RANGE)].1)
+                }
                 SCAN => Playhead::Scan((head - 0.5) * 2.0 * SCAN_SPEED),
                 OFFSET_SYNC => Playhead::Behind(DIVS[pick(head, OFFSET_DIVS)].1 * spb),
                 OFFSET_MS => Playhead::Behind(log_range(head, OFFSET_S) as f64 * sr),
@@ -1041,7 +1169,8 @@ impl Frakture {
                 layers: [on(p, data::MUTATE_LAYERS), on(p, data::MUTATE_LAYERS + 1)],
                 swarm_step: on(p, data::SWARM_SYNC).then(|| (note(v[SWARM_RATE]) * spb) as f32),
                 glide_len: on(p, data::GLIDE_SYNC).then(|| (note(v[GLIDE_TIME]) * spb) as f32),
-                feedback_delay: on(p, data::FEEDBACK_SYNC).then(|| (note(v[FEEDBACK_TIME]) * spb) as usize),
+                feedback_delay: on(p, data::FEEDBACK_SYNC)
+                    .then(|| (note(v[FEEDBACK_TIME]) * spb) as usize),
             },
         }
     }
@@ -1069,7 +1198,9 @@ impl Frakture {
             lo: v[REP_LO],
             hi: v[REP_HI],
             amount: (v[REP_AMOUNT].round() as usize).clamp(1, 16),
-            trigger_beats: DIVS[(v[REP_TRIGGER].round().max(0.0) as usize).clamp(TRIGGER_DIVS.0, TRIGGER_DIVS.1)].1,
+            trigger_beats: DIVS
+                [(v[REP_TRIGGER].round().max(0.0) as usize).clamp(TRIGGER_DIVS.0, TRIGGER_DIVS.1)]
+            .1,
             offset: v[REP_OFFSET],
             duck: v[REP_DUCK],
             slice: slice as usize,
@@ -1104,10 +1235,15 @@ impl Processor for Frakture {
         };
 
         let input = inputs.get(0);
-        let in_peak = input.map_or(0.0, |b| b.iter().flat_map(|ch| &ch[..n]).fold(0.0f32, |m, s| m.max(s.abs())));
+        let in_peak = input.map_or(0.0, |b| {
+            b.iter()
+                .flat_map(|ch| &ch[..n])
+                .fold(0.0f32, |m, s| m.max(s.abs()))
+        });
 
         // The hexagon moves whether or not there is sound to process.
-        self.motion.update(&p, &clock, in_peak * self.in_gain, n as f32 / sr);
+        self.motion
+            .update(&p, &clock, in_peak * self.in_gain, n as f32 / sr);
         self.resolve();
         self.publish_in = self.publish_in.saturating_sub(1);
         let publish = self.publish_in == 0;
@@ -1163,7 +1299,11 @@ impl Processor for Frakture {
         let repeat_settings = self.repeat_settings(&clock);
         // SPACE's length, or with SYNC a note value at the tempo.
         let length = if on(&p, data::SPACE_SYNC) {
-            let beats = DIVS[pick(PARAMS[SPACE_LENGTH].to_norm(self.vals[SPACE_LENGTH]), SPACE_DIVS)].1;
+            let beats = DIVS[pick(
+                PARAMS[SPACE_LENGTH].to_norm(self.vals[SPACE_LENGTH]),
+                SPACE_DIVS,
+            )]
+            .1;
             (beats * clock.seconds_per_beat).clamp(0.3, 40.0) as f32
         } else {
             self.vals[SPACE_LENGTH]
@@ -1257,6 +1397,10 @@ mod tests {
         }
         assert_eq!(routing(&p), [GRAINS, GATE, REPEAT, SPACE]);
         p.data[data::ROUTING].set(3.0);
-        assert_eq!(routing(&p), [GRAINS, GATE, REPEAT, SPACE], "a broken order falls back");
+        assert_eq!(
+            routing(&p),
+            [GRAINS, GATE, REPEAT, SPACE],
+            "a broken order falls back"
+        );
     }
 }

@@ -151,7 +151,10 @@ pub struct Quiet {
 impl Quiet {
     /// Rests after `memory` samples of silence (and at least ~40 ms).
     pub fn new(memory: usize) -> Self {
-        Self { quiet: 0, memory: memory.max(32 * BLOCK) }
+        Self {
+            quiet: 0,
+            memory: memory.max(32 * BLOCK),
+        }
     }
 
     /// No input, or a silent one.
@@ -162,7 +165,11 @@ impl Quiet {
     /// After a block of `n` samples: was its input silent, and how loud was
     /// the effect's own signal.
     pub fn update(&mut self, input_silent: bool, peak: f32, n: usize) {
-        self.quiet = if input_silent && peak < 1e-5 { self.quiet.saturating_add(n) } else { 0 };
+        self.quiet = if input_silent && peak < 1e-5 {
+            self.quiet.saturating_add(n)
+        } else {
+            0
+        };
     }
 
     pub fn resting(&self) -> bool {
@@ -231,7 +238,10 @@ pub fn silence(outputs: &mut [Buf], n: usize) {
 /// The loudest sample of the first `n` frames of a block.
 #[inline]
 pub fn peak(buf: &Buf, n: usize) -> f32 {
-    buf[0][..n].iter().chain(&buf[1][..n]).fold(0.0f32, |m, s| m.max(s.abs()))
+    buf[0][..n]
+        .iter()
+        .chain(&buf[1][..n])
+        .fold(0.0f32, |m, s| m.max(s.abs()))
 }
 
 /// One-pole smoothing towards `target`.

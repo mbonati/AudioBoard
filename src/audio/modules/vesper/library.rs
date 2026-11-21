@@ -16,8 +16,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use super::sounds::{Recipe, recipes};
 use super::SAMPLED;
+use super::sounds::{Recipe, recipes};
 use crate::audio::midi::note_hz;
 use crate::audio::modules::{ModuleParams, Rng};
 
@@ -82,8 +82,16 @@ pub fn render(layer: usize, sound: usize, sr: f32) -> Box<Bank> {
     let (secs, notes) = layout(layer, recipe);
     let n = ((secs * sr) as usize).next_power_of_two();
     let seed = 0x5EED_0000 ^ ((layer as u32) << 8) ^ sound as u32;
-    let tables = notes.iter().enumerate().map(|(k, &note)| render_table(recipe, note, n, sr, seed.wrapping_add(k as u32 * 7919)));
-    Box::new(Bank { sound, tonal: recipe.tonal, life: recipe.life, tables: tables.collect() })
+    let tables = notes
+        .iter()
+        .enumerate()
+        .map(|(k, &note)| render_table(recipe, note, n, sr, seed.wrapping_add(k as u32 * 7919)));
+    Box::new(Bank {
+        sound,
+        tonal: recipe.tonal,
+        life: recipe.life,
+        tables: tables.collect(),
+    })
 }
 
 /// One loop of `n` samples (a power of two) of a recipe, on a note.
@@ -110,7 +118,11 @@ pub fn render_table(recipe: &Recipe, note: f32, n: usize, sr: f32, seed: u32) ->
             // the proportion of a random angle, perhaps on one only. Its
             // phases are tied so that it stands in the middle, on both.
             let neighbours = power[b - 1] + power.get(b + 1).copied().unwrap_or(0.0);
-            let second = if p > LINE * neighbours { std::f32::consts::FRAC_PI_2 - first } else { TAU * rng.unit() };
+            let second = if p > LINE * neighbours {
+                std::f32::consts::FRAC_PI_2 - first
+            } else {
+                TAU * rng.unit()
+            };
             let (s, c) = first.sin_cos();
             re[b] = a * c;
             im[b] = a * s;
@@ -149,7 +161,12 @@ pub fn render_table(recipe: &Recipe, note: f32, n: usize, sr: f32, seed: u32) ->
     }
     let [left, right] = ch;
     let base = 69.0 + 12.0 * (f0 / 440.0).log2();
-    Table { left: left.into_boxed_slice(), right: right.into_boxed_slice(), mask: n - 1, base }
+    Table {
+        left: left.into_boxed_slice(),
+        right: right.into_boxed_slice(),
+        mask: n - 1,
+        base,
+    }
 }
 
 /// The shape over everything, at `f` Hz.
@@ -186,7 +203,16 @@ fn spectrum(r: &Recipe, f0: f32, df: f32, limit: f32, n: usize, rng: &mut Rng) -
         }
         if r.sub > 0.0 {
             // Only its lowest partials: a sub isn't a second timbre.
-            family(r, f0 * 0.5, r.sub, 0.0, df, (f0 * 2.0).min(limit), &mut tone, rng);
+            family(
+                r,
+                f0 * 0.5,
+                r.sub,
+                0.0,
+                df,
+                (f0 * 2.0).min(limit),
+                &mut tone,
+                rng,
+            );
         }
         add_scaled(&mut power, &tone, r.partials);
     }
@@ -218,7 +244,16 @@ fn add_scaled(power: &mut [f32], src: &[f32], level: f32) {
 /// One family of partials on `f0`, added into `tone`. `shaped`: 1 follows the
 /// recipe's formants and corners, 0 stands apart from them.
 #[allow(clippy::too_many_arguments)]
-fn family(r: &Recipe, f0: f32, level: f32, shaped: f32, df: f32, limit: f32, tone: &mut [f32], rng: &mut Rng) {
+fn family(
+    r: &Recipe,
+    f0: f32,
+    level: f32,
+    shaped: f32,
+    df: f32,
+    limit: f32,
+    tone: &mut [f32],
+    rng: &mut Rng,
+) {
     let bins = tone.len() as f32;
     let mut k = 1.0f32;
     while k < 1024.0 {
@@ -317,7 +352,11 @@ fn scale_to(ch: &mut [Vec<f32>; 2], rms: f32) {
 /// Slow swells, a few sines on whole cycles of the loop: no seam.
 fn swell(x: &mut [f32], depth: f32, cycles: f32, rng: &mut Rng) {
     let n = x.len() as f32;
-    let rates = [cycles.max(1.0).round(), (cycles * 2.0).max(2.0).round() + 1.0, (cycles * 3.0).max(3.0).round() + 2.0];
+    let rates = [
+        cycles.max(1.0).round(),
+        (cycles * 2.0).max(2.0).round() + 1.0,
+        (cycles * 3.0).max(3.0).round() + 2.0,
+    ];
     let phases = [rng.unit(), rng.unit(), rng.unit()];
     for (i, s) in x.iter_mut().enumerate() {
         let t = i as f32 / n;
@@ -442,7 +481,11 @@ impl Library {
             retired: std::array::from_fn(|_| Mutex::new(None)),
         });
         let worker = shared.clone();
-        let thread = std::thread::Builder::new().name("vesper-sounds".into()).spawn(move || run(&worker, &params, sr)).ok().map(|h| h.thread().clone());
+        let thread = std::thread::Builder::new()
+            .name("vesper-sounds".into())
+            .spawn(move || run(&worker, &params, sr))
+            .ok()
+            .map(|h| h.thread().clone());
         Self { shared, thread }
     }
 
@@ -503,4 +546,3 @@ fn run(shared: &Shared, params: &ModuleParams, sr: f32) {
         std::thread::park_timeout(Duration::from_millis(25));
     }
 }
-

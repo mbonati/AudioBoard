@@ -51,7 +51,10 @@ pub struct MidiBuf {
 
 impl Default for MidiBuf {
     fn default() -> Self {
-        Self { events: [MidiMsg::default(); MIDI_CAP], len: 0 }
+        Self {
+            events: [MidiMsg::default(); MIDI_CAP],
+            len: 0,
+        }
     }
 }
 
@@ -62,7 +65,10 @@ impl MidiBuf {
 
     pub fn push(&mut self, frame: usize, data: [u8; 3]) {
         if self.len < MIDI_CAP {
-            self.events[self.len] = MidiMsg { frame: frame as u16, data };
+            self.events[self.len] = MidiMsg {
+                frame: frame as u16,
+                data,
+            };
             self.len += 1;
         }
     }

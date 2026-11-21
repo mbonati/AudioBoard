@@ -178,7 +178,13 @@ macro_rules! channel_params {
             spec(concat!("CH", $c, " TONE TIME"), knob::T_TIME),
             spec(concat!("CH", $c, " TONE DECAY"), knob::T_DECAY),
             spec(concat!("CH", $c, " TONE GATE"), knob::T_GATE),
-            ParamSpec::lin(concat!("CH", $c, " PITCH"), 11.0, 98.5, D[knob::PITCH], Unit::Note),
+            ParamSpec::lin(
+                concat!("CH", $c, " PITCH"),
+                11.0,
+                98.5,
+                D[knob::PITCH],
+                Unit::Note,
+            ),
             spec(concat!("CH", $c, " BEND"), knob::BEND),
             spec(concat!("CH", $c, " BEND TIME"), knob::BEND_TIME),
             spec(concat!("CH", $c, " CLICK TYPE"), knob::C_TYPE),
@@ -203,7 +209,12 @@ macro_rules! channel_params {
 }
 
 const PARAMS: [ParamSpec; PARAM_COUNT] = {
-    const C: [[ParamSpec; knob::COUNT]; CHANNELS] = [channel_params!("1", 0), channel_params!("2", 1), channel_params!("3", 2), channel_params!("4", 3)];
+    const C: [[ParamSpec; knob::COUNT]; CHANNELS] = [
+        channel_params!("1", 0),
+        channel_params!("2", 1),
+        channel_params!("3", 2),
+        channel_params!("4", 3),
+    ];
     let mut out = [ParamSpec::lin("", 0.0, 1.0, 0.0, Unit::Percent); PARAM_COUNT];
     let mut c = 0;
     while c < CHANNELS {
@@ -507,15 +518,20 @@ pub fn edited(p: &ModuleParams) -> bool {
     let k = program(p);
     (0..CHANNELS).any(|c| {
         let packed = pack(&sound(p, c));
-        packed.iter().enumerate().any(|(i, v)| p.data[slot_at(k, c) + i].get() != *v)
+        packed
+            .iter()
+            .enumerate()
+            .any(|(i, v)| p.data[slot_at(k, c) + i].get() != *v)
     })
 }
 
 /// What program `k` holds: its factory name, "Empty" (Sound Init on every
 /// channel) or "User".
 pub fn program_name(p: &ModuleParams, k: usize) -> &'static str {
-    let packed_now: [[f32; PACKED]; CHANNELS] = std::array::from_fn(|c| std::array::from_fn(|i| p.data[slot_at(k, c) + i].get()));
-    let same = |sounds: &[Sound; CHANNELS]| (0..CHANNELS).all(|c| pack(&sounds[c]) == packed_now[c]);
+    let packed_now: [[f32; PACKED]; CHANNELS] =
+        std::array::from_fn(|c| std::array::from_fn(|i| p.data[slot_at(k, c) + i].get()));
+    let same =
+        |sounds: &[Sound; CHANNELS]| (0..CHANNELS).all(|c| pack(&sounds[c]) == packed_now[c]);
     if k < FACTORY.len() && same(&FACTORY[k].channels) {
         FACTORY[k].name
     } else if same(&[INIT; CHANNELS]) {
@@ -532,7 +548,11 @@ pub fn init_channel(p: &ModuleParams, c: usize) {
 
 /// Lane `c`'s step `s` (0 off … 3 accent).
 pub fn step(p: &ModuleParams, c: usize, s: usize) -> usize {
-    (p.data[data::STEPS + c.min(CHANNELS - 1) * MAX_LEN + s.min(MAX_LEN - 1)].get().round().max(0.0) as usize).min(3)
+    (p.data[data::STEPS + c.min(CHANNELS - 1) * MAX_LEN + s.min(MAX_LEN - 1)]
+        .get()
+        .round()
+        .max(0.0) as usize)
+        .min(3)
 }
 
 pub fn set_step(p: &ModuleParams, c: usize, s: usize, v: usize) {
@@ -585,7 +605,14 @@ enum Gate {
 
 impl Hit {
     fn strike(frame: usize, channel: usize, velocity: f32, local: bool, gate: Gate) -> Self {
-        Hit { frame, channel, velocity, local, gate, release: false }
+        Hit {
+            frame,
+            channel,
+            velocity,
+            local,
+            gate,
+            release: false,
+        }
     }
 }
 
@@ -623,7 +650,13 @@ impl Fjord {
     pub fn new(params: Arc<ModuleParams>, sample_rate: f32) -> Self {
         params.viz[viz::STEP].set(-1.0);
         Self {
-            channels: std::array::from_fn(|c| Channel::new(sample_rate, 0x00F1_0D00 + c as u32 * 7919, &sound(&params, c))),
+            channels: std::array::from_fn(|c| {
+                Channel::new(
+                    sample_rate,
+                    0x00F1_0D00 + c as u32 * 7919,
+                    &sound(&params, c),
+                )
+            }),
             detectors: std::array::from_fn(|_| Detector::default()),
             auditioned: std::array::from_fn(|c| params.viz[viz::AUDITION + c].get()),
             program: program(&params),
@@ -694,7 +727,16 @@ impl Processor for Fjord {
                         for c in 0..CHANNELS {
                             if note(&p, c) == d1 {
                                 let velocity = trigger::curve(d2 as f32 / 127.0, curve(c));
-                                push(&mut hits, Hit::strike(e.frame as usize, c, velocity, false, Gate::Key(d1)));
+                                push(
+                                    &mut hits,
+                                    Hit::strike(
+                                        e.frame as usize,
+                                        c,
+                                        velocity,
+                                        false,
+                                        Gate::Key(d1),
+                                    ),
+                                );
                                 if on(&p, data::FOLLOW) {
                                     p.data[data::CHANNEL].set(c as f32);
                                 }
@@ -703,10 +745,18 @@ impl Processor for Fjord {
                     }
                     0x80 | 0x90 => {
                         for c in (0..CHANNELS).filter(|&c| note(&p, c) == d1) {
-                            push(&mut hits, Hit { release: true, ..Hit::strike(e.frame as usize, c, 0.0, false, Gate::Key(d1)) });
+                            push(
+                                &mut hits,
+                                Hit {
+                                    release: true,
+                                    ..Hit::strike(e.frame as usize, c, 0.0, false, Gate::Key(d1))
+                                },
+                            );
                         }
                     }
-                    0xC0 if matches!(int(&p, data::PROG_CHANGE, 0, 3), 2 | 3) && (d1 as usize) < PROGRAMS => {
+                    0xC0 if matches!(int(&p, data::PROG_CHANGE, 0, 3), 2 | 3)
+                        && (d1 as usize) < PROGRAMS =>
+                    {
                         load_program(&p, d1 as usize);
                         self.program = d1 as usize;
                     }
@@ -739,7 +789,10 @@ impl Processor for Fjord {
             for i in 0..n {
                 let x = buf[0][i].abs().max(buf[1][i].abs());
                 if let Some(h) = self.detectors[c].tick(x, &s) {
-                    push(&mut hits, Hit::strike(i, c, h.velocity, true, Gate::For(TRIG_IN_GATE)));
+                    push(
+                        &mut hits,
+                        Hit::strike(i, c, h.velocity, true, Gate::For(TRIG_IN_GATE)),
+                    );
                     strength[c] = h.strength;
                     if on(&p, data::FOLLOW) {
                         p.data[data::CHANNEL].set(c as f32);
@@ -757,7 +810,11 @@ impl Processor for Fjord {
         self.was_playing = ctx.playing;
         self.was_running = running;
         if running && ctx.playing {
-            let mut steps = [Step { frame: 0, beat: 0.0, index: 0 }; MAX_STEPS];
+            let mut steps = [Step {
+                frame: 0,
+                beat: 0.0,
+                index: 0,
+            }; MAX_STEPS];
             let per_beat = steps_per_beat(p.data[data::RATE].get());
             let found = self.clock.steps(ctx, n, per_beat, p.get(SWING), &mut steps);
             let len = length(&p);
@@ -769,7 +826,10 @@ impl Processor for Fjord {
                 for c in 0..CHANNELS {
                     let v = step(&p, c, s);
                     if v > 0 && !on(&p, data::MUTE + c) {
-                        push(&mut hits, Hit::strike(st.frame, c, STEP_VELOCITY[v], true, Gate::For(gate)));
+                        push(
+                            &mut hits,
+                            Hit::strike(st.frame, c, STEP_VELOCITY[v], true, Gate::For(gate)),
+                        );
                     }
                 }
             }
@@ -786,7 +846,8 @@ impl Processor for Fjord {
                 *off -= n as i64;
                 if *off < n as i64 {
                     if let Some(mc) = midi_ch {
-                        self.out.push((*off).max(0) as usize, [0x80 | mc, self.sent[c], 0]);
+                        self.out
+                            .push((*off).max(0) as usize, [0x80 | mc, self.sent[c], 0]);
                     }
                     *off = -1;
                 }
@@ -799,8 +860,19 @@ impl Processor for Fjord {
                     self.out.push(h.frame, [0x80 | mc, self.sent[c], 0]);
                 }
                 self.sent[c] = note(&p, c);
-                self.out.push(h.frame, [0x90 | mc, self.sent[c], ((h.velocity * 127.0).round() as u8).clamp(1, 127)]);
-                let length = if let Gate::For(g) = h.gate { g } else { NOTE_SECONDS };
+                self.out.push(
+                    h.frame,
+                    [
+                        0x90 | mc,
+                        self.sent[c],
+                        ((h.velocity * 127.0).round() as u8).clamp(1, 127),
+                    ],
+                );
+                let length = if let Gate::For(g) = h.gate {
+                    g
+                } else {
+                    NOTE_SECONDS
+                };
                 self.note_off[c] = h.frame as i64 + ((length * self.sr) as i64).max(1);
             }
             // Notes so short they end in this block.
@@ -817,7 +889,13 @@ impl Processor for Fjord {
         let sounds: [Sound; CHANNELS] = std::array::from_fn(|c| sound(&p, c));
         let solo = int(&p, data::SOLO, 0, 3) as usize;
         let edited = selected(&p);
-        let parts: [Parts; CHANNELS] = std::array::from_fn(|c| if solo > 0 && c == edited { std::array::from_fn(|i| i + 1 == solo) } else { ALL_PARTS });
+        let parts: [Parts; CHANNELS] = std::array::from_fn(|c| {
+            if solo > 0 && c == edited {
+                std::array::from_fn(|i| i + 1 == solo)
+            } else {
+                ALL_PARTS
+            }
+        });
         for (c, channel) in self.channels.iter_mut().enumerate() {
             channel.prepare(&sounds[c], parts[c]);
         }
@@ -858,7 +936,12 @@ impl Processor for Fjord {
                     holder => (None, Some(holder)),
                 };
                 self.held[h.channel] = held;
-                self.channels[h.channel].trigger(&sounds[h.channel], h.velocity, parts[h.channel], gate);
+                self.channels[h.channel].trigger(
+                    &sounds[h.channel],
+                    h.velocity,
+                    parts[h.channel],
+                    gate,
+                );
             }
             if idle {
                 for out in outputs.iter_mut() {

@@ -9,14 +9,18 @@
 //! just before it, so slices start without a click.
 
 use super::atoms::{self, ATOMS};
-use super::{FIELDS, MAX_LEN, MAX_SLICES, count, data, flag, get, get_int, note, set, set_step, slice};
+use super::{
+    FIELDS, MAX_LEN, MAX_SLICES, count, data, flag, get, get_int, note, set, set_step, slice,
+};
 use crate::audio::modules::{ModuleParams, Rng};
 use crate::audio::sample::Sample;
 
 /// `n` equal regions of the whole source.
 pub fn grid(n: usize) -> Vec<(f32, f32)> {
     let n = n.clamp(1, MAX_SLICES);
-    (0..n).map(|i| (i as f32 / n as f32, (i + 1) as f32 / n as f32)).collect()
+    (0..n)
+        .map(|i| (i as f32 / n as f32, (i + 1) as f32 / n as f32))
+        .collect()
 }
 
 /// Regions between the sample's onsets (see the module's documentation);
@@ -32,7 +36,10 @@ pub fn transients(sample: &Sample, sens: f32, max: usize) -> Vec<(f32, f32)> {
     let mono = |i: usize| (l[i] + r[i]) * 0.5;
     let db: Vec<f32> = (0..hops)
         .map(|k| {
-            let e: f32 = (k * hop..(k + 1) * hop).map(|i| mono(i) * mono(i)).sum::<f32>() / hop as f32;
+            let e: f32 = (k * hop..(k + 1) * hop)
+                .map(|i| mono(i) * mono(i))
+                .sum::<f32>()
+                / hop as f32;
             10.0 * (e + 1e-10).log10()
         })
         .collect();
@@ -76,7 +83,10 @@ pub fn transients(sample: &Sample, sens: f32, max: usize) -> Vec<(f32, f32)> {
         .map(|&(k, _)| {
             let at = k * hop;
             // Back to the zero crossing before it, within a hop.
-            (at.saturating_sub(hop)..=at).rev().find(|&i| i > 0 && (mono(i - 1) <= 0.0) != (mono(i) <= 0.0)).unwrap_or(at)
+            (at.saturating_sub(hop)..=at)
+                .rev()
+                .find(|&i| i > 0 && (mono(i - 1) <= 0.0) != (mono(i) <= 0.0))
+                .unwrap_or(at)
         })
         .collect();
     cuts.dedup();
@@ -84,11 +94,22 @@ pub fn transients(sample: &Sample, sens: f32, max: usize) -> Vec<(f32, f32)> {
         return vec![(0.0, 1.0)];
     }
     // What comes before the first onset is a slice too, if it is heard.
-    if cuts[0] > hop * 4 && cuts.len() < max && db[..cuts[0] / hop].iter().any(|&d| d > floor + 10.0) {
+    if cuts[0] > hop * 4
+        && cuts.len() < max
+        && db[..cuts[0] / hop].iter().any(|&d| d > floor + 10.0)
+    {
         cuts.insert(0, 0);
     }
     let total = n as f32;
-    cuts.iter().enumerate().map(|(i, &c)| (c as f32 / total, cuts.get(i + 1).map_or(1.0, |&e| e as f32 / total))).collect()
+    cuts.iter()
+        .enumerate()
+        .map(|(i, &c)| {
+            (
+                c as f32 / total,
+                cuts.get(i + 1).map_or(1.0, |&e| e as f32 / total),
+            )
+        })
+        .collect()
 }
 
 /// `n` short fragments at random places: 8 ms to 400 ms (or half the
@@ -126,7 +147,12 @@ pub fn apply(p: &ModuleParams, regions: &[(f32, f32)], source: usize) {
         set(p, s, slice::START, a.min(b));
         set(p, s, slice::END, a.max(b));
         set(p, s, slice::SOURCE, source as f32);
-        set(p, s, slice::NOTE, kept.map_or((36 + s).min(127) as f32, f32::from));
+        set(
+            p,
+            s,
+            slice::NOTE,
+            kept.map_or((36 + s).min(127) as f32, f32::from),
+        );
         set(p, s, slice::HITS, FRESH_HITS[s % FRESH_HITS.len()]);
         set(p, s, slice::ROTATE, (s % 4) as f32);
     }
@@ -183,18 +209,25 @@ pub fn role(p: &ModuleParams, s: usize, sample: Option<&Sample>) -> Role {
             _ => Role::Hit,
         };
     }
-    let Some(sample) = sample else { return Role::Hit };
+    let Some(sample) = sample else {
+        return Role::Hit;
+    };
     let seconds = span * sample.seconds();
     if seconds > 0.6 {
         return Role::Texture;
     }
     let n = sample.frames();
     let a = ((get(p, s, slice::START).min(get(p, s, slice::END))) * n as f32) as usize;
-    let b = (a + (0.25 * sample.rate) as usize).min(((get(p, s, slice::START).max(get(p, s, slice::END))) * n as f32) as usize).min(n);
+    let b = (a + (0.25 * sample.rate) as usize)
+        .min(((get(p, s, slice::START).max(get(p, s, slice::END))) * n as f32) as usize)
+        .min(n);
     if b <= a + 2 {
         return Role::Hit;
     }
-    let crossings = sample.left[a..b].windows(2).filter(|w| (w[0] < 0.0) != (w[1] < 0.0)).count();
+    let crossings = sample.left[a..b]
+        .windows(2)
+        .filter(|w| (w[0] < 0.0) != (w[1] < 0.0))
+        .count();
     let zcr = crossings as f32 / ((b - a) as f32 / sample.rate);
     if zcr < 500.0 {
         Role::Low

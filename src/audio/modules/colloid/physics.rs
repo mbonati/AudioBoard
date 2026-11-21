@@ -108,7 +108,18 @@ pub struct Settings {
 impl Settings {
     /// From the knobs' values, each 0…1 (`length` in seconds).
     #[allow(clippy::too_many_arguments)]
-    pub fn new(attract: f32, range: f32, viscosity: f32, heat: f32, flow: f32, bounce: f32, charge: f32, drift: f32, mass: f32, length: f32) -> Self {
+    pub fn new(
+        attract: f32,
+        range: f32,
+        viscosity: f32,
+        heat: f32,
+        flow: f32,
+        bounce: f32,
+        charge: f32,
+        drift: f32,
+        mass: f32,
+        length: f32,
+    ) -> Self {
         let c = |v: f32| v.clamp(0.0, 1.0);
         Self {
             pull: 1.1 * c(attract).powf(1.6),
@@ -189,7 +200,11 @@ impl Tank {
         let base = (0.078 * (8.0 / (count as f32 + 2.0)).sqrt()).clamp(0.045, 0.11);
         m.size = base * (1.3 - 0.55 * t.clamp(0.0, 1.0));
         m.mass = 4.0 * (m.size / 0.07).powi(2);
-        m.home = if count <= 1 { 0.5 } else { 0.84 - 0.68 * t.clamp(0.0, 1.0) };
+        m.home = if count <= 1 {
+            0.5
+        } else {
+            0.84 - 0.68 * t.clamp(0.0, 1.0)
+        };
         m.note = note;
         m.role = role;
     }
@@ -228,7 +243,15 @@ impl Tank {
         let (dx, dy) = (tx - x, ty - y);
         let d = (dx * dx + dy * dy).sqrt().max(1e-3);
         let speed = 0.5 + 0.6 * rng.unit();
-        self.atoms[self.atom_count] = Atom { x, y, vx: dx / d * speed, vy: dy / d * speed, charge: 0.0, from: 0, age: 0.0 };
+        self.atoms[self.atom_count] = Atom {
+            x,
+            y,
+            vx: dx / d * speed,
+            vy: dy / d * speed,
+            charge: 0.0,
+            from: 0,
+            age: 0.0,
+        };
         self.atom_count += 1;
     }
 
@@ -245,7 +268,11 @@ impl Tank {
                 return None;
             }
             let w = (1.0 - d / REACH) * gain;
-            Some(if push { (dx / d.max(1e-3) * 1.8 * w, dy / d.max(1e-3) * 1.8 * w) } else { (vx * 0.7 * w, vy * 0.7 * w) })
+            Some(if push {
+                (dx / d.max(1e-3) * 1.8 * w, dy / d.max(1e-3) * 1.8 * w)
+            } else {
+                (vx * 0.7 * w, vy * 0.7 * w)
+            })
         };
         for a in &mut self.atoms[..self.atom_count] {
             if let Some((dx, dy)) = shove(a.x, a.y, 1.0) {
@@ -263,7 +290,13 @@ impl Tank {
 
     /// Moves everything on by `dt` seconds. Strikes go to `strikes` (as many
     /// as fit); returns how many.
-    pub fn step(&mut self, s: &Settings, dt: f32, rng: &mut Rng, strikes: &mut [Strike; MAX_STRIKES]) -> usize {
+    pub fn step(
+        &mut self,
+        s: &Settings,
+        dt: f32,
+        rng: &mut Rng,
+        strikes: &mut [Strike; MAX_STRIKES],
+    ) -> usize {
         self.time += dt;
         let t = self.time;
         self.move_molecules(s, dt, t);
@@ -356,7 +389,13 @@ impl Tank {
                     let force = 1.0 - (-speed * (0.45 + 0.55 * s.atom_mass.sqrt()) / 1.5).exp();
                     m.ring = m.ring.max(force);
                     if count < MAX_STRIKES {
-                        strikes[count] = Strike { molecule: j, atom: ai, x: m.x + nx * m.r, y: m.y + ny * m.r, force };
+                        strikes[count] = Strike {
+                            molecule: j,
+                            atom: ai,
+                            x: m.x + nx * m.r,
+                            y: m.y + ny * m.r,
+                            force,
+                        };
                         count += 1;
                     }
                 }

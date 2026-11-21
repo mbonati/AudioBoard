@@ -10,8 +10,8 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 
 pub use audioboard_node::param::{
-    AtomicF32, DIVISIONS, FADER_UNITY, NOTE_NAMES, NOTE_VALUES, ParamSpec, SYNC_DIVISIONS, Taper, Unit, fader_gain,
-    format_db, format_hz, format_seconds, gain_to_db, note_label, sync_division,
+    AtomicF32, DIVISIONS, FADER_UNITY, NOTE_NAMES, NOTE_VALUES, ParamSpec, SYNC_DIVISIONS, Taper,
+    Unit, fader_gain, format_db, format_hz, format_seconds, gain_to_db, note_label, sync_division,
 };
 
 // ---------------------------------------------------------------------------

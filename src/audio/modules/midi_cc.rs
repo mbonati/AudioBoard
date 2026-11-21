@@ -74,14 +74,22 @@ impl Processor for MidiCc {
         let (target, _) = self.midi.cc(channel, number);
         // SMOOTH: none up to half a second of glide.
         let smooth = p.get(SMOOTH);
-        let k = if smooth < 1e-3 { 1.0 } else { time_coeff(smooth * smooth * 0.5, self.sr) };
+        let k = if smooth < 1e-3 {
+            1.0
+        } else {
+            time_coeff(smooth * smooth * 0.5, self.sr)
+        };
         let bipolar = p.mode() != UNIPOLAR;
 
         let mut y = 0.0;
         let [out_l, out_r] = &mut outputs[0];
         for (l, r) in out_l[..n].iter_mut().zip(&mut out_r[..n]) {
             approach(&mut self.value, target, k);
-            y = if bipolar { self.value * 2.0 - 1.0 } else { self.value };
+            y = if bipolar {
+                self.value * 2.0 - 1.0
+            } else {
+                self.value
+            };
             *l = y;
             *r = y;
         }

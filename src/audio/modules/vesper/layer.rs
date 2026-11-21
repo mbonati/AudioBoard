@@ -151,7 +151,9 @@ impl Sampler {
 
     /// The note at which the sound plays as it was made.
     pub fn home(&self) -> f32 {
-        self.banks[self.active].as_ref().map_or(48.0, |b| b.tables[0].base)
+        self.banks[self.active]
+            .as_ref()
+            .map_or(48.0, |b| b.tables[0].base)
     }
 
     /// There is room for a new sound: the last swap has finished.
@@ -172,7 +174,12 @@ impl Sampler {
     /// The old sound, once its last voice has gone: to be freed elsewhere.
     pub fn finished(&mut self) -> Option<Box<Bank>> {
         let old = 1 - self.active;
-        if self.banks[old].is_some() && !self.voices.iter().any(|v| v.stage != Stage::Off && v.bank == old) {
+        if self.banks[old].is_some()
+            && !self
+                .voices
+                .iter()
+                .any(|v| v.stage != Stage::Off && v.bank == old)
+        {
             return self.banks[old].take();
         }
         None
@@ -210,7 +217,9 @@ impl Sampler {
     /// note, the quietest tail is hurried off, and the note comes next block.
     fn reconcile(&mut self, spread: f32) {
         let active = self.active;
-        let Some(bank) = self.banks[active].as_deref() else { return };
+        let Some(bank) = self.banks[active].as_deref() else {
+            return;
+        };
         let wanted = &self.wanted[..self.len];
         for v in &mut self.voices {
             if v.sounding() && (v.bank != active || !wanted.iter().any(|&n| same(n, v.note))) {
@@ -223,7 +232,11 @@ impl Sampler {
             if self.voices.iter().any(|v| v.sounding() && on_note(v)) {
                 continue;
             }
-            if let Some(v) = self.voices.iter_mut().find(|v| v.stage == Stage::Falling && on_note(v)) {
+            if let Some(v) = self
+                .voices
+                .iter_mut()
+                .find(|v| v.stage == Stage::Falling && on_note(v))
+            {
                 v.rise();
                 continue;
             }
@@ -239,7 +252,11 @@ impl Sampler {
                 v.rise();
                 continue;
             }
-            let quiet = self.voices.iter_mut().filter(|v| v.stage == Stage::Falling).min_by(|a, b| a.env.total_cmp(&b.env));
+            let quiet = self
+                .voices
+                .iter_mut()
+                .filter(|v| v.stage == Stage::Falling)
+                .min_by(|a, b| a.env.total_cmp(&b.env));
             if let Some(v) = quiet {
                 v.hurry = true;
             }
@@ -316,7 +333,12 @@ impl Sampler {
             for (ol, or) in out_l[..n].iter_mut().zip(&mut out_r[..n]) {
                 let i = (pos >> 32) as usize;
                 let f = (pos as u32) as f32 * (1.0 / 4_294_967_296.0);
-                let (a, b, c, d) = (i.wrapping_sub(1) & mask, i & mask, (i + 1) & mask, (i + 2) & mask);
+                let (a, b, c, d) = (
+                    i.wrapping_sub(1) & mask,
+                    i & mask,
+                    (i + 1) & mask,
+                    (i + 2) & mask,
+                );
                 *ol += g * gl * hermite(left[a], left[b], left[c], left[d], f);
                 *or += g * gr * hermite(right[a], right[b], right[c], right[d], f);
                 pos = pos.wrapping_add(inc);
@@ -367,7 +389,9 @@ pub struct Pings {
 
 impl Pings {
     pub fn new() -> Self {
-        Self { voices: [PingVoice::default(); PING_VOICES] }
+        Self {
+            voices: [PingVoice::default(); PING_VOICES],
+        }
     }
 
     pub fn any(&self) -> bool {
@@ -377,9 +401,20 @@ impl Pings {
     /// Strikes `note`. `attack` and `release` are the layer's own, `pan` its
     /// place, `level` how hard.
     #[allow(clippy::too_many_arguments)]
-    pub fn strike(&mut self, ping: &Ping, note: f32, attack: f32, release: f32, pan: f32, level: f32, sr: f32) {
+    pub fn strike(
+        &mut self,
+        ping: &Ping,
+        note: f32,
+        attack: f32,
+        release: f32,
+        pan: f32,
+        level: f32,
+        sr: f32,
+    ) {
         let hz = note_hz(note).min(sr * 0.42);
-        let k = (0..PING_VOICES).find(|&k| !self.voices[k].on).or_else(|| (0..PING_VOICES).min_by(|&a, &b| self.voices[a].env.total_cmp(&self.voices[b].env)));
+        let k = (0..PING_VOICES).find(|&k| !self.voices[k].on).or_else(|| {
+            (0..PING_VOICES).min_by(|&a, &b| self.voices[a].env.total_cmp(&self.voices[b].env))
+        });
         let Some(k) = k else { return };
         let tau = (release * ping.ring).max(0.02) * sr;
         let (gl, gr) = pan_gains(pan);
@@ -414,7 +449,11 @@ impl Pings {
                 } else {
                     v.env *= v.fall;
                 }
-                let bend = if v.index > 0.0 { v.index * v.env * fastmath::sin_turns(v.modulator) } else { 0.0 };
+                let bend = if v.index > 0.0 {
+                    v.index * v.env * fastmath::sin_turns(v.modulator)
+                } else {
+                    0.0
+                };
                 let y = fastmath::sin_turns((v.carrier + bend).rem_euclid(1.0)) * v.env;
                 v.carrier += v.c_inc;
                 if v.carrier >= 1.0 {

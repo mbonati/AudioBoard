@@ -16,7 +16,10 @@ use std::sync::Arc;
 
 use super::equalizer::{BELL, Coeffs, HIGH_SHELF, LOW_SHELF, Svf, amp};
 use super::oversample::Oversampler;
-use super::{DelayLine, ModuleDef, ModuleParams, Quiet, Rng, Wander, approach, mix_gains, silence, soft_limit};
+use super::{
+    DelayLine, ModuleDef, ModuleParams, Quiet, Rng, Wander, approach, mix_gains, silence,
+    soft_limit,
+};
 use crate::audio::engine::{Buf, Inputs, ProcessCtx, Processor};
 use crate::audio::fastmath;
 use crate::audio::params::{ParamSpec, Unit};
@@ -203,8 +206,22 @@ pub struct Speed {
     hiss: f32,
 }
 
-const fn speed_of(name: &'static str, bump: f32, gap: f32, capstan: f32, corners: [f32; 2], hiss: f32) -> Speed {
-    Speed { name, bump, gap, capstan, corners, hiss }
+const fn speed_of(
+    name: &'static str,
+    bump: f32,
+    gap: f32,
+    capstan: f32,
+    corners: [f32; 2],
+    hiss: f32,
+) -> Speed {
+    Speed {
+        name,
+        bump,
+        gap,
+        capstan,
+        corners,
+        hiss,
+    }
 }
 
 pub const SPEEDS: [Speed; 3] = [
@@ -218,9 +235,19 @@ const CASSETTE_SPEED: Speed = speed_of("1⅞", 70.0, 10_000.0, 3.2, [1326.0, 132
 /// Tape formulations: name, tip, headroom (the level where the curve bends,
 /// linear) and extra tilt.
 pub const TAPES: [(&str, &str, f32, f32); 3] = [
-    ("CLASSIC", "Vintage tape: little headroom, early, warm saturation", 0.5, 0.04),
+    (
+        "CLASSIC",
+        "Vintage tape: little headroom, early, warm saturation",
+        0.5,
+        0.04,
+    ),
     ("MODERN", "Modern tape: balanced headroom", 0.71, 0.02),
-    ("HOT", "High-output tape: most headroom, cleaner when pushed", 1.0, 0.0),
+    (
+        "HOT",
+        "High-output tape: most headroom, cleaner when pushed",
+        1.0,
+        0.0,
+    ),
 ];
 
 /// BIAS's range, either way, as the knob shows it.
@@ -248,7 +275,11 @@ pub fn machine(p: &ModuleParams) -> &'static Machine {
 
 /// The speed (the cassette has its own).
 fn speed(p: &ModuleParams) -> Speed {
-    if choice(p, data::MACHINE, MACHINES.len()) == CASSETTE { CASSETTE_SPEED } else { SPEEDS[choice(p, data::SPEED, SPEEDS.len())] }
+    if choice(p, data::MACHINE, MACHINES.len()) == CASSETTE {
+        CASSETTE_SPEED
+    } else {
+        SPEEDS[choice(p, data::SPEED, SPEEDS.len())]
+    }
 }
 
 pub fn speed_name(p: &ModuleParams) -> &'static str {
@@ -409,7 +440,9 @@ impl Tape {
     /// Sets this block's EQ from the machine, speed, standard, BIAS and AGE.
     fn tune(&mut self, p: &ModuleParams) {
         let m = machine(p);
-        let Speed { bump, gap, corners, .. } = speed(p);
+        let Speed {
+            bump, gap, corners, ..
+        } = speed(p);
         let nab = choice(p, data::EQ, 2) == 0 || choice(p, data::MACHINE, 3) == CASSETTE;
         let corner = corners[usize::from(!nab)];
         let sr = self.sr;
@@ -418,8 +451,14 @@ impl Tape {
         // lows); playback brings them back down, so loud highs saturate
         // first, as on tape.
         let lf = if nab { 6.0 } else { 0.0 };
-        self.eq.pre = [Coeffs::band(HIGH_SHELF, g(corner), 0.7, amp(m.emphasis)), Coeffs::band(LOW_SHELF, g(50.0), 0.7, amp(-lf))];
-        self.eq.post = [Coeffs::band(HIGH_SHELF, g(corner), 0.7, amp(-m.emphasis)), Coeffs::band(LOW_SHELF, g(50.0), 0.7, amp(lf))];
+        self.eq.pre = [
+            Coeffs::band(HIGH_SHELF, g(corner), 0.7, amp(m.emphasis)),
+            Coeffs::band(LOW_SHELF, g(50.0), 0.7, amp(-lf)),
+        ];
+        self.eq.post = [
+            Coeffs::band(HIGH_SHELF, g(corner), 0.7, amp(-m.emphasis)),
+            Coeffs::band(LOW_SHELF, g(50.0), 0.7, amp(lf)),
+        ];
         // Under-bias is brighter, over-bias duller; worn tape loses top.
         let bias = p.get(BIAS);
         let age = p.get(AGE);
@@ -428,7 +467,11 @@ impl Tape {
         self.eq.head = [
             Coeffs::band(BELL, g(bump), 1.0, amp(m.bump_db)),
             Coeffs::band(BELL, g(bump * 2.2), 1.4, amp(-1.0)),
-            Coeffs::svf(g(bump * 0.3), std::f32::consts::SQRT_2, (1.0, -std::f32::consts::SQRT_2, -1.0)),
+            Coeffs::svf(
+                g(bump * 0.3),
+                std::f32::consts::SQRT_2,
+                (1.0, -std::f32::consts::SQRT_2, -1.0),
+            ),
             Coeffs::svf(g(top), 1.0 / 0.6, (0.0, 0.0, 1.0)),
         ];
     }
@@ -473,7 +516,12 @@ impl Tape {
     fn read(line: &DelayLine, lag: f32) -> f32 {
         let i = lag as usize;
         let t = lag - i as f32;
-        let (a, b, c, d) = (line.tap_at(i.saturating_sub(1)), line.tap_at(i), line.tap_at(i + 1), line.tap_at(i + 2));
+        let (a, b, c, d) = (
+            line.tap_at(i.saturating_sub(1)),
+            line.tap_at(i),
+            line.tap_at(i + 1),
+            line.tap_at(i + 2),
+        );
         // Catmull-Rom between b and c.
         let c1 = 0.5 * (c - a);
         let c2 = a - 2.5 * b + 2.0 * c - 0.5 * d;
@@ -492,10 +540,18 @@ impl Processor for Tape {
         let age = p.get(AGE);
         let input = inputs.get(0);
         let silent_in = Quiet::silent(input, n);
-        let moving = (running && self.speed < 1.0) || (!running && !self.halted) || self.catch.is_some();
+        let moving =
+            (running && self.speed < 1.0) || (!running && !self.halted) || self.catch.is_some();
         if silent_in && hiss <= 0.0 && !moving && self.quiet.resting() {
             silence(outputs, n);
-            for i in [viz::VU_IN, viz::VU_IN + 1, viz::VU_OUT, viz::VU_OUT + 1, viz::WOBBLE, viz::DROP] {
+            for i in [
+                viz::VU_IN,
+                viz::VU_IN + 1,
+                viz::VU_OUT,
+                viz::VU_OUT + 1,
+                viz::WOBBLE,
+                viz::DROP,
+            ] {
                 p.viz[i].set(0.0);
             }
             self.vu = [0.0; 4];
@@ -505,7 +561,11 @@ impl Processor for Tape {
         self.tune(&p);
         let curve = Self::curve(&p);
         let sr = self.sr;
-        let Speed { capstan, hiss: hiss_offset, .. } = speed(&p);
+        let Speed {
+            capstan,
+            hiss: hiss_offset,
+            ..
+        } = speed(&p);
         let gain_in_t = fastmath::exp2(p.get(INPUT) / 6.020_6);
         let mut out_db = p.get(OUTPUT);
         if on(&p, data::AUTO) {
@@ -513,7 +573,11 @@ impl Processor for Tape {
         }
         let gain_out_t = fastmath::exp2(out_db / 6.020_6);
         let mix_t = p.get(MIX);
-        let hiss_gain = if hiss > 0.0 { fastmath::exp2(hiss_db(m, hiss_offset, hiss) / 6.020_6) * 1.7 } else { 0.0 };
+        let hiss_gain = if hiss > 0.0 {
+            fastmath::exp2(hiss_db(m, hiss_offset, hiss) / 6.020_6) * 1.7
+        } else {
+            0.0
+        };
         // Wow: a slow swing plus a wandering drift; flutter: the capstan and
         // the pinch roller, plus scrape. Depths in samples of delay.
         let wow_dev = p.get(WOW) * WOW_MAX * m.wow_scale;
@@ -647,7 +711,9 @@ impl Processor for Tape {
                 }
                 let wet = y * self.drop * self.gain_out;
                 inner = inner.max(wet.abs());
-                let out = soft_limit(self.dry[ch].tap_at(base as usize + OVERSAMPLING_LAG) * dry_g + wet * wet_g);
+                let out = soft_limit(
+                    self.dry[ch].tap_at(base as usize + OVERSAMPLING_LAG) * dry_g + wet * wet_g,
+                );
                 outputs[0][ch][i] = out;
                 ms[2 + ch] += out * out;
                 peak = peak.max(out.abs());
@@ -663,7 +729,11 @@ impl Processor for Tape {
         for (j, vu) in self.vu.iter().enumerate() {
             p.viz[viz::VU_IN + j].set(vu.sqrt());
         }
-        let squeeze = if sat_in > 1e-6 { 20.0 * (sat_out / sat_in).max(1e-3).log10() } else { 0.0 };
+        let squeeze = if sat_in > 1e-6 {
+            20.0 * (sat_out / sat_in).max(1e-3).log10()
+        } else {
+            0.0
+        };
         self.sat += (squeeze.min(0.0) - self.sat) * k;
         p.viz[viz::SAT].set(self.sat);
         p.viz[viz::SPEED].set(self.speed);
@@ -678,7 +748,24 @@ impl Processor for Tape {
 pub fn readout(p: &ModuleParams) -> (String, String) {
     let m = machine(p);
     let reel = choice(p, data::MACHINE, MACHINES.len()) != CASSETTE;
-    let eq = if !reel { "" } else if choice(p, data::EQ, 2) == 0 { " · NAB" } else { " · IEC" };
-    let state = if on(p, data::RUNNING) { "" } else { " · stopped" };
-    (format!("{} {} ips", m.name, speed_name(p)), format!("{} tape · {:+.1} dB{eq}{state}", TAPES[choice(p, data::TAPE, TAPES.len())].0, p.get(INPUT)))
+    let eq = if !reel {
+        ""
+    } else if choice(p, data::EQ, 2) == 0 {
+        " · NAB"
+    } else {
+        " · IEC"
+    };
+    let state = if on(p, data::RUNNING) {
+        ""
+    } else {
+        " · stopped"
+    };
+    (
+        format!("{} {} ips", m.name, speed_name(p)),
+        format!(
+            "{} tape · {:+.1} dB{eq}{state}",
+            TAPES[choice(p, data::TAPE, TAPES.len())].0,
+            p.get(INPUT)
+        ),
+    )
 }

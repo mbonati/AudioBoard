@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use super::{ModuleDef, ModuleParams, approach, soft_limit, Quiet, silence};
+use super::{ModuleDef, ModuleParams, Quiet, approach, silence, soft_limit};
 use crate::audio::dsp::drive;
 use crate::audio::engine::{Buf, Inputs, ProcessCtx, Processor};
 use crate::audio::fastmath;

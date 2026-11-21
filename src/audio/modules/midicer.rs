@@ -187,7 +187,10 @@ impl Settings {
 
     /// The note range, low to high.
     fn range(&self) -> (i32, i32) {
-        (self.low.min(self.high).clamp(0, 127), self.low.max(self.high).clamp(0, 127))
+        (
+            self.low.min(self.high).clamp(0, 127),
+            self.low.max(self.high).clamp(0, 127),
+        )
     }
 }
 
@@ -213,7 +216,11 @@ pub fn note_length(s: &Settings, r_var: f32, r_amount: f32) -> f64 {
     let amount = s.variation.abs();
     let index = if r_var < amount {
         let steps = 1 + ((r_amount * 3.0 * amount) as usize).min(2);
-        if s.variation < 0.0 { at.saturating_sub(steps) } else { (at + steps).min(values.len() - 1) }
+        if s.variation < 0.0 {
+            at.saturating_sub(steps)
+        } else {
+            (at + steps).min(values.len() - 1)
+        }
     } else {
         at
     };
@@ -318,7 +325,10 @@ pub struct Midicer {
 
 impl Midicer {
     pub fn new(params: Arc<ModuleParams>, midi: Arc<MidiState>) -> Self {
-        let seeds = (params.data[data::SEED_R].get(), params.data[data::SEED_M].get());
+        let seeds = (
+            params.data[data::SEED_R].get(),
+            params.data[data::SEED_M].get(),
+        );
         Self {
             restarts_seen: params.data[data::RESTART].get(),
             cursor: midi.stream_head(),
@@ -381,21 +391,34 @@ impl Midicer {
     }
 
     fn rhythm_values(&mut self, k: usize, dice: bool) -> [f32; 4] {
-        if dice { self.rhythm[k % SLOTS] } else { std::array::from_fn(|_| self.live.unit()) }
+        if dice {
+            self.rhythm[k % SLOTS]
+        } else {
+            std::array::from_fn(|_| self.live.unit())
+        }
     }
 
     fn melody_values(&mut self, k: usize, dice: bool) -> [f32; 2] {
-        if dice { self.melody[k % SLOTS] } else { std::array::from_fn(|_| self.live.unit()) }
+        if dice {
+            self.melody[k % SLOTS]
+        } else {
+            std::array::from_fn(|_| self.live.unit())
+        }
     }
 
     fn velocity(s: &Settings, r: f32) -> u8 {
-        (s.velocity * (1.0 - s.dynamics * r)).round().clamp(1.0, 127.0) as u8
+        (s.velocity * (1.0 - s.dynamics * r))
+            .round()
+            .clamp(1.0, 127.0) as u8
     }
 
     /// SEQ: the pattern, note by note, in this block.
     fn sequence(&mut self, ctx: &ProcessCtx, n: usize, s: &Settings, transpose: i32, muted: bool) {
         let p = self.params.clone();
-        let dice = (p.data[data::DICE_R].get() > 0.5, p.data[data::DICE_M].get() > 0.5);
+        let dice = (
+            p.data[data::DICE_R].get() > 0.5,
+            p.data[data::DICE_M].get() > 0.5,
+        );
         let end = block_end(ctx, n);
         loop {
             let off_at = self.sounding.and_then(|s| s.off).unwrap_or(f64::INFINITY);
@@ -434,7 +457,11 @@ impl Midicer {
             let len = note_length(s, r[0], r[1]).min(self.pattern_start + length - t);
             self.next_at = t + len;
             let rest = muted || r[2] < s.rest;
-            let note = if rest { None } else { pick_note(s, m[0]).map(|n| (n + transpose).clamp(0, 127) as u8) };
+            let note = if rest {
+                None
+            } else {
+                pick_note(s, m[0]).map(|n| (n + transpose).clamp(0, 127) as u8)
+            };
             let legato = r[3] < s.legato;
             let off = (!legato).then(|| t + (len * s.gate as f64).max(0.01));
             self.play(frame, s.channel, note, Self::velocity(s, m[1]), off);
@@ -451,8 +478,16 @@ impl Midicer {
                 (0, true) => self.restart_at = Some(f64::NEG_INFINITY),
                 (2, true) => p.data[data::SEED_R].set(new_seed(self.live.unit().to_bits())),
                 (4, true) => p.data[data::SEED_M].set(new_seed(self.live.unit().to_bits())),
-                (5, true) => p.data[data::DICE_R].set(if p.data[data::DICE_R].get() > 0.5 { 0.0 } else { 1.0 }),
-                (7, true) => p.data[data::DICE_M].set(if p.data[data::DICE_M].get() > 0.5 { 0.0 } else { 1.0 }),
+                (5, true) => p.data[data::DICE_R].set(if p.data[data::DICE_R].get() > 0.5 {
+                    0.0
+                } else {
+                    1.0
+                }),
+                (7, true) => p.data[data::DICE_M].set(if p.data[data::DICE_M].get() > 0.5 {
+                    0.0
+                } else {
+                    1.0
+                }),
                 (9, down) => self.midi_mute = down,
                 _ => {}
             },
@@ -461,7 +496,10 @@ impl Midicer {
                     self.held.press(key);
                 } else if down {
                     self.held.press(key);
-                    let dice = (p.data[data::DICE_R].get() > 0.5, p.data[data::DICE_M].get() > 0.5);
+                    let dice = (
+                        p.data[data::DICE_R].get() > 0.5,
+                        p.data[data::DICE_M].get() > 0.5,
+                    );
                     // The random values repeat every FIRST…LAST sixteenths' worth of notes.
                     let k = self.index % (s.last + 1 - s.first);
                     self.index += 1;
@@ -476,7 +514,11 @@ impl Midicer {
                     if !legato {
                         self.release(frame, s.channel);
                     }
-                    let velocity = if self.cable { msg[2] } else { Self::velocity(s, m[1]) };
+                    let velocity = if self.cable {
+                        msg[2]
+                    } else {
+                        Self::velocity(s, m[1])
+                    };
                     self.play(frame, s.channel, note, velocity, None);
                     self.plays[key as usize] = note;
                 } else {
@@ -498,7 +540,14 @@ impl Midicer {
     }
 
     /// QUANT1: CV2 quantized on every beat.
-    fn quantize_beats(&mut self, ctx: &ProcessCtx, n: usize, s: &Settings, cv: Option<&[f32; 64]>, muted: bool) {
+    fn quantize_beats(
+        &mut self,
+        ctx: &ProcessCtx,
+        n: usize,
+        s: &Settings,
+        cv: Option<&[f32; 64]>,
+        muted: bool,
+    ) {
         let end = block_end(ctx, n);
         if self.quant_at < ctx.beat - 1.0 {
             self.quant_at = ctx.beat.ceil();
@@ -516,7 +565,9 @@ impl Midicer {
             }
             self.quant_at += 1.0;
             let note = match cv {
-                Some(cv) if !muted => quantize(s, cv_pitch(s, cv[frame])).map(|n| n.clamp(0, 127) as u8),
+                Some(cv) if !muted => {
+                    quantize(s, cv_pitch(s, cv[frame])).map(|n| n.clamp(0, 127) as u8)
+                }
                 _ => None,
             };
             self.release(frame, s.channel);
@@ -558,7 +609,8 @@ fn block_end(ctx: &ProcessCtx, n: usize) -> f64 {
 
 /// The nearest frame in this block for a beat.
 fn frame_of(ctx: &ProcessCtx, n: usize, beat: f64) -> usize {
-    ((((beat - ctx.beat) / ctx.beats_per_sample).round().max(0.0)) as usize).min(n.saturating_sub(1))
+    ((((beat - ctx.beat) / ctx.beats_per_sample).round().max(0.0)) as usize)
+        .min(n.saturating_sub(1))
 }
 
 impl Processor for Midicer {
@@ -579,7 +631,11 @@ impl Processor for Midicer {
 
         // LOCK keeps the settings it found.
         let live = Settings::read(&p);
-        let mut s = if p.data[data::LOCK].get() > 0.5 { *self.locked.get_or_insert(live) } else { live };
+        let mut s = if p.data[data::LOCK].get() > 0.5 {
+            *self.locked.get_or_insert(live)
+        } else {
+            live
+        };
         if p.data[data::LOCK].get() <= 0.5 {
             self.locked = None;
         }
@@ -614,9 +670,14 @@ impl Processor for Midicer {
                 s.high += semis;
             }
         }
-        if let Some(v) = cv2.map(|c| c[0].clamp(-1.0, 1.0)).filter(|_| s.mode <= SEQ_GATE) {
+        if let Some(v) = cv2
+            .map(|c| c[0].clamp(-1.0, 1.0))
+            .filter(|_| s.mode <= SEQ_GATE)
+        {
             if on(data::CV2_NOTE) {
-                s.note = (s.note as f32 + v * (NOTE_VALUES.len() - 1) as f32).round().clamp(0.0, 8.0) as usize;
+                s.note = (s.note as f32 + v * (NOTE_VALUES.len() - 1) as f32)
+                    .round()
+                    .clamp(0.0, 8.0) as usize;
             }
             if on(data::CV2_VAR) {
                 s.variation = (s.variation + v).clamp(-1.0, 1.0);
@@ -630,9 +691,15 @@ impl Processor for Midicer {
         }
         // Pitch bend follows CV1 (and recentres when it stops).
         let bend = bend.unwrap_or(8192);
-        if self.bend.is_none_or(|b| (b - bend).abs() >= 8 || (bend == 8192 && b != 8192)) {
+        if self
+            .bend
+            .is_none_or(|b| (b - bend).abs() >= 8 || (bend == 8192 && b != 8192))
+        {
             if self.bend.is_some() || bend != 8192 {
-                self.out.push(0, [0xE0 | s.channel, (bend & 0x7F) as u8, (bend >> 7) as u8]);
+                self.out.push(
+                    0,
+                    [0xE0 | s.channel, (bend & 0x7F) as u8, (bend >> 7) as u8],
+                );
             }
             self.bend = Some(bend);
         }
@@ -665,7 +732,10 @@ impl Processor for Midicer {
         }
         // Restarts (RESTART, MIDI C) land on the next beat.
         let restarts = p.data[data::RESTART].get();
-        if restarts != self.restarts_seen || !self.started || self.restart_at == Some(f64::NEG_INFINITY) {
+        if restarts != self.restarts_seen
+            || !self.started
+            || self.restart_at == Some(f64::NEG_INFINITY)
+        {
             self.restarts_seen = restarts;
             self.started = true;
             self.restart_at = Some(ctx.beat.ceil());
@@ -698,7 +768,11 @@ impl Processor for Midicer {
         p.viz[CURRENT].set(self.sounding.map_or(-1.0, |s| s.note as f32));
         let step = if s.mode == SEQ && self.restart_at.is_none_or(|r| r > ctx.beat + 1.0) {
             let pos = ((ctx.beat - self.pattern_start) / 0.25).floor();
-            if pos >= 0.0 { (s.first - 1 + pos as usize).min(15) as f32 } else { -1.0 }
+            if pos >= 0.0 {
+                (s.first - 1 + pos as usize).min(15) as f32
+            } else {
+                -1.0
+            }
         } else {
             -1.0
         };
@@ -737,16 +811,28 @@ mod tests {
         assert_eq!(note_length(&s, 0.0, 0.0), 0.5, "off at 0");
         s.variation = 1.0;
         assert_eq!(note_length(&s, 0.5, 0.0), 0.25, "one step shorter: 1/16");
-        assert_eq!(note_length(&s, 0.5, 0.99), 0.25, "1/32 and triplets are off");
+        assert_eq!(
+            note_length(&s, 0.5, 0.99),
+            0.25,
+            "1/32 and triplets are off"
+        );
         s.thirty_second = true;
         assert_eq!(note_length(&s, 0.5, 0.99), 0.125);
         s.variation = -1.0;
         assert_eq!(note_length(&s, 0.5, 0.0), 1.0, "one step longer: 1/4");
         assert_eq!(note_length(&s, 0.5, 0.99), 4.0, "three steps: 1/1");
         s.triplets = true;
-        assert_eq!(note_length(&s, 0.5, 0.0), 2.0 / 3.0, "1/4T when triplets are on");
+        assert_eq!(
+            note_length(&s, 0.5, 0.0),
+            2.0 / 3.0,
+            "1/4T when triplets are on"
+        );
         s.variation = -0.3;
-        assert_eq!(note_length(&s, 0.5, 0.0), 0.5, "above the probability: unchanged");
+        assert_eq!(
+            note_length(&s, 0.5, 0.0),
+            0.5,
+            "above the probability: unchanged"
+        );
     }
 
     #[test]
@@ -758,12 +844,22 @@ mod tests {
         assert_eq!(pick_note(&s, 0.5), None);
         s.weights[0] = 1.0; // C
         s.weights[5] = 1.0; // F
-        let picks: Vec<i32> = (0..10).map(|i| pick_note(&s, i as f32 / 10.0).unwrap()).collect();
-        assert_eq!(picks.iter().filter(|&&n| n == 60).count(), 5, "equal chances");
+        let picks: Vec<i32> = (0..10)
+            .map(|i| pick_note(&s, i as f32 / 10.0).unwrap())
+            .collect();
+        assert_eq!(
+            picks.iter().filter(|&&n| n == 60).count(),
+            5,
+            "equal chances"
+        );
         assert!(picks.iter().all(|&n| n == 60 || n == 65));
         s.weights[5] = 0.5;
         assert_eq!(quantize(&s, 62.0), Some(60), "C pulls harder than F");
         assert_eq!(quantize(&s, 64.5), Some(65));
-        assert_eq!(quantize(&s, 69.0), Some(65), "within the range only: C5 is out");
+        assert_eq!(
+            quantize(&s, 69.0),
+            Some(65),
+            "within the range only: C5 is out"
+        );
     }
 }

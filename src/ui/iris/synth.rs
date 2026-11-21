@@ -15,13 +15,21 @@ use std::sync::Arc;
 
 use egui::epaint::{ClippedShape, Mesh, Tessellator};
 use egui::layers::PaintList;
-use egui::{Color32, Id, LayerId, Order, Painter, Pos2, Rect, RichText, Sense, Shape, Stroke, Ui, Vec2, pos2, vec2};
+use egui::{
+    Color32, Id, LayerId, Order, Painter, Pos2, Rect, RichText, Sense, Shape, Stroke, Ui, Vec2,
+    pos2, vec2,
+};
 
-use super::{Analysis, BANDS, Ctx, Pal, Rng, STATES, Scenes, State, draw_scene, heading, scene_name, scene_of};
+use super::{
+    Analysis, BANDS, Ctx, Pal, Rng, STATES, Scenes, State, draw_scene, heading, scene_name,
+    scene_of,
+};
 use crate::audio::engine::NodeId;
 use crate::audio::modules::ModuleParams;
 use crate::audio::modules::iris::data::{self, LAYER_LEN, LAYERS, audio, env, layer, lfo, slot};
-use crate::audio::modules::iris::{DETAIL, ENV_TRIGGERS, LFO_SHAPES, MIRRORS, SCENES, SPEED, SYNC_BEATS, SYNC_NAMES, TRAIL, viz};
+use crate::audio::modules::iris::{
+    DETAIL, ENV_TRIGGERS, LFO_SHAPES, MIRRORS, SCENES, SPEED, SYNC_BEATS, SYNC_NAMES, TRAIL, viz,
+};
 use crate::ui::theme;
 
 // ---------------------------------------------------------------------------
@@ -30,8 +38,23 @@ use crate::ui::theme;
 
 /// What the matrix reads. LFOs swing -1..1, everything else 0..1.
 pub(super) const SOURCES: [&str; 17] = [
-    "—", "LFO 1", "LFO 2", "LFO 3", "LFO 4", "Env 1", "Env 2", "Audio 1", "Audio 2", "Audio 3", "Audio 4", "Beat",
-    "Velocity", "Note", "Mod wheel", "CC A", "CC B",
+    "—",
+    "LFO 1",
+    "LFO 2",
+    "LFO 3",
+    "LFO 4",
+    "Env 1",
+    "Env 2",
+    "Audio 1",
+    "Audio 2",
+    "Audio 3",
+    "Audio 4",
+    "Beat",
+    "Velocity",
+    "Note",
+    "Mod wheel",
+    "CC A",
+    "CC B",
 ];
 const S_LFO: usize = 1;
 const S_ENV: usize = 5;
@@ -53,7 +76,11 @@ pub(super) fn dest_name(i: usize) -> String {
         1..=3 => GLOBAL_DESTS[i - 1].to_owned(),
         _ => {
             let j = (i - 4).min(LAYERS * LAYER_DESTS.len() - 1);
-            format!("Layer {} {}", j / LAYER_DESTS.len() + 1, LAYER_DESTS[j % LAYER_DESTS.len()])
+            format!(
+                "Layer {} {}",
+                j / LAYER_DESTS.len() + 1,
+                LAYER_DESTS[j % LAYER_DESTS.len()]
+            )
         }
     }
 }
@@ -156,7 +183,11 @@ impl Mods {
         let note_on = self.notes.is_some_and(|n| n != notes);
         self.notes = Some(notes);
         let held = p.viz[viz::HELD].get() > 0.5;
-        self.onset_gate = if a.onset { 0.08 } else { (self.onset_gate - dt).max(0.0) };
+        self.onset_gate = if a.onset {
+            0.08
+        } else {
+            (self.onset_gate - dt).max(0.0)
+        };
         for k in 0..data::ENVS {
             let b = data::ENV + k * data::ENV_LEN;
             let trigger = index(p, b + env::TRIGGER, ENV_TRIGGERS.len());
@@ -206,7 +237,10 @@ impl Mods {
 
         for k in 0..data::AUDIO_MODS {
             let b = data::AUDIO + k * data::AUDIO_LEN;
-            let (x, y) = (index(p, b + audio::FROM, BANDS), index(p, b + audio::TO, BANDS));
+            let (x, y) = (
+                index(p, b + audio::FROM, BANDS),
+                index(p, b + audio::TO, BANDS),
+            );
             let (lo, hi) = (x.min(y), x.max(y));
             let mean = a.bands[lo..=hi].iter().sum::<f32>() / (hi - lo + 1) as f32;
             self.src[S_AUDIO + k] = (mean * get(p, b + audio::GAIN).max(0.0)).min(1.0);
@@ -260,7 +294,10 @@ pub(super) fn live(p: &ModuleParams, src: &[f32; SOURCES.len()]) -> Live {
     let mut acc = [0.0f32; DESTS];
     for s in 0..data::SLOTS {
         let b = data::MATRIX + s * data::SLOT_LEN;
-        let (si, di) = (index(p, b + slot::SOURCE, SOURCES.len()), index(p, b + slot::DEST, DESTS));
+        let (si, di) = (
+            index(p, b + slot::SOURCE, SOURCES.len()),
+            index(p, b + slot::DEST, DESTS),
+        );
         if si > 0 && di > 0 {
             acc[di] += get(p, b + slot::AMOUNT).clamp(-1.0, 1.0) * src[si];
         }
@@ -271,7 +308,11 @@ pub(super) fn live(p: &ModuleParams, src: &[f32; SOURCES.len()]) -> Live {
         LayerLive {
             on: get(p, b + layer::ON) > 0.5,
             solo: get(p, b + layer::SOLO) > 0.5,
-            scene: if k == 0 { scene_of(p) } else { index(p, b + layer::SCENE, SCENES.len()) },
+            scene: if k == 0 {
+                scene_of(p)
+            } else {
+                index(p, b + layer::SCENE, SCENES.len())
+            },
             opacity: (get(p, b + layer::OPACITY) + m(0)).clamp(0.0, 1.0),
             add: get(p, b + layer::BLEND) > 0.5,
             zoom: (get(p, b + layer::ZOOM) * (1.5 * m(1)).exp2()).clamp(0.1, 8.0),
@@ -311,7 +352,13 @@ pub(super) struct Layer {
 
 impl Layer {
     pub(super) fn new(seed: u32) -> Self {
-        Self { s: Scenes::new(seed), t: 0.0, spin: 0.0, echoes: VecDeque::new(), echo_clock: 0.0 }
+        Self {
+            s: Scenes::new(seed),
+            t: 0.0,
+            spin: 0.0,
+            echoes: VecDeque::new(),
+            echo_clock: 0.0,
+        }
     }
 }
 
@@ -438,7 +485,9 @@ fn composite(f: &Frame, lid: LayerId, lay: &mut Layer, l: &LayerLive, angle: f32
         4 => 6,
         _ => 1,
     };
-    let n = l.echo.min((LAYER_VERTICES / (mesh.vertices.len() * copies).max(1)).saturating_sub(1));
+    let n = l
+        .echo
+        .min((LAYER_VERTICES / (mesh.vertices.len() * copies).max(1)).saturating_sub(1));
     let mut out = Mesh::default();
     if n == 0 {
         lay.echoes.clear();
@@ -455,7 +504,14 @@ fn composite(f: &Frame, lid: LayerId, lay: &mut Layer, l: &LayerLive, angle: f32
             let steps = i as f32 + 1.0 + step;
             let grow = l.feedback.powf(steps);
             let fade = (1.0 - steps / (n as f32 + 1.0)).max(0.0) * 0.75;
-            append(&mut out, m, |p| o + (p - o) * grow, fade, source, &mut scratch);
+            append(
+                &mut out,
+                m,
+                |p| o + (p - o) * grow,
+                fade,
+                source,
+                &mut scratch,
+            );
         }
     }
     append(&mut out, &mesh, |p| p, 1.0, source, &mut scratch);
@@ -483,13 +539,22 @@ fn composite(f: &Frame, lid: LayerId, lay: &mut Layer, l: &LayerLive, angle: f32
     match l.mirror {
         // The left half, and its reflection on the right.
         1 => {
-            put(reflect(&out, true, false), Rect::from_min_max(pos2(c0.x, s.top()), s.max));
+            put(
+                reflect(&out, true, false),
+                Rect::from_min_max(pos2(c0.x, s.top()), s.max),
+            );
             put(out, source);
         }
         // The top left quarter, reflected into the other three.
         2 => {
-            put(reflect(&out, true, false), Rect::from_min_max(pos2(c0.x, s.top()), pos2(s.right(), c0.y)));
-            put(reflect(&out, false, true), Rect::from_min_max(pos2(s.left(), c0.y), pos2(c0.x, s.bottom())));
+            put(
+                reflect(&out, true, false),
+                Rect::from_min_max(pos2(c0.x, s.top()), pos2(s.right(), c0.y)),
+            );
+            put(
+                reflect(&out, false, true),
+                Rect::from_min_max(pos2(s.left(), c0.y), pos2(c0.x, s.bottom())),
+            );
             put(reflect(&out, true, true), Rect::from_min_max(c0, s.max));
             put(out, source);
         }
@@ -523,7 +588,14 @@ struct Scratch {
 
 /// Appends the triangles of `m` that touch `area` to `out`, each point
 /// moved by `at` and every colour faded.
-fn append(out: &mut Mesh, m: &Mesh, at: impl Fn(Pos2) -> Pos2, fade: f32, area: Rect, scratch: &mut Scratch) {
+fn append(
+    out: &mut Mesh,
+    m: &Mesh,
+    at: impl Fn(Pos2) -> Pos2,
+    fade: f32,
+    area: Rect,
+    scratch: &mut Scratch,
+) {
     let Scratch { map, pos } = scratch;
     pos.clear();
     pos.extend(m.vertices.iter().map(|v| at(v.pos)));
@@ -532,7 +604,11 @@ fn append(out: &mut Mesh, m: &Mesh, at: impl Fn(Pos2) -> Pos2, fade: f32, area: 
     let k = (fade.clamp(0.0, 1.0) * 256.0) as u32;
     out.reserve_triangles(m.indices.len() / 3);
     for tri in m.indices.as_chunks::<3>().0 {
-        let [a, b, c] = [pos[tri[0] as usize], pos[tri[1] as usize], pos[tri[2] as usize]];
+        let [a, b, c] = [
+            pos[tri[0] as usize],
+            pos[tri[1] as usize],
+            pos[tri[2] as usize],
+        ];
         if a.x.max(b.x).max(c.x) < area.left()
             || a.x.min(b.x).min(c.x) > area.right()
             || a.y.max(b.y).max(c.y) < area.top()
@@ -586,13 +662,18 @@ fn tint(m: &mut Mesh, hue: f32, opacity: f32, add: bool) {
         let [r, g, b, a] = v.color.to_array();
         let (mut r, mut g, mut b) = (r as f32, g as f32, b as f32);
         if let Some(m) = &matrix {
-            (r, g, b) = (m[0] * r + m[1] * g + m[2] * b, m[3] * r + m[4] * g + m[5] * b, m[6] * r + m[7] * g + m[8] * b);
+            (r, g, b) = (
+                m[0] * r + m[1] * g + m[2] * b,
+                m[3] * r + m[4] * g + m[5] * b,
+                m[6] * r + m[7] * g + m[8] * b,
+            );
         }
         let a = a as f32 * opacity;
         // Premultiplied: no channel above the alpha, unless adding.
         let top = if add { 255.0 } else { a };
         let ch = |x: f32| (x * opacity).clamp(0.0, top) as u8;
-        v.color = Color32::from_rgba_premultiplied(ch(r), ch(g), ch(b), if add { 0 } else { a as u8 });
+        v.color =
+            Color32::from_rgba_premultiplied(ch(r), ch(g), ch(b), if add { 0 } else { a as u8 });
     }
 }
 
@@ -600,7 +681,13 @@ fn tint(m: &mut Mesh, hue: f32, opacity: f32, add: bool) {
 // The settings: Layers and Modulation
 // ---------------------------------------------------------------------------
 
-fn slider(ui: &mut Ui, p: &ModuleParams, i: usize, range: std::ops::RangeInclusive<f32>, text: impl Fn(f32) -> String + 'static) {
+fn slider(
+    ui: &mut Ui,
+    p: &ModuleParams,
+    i: usize,
+    range: std::ops::RangeInclusive<f32>,
+    text: impl Fn(f32) -> String + 'static,
+) {
     let mut v = get(p, i);
     let s = egui::Slider::new(&mut v, range).custom_formatter(move |x, _| text(x as f32));
     if ui.add(s).changed() {
@@ -608,15 +695,25 @@ fn slider(ui: &mut Ui, p: &ModuleParams, i: usize, range: std::ops::RangeInclusi
     }
 }
 
-fn combo(ui: &mut Ui, salt: impl std::hash::Hash + std::fmt::Debug, p: &ModuleParams, i: usize, names: &[String], width: f32) {
+fn combo(
+    ui: &mut Ui,
+    salt: impl std::hash::Hash + std::fmt::Debug,
+    p: &ModuleParams,
+    i: usize,
+    names: &[String],
+    width: f32,
+) {
     let cur = index(p, i, names.len());
-    egui::ComboBox::from_id_salt(salt).width(width).selected_text(names[cur].as_str()).show_ui(ui, |ui| {
-        for (k, name) in names.iter().enumerate() {
-            if ui.selectable_label(k == cur, name.as_str()).clicked() {
-                p.data[i].set(k as f32);
+    egui::ComboBox::from_id_salt(salt)
+        .width(width)
+        .selected_text(names[cur].as_str())
+        .show_ui(ui, |ui| {
+            for (k, name) in names.iter().enumerate() {
+                if ui.selectable_label(k == cur, name.as_str()).clicked() {
+                    p.data[i].set(k as f32);
+                }
             }
-        }
-    });
+        });
 }
 
 fn names(list: &[&str]) -> Vec<String> {
@@ -640,7 +737,12 @@ fn meter(ui: &mut Ui, v: f32, bipolar: bool, accent: Color32) {
         Rect::from_min_size(r.min, vec2(r.width() * v.clamp(0.0, 1.0), r.height()))
     };
     p.rect_filled(fill, 2.0, accent);
-    p.rect_stroke(r, 2.0, Stroke::new(1.0, theme::PANEL_BORDER), egui::StrokeKind::Inside);
+    p.rect_stroke(
+        r,
+        2.0,
+        Stroke::new(1.0, theme::PANEL_BORDER),
+        egui::StrokeKind::Inside,
+    );
 }
 
 /// The sources of the node's picture now, if it is on the board.
@@ -662,80 +764,140 @@ const LAYER_DEFAULTS: [(usize, f32); 10] = [
 ];
 
 /// A layer setting's name, slot, range and how its value reads.
-type SliderRow = (&'static str, usize, std::ops::RangeInclusive<f32>, fn(f32) -> String);
+type SliderRow = (
+    &'static str,
+    usize,
+    std::ops::RangeInclusive<f32>,
+    fn(f32) -> String,
+);
 
 pub(super) fn layers_tab(ui: &mut Ui, id: NodeId, p: &ModuleParams) {
     heading(ui, "LAYERS");
-    faint(ui, "Drawn from 1 up, 4 on top. Add makes light add up (on dark palettes).");
+    faint(
+        ui,
+        "Drawn from 1 up, 4 on top. Add makes light add up (on dark palettes).",
+    );
     let sel_id = Id::unique(("iris-layer", id));
-    let mut sel = ui.data(|d| d.get_temp::<usize>(sel_id)).unwrap_or(0).min(LAYERS - 1);
+    let mut sel = ui
+        .data(|d| d.get_temp::<usize>(sel_id))
+        .unwrap_or(0)
+        .min(LAYERS - 1);
     let scenes: Vec<String> = (0..SCENES.len()).map(scene_name).collect();
-    egui::Grid::new(ui.scope_id().with("layers")).num_columns(5).spacing([6.0, 4.0]).show(ui, |ui| {
-        for k in 0..LAYERS {
-            let b = data::LAYER + k * LAYER_LEN;
-            let mut on = get(p, b + layer::ON) > 0.5;
-            if ui.checkbox(&mut on, "").on_hover_text("Drawn").changed() {
-                p.data[b + layer::ON].set(on as u8 as f32);
+    egui::Grid::new(ui.scope_id().with("layers"))
+        .num_columns(5)
+        .spacing([6.0, 4.0])
+        .show(ui, |ui| {
+            for k in 0..LAYERS {
+                let b = data::LAYER + k * LAYER_LEN;
+                let mut on = get(p, b + layer::ON) > 0.5;
+                if ui.checkbox(&mut on, "").on_hover_text("Drawn").changed() {
+                    p.data[b + layer::ON].set(on as u8 as f32);
+                }
+                if ui
+                    .selectable_label(sel == k, format!("{}", k + 1))
+                    .on_hover_text("Edit this layer")
+                    .clicked()
+                {
+                    sel = k;
+                }
+                if k == 0 {
+                    // Layer 1's scene is the node's mode.
+                    let cur = scene_of(p);
+                    egui::ComboBox::from_id_salt(("iris-layer-scene", id, k))
+                        .width(108.0)
+                        .selected_text(scenes[cur].as_str())
+                        .show_ui(ui, |ui| {
+                            for (j, name) in scenes.iter().enumerate() {
+                                if ui.selectable_label(j == cur, name.as_str()).clicked() {
+                                    p.set_mode(j);
+                                }
+                            }
+                        });
+                } else {
+                    combo(
+                        ui,
+                        ("iris-layer-scene", id, k),
+                        p,
+                        b + layer::SCENE,
+                        &scenes,
+                        108.0,
+                    );
+                }
+                combo(
+                    ui,
+                    ("iris-layer-blend", id, k),
+                    p,
+                    b + layer::BLEND,
+                    &names(&["Normal", "Add"]),
+                    62.0,
+                );
+                let mut solo = get(p, b + layer::SOLO) > 0.5;
+                if ui
+                    .toggle_value(&mut solo, "S")
+                    .on_hover_text("Solo: only the soloed layers are drawn")
+                    .changed()
+                {
+                    p.data[b + layer::SOLO].set(solo as u8 as f32);
+                }
+                ui.end_row();
             }
-            if ui.selectable_label(sel == k, format!("{}", k + 1)).on_hover_text("Edit this layer").clicked() {
-                sel = k;
-            }
-            if k == 0 {
-                // Layer 1's scene is the node's mode.
-                let cur = scene_of(p);
-                egui::ComboBox::from_id_salt(("iris-layer-scene", id, k)).width(108.0).selected_text(scenes[cur].as_str()).show_ui(ui, |ui| {
-                    for (j, name) in scenes.iter().enumerate() {
-                        if ui.selectable_label(j == cur, name.as_str()).clicked() {
-                            p.set_mode(j);
-                        }
-                    }
-                });
-            } else {
-                combo(ui, ("iris-layer-scene", id, k), p, b + layer::SCENE, &scenes, 108.0);
-            }
-            combo(ui, ("iris-layer-blend", id, k), p, b + layer::BLEND, &names(&["Normal", "Add"]), 62.0);
-            let mut solo = get(p, b + layer::SOLO) > 0.5;
-            if ui.toggle_value(&mut solo, "S").on_hover_text("Solo: only the soloed layers are drawn").changed() {
-                p.data[b + layer::SOLO].set(solo as u8 as f32);
-            }
-            ui.end_row();
-        }
-    });
+        });
     ui.data_mut(|d| d.insert_temp(sel_id, sel));
 
     let b = data::LAYER + sel * LAYER_LEN;
     ui.horizontal(|ui| {
         heading(ui, &format!("LAYER {}", sel + 1));
-        if ui.small_button("Reset").on_hover_text("Its transform, colour, mirror and echoes back to none").clicked() {
+        if ui
+            .small_button("Reset")
+            .on_hover_text("Its transform, colour, mirror and echoes back to none")
+            .clicked()
+        {
             for (j, v) in LAYER_DEFAULTS {
                 p.data[b + j].set(v);
             }
         }
     });
-    egui::Grid::new(ui.scope_id().with("layer")).num_columns(2).spacing([10.0, 4.0]).show(ui, |ui| {
-        let rows: [SliderRow; 9] = [
-            ("Opacity", layer::OPACITY, 0.0..=1.0, |v| format!("{:.0} %", v * 100.0)),
-            ("Zoom", layer::ZOOM, 0.25..=4.0, |v| format!("×{v:.2}")),
-            ("Rotate", layer::ROTATE, -0.5..=0.5, |v| format!("{:.0}°", v * 360.0)),
-            ("Spin", layer::SPIN, -1.0..=1.0, |v| format!("{:.2} turn/s", v)),
-            ("X", layer::X, -1.0..=1.0, |v| format!("{v:+.2}")),
-            ("Y", layer::Y, -1.0..=1.0, |v| format!("{v:+.2}")),
-            ("Hue", layer::HUE, -0.5..=0.5, |v| format!("{:+.0}°", v * 360.0)),
-            ("Speed", layer::SPEED, 0.0..=4.0, |v| format!("×{v:.2}")),
-            ("Feedback", layer::FEEDBACK, 0.8..=1.25, |v| format!("×{v:.2}")),
-        ];
-        for (name, j, range, text) in rows {
-            ui.label(name);
-            slider(ui, p, b + j, range, text);
+    egui::Grid::new(ui.scope_id().with("layer"))
+        .num_columns(2)
+        .spacing([10.0, 4.0])
+        .show(ui, |ui| {
+            let rows: [SliderRow; 9] = [
+                ("Opacity", layer::OPACITY, 0.0..=1.0, |v| {
+                    format!("{:.0} %", v * 100.0)
+                }),
+                ("Zoom", layer::ZOOM, 0.25..=4.0, |v| format!("×{v:.2}")),
+                ("Rotate", layer::ROTATE, -0.5..=0.5, |v| {
+                    format!("{:.0}°", v * 360.0)
+                }),
+                ("Spin", layer::SPIN, -1.0..=1.0, |v| {
+                    format!("{:.2} turn/s", v)
+                }),
+                ("X", layer::X, -1.0..=1.0, |v| format!("{v:+.2}")),
+                ("Y", layer::Y, -1.0..=1.0, |v| format!("{v:+.2}")),
+                ("Hue", layer::HUE, -0.5..=0.5, |v| {
+                    format!("{:+.0}°", v * 360.0)
+                }),
+                ("Speed", layer::SPEED, 0.0..=4.0, |v| format!("×{v:.2}")),
+                ("Feedback", layer::FEEDBACK, 0.8..=1.25, |v| {
+                    format!("×{v:.2}")
+                }),
+            ];
+            for (name, j, range, text) in rows {
+                ui.label(name);
+                slider(ui, p, b + j, range, text);
+                ui.end_row();
+            }
+            ui.label("Echoes");
+            let mut echo = get(p, b + layer::ECHO).round() as i32;
+            if ui
+                .add(egui::Slider::new(&mut echo, 0..=8))
+                .on_hover_text("Past frames behind it, each grown by Feedback")
+                .changed()
+            {
+                p.data[b + layer::ECHO].set(echo as f32);
+            }
             ui.end_row();
-        }
-        ui.label("Echoes");
-        let mut echo = get(p, b + layer::ECHO).round() as i32;
-        if ui.add(egui::Slider::new(&mut echo, 0..=8)).on_hover_text("Past frames behind it, each grown by Feedback").changed() {
-            p.data[b + layer::ECHO].set(echo as f32);
-        }
-        ui.end_row();
-    });
+        });
     ui.horizontal(|ui| {
         ui.label("Mirror");
         let cur = index(p, b + layer::MIRROR, MIRRORS.len());
@@ -753,7 +915,11 @@ fn band_hz(b: usize) -> f32 {
 }
 
 fn hz(v: f32) -> String {
-    if v >= 1000.0 { format!("{:.1} kHz", v / 1000.0) } else { format!("{v:.0} Hz") }
+    if v >= 1000.0 {
+        format!("{:.1} kHz", v / 1000.0)
+    } else {
+        format!("{v:.0} Hz")
+    }
 }
 
 pub(super) fn mod_tab(ui: &mut Ui, id: NodeId, p: &ModuleParams, accent: Color32) {
@@ -771,56 +937,86 @@ pub(super) fn mod_tab(ui: &mut Ui, id: NodeId, p: &ModuleParams, accent: Color32
         })
         .collect();
     let free = (0..data::SLOTS).find(|s| !used.contains(s));
-    egui::Grid::new(ui.scope_id().with("matrix")).num_columns(4).spacing([5.0, 4.0]).show(ui, |ui| {
-        for s in used.iter().copied().chain(free) {
-            let b = data::MATRIX + s * data::SLOT_LEN;
-            combo(ui, ("iris-src", id, s), p, b + slot::SOURCE, &sources, 78.0);
-            combo(ui, ("iris-dst", id, s), p, b + slot::DEST, &dests, 112.0);
-            ui.spacing_mut().slider_width = 58.0;
-            slider(ui, p, b + slot::AMOUNT, -1.0..=1.0, |v| format!("{:+.0} %", v * 100.0));
-            if used.contains(&s) {
-                if ui.small_button("×").on_hover_text("Remove").clicked() {
-                    for j in 0..data::SLOT_LEN {
-                        p.data[b + j].set(0.0);
+    egui::Grid::new(ui.scope_id().with("matrix"))
+        .num_columns(4)
+        .spacing([5.0, 4.0])
+        .show(ui, |ui| {
+            for s in used.iter().copied().chain(free) {
+                let b = data::MATRIX + s * data::SLOT_LEN;
+                combo(ui, ("iris-src", id, s), p, b + slot::SOURCE, &sources, 78.0);
+                combo(ui, ("iris-dst", id, s), p, b + slot::DEST, &dests, 112.0);
+                ui.spacing_mut().slider_width = 58.0;
+                slider(ui, p, b + slot::AMOUNT, -1.0..=1.0, |v| {
+                    format!("{:+.0} %", v * 100.0)
+                });
+                if used.contains(&s) {
+                    if ui.small_button("×").on_hover_text("Remove").clicked() {
+                        for j in 0..data::SLOT_LEN {
+                            p.data[b + j].set(0.0);
+                        }
                     }
+                } else {
+                    ui.label("");
                 }
-            } else {
-                ui.label("");
+                ui.end_row();
             }
-            ui.end_row();
-        }
-    });
+        });
     faint(ui, format!("{} of {} slots", used.len(), data::SLOTS));
 
     heading(ui, "LFOS");
-    egui::Grid::new(ui.scope_id().with("lfos")).num_columns(5).spacing([5.0, 4.0]).show(ui, |ui| {
-        for k in 0..data::LFOS {
-            let b = data::LFO + k * data::LFO_LEN;
-            ui.horizontal(|ui| {
-                ui.label(format!("{}", k + 1));
-                meter(ui, now[S_LFO + k], true, accent);
-            });
-            combo(ui, ("iris-lfo-shape", id, k), p, b + lfo::SHAPE, &names(&LFO_SHAPES), 70.0);
-            let synced = get(p, b + lfo::SYNC) > 0.5;
-            if ui.selectable_label(synced, "Sync").on_hover_text("To the transport's beat (free: in Hz)").clicked() {
-                p.data[b + lfo::SYNC].set(if synced { 0.0 } else { 1.0 });
-                // A sensible rate for the new kind.
-                p.data[b + lfo::RATE].set(if synced { 0.5 } else { 4.0 });
-            }
-            ui.spacing_mut().slider_width = 58.0;
-            if synced {
-                combo(ui, ("iris-lfo-rate", id, k), p, b + lfo::RATE, &names(&SYNC_NAMES), 64.0);
-            } else {
-                let mut v = get(p, b + lfo::RATE).clamp(0.02, 10.0);
-                let s = egui::Slider::new(&mut v, 0.02..=10.0).logarithmic(true).custom_formatter(|x, _| format!("{x:.2} Hz"));
-                if ui.add(s).changed() {
-                    p.data[b + lfo::RATE].set(v);
+    egui::Grid::new(ui.scope_id().with("lfos"))
+        .num_columns(5)
+        .spacing([5.0, 4.0])
+        .show(ui, |ui| {
+            for k in 0..data::LFOS {
+                let b = data::LFO + k * data::LFO_LEN;
+                ui.horizontal(|ui| {
+                    ui.label(format!("{}", k + 1));
+                    meter(ui, now[S_LFO + k], true, accent);
+                });
+                combo(
+                    ui,
+                    ("iris-lfo-shape", id, k),
+                    p,
+                    b + lfo::SHAPE,
+                    &names(&LFO_SHAPES),
+                    70.0,
+                );
+                let synced = get(p, b + lfo::SYNC) > 0.5;
+                if ui
+                    .selectable_label(synced, "Sync")
+                    .on_hover_text("To the transport's beat (free: in Hz)")
+                    .clicked()
+                {
+                    p.data[b + lfo::SYNC].set(if synced { 0.0 } else { 1.0 });
+                    // A sensible rate for the new kind.
+                    p.data[b + lfo::RATE].set(if synced { 0.5 } else { 4.0 });
                 }
+                ui.spacing_mut().slider_width = 58.0;
+                if synced {
+                    combo(
+                        ui,
+                        ("iris-lfo-rate", id, k),
+                        p,
+                        b + lfo::RATE,
+                        &names(&SYNC_NAMES),
+                        64.0,
+                    );
+                } else {
+                    let mut v = get(p, b + lfo::RATE).clamp(0.02, 10.0);
+                    let s = egui::Slider::new(&mut v, 0.02..=10.0)
+                        .logarithmic(true)
+                        .custom_formatter(|x, _| format!("{x:.2} Hz"));
+                    if ui.add(s).changed() {
+                        p.data[b + lfo::RATE].set(v);
+                    }
+                }
+                slider(ui, p, b + lfo::PHASE, 0.0..=1.0, |v| {
+                    format!("{:.0}°", v * 360.0)
+                });
+                ui.end_row();
             }
-            slider(ui, p, b + lfo::PHASE, 0.0..=1.0, |v| format!("{:.0}°", v * 360.0));
-            ui.end_row();
-        }
-    });
+        });
 
     heading(ui, "ENVELOPES");
     for k in 0..data::ENVS {
@@ -828,55 +1024,90 @@ pub(super) fn mod_tab(ui: &mut Ui, id: NodeId, p: &ModuleParams, accent: Color32
         ui.horizontal(|ui| {
             ui.label(format!("{}", k + 1));
             meter(ui, now[S_ENV + k], false, accent);
-            combo(ui, ("iris-env-trig", id, k), p, b + env::TRIGGER, &names(&ENV_TRIGGERS), 92.0);
+            combo(
+                ui,
+                ("iris-env-trig", id, k),
+                p,
+                b + env::TRIGGER,
+                &names(&ENV_TRIGGERS),
+                92.0,
+            );
         });
-        egui::Grid::new(ui.scope_id().with(("env", k))).num_columns(4).spacing([6.0, 3.0]).show(ui, |ui| {
-            ui.spacing_mut().slider_width = 62.0;
-            let secs = |v: f32| if v < 1.0 { format!("{:.0} ms", v * 1000.0) } else { format!("{v:.1} s") };
-            ui.label("A");
-            log_slider(ui, p, b + env::ATTACK, 0.001..=4.0, secs);
-            ui.label("D");
-            log_slider(ui, p, b + env::DECAY, 0.01..=4.0, secs);
-            ui.end_row();
-            ui.label("S");
-            slider(ui, p, b + env::SUSTAIN, 0.0..=1.0, |v| format!("{:.0} %", v * 100.0));
-            ui.label("R");
-            log_slider(ui, p, b + env::RELEASE, 0.01..=8.0, secs);
-            ui.end_row();
-        });
+        egui::Grid::new(ui.scope_id().with(("env", k)))
+            .num_columns(4)
+            .spacing([6.0, 3.0])
+            .show(ui, |ui| {
+                ui.spacing_mut().slider_width = 62.0;
+                let secs = |v: f32| {
+                    if v < 1.0 {
+                        format!("{:.0} ms", v * 1000.0)
+                    } else {
+                        format!("{v:.1} s")
+                    }
+                };
+                ui.label("A");
+                log_slider(ui, p, b + env::ATTACK, 0.001..=4.0, secs);
+                ui.label("D");
+                log_slider(ui, p, b + env::DECAY, 0.01..=4.0, secs);
+                ui.end_row();
+                ui.label("S");
+                slider(ui, p, b + env::SUSTAIN, 0.0..=1.0, |v| {
+                    format!("{:.0} %", v * 100.0)
+                });
+                ui.label("R");
+                log_slider(ui, p, b + env::RELEASE, 0.01..=8.0, secs);
+                ui.end_row();
+            });
     }
 
     heading(ui, "AUDIO");
-    egui::Grid::new(ui.scope_id().with("audio")).num_columns(4).spacing([5.0, 4.0]).show(ui, |ui| {
-        for k in 0..data::AUDIO_MODS {
-            let b = data::AUDIO + k * data::AUDIO_LEN;
-            ui.horizontal(|ui| {
-                ui.label(format!("{}", k + 1));
-                meter(ui, now[S_AUDIO + k], false, accent);
-            });
-            let mut lo = index(p, b + audio::FROM, BANDS) as i32;
-            let mut hi = index(p, b + audio::TO, BANDS) as i32;
-            let r = ui.add(egui::DragValue::new(&mut lo).range(0..=BANDS as i32 - 1).custom_formatter(|v, _| hz(band_hz(v as usize))));
-            if r.changed() {
-                p.data[b + audio::FROM].set(lo as f32);
+    egui::Grid::new(ui.scope_id().with("audio"))
+        .num_columns(4)
+        .spacing([5.0, 4.0])
+        .show(ui, |ui| {
+            for k in 0..data::AUDIO_MODS {
+                let b = data::AUDIO + k * data::AUDIO_LEN;
+                ui.horizontal(|ui| {
+                    ui.label(format!("{}", k + 1));
+                    meter(ui, now[S_AUDIO + k], false, accent);
+                });
+                let mut lo = index(p, b + audio::FROM, BANDS) as i32;
+                let mut hi = index(p, b + audio::TO, BANDS) as i32;
+                let r = ui.add(
+                    egui::DragValue::new(&mut lo)
+                        .range(0..=BANDS as i32 - 1)
+                        .custom_formatter(|v, _| hz(band_hz(v as usize))),
+                );
+                if r.changed() {
+                    p.data[b + audio::FROM].set(lo as f32);
+                }
+                let r = ui.add(
+                    egui::DragValue::new(&mut hi)
+                        .range(0..=BANDS as i32 - 1)
+                        .custom_formatter(|v, _| hz(band_hz(v as usize + 1))),
+                );
+                if r.changed() {
+                    p.data[b + audio::TO].set(hi as f32);
+                }
+                ui.spacing_mut().slider_width = 60.0;
+                slider(ui, p, b + audio::GAIN, 0.0..=4.0, |v| format!("×{v:.1}"));
+                ui.end_row();
             }
-            let r = ui.add(egui::DragValue::new(&mut hi).range(0..=BANDS as i32 - 1).custom_formatter(|v, _| hz(band_hz(v as usize + 1))));
-            if r.changed() {
-                p.data[b + audio::TO].set(hi as f32);
-            }
-            ui.spacing_mut().slider_width = 60.0;
-            slider(ui, p, b + audio::GAIN, 0.0..=4.0, |v| format!("×{v:.1}"));
-            ui.end_row();
-        }
-    });
+        });
 
     heading(ui, "MIDI");
-    faint(ui, "Notes and CCs from the MIDI input, or from the keyboards while it is free.");
+    faint(
+        ui,
+        "Notes and CCs from the MIDI input, or from the keyboards while it is free.",
+    );
     ui.horizontal(|ui| {
         for k in 0..data::CCS {
             ui.label(if k == 0 { "CC A" } else { "CC B" });
             let mut n = index(p, data::CC + k, 128) as i32;
-            if ui.add(egui::DragValue::new(&mut n).range(0..=127)).changed() {
+            if ui
+                .add(egui::DragValue::new(&mut n).range(0..=127))
+                .changed()
+            {
                 p.data[data::CC + k].set(n as f32);
             }
             meter(ui, now[S_CC + k], false, accent);
@@ -892,9 +1123,17 @@ pub(super) fn mod_tab(ui: &mut Ui, id: NodeId, p: &ModuleParams, accent: Color32
     });
 }
 
-fn log_slider(ui: &mut Ui, p: &ModuleParams, i: usize, range: std::ops::RangeInclusive<f32>, text: impl Fn(f32) -> String + 'static) {
+fn log_slider(
+    ui: &mut Ui,
+    p: &ModuleParams,
+    i: usize,
+    range: std::ops::RangeInclusive<f32>,
+    text: impl Fn(f32) -> String + 'static,
+) {
     let mut v = get(p, i).clamp(*range.start(), *range.end());
-    let s = egui::Slider::new(&mut v, range).logarithmic(true).custom_formatter(move |x, _| text(x as f32));
+    let s = egui::Slider::new(&mut v, range)
+        .logarithmic(true)
+        .custom_formatter(move |x, _| text(x as f32));
     if ui.add(s).changed() {
         p.data[i].set(v);
     }
@@ -911,7 +1150,18 @@ mod tests {
         let l = live(&p, &[0.5; SOURCES.len()]);
         assert!(l.layers[0].on && !l.layers[1].on && !l.layers[2].on && !l.layers[3].on);
         let one = l.layers[0];
-        assert_eq!((one.opacity, one.add, one.zoom, one.rotate, one.x, one.y, one.hue), (1.0, false, 1.0, 0.0, 0.0, 0.0, 0.0));
+        assert_eq!(
+            (
+                one.opacity,
+                one.add,
+                one.zoom,
+                one.rotate,
+                one.x,
+                one.y,
+                one.hue
+            ),
+            (1.0, false, 1.0, 0.0, 0.0, 0.0, 0.0)
+        );
         assert_eq!((one.mirror, one.echo, one.speed), (0, 0, 1.0));
         assert_eq!(l.speed, p.get(SPEED));
     }
@@ -922,21 +1172,30 @@ mod tests {
         let b = data::MATRIX;
         p.data[b + slot::SOURCE].set(S_LFO as f32);
         // Layer 2's opacity.
-        let dest = (0..DESTS).find(|&d| dest_name(d) == "Layer 2 Opacity").unwrap();
+        let dest = (0..DESTS)
+            .find(|&d| dest_name(d) == "Layer 2 Opacity")
+            .unwrap();
         p.data[b + slot::DEST].set(dest as f32);
         p.data[b + slot::AMOUNT].set(-0.5);
         let mut src = [0.0; SOURCES.len()];
         src[S_LFO] = 1.0;
         assert!((live(&p, &src).layers[1].opacity - 0.3).abs() < 1e-5);
         src[S_LFO] = -1.0;
-        assert!((live(&p, &src).layers[1].opacity - 1.0).abs() < 1e-5, "clamped");
+        assert!(
+            (live(&p, &src).layers[1].opacity - 1.0).abs() < 1e-5,
+            "clamped"
+        );
     }
 
     #[test]
     fn lfo_waves_swing_both_ways() {
         for shape in 0..4 {
-            let vals: Vec<f32> = (0..100).map(|i| wave(shape, i as f32 / 100.0, 0.0)).collect();
-            let (lo, hi) = vals.iter().fold((1.0f32, -1.0f32), |(a, b), &v| (a.min(v), b.max(v)));
+            let vals: Vec<f32> = (0..100)
+                .map(|i| wave(shape, i as f32 / 100.0, 0.0))
+                .collect();
+            let (lo, hi) = vals
+                .iter()
+                .fold((1.0f32, -1.0f32), |(a, b), &v| (a.min(v), b.max(v)));
             assert!(lo < -0.9 && hi > 0.9, "shape {shape}: {lo}..{hi}");
         }
     }
@@ -965,7 +1224,11 @@ mod tests {
         step(&mut m, 9);
         assert!(m.src[S_ENV + 1] > 0.8, "attack: {}", m.src[S_ENV + 1]);
         step(&mut m, 40);
-        assert!((m.src[S_ENV + 1] - 0.5).abs() < 1e-3, "sustain: {}", m.src[S_ENV + 1]);
+        assert!(
+            (m.src[S_ENV + 1] - 0.5).abs() < 1e-3,
+            "sustain: {}",
+            m.src[S_ENV + 1]
+        );
         // Note off: it lets go.
         p.viz[viz::HELD].set(0.0);
         step(&mut m, 40);
@@ -985,13 +1248,21 @@ mod tests {
         p.viz[viz::PLAYING].set(1.0);
         p.viz[viz::BEAT].set(10.25);
         m.update(&p, &a, 0.01, 120.0);
-        assert!((m.src[S_LFO] - (-0.5)).abs() < 1e-4, "a quarter into the saw: {}", m.src[S_LFO]);
+        assert!(
+            (m.src[S_LFO] - (-0.5)).abs() < 1e-4,
+            "a quarter into the saw: {}",
+            m.src[S_LFO]
+        );
     }
 
     #[test]
     fn hue_and_add_keep_colours_in_range() {
         let mut mesh = Mesh::default();
-        for c in [Color32::from_rgb(255, 0, 0), Color32::from_rgba_premultiplied(40, 80, 120, 128), Color32::WHITE] {
+        for c in [
+            Color32::from_rgb(255, 0, 0),
+            Color32::from_rgba_premultiplied(40, 80, 120, 128),
+            Color32::WHITE,
+        ] {
             mesh.colored_vertex(Pos2::ZERO, c);
         }
         let mut normal = mesh.clone();

@@ -44,7 +44,9 @@ pub enum Guard<'a> {
 impl Instance {
     /// The plugin if nobody holds it (a poisoned lock is taken anyway).
     pub fn try_lock(&self) -> Result<Guard<'_>, ()> {
-        fn take<'a, T>(r: Result<MutexGuard<'a, T>, TryLockError<MutexGuard<'a, T>>>) -> Result<MutexGuard<'a, T>, ()> {
+        fn take<'a, T>(
+            r: Result<MutexGuard<'a, T>, TryLockError<MutexGuard<'a, T>>>,
+        ) -> Result<MutexGuard<'a, T>, ()> {
             match r {
                 Ok(g) => Ok(g),
                 Err(TryLockError::Poisoned(p)) => Ok(p.into_inner()),
@@ -92,10 +94,20 @@ impl Guard<'_> {
                 if c.playing_changed {
                     let _ = p.set_playing(c.playing);
                 }
-                let _ = p.set_transport_position(TransportPosition { samples: c.samples, quarter_notes: c.beat });
+                let _ = p.set_transport_position(TransportPosition {
+                    samples: c.samples,
+                    quarter_notes: c.beat,
+                });
             }
             #[cfg(target_os = "macos")]
-            Guard::Au(u) => u.set_transport(c.tempo, c.beat, c.beats_per_sample, c.playing, c.playing_changed || c.restart, c.restart),
+            Guard::Au(u) => u.set_transport(
+                c.tempo,
+                c.beat,
+                c.beats_per_sample,
+                c.playing,
+                c.playing_changed || c.restart,
+                c.restart,
+            ),
         }
     }
 
@@ -151,7 +163,9 @@ impl Guard<'_> {
         match self {
             Guard::Vst3(p) => p.get_parameter(id).map_err(|e| e.to_string()),
             #[cfg(target_os = "macos")]
-            Guard::Au(u) => u.get_parameter(id).ok_or_else(|| "no such parameter".to_owned()),
+            Guard::Au(u) => u
+                .get_parameter(id)
+                .ok_or_else(|| "no such parameter".to_owned()),
         }
     }
 
@@ -160,7 +174,9 @@ impl Guard<'_> {
         match self {
             Guard::Vst3(p) => p.format_parameter(id, value).map_err(|e| e.to_string()),
             #[cfg(target_os = "macos")]
-            Guard::Au(u) => u.format_parameter(id, value).ok_or_else(|| "no such parameter".to_owned()),
+            Guard::Au(u) => u
+                .format_parameter(id, value)
+                .ok_or_else(|| "no such parameter".to_owned()),
         }
     }
 
@@ -201,7 +217,9 @@ pub struct PluginShared {
 pub enum Format {
     Vst3,
     /// An Audio Unit: v3 (an app extension) or v2 (a component).
-    AudioUnit { v3: bool },
+    AudioUnit {
+        v3: bool,
+    },
 }
 
 impl Format {
@@ -216,7 +234,11 @@ impl Format {
 
     /// The format of a plugin path: Audio Units have pseudo-paths.
     pub fn of(path: &Path) -> Self {
-        if super::au::is_au_path(path) { Format::AudioUnit { v3: false } } else { Format::Vst3 }
+        if super::au::is_au_path(path) {
+            Format::AudioUnit { v3: false }
+        } else {
+            Format::Vst3
+        }
     }
 }
 
@@ -274,20 +296,28 @@ pub fn load(host: &mut Vst3Host, path: &Path) -> Result<Loaded, String> {
         .map_err(|e| e.to_string())?
         .into_iter()
         .filter(|p| !p.is_read_only && !p.is_bypass)
-        .map(|p| PluginParam { id: p.id, name: p.name, default: p.default })
+        .map(|p| PluginParam {
+            id: p.id,
+            name: p.name,
+            default: p.default,
+        })
         .collect();
     // Only the main buses are used: switch off the others (a drum machine's
     // sixteen stereo outs, sidechains) so the plugin doesn't render them.
     if let Ok(layout) = plugin.audio_bus_layout() {
         use vst3_host::{BusDirection, MediaType};
-        for (direction, count) in [(BusDirection::Output, layout.outputs.len()), (BusDirection::Input, layout.inputs.len())] {
+        for (direction, count) in [
+            (BusDirection::Output, layout.outputs.len()),
+            (BusDirection::Input, layout.inputs.len()),
+        ] {
             for bus in 1..count {
                 let _ = plugin.set_bus_active(MediaType::Audio, direction, bus as i32, false);
             }
         }
     }
     plugin.start_processing().map_err(|e| e.to_string())?;
-    let instrument = info.category.contains("Instrument") || (info.has_midi_input && info.audio_inputs == 0);
+    let instrument =
+        info.category.contains("Instrument") || (info.has_midi_input && info.audio_inputs == 0);
     let meta = PluginMeta {
         path: path.to_path_buf(),
         format: Format::Vst3,
@@ -300,7 +330,11 @@ pub fn load(host: &mut Vst3Host, path: &Path) -> Result<Loaded, String> {
         editor: plugin.has_editor(),
         midi: info.has_midi_input,
     };
-    Ok(Loaded { plugin, meta, params })
+    Ok(Loaded {
+        plugin,
+        meta,
+        params,
+    })
 }
 
 /// A loaded plugin of either format, ready for a node.
@@ -312,7 +346,11 @@ pub struct LoadedAny {
 
 impl From<Loaded> for LoadedAny {
     fn from(l: Loaded) -> Self {
-        Self { instance: Instance::Vst3(Arc::new(Mutex::new(l.plugin))), meta: l.meta, params: l.params }
+        Self {
+            instance: Instance::Vst3(Arc::new(Mutex::new(l.plugin))),
+            meta: l.meta,
+            params: l.params,
+        }
     }
 }
 
@@ -322,7 +360,15 @@ pub fn load_au(path: &Path, sample_rate: f32) -> Result<LoadedAny, String> {
     let component = au::Component::from_path(path).ok_or("not an Audio Unit")?;
     // Plugins get a whole device buffer per call (see `engine::PASS`).
     let unit = AudioUnit::open(component, sample_rate, PASS)?;
-    let params = unit.params.iter().map(|p| PluginParam { id: p.id, name: p.name.clone(), default: p.default }).collect();
+    let params = unit
+        .params
+        .iter()
+        .map(|p| PluginParam {
+            id: p.id,
+            name: p.name.clone(),
+            default: p.default,
+        })
+        .collect();
     let meta = PluginMeta {
         path: path.to_path_buf(),
         format: Format::AudioUnit { v3: unit.v3 },
@@ -336,7 +382,11 @@ pub fn load_au(path: &Path, sample_rate: f32) -> Result<LoadedAny, String> {
         editor: true,
         midi: unit.midi,
     };
-    Ok(LoadedAny { instance: Instance::Au(Arc::new(Mutex::new(unit))), meta, params })
+    Ok(LoadedAny {
+        instance: Instance::Au(Arc::new(Mutex::new(unit))),
+        meta,
+        params,
+    })
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -381,7 +431,10 @@ pub fn scan() -> Vec<PathBuf> {
         .iter()
         .flat_map(|d| std::fs::read_dir(d).into_iter().flatten().flatten())
         .map(|e| e.path())
-        .filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("vst3")))
+        .filter(|p| {
+            p.extension()
+                .is_some_and(|x| x.eq_ignore_ascii_case("vst3"))
+        })
         .collect();
     found.sort_by_key(|p| bundle_name(p).to_lowercase());
     found
@@ -389,7 +442,8 @@ pub fn scan() -> Vec<PathBuf> {
 
 /// "ValhallaFreqEcho" for ".../ValhallaFreqEcho.vst3".
 pub fn bundle_name(path: &Path) -> String {
-    path.file_stem().map_or_else(String::new, |s| s.to_string_lossy().into_owned())
+    path.file_stem()
+        .map_or_else(String::new, |s| s.to_string_lossy().into_owned())
 }
 
 /// The maker of a plugin bundle, from its metadata files: no plugin code
@@ -406,19 +460,25 @@ pub fn bundle_vendor(path: &Path) -> Option<String> {
     let plist = std::fs::read_to_string(contents.join("Info.plist")).ok()?;
     plist_string(&plist, "NSHumanReadableCopyright")
         .and_then(|c| vendor_from_copyright(&c))
-        .or_else(|| plist_string(&plist, "CFBundleIdentifier").and_then(|id| vendor_from_bundle_id(&id)))
+        .or_else(|| {
+            plist_string(&plist, "CFBundleIdentifier").and_then(|id| vendor_from_bundle_id(&id))
+        })
 }
 
 /// A maker's name without its legal form: "Valhalla DSP" for
 /// "Valhalla DSP, LLC".
 pub fn clean_vendor(name: &str) -> String {
     const FORMS: [&str; 14] = [
-        "llc", "l.l.c.", "inc.", "inc", "ltd.", "ltd", "limited", "gmbh", "s.r.l.", "srl", "corp.", "corp", "co.", "ab",
+        "llc", "l.l.c.", "inc.", "inc", "ltd.", "ltd", "limited", "gmbh", "s.r.l.", "srl", "corp.",
+        "corp", "co.", "ab",
     ];
     let mut name = name.trim().trim_end_matches(['.', ',', ' ']).to_owned();
     loop {
         let lower = name.to_lowercase();
-        let Some(form) = FORMS.iter().find(|f| lower.ends_with(&format!(" {f}")) || lower.ends_with(&format!(",{f}"))) else {
+        let Some(form) = FORMS
+            .iter()
+            .find(|f| lower.ends_with(&format!(" {f}")) || lower.ends_with(&format!(",{f}")))
+        else {
             break;
         };
         name.truncate(name.len() - form.len());
@@ -429,7 +489,11 @@ pub fn clean_vendor(name: &str) -> String {
 
 /// Groups spellings of one maker: "Valhalla DSP" and "ValhallaDSP" match.
 pub fn vendor_key(name: &str) -> String {
-    clean_vendor(name).chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect()
+    clean_vendor(name)
+        .chars()
+        .filter(|c| c.is_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
 }
 
 /// "Valhalla DSP" from "Copyright (c) 2022, Valhalla DSP, LLC. All Rights Reserved."
@@ -443,7 +507,11 @@ fn vendor_from_copyright(notice: &str) -> Option<String> {
     // Drop years ("2022", "2019-2024") and the punctuation around them.
     let words: Vec<&str> = text
         .split_whitespace()
-        .filter(|w| !w.trim_matches([',', '.', '-', '–']).chars().all(|c| c.is_ascii_digit() || c == '-' || c == '–'))
+        .filter(|w| {
+            !w.trim_matches([',', '.', '-', '–'])
+                .chars()
+                .all(|c| c.is_ascii_digit() || c == '-' || c == '–')
+        })
         .collect();
     let vendor = clean_vendor(words.join(" ").trim_matches([',', '.', ' ', '-']));
     (!vendor.is_empty()).then_some(vendor)
@@ -451,10 +519,16 @@ fn vendor_from_copyright(notice: &str) -> Option<String> {
 
 /// "ValhallaDSP" from "com.ValhallaDSP.ValhallaFreqEcho".
 fn vendor_from_bundle_id(id: &str) -> Option<String> {
-    const TOP: [&str; 10] = ["com", "net", "org", "io", "co", "de", "uk", "fr", "it", "audio"];
+    const TOP: [&str; 10] = [
+        "com", "net", "org", "io", "co", "de", "uk", "fr", "it", "audio",
+    ];
     let mut parts = id.split('.').filter(|p| !p.is_empty());
     let first = parts.next()?;
-    let maker = if TOP.contains(&first.to_lowercase().as_str()) { parts.next()? } else { first };
+    let maker = if TOP.contains(&first.to_lowercase().as_str()) {
+        parts.next()?
+    } else {
+        first
+    };
     let mut chars = maker.chars();
     let head = chars.next()?;
     Some(head.to_uppercase().chain(chars).collect())
@@ -464,7 +538,11 @@ fn vendor_from_bundle_id(id: &str) -> Option<String> {
 /// are JSON5 (trailing commas), which strict parsers refuse.
 fn json_string(text: &str, key: &str) -> Option<String> {
     let after = &text[text.find(&format!("\"{key}\""))? + key.len() + 2..];
-    let after = after.trim_start().strip_prefix(':')?.trim_start().strip_prefix('"')?;
+    let after = after
+        .trim_start()
+        .strip_prefix(':')?
+        .trim_start()
+        .strip_prefix('"')?;
     let mut value = String::new();
     let mut chars = after.chars();
     while let Some(c) = chars.next() {
@@ -497,13 +575,38 @@ fn plist_string(xml: &str, key: &str) -> Option<String> {
 fn midi_event([status, d1, d2]: [u8; 3]) -> Option<MidiEvent> {
     let channel = MidiChannel::from_index(status & 0x0F)?;
     Some(match status & 0xF0 {
-        0x90 if d2 > 0 => MidiEvent::NoteOn { channel, note: d1, velocity: d2 },
-        0x80 | 0x90 => MidiEvent::NoteOff { channel, note: d1, velocity: d2 },
-        0xA0 => MidiEvent::PolyAftertouch { channel, note: d1, pressure: d2 },
-        0xB0 => MidiEvent::ControlChange { channel, controller: d1, value: d2 },
-        0xC0 => MidiEvent::ProgramChange { channel, program: d1 },
-        0xD0 => MidiEvent::ChannelAftertouch { channel, pressure: d1 },
-        0xE0 => MidiEvent::PitchBend { channel, value: (d2 as u16) << 7 | d1 as u16 },
+        0x90 if d2 > 0 => MidiEvent::NoteOn {
+            channel,
+            note: d1,
+            velocity: d2,
+        },
+        0x80 | 0x90 => MidiEvent::NoteOff {
+            channel,
+            note: d1,
+            velocity: d2,
+        },
+        0xA0 => MidiEvent::PolyAftertouch {
+            channel,
+            note: d1,
+            pressure: d2,
+        },
+        0xB0 => MidiEvent::ControlChange {
+            channel,
+            controller: d1,
+            value: d2,
+        },
+        0xC0 => MidiEvent::ProgramChange {
+            channel,
+            program: d1,
+        },
+        0xD0 => MidiEvent::ChannelAftertouch {
+            channel,
+            pressure: d1,
+        },
+        0xE0 => MidiEvent::PitchBend {
+            channel,
+            value: (d2 as u16) << 7 | d1 as u16,
+        },
         _ => return None,
     })
 }
@@ -537,7 +640,13 @@ pub struct PluginProcessor {
 const PLUGIN_REST: f32 = 1.0;
 
 impl PluginProcessor {
-    pub fn new(shared: Arc<PluginShared>, control: Receiver<Control>, midi: Arc<MidiState>, meta: &PluginMeta, sample_rate: f32) -> Self {
+    pub fn new(
+        shared: Arc<PluginShared>,
+        control: Receiver<Control>,
+        midi: Arc<MidiState>,
+        meta: &PluginMeta,
+        sample_rate: f32,
+    ) -> Self {
         Self {
             midi_cursor: midi.stream_head(),
             cable_notes: [0; 128],
@@ -571,7 +680,13 @@ impl Processor for PluginProcessor {
     /// has been silent for a second with nothing coming in (no audio, no
     /// MIDI) rests, and wakes at the first input or on Start. Not while its
     /// editor is open: sound started there never reaches us as input.
-    fn process_pass(&mut self, ctx: &ProcessCtx, inputs: &PassInputs, outputs: &mut [Box<[Buf]>], n: usize) {
+    fn process_pass(
+        &mut self,
+        ctx: &ProcessCtx,
+        inputs: &PassInputs,
+        outputs: &mut [Box<[Buf]>],
+        n: usize,
+    ) {
         let blocks = n.div_ceil(BLOCK);
         let len = |k: usize| (n - k * BLOCK).min(BLOCK);
         let silence = |outputs: &mut [Box<[Buf]>]| {
@@ -584,7 +699,9 @@ impl Processor for PluginProcessor {
         let incoming = (keyboard && self.midi.stream_head() != self.midi_cursor)
             || inputs.midi.iter().any(|m| !m.events().is_empty())
             || (!inputs.midi_connected && self.cable_notes.iter().any(|&c| c != 0))
-            || inputs.audio.is_some_and(|a| a.iter().flatten().flatten().any(|s| s.abs() > 1e-6));
+            || inputs
+                .audio
+                .is_some_and(|a| a.iter().flatten().flatten().any(|s| s.abs() > 1e-6));
         let resting = !ctx.playing && !incoming && !self.shared.editor_open.load(Relaxed);
         if resting && self.silent >= self.rest_after {
             silence(outputs);
@@ -638,7 +755,8 @@ impl Processor for PluginProcessor {
             }
         }
         if keyboard {
-            self.midi.read_stream(&mut self.midi_cursor, |msg| plugin.send_midi(msg, None));
+            self.midi
+                .read_stream(&mut self.midi_cursor, |msg| plugin.send_midi(msg, None));
         } else {
             self.midi_cursor = self.midi.stream_head();
         }
@@ -693,9 +811,16 @@ impl Processor for PluginProcessor {
             out[0][0][..len(k)].copy_from_slice(&left[range.clone()]);
             out[0][1][..len(k)].copy_from_slice(&right[range]);
         }
-        let peak = left[..n].iter().chain(&right[..n]).fold(0.0f32, |m, s| m.max(s.abs()));
+        let peak = left[..n]
+            .iter()
+            .chain(&right[..n])
+            .fold(0.0f32, |m, s| m.max(s.abs()));
         self.shared.meter.fetch_max(peak);
-        self.silent = if peak < 1e-5 { self.silent.saturating_add(n) } else { 0 };
+        self.silent = if peak < 1e-5 {
+            self.silent.saturating_add(n)
+        } else {
+            0
+        };
     }
 }
 
@@ -706,15 +831,30 @@ mod tests {
     #[test]
     fn vendor_names() {
         let c = |s| vendor_from_copyright(s);
-        assert_eq!(c("Copyright (c) 2022, Valhalla DSP, LLC. All Rights Reserved.").as_deref(), Some("Valhalla DSP"));
-        assert_eq!(c("© 2019-2024 Acme Audio Ltd.").as_deref(), Some("Acme Audio"));
+        assert_eq!(
+            c("Copyright (c) 2022, Valhalla DSP, LLC. All Rights Reserved.").as_deref(),
+            Some("Valhalla DSP")
+        );
+        assert_eq!(
+            c("© 2019-2024 Acme Audio Ltd.").as_deref(),
+            Some("Acme Audio")
+        );
         assert_eq!(c("Vital Audio").as_deref(), Some("Vital Audio"));
         assert_eq!(c(""), None);
-        assert_eq!(vendor_from_bundle_id("com.ValhallaDSP.ValhallaFreqEcho").as_deref(), Some("ValhallaDSP"));
-        assert_eq!(vendor_from_bundle_id("audio.vital.synth").as_deref(), Some("Vital"));
+        assert_eq!(
+            vendor_from_bundle_id("com.ValhallaDSP.ValhallaFreqEcho").as_deref(),
+            Some("ValhallaDSP")
+        );
+        assert_eq!(
+            vendor_from_bundle_id("audio.vital.synth").as_deref(),
+            Some("Vital")
+        );
         assert_eq!(vendor_key("Valhalla DSP, LLC"), vendor_key("ValhallaDSP"));
         assert_eq!(vendor_key("Spitfire Audio"), vendor_key("spitfireaudio"));
-        assert_eq!(clean_vendor("Native Instruments GmbH"), "Native Instruments");
+        assert_eq!(
+            clean_vendor("Native Instruments GmbH"),
+            "Native Instruments"
+        );
         assert_eq!(clean_vendor("FabFilter"), "FabFilter");
     }
 
@@ -731,14 +871,31 @@ mod tests {
             path
         };
         let plist = |key: &str, value: &str| {
-            format!("<?xml version=\"1.0\"?><plist><dict><key>{key}</key>\n\t<string>{value}</string></dict></plist>")
+            format!(
+                "<?xml version=\"1.0\"?><plist><dict><key>{key}</key>\n\t<string>{value}</string></dict></plist>"
+            )
         };
         let module = bundle(
             "A",
-            &[("Resources/moduleinfo.json", "{ \"Name\": \"A\", \"Factory Info\": { \"Vendor\": \"Spitfire Audio\", }, }")],
+            &[(
+                "Resources/moduleinfo.json",
+                "{ \"Name\": \"A\", \"Factory Info\": { \"Vendor\": \"Spitfire Audio\", }, }",
+            )],
         );
-        let copyright = bundle("B", &[("Info.plist", &plist("NSHumanReadableCopyright", "Copyright &#169; 2024 Big &amp; Small, Inc."))]);
-        let id = bundle("C", &[("Info.plist", &plist("CFBundleIdentifier", "com.u-he.Diva"))]);
+        let copyright = bundle(
+            "B",
+            &[(
+                "Info.plist",
+                &plist(
+                    "NSHumanReadableCopyright",
+                    "Copyright &#169; 2024 Big &amp; Small, Inc.",
+                ),
+            )],
+        );
+        let id = bundle(
+            "C",
+            &[("Info.plist", &plist("CFBundleIdentifier", "com.u-he.Diva"))],
+        );
         let nothing = bundle("D", &[]);
         assert_eq!(bundle_vendor(&module).as_deref(), Some("Spitfire Audio"));
         assert_eq!(bundle_vendor(&copyright).as_deref(), Some("Big & Small"));

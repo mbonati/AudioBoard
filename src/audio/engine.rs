@@ -75,7 +75,14 @@ pub trait Processor: Send {
 
     /// The whole pass (`n` frames, from `ctx.beat`) at once; `outputs` is
     /// block by block, `[block][port]`. For nodes that say [`Self::wants_pass`].
-    fn process_pass(&mut self, _ctx: &ProcessCtx, _inputs: &PassInputs, _outputs: &mut [Box<[Buf]>], _n: usize) {}
+    fn process_pass(
+        &mut self,
+        _ctx: &ProcessCtx,
+        _inputs: &PassInputs,
+        _outputs: &mut [Box<[Buf]>],
+        _n: usize,
+    ) {
+    }
 
     /// MIDI this node produced in its last `process` (nodes with a MIDI output).
     fn midi_out(&self) -> Option<&MidiBuf> {
@@ -115,8 +122,13 @@ const RESUME_SECONDS: f32 = 0.02;
 
 impl Slot {
     pub fn new(proc: Box<dyn Processor>, outputs: usize) -> Box<Self> {
-        let blocks = (0..PASS_BLOCKS).map(|_| vec![[[0.0; BLOCK]; 2]; outputs.max(1)].into_boxed_slice());
-        let midi = if proc.midi_out().is_some() { PASS_BLOCKS } else { 0 };
+        let blocks =
+            (0..PASS_BLOCKS).map(|_| vec![[[0.0; BLOCK]; 2]; outputs.max(1)].into_boxed_slice());
+        let midi = if proc.midi_out().is_some() {
+            PASS_BLOCKS
+        } else {
+            0
+        };
         Box::new(Self {
             proc,
             outputs: blocks.collect(),
@@ -153,13 +165,23 @@ impl Slot {
     /// Bypass: crossfades block `k`'s output 0 to `input` (silence when
     /// unpatched) and back.
     fn blend_bypass(&mut self, k: usize, input: Option<&Buf>, n: usize, step: f32) {
-        let target = if self.bypass.load(Ordering::Relaxed) { 1.0 } else { 0.0 };
+        let target = if self.bypass.load(Ordering::Relaxed) {
+            1.0
+        } else {
+            0.0
+        };
         if self.dry == 0.0 && target == 0.0 {
             return;
         }
-        let Some(out) = self.outputs[k].first_mut() else { return };
+        let Some(out) = self.outputs[k].first_mut() else {
+            return;
+        };
         for i in 0..n {
-            self.dry = if target > self.dry { (self.dry + step).min(1.0) } else { (self.dry - step).max(0.0) };
+            self.dry = if target > self.dry {
+                (self.dry + step).min(1.0)
+            } else {
+                (self.dry - step).max(0.0)
+            };
             for (c, ch) in out.iter_mut().enumerate() {
                 let x = input.map_or(0.0, |b| b[c][i]);
                 ch[i] += (x - ch[i]) * self.dry;
@@ -302,7 +324,11 @@ impl Limiter {
     #[inline]
     fn frame(&mut self, l: f32, r: f32) -> (f32, f32, f32) {
         let peak = l.abs().max(r.abs());
-        let need = if peak > Self::CEILING { Self::CEILING / peak } else { 1.0 };
+        let need = if peak > Self::CEILING {
+            Self::CEILING / peak
+        } else {
+            1.0
+        };
         let [out_l, out_r] = self.delay[self.pos];
         self.delay[self.pos] = [l, r];
         // Nothing to limit, nothing ramping: just the delay.
@@ -312,8 +338,10 @@ impl Limiter {
         }
         // The lowest gain any frame between the one leaving and this one needs.
         let window = self.need.iter().fold(need, |m, &g| m.min(g));
-        self.pending = self.pending + usize::from(need < 1.0) - usize::from(self.need[self.pos] < 1.0);
-        self.ramping = self.ramping + usize::from(window < 1.0) - usize::from(self.mins[self.pos] < 1.0);
+        self.pending =
+            self.pending + usize::from(need < 1.0) - usize::from(self.need[self.pos] < 1.0);
+        self.ramping =
+            self.ramping + usize::from(window < 1.0) - usize::from(self.mins[self.pos] < 1.0);
         self.need[self.pos] = need;
         // Averaged over the window: every value averaged is at most the
         // outgoing frame's need, so the ramp is low enough when it leaves.
@@ -325,7 +353,11 @@ impl Limiter {
             self.sum = self.mins.iter().sum();
         }
         let ramp = (self.sum / LOOKAHEAD as f32).min(1.0);
-        self.gain = if ramp < self.gain { ramp } else { self.gain + (ramp - self.gain) * self.release };
+        self.gain = if ramp < self.gain {
+            ramp
+        } else {
+            self.gain + (ramp - self.gain) * self.release
+        };
         (out_l * self.gain, out_r * self.gain, self.gain)
     }
 }
@@ -374,7 +406,10 @@ impl Engine {
     fn discard(&self, slot: Option<Box<Slot>>, topology: Option<Box<Topology>>) {
         // A bounded channel's sending side never allocates; if it is full
         // (nobody draining), the value is simply freed here.
-        let _ = self.trash.try_send(Garbage { _slot: slot, _topology: topology });
+        let _ = self.trash.try_send(Garbage {
+            _slot: slot,
+            _topology: topology,
+        });
     }
 
     fn drain_commands(&mut self) {
@@ -421,7 +456,11 @@ impl Engine {
         let pass = *ctx;
         // The context of block `k`: its beat, and the rewind only at the start.
         let block_ctx = |k: usize| ProcessCtx {
-            beat: if pass.playing { pass.beat + pass.beats_per_sample * (k * BLOCK) as f64 } else { pass.beat },
+            beat: if pass.playing {
+                pass.beat + pass.beats_per_sample * (k * BLOCK) as f64
+            } else {
+                pass.beat
+            },
             restart: pass.restart && k == 0,
             ..pass
         };
@@ -447,13 +486,17 @@ impl Engine {
             let _timing = profile::Timing::start(entry.id);
             if wants_pass {
                 // Input 0 and the MIDI input for the whole pass, then one call.
-                let audio = entry.inputs[0].and_then(|(sid, port)| nodes.get(&sid).map(|s| (s, port)));
+                let audio =
+                    entry.inputs[0].and_then(|(sid, port)| nodes.get(&sid).map(|s| (s, port)));
                 if let Some((src, port)) = audio {
                     for (k, buf) in pass_audio[..blocks].iter_mut().enumerate() {
                         *buf = src.outputs[k][port];
                     }
                 }
-                let midi = entry.midi_input.and_then(|sid| nodes.get(&sid)).filter(|s| !s.midi.is_empty());
+                let midi = entry
+                    .midi_input
+                    .and_then(|sid| nodes.get(&sid))
+                    .filter(|s| !s.midi.is_empty());
                 for (k, buf) in pass_midi[..blocks].iter_mut().enumerate() {
                     match midi {
                         Some(src) => buf.copy_from(&src.midi[k]),
@@ -461,13 +504,16 @@ impl Engine {
                     }
                 }
                 let connected = audio.is_some();
-                let Some(slot) = nodes.get_mut(&entry.id) else { continue };
+                let Some(slot) = nodes.get_mut(&entry.id) else {
+                    continue;
+                };
                 let pass_inputs = PassInputs {
                     audio: connected.then(|| &pass_audio[..blocks]),
                     midi: &pass_midi[..blocks],
                     midi_connected: entry.midi_input.is_some(),
                 };
-                slot.proc.process_pass(&pass, &pass_inputs, &mut slot.outputs[..blocks], frames);
+                slot.proc
+                    .process_pass(&pass, &pass_inputs, &mut slot.outputs[..blocks], frames);
                 for k in 0..blocks {
                     slot.blend_bypass(k, connected.then(|| &pass_audio[k]), len(k), bypass_step);
                     slot.fade_in(k, len(k), resume_step);
@@ -478,7 +524,9 @@ impl Engine {
                     // Copy connected inputs; unconnected ones are only
                     // flagged, since processors read inputs through `connected`.
                     for (i, src) in entry.inputs.iter().enumerate() {
-                        let upstream = src.and_then(|(sid, port)| nodes.get(&sid).and_then(|s| s.outputs[k].get(port)));
+                        let upstream = src.and_then(|(sid, port)| {
+                            nodes.get(&sid).and_then(|s| s.outputs[k].get(port))
+                        });
                         inputs.connected[i] = upstream.is_some();
                         if let Some(buf) = upstream {
                             for (d, s) in inputs.bufs[i].iter_mut().zip(buf) {
@@ -486,14 +534,21 @@ impl Engine {
                             }
                         }
                     }
-                    match entry.midi_input.and_then(|sid| nodes.get(&sid)).filter(|s| !s.midi.is_empty()) {
+                    match entry
+                        .midi_input
+                        .and_then(|sid| nodes.get(&sid))
+                        .filter(|s| !s.midi.is_empty())
+                    {
                         Some(src) => inputs.midi.copy_from(&src.midi[k]),
                         None => inputs.midi.clear(),
                     }
                     inputs.midi_connected = entry.midi_input.is_some();
 
-                    let Some(slot) = nodes.get_mut(&entry.id) else { break };
-                    slot.proc.process(&block_ctx(k), inputs, &mut slot.outputs[k], n);
+                    let Some(slot) = nodes.get_mut(&entry.id) else {
+                        break;
+                    };
+                    slot.proc
+                        .process(&block_ctx(k), inputs, &mut slot.outputs[k], n);
                     slot.blend_bypass(k, inputs.get(0), n, bypass_step);
                     slot.fade_in(k, n, resume_step);
                     if !slot.midi.is_empty() {
@@ -535,7 +590,8 @@ impl Engine {
         let board = self.shared.tempo.get().clamp(slowest, fastest) as f64 / (60.0 * sr as f64);
         if sync.follow.load(Ordering::Relaxed) {
             let clock = sync.clock();
-            let (beat, per_sample, playing, rewound) = self.follow.step(&clock, now, self.ctx.beat, frames, sr);
+            let (beat, per_sample, playing, rewound) =
+                self.follow.step(&clock, now, self.ctx.beat, frames, sr);
             self.ctx.beat = beat;
             self.ctx.restart |= rewound;
             self.ctx.playing = playing;
@@ -565,7 +621,12 @@ impl Engine {
 
     /// Fills an interleaved device buffer, the board on channels `first`
     /// and `first + 1` (0-based), silence on the others.
-    pub fn render_at<T: Sample + FromSample<f32>>(&mut self, data: &mut [T], channels: usize, first: usize) {
+    pub fn render_at<T: Sample + FromSample<f32>>(
+        &mut self,
+        data: &mut [T],
+        channels: usize,
+        first: usize,
+    ) {
         let _ftz = FlushDenormals::new();
         clock::begin();
         let started = Instant::now();
@@ -597,7 +658,10 @@ impl Engine {
             for i in 0..n {
                 let block = &self.mix[i / BLOCK];
                 self.output += (output - self.output) * self.ctx.smooth;
-                let (l, r, gain) = self.limiter.frame(block[0][i % BLOCK] * self.output, block[1][i % BLOCK] * self.output);
+                let (l, r, gain) = self.limiter.frame(
+                    block[0][i % BLOCK] * self.output,
+                    block[1][i % BLOCK] * self.output,
+                );
                 lowest = lowest.min(gain);
                 let (l, r) = (l.clamp(-1.0, 1.0), r.clamp(-1.0, 1.0));
                 if recording {

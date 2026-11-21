@@ -204,7 +204,9 @@ pub struct Note {
 
 impl Note {
     fn pack(self) -> [f32; 3] {
-        let key = self.key as u32 & 0x7F | (self.velocity as u32 & 0x7F) << 7 | (self.channel as u32 & 0x0F) << 14;
+        let key = self.key as u32 & 0x7F
+            | (self.velocity as u32 & 0x7F) << 7
+            | (self.channel as u32 & 0x0F) << 14;
         [self.at as f32, self.len as f32, key as f32]
     }
 
@@ -261,7 +263,10 @@ fn beats(p: &ModuleParams, s: usize) -> f64 {
 
 /// A scene's repeats (0: endless).
 pub fn repeats(p: &ModuleParams, s: usize) -> u32 {
-    p.data[field(s, data::REPEATS)].get().round().clamp(0.0, 16.0) as u32
+    p.data[field(s, data::REPEATS)]
+        .get()
+        .round()
+        .clamp(0.0, 16.0) as u32
 }
 
 pub fn set_repeats(p: &ModuleParams, s: usize, n: u32) {
@@ -440,7 +445,11 @@ pub struct Looper {
 impl Looper {
     pub fn new(params: Arc<ModuleParams>, midi: Arc<MidiState>, sample_rate: f32) -> Self {
         let scene = scene(&params);
-        let state = if count(&params, scene) > 0 { State::Playing } else { State::Stopped };
+        let state = if count(&params, scene) > 0 {
+            State::Playing
+        } else {
+            State::Stopped
+        };
         let seen = std::array::from_fn(|k| params.viz[viz::ASK + k].get());
         Self {
             stream: midi.stream_head(),
@@ -535,7 +544,11 @@ impl Looper {
     /// far as QUANTIZE says.
     fn commit(&mut self) {
         let p = self.params.clone();
-        let (grid, amount, len) = (step(&p) as f64, p.get(QUANTIZE) as f64, length(&p, self.scene));
+        let (grid, amount, len) = (
+            step(&p) as f64,
+            p.get(QUANTIZE) as f64,
+            length(&p, self.scene),
+        );
         for mut n in self.pending.drain(..) {
             let at = n.at as f64;
             let snapped = (at / grid).round() * grid;
@@ -665,10 +678,16 @@ impl Looper {
             k @ 0..=4 => self.command(k as usize, 0.0),
             k @ 5..=6 => {
                 let to = if k == 5 { REVERSE } else { RANDOM };
-                let d = if direction(&p, self.scene) == to { FORWARD } else { to };
+                let d = if direction(&p, self.scene) == to {
+                    FORWARD
+                } else {
+                    to
+                };
                 set_direction(&p, self.scene, d);
             }
-            _ if (SCENE_NOTES..SCENE_NOTES + data::SCENES as u8).contains(&key) => self.ask_scene((key - SCENE_NOTES) as usize),
+            _ if (SCENE_NOTES..SCENE_NOTES + data::SCENES as u8).contains(&key) => {
+                self.ask_scene((key - SCENE_NOTES) as usize)
+            }
             _ => {}
         }
     }
@@ -696,7 +715,10 @@ impl Looper {
 
     fn key_down(&mut self, channel: u8, key: u8, velocity: u8, t: f64, running: bool) {
         let p = self.params.clone();
-        if self.state == State::Armed && running && choice(&p, data::TRIGGER, TRIGGERS.len()) == ON_NOTE {
+        if self.state == State::Armed
+            && running
+            && choice(&p, data::TRIGGER, TRIGGERS.len()) == ON_NOTE
+        {
             // The bar it falls in; or, played up to an eighth early, the
             // next one.
             let bar = (t / BAR).floor() * BAR;
@@ -704,10 +726,24 @@ impl Looper {
         }
         if self.recording() && running {
             let content = self.content_at(t);
-            self.down[channel as usize * 128 + key as usize] = Some(Down { t, content, velocity });
+            self.down[channel as usize * 128 + key as usize] = Some(Down {
+                t,
+                content,
+                velocity,
+            });
         } else if flag(&p, data::STEP) {
             let len = length(&p, self.scene);
-            add_note(&p, self.scene, Note { at: self.cursor % len.max(1), len: step(&p), key, velocity, channel });
+            add_note(
+                &p,
+                self.scene,
+                Note {
+                    at: self.cursor % len.max(1),
+                    len: step(&p),
+                    key,
+                    velocity,
+                    channel,
+                },
+            );
             self.step_keys += 1;
         }
     }
@@ -719,10 +755,20 @@ impl Looper {
             let held = (t - d.t).clamp(1.0 / PPQ as f64, len);
             // Reversed, a note starts in the scene where it was let go.
             let reversed = self.state == State::Playing && direction(&p, self.scene) == REVERSE;
-            let start = if reversed { self.content_at(t) } else { d.content };
+            let start = if reversed {
+                self.content_at(t)
+            } else {
+                d.content
+            };
             let ticks = |b: f64| (b * PPQ as f64).round() as u32;
             if self.pending.len() < self.pending.capacity() {
-                self.pending.push(Note { at: ticks(start) % ticks(len).max(1), len: ticks(held).max(1), key, velocity: d.velocity, channel });
+                self.pending.push(Note {
+                    at: ticks(start) % ticks(len).max(1),
+                    len: ticks(held).max(1),
+                    key,
+                    velocity: d.velocity,
+                    channel,
+                });
             }
         } else if self.step_keys > 0 {
             self.step_keys -= 1;
@@ -768,7 +814,9 @@ impl Looper {
         let ceil = |x: f64, unit: f64| ((x - 1e-9) / unit).ceil() * unit;
         match self.params.get(LAUNCH).round() as usize {
             0 => ceil(t, 1.0),
-            2 if self.state == State::Playing => self.origin + (self.cycle + 1) as f64 * self.beats(),
+            2 if self.state == State::Playing => {
+                self.origin + (self.cycle + 1) as f64 * self.beats()
+            }
             _ => ceil(t, BAR),
         }
     }
@@ -788,9 +836,15 @@ impl Looper {
             offer(self.launch(t), Boundary::Switch);
         }
         if self.state == State::Playing {
-            offer(self.origin + (self.cycle + 1) as f64 * self.beats(), Boundary::Wrap);
+            offer(
+                self.origin + (self.cycle + 1) as f64 * self.beats(),
+                Boundary::Wrap,
+            );
             if direction(p, self.scene) == RANDOM {
-                offer(self.origin + (self.slice + 1) as f64 * self.slice_beats(), Boundary::Slice);
+                offer(
+                    self.origin + (self.slice + 1) as f64 * self.slice_beats(),
+                    Boundary::Slice,
+                );
             }
         }
         if self.state == State::Armed && choice(p, data::TRIGGER, TRIGGERS.len()) == ON_BAR {
@@ -833,7 +887,10 @@ impl Looper {
         let others = |s: usize| s != self.scene && count(&p, s) > 0;
         match follow(&p, self.scene) {
             NEXT => {
-                if let Some(s) = (1..data::SCENES).map(|k| (self.scene + k) % data::SCENES).find(|&s| others(s)) {
+                if let Some(s) = (1..data::SCENES)
+                    .map(|k| (self.scene + k) % data::SCENES)
+                    .find(|&s| others(s))
+                {
                     self.switch(s, at);
                 }
             }
@@ -856,7 +913,8 @@ impl Looper {
 
     /// The scene's notes that start in `[t0, t1)` of the timeline.
     fn play(&mut self, t0: f64, t1: f64) {
-        let playing = self.state == State::Playing || (self.state == State::Armed && self.armed_from == State::Playing);
+        let playing = self.state == State::Playing
+            || (self.state == State::Armed && self.armed_from == State::Playing);
         if !playing || t1 <= t0 {
             return;
         }
@@ -891,26 +949,43 @@ impl Looper {
             if start >= len {
                 continue;
             }
-            let start = if dir == REVERSE { (len - start - dur).rem_euclid(len) } else { start };
+            let start = if dir == REVERSE {
+                (len - start - dur).rem_euclid(len)
+            } else {
+                start
+            };
             if start < from - 1e-9 || start >= to - 1e-9 {
                 continue;
             }
             let on = t0 + (start - from);
             let key = (n.key as i32 + transpose).clamp(0, 127) as u8;
-            let channel = if out_channel >= 1 { (out_channel - 1) as u8 } else { n.channel };
+            let channel = if out_channel >= 1 {
+                (out_channel - 1) as u8
+            } else {
+                n.channel
+            };
             let frame = self.frame(on);
-            if let Some(k) = self.sounding.iter().position(|s| s.key == key && s.channel == channel) {
+            if let Some(k) = self
+                .sounding
+                .iter()
+                .position(|s| s.key == key && s.channel == channel)
+            {
                 self.sounding.swap_remove(k);
                 self.emit(frame, [0x80 | channel, key, 0]);
             }
             if self.sounding.len() == VOICES
-                && let Some(k) = (0..VOICES).min_by(|&a, &b| self.sounding[a].off.total_cmp(&self.sounding[b].off))
+                && let Some(k) = (0..VOICES)
+                    .min_by(|&a, &b| self.sounding[a].off.total_cmp(&self.sounding[b].off))
             {
                 let s = self.sounding.swap_remove(k);
                 self.emit(frame, [0x80 | s.channel, s.key, 0]);
             }
             self.emit(frame, [0x90 | channel, key, n.velocity]);
-            self.sounding.push(Sounding { key, channel, off: on + dur });
+            self.sounding.push(Sounding {
+                key,
+                channel,
+                off: on + dur,
+            });
         }
     }
 
@@ -929,7 +1004,9 @@ impl Looper {
         for _ in 0..32 {
             let (at, what) = self.next(t);
             self.play(t, at.min(b1));
-            let Some(what) = what.filter(|_| at < b1) else { break };
+            let Some(what) = what.filter(|_| at < b1) else {
+                break;
+            };
             self.boundary(what, at);
             t = at;
         }
@@ -945,14 +1022,19 @@ impl Looper {
         };
         p.viz[viz::STATE].set(state as f32);
         p.viz[viz::DUB].set(if self.dub { 1.0 } else { 0.0 });
-        let active = matches!(self.state, State::Playing | State::Recording) || (self.state == State::Armed && self.armed_from == State::Playing);
+        let active = matches!(self.state, State::Playing | State::Recording)
+            || (self.state == State::Armed && self.armed_from == State::Playing);
         p.viz[viz::PLAYING].set(if active { self.scene as f32 } else { -1.0 });
         p.viz[viz::QUEUED].set(self.queued.map_or(-1.0, |s| s as f32));
         let len = self.beats();
         let pos = (end - self.origin).rem_euclid(len);
         let shown = running && active;
         p.viz[viz::POS].set(if shown { pos as f32 } else { -1.0 });
-        p.viz[viz::CONTENT].set(if shown { self.content_at(end) as f32 } else { -1.0 });
+        p.viz[viz::CONTENT].set(if shown {
+            self.content_at(end) as f32
+        } else {
+            -1.0
+        });
         p.viz[viz::PASS].set(self.pass as f32);
         p.viz[viz::CURSOR].set(self.cursor as f32);
         p.viz[viz::TEMPO].set(self.clock.bpm(self.sr));
@@ -984,7 +1066,8 @@ impl Processor for Looper {
             self.stream = self.midi.stream_head();
         } else {
             let clock = &mut self.clock;
-            self.midi.read_stream(&mut self.stream, |msg| take(0, msg, clock));
+            self.midi
+                .read_stream(&mut self.stream, |msg| take(0, msg, clock));
         }
 
         // The timeline: the board's, or the MIDI clock's.
@@ -992,12 +1075,21 @@ impl Processor for Looper {
         let tl = if flag(&p, data::SYNC) {
             midi_clock
         } else {
-            Timeline { beat: ctx.beat, beats_per_sample: ctx.beats_per_sample, running: ctx.playing, restart: ctx.restart }
+            Timeline {
+                beat: ctx.beat,
+                beats_per_sample: ctx.beats_per_sample,
+                running: ctx.playing,
+                restart: ctx.restart,
+            }
         };
         // A clock's ticks can put time a hair back: it never goes back
         // (a note on the line would play twice), short of a real jump.
         let back = self.last_end - tl.beat;
-        self.b0 = if !tl.restart && back > 0.0 && back < 0.25 { self.last_end } else { tl.beat };
+        self.b0 = if !tl.restart && back > 0.0 && back < 0.25 {
+            self.last_end
+        } else {
+            tl.beat
+        };
         self.bps = tl.beats_per_sample.max(1e-12);
         self.n = n.max(1);
         let b1 = self.b0 + self.bps * n as f64;
@@ -1054,7 +1146,8 @@ impl Processor for Looper {
         }
 
         self.last_end = b1;
-        self.msgs.sort_unstable_by_key(|&(frame, order, _)| (frame, order));
+        self.msgs
+            .sort_unstable_by_key(|&(frame, order, _)| (frame, order));
         for &(frame, _, msg) in &self.msgs {
             self.out.push(frame, msg);
         }

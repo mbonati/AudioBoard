@@ -33,13 +33,22 @@ pub struct StepClock {
 
 impl StepClock {
     pub fn new() -> Self {
-        Self { last: f64::NEG_INFINITY }
+        Self {
+            last: f64::NEG_INFINITY,
+        }
     }
 
     /// The steps starting in this block, in order. Odd steps are pushed
     /// late by `swing` (0…1, up to half a step). A step belongs to the
     /// block holding its nearest frame.
-    pub fn steps(&mut self, ctx: &ProcessCtx, n: usize, per_beat: f64, swing: f32, out: &mut [Step; MAX_STEPS]) -> usize {
+    pub fn steps(
+        &mut self,
+        ctx: &ProcessCtx,
+        n: usize,
+        per_beat: f64,
+        swing: f32,
+        out: &mut [Step; MAX_STEPS],
+    ) -> usize {
         let len = 1.0 / per_beat;
         let at = |k: i64| (k as f64 + if k & 1 == 1 { swing as f64 * 0.5 } else { 0.0 }) * len;
         let mut count = 0;
@@ -48,7 +57,11 @@ impl StepClock {
             let beat = at(k);
             if frame_at(ctx, beat) >= -0.5 && beat > self.last {
                 self.last = beat;
-                out[count] = Step { frame: frame_of(ctx, n, beat), beat, index: k };
+                out[count] = Step {
+                    frame: frame_of(ctx, n, beat),
+                    beat,
+                    index: k,
+                };
                 count += 1;
             }
             k += 1;
@@ -123,7 +136,10 @@ impl Held {
     pub const CAP: usize = 16;
 
     pub fn new() -> Self {
-        Self { notes: [0; Self::CAP], len: 0 }
+        Self {
+            notes: [0; Self::CAP],
+            len: 0,
+        }
     }
 
     pub fn notes(&self) -> &[u8] {

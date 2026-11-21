@@ -4,8 +4,8 @@
 
 use std::sync::Arc;
 
-use egui::{Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Stroke, Visuals};
 use egui::epaint::text::{FontTweak, VariationCoords};
+use egui::{Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Stroke, Visuals};
 
 // Neutral graphite surfaces, from back to front.
 pub const BG: Color32 = Color32::from_rgb(20, 21, 24);
@@ -98,18 +98,40 @@ fn fonts(ctx: &egui::Context) {
     let fallback = defs.families[&FontFamily::Proportional].clone();
     let mut strong = fallback.clone();
     for (name, path, coords, family) in [
-        ("sf", ui, &[(b"opsz", 17.0), (b"wght", 400.0)][..], FontFamily::Proportional),
-        ("sf-strong", ui, &[(b"opsz", 17.0), (b"wght", 600.0)][..], FontFamily::Name("strong".into())),
-        ("sf-mono", "/System/Library/Fonts/SFNSMono.ttf", &[(b"wght", 420.0)][..], FontFamily::Monospace),
+        (
+            "sf",
+            ui,
+            &[(b"opsz", 17.0), (b"wght", 400.0)][..],
+            FontFamily::Proportional,
+        ),
+        (
+            "sf-strong",
+            ui,
+            &[(b"opsz", 17.0), (b"wght", 600.0)][..],
+            FontFamily::Name("strong".into()),
+        ),
+        (
+            "sf-mono",
+            "/System/Library/Fonts/SFNSMono.ttf",
+            &[(b"wght", 420.0)][..],
+            FontFamily::Monospace,
+        ),
     ] {
-        let Some(data) = load(path, coords) else { continue };
+        let Some(data) = load(path, coords) else {
+            continue;
+        };
         defs.font_data.insert(name.to_owned(), data);
         match &family {
             FontFamily::Name(_) => strong.insert(0, name.to_owned()),
-            f => defs.families.get_mut(f).expect("default family").insert(0, name.to_owned()),
+            f => defs
+                .families
+                .get_mut(f)
+                .expect("default family")
+                .insert(0, name.to_owned()),
         }
     }
-    defs.families.insert(FontFamily::Name("strong".into()), strong);
+    defs.families
+        .insert(FontFamily::Name("strong".into()), strong);
     ctx.set_fonts(defs);
 }
 

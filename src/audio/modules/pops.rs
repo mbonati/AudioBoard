@@ -35,8 +35,19 @@ pub struct Instrument {
     pub enveloped: bool,
 }
 
-const fn inst(name: &'static str, short: &'static str, note: u8, extras: [&'static str; 3]) -> Instrument {
-    Instrument { name, short, note, extras, enveloped: true }
+const fn inst(
+    name: &'static str,
+    short: &'static str,
+    note: u8,
+    extras: [&'static str; 3],
+) -> Instrument {
+    Instrument {
+        name,
+        short,
+        note,
+        extras,
+        enveloped: true,
+    }
 }
 
 pub const INSTRUMENTS: [Instrument; COUNT] = [
@@ -53,7 +64,13 @@ pub const INSTRUMENTS: [Instrument; COUNT] = [
     inst("Cymbal 1", "CYM 1", 49, ["RESO", "HIGHP", ""]),
     inst("Cymbal 2", "CYM 2", 51, ["RESO", "HIGHP", ""]),
     inst("Tambourine", "TAMB", 54, ["RESO", "HIGHP", ""]),
-    Instrument { name: "Guiro", short: "GUIRO", note: 73, extras: ["RATE", "DENSITY", ""], enveloped: false },
+    Instrument {
+        name: "Guiro",
+        short: "GUIRO",
+        note: 73,
+        extras: ["RATE", "DENSITY", ""],
+        enveloped: false,
+    },
     inst("Quijada", "QUIJ", 58, ["RATE", "DENSITY", ""]),
 ];
 
@@ -127,7 +144,15 @@ macro_rules! instrument {
 
 const PARAMS: [ParamSpec; PARAM_COUNT] = {
     const I: [[ParamSpec; knob::COUNT]; COUNT] = [
-        instrument!("BD", (30.0, 150.0, 58.0), 0.002, (0.05, 1.5, 0.35), unused("BD X1"), unused("BD X2"), unused("BD X3")),
+        instrument!(
+            "BD",
+            (30.0, 150.0, 58.0),
+            0.002,
+            (0.05, 1.5, 0.35),
+            unused("BD X1"),
+            unused("BD X2"),
+            unused("BD X3")
+        ),
         instrument!(
             "SN1",
             (100.0, 400.0, 180.0),
@@ -146,8 +171,24 @@ const PARAMS: [ParamSpec; PARAM_COUNT] = {
             amount("SN2 TICK", 0.3),
             hz("SN2 HIGHP", 200.0, 10_000.0, 2500.0)
         ),
-        instrument!("BGS", (200.0, 800.0, 420.0), 0.0008, (0.02, 0.5, 0.09), unused("BGS X1"), unused("BGS X2"), unused("BGS X3")),
-        instrument!("BGL", (120.0, 500.0, 290.0), 0.0008, (0.02, 0.5, 0.12), unused("BGL X1"), unused("BGL X2"), unused("BGL X3")),
+        instrument!(
+            "BGS",
+            (200.0, 800.0, 420.0),
+            0.0008,
+            (0.02, 0.5, 0.09),
+            unused("BGS X1"),
+            unused("BGS X2"),
+            unused("BGS X3")
+        ),
+        instrument!(
+            "BGL",
+            (120.0, 500.0, 290.0),
+            0.0008,
+            (0.02, 0.5, 0.12),
+            unused("BGL X1"),
+            unused("BGL X2"),
+            unused("BGL X3")
+        ),
         instrument!(
             "CNG",
             (100.0, 500.0, 210.0),
@@ -167,9 +208,33 @@ const PARAMS: [ParamSpec; PARAM_COUNT] = {
             secs("CB DECAY2", 0.01, 0.6, 0.1),
             1.0
         ),
-        instrument!("CLV", (1000.0, 5000.0, 2500.0), 0.0003, (0.005, 0.2, 0.04), unused("CLV X1"), unused("CLV X2"), unused("CLV X3")),
-        instrument!("HH", (3000.0, 14_000.0, 8000.0), 0.0003, (0.01, 0.4, 0.05), amount("HH RESO", 0.3), unused("HH X2"), unused("HH X3")),
-        instrument!("RIM", (800.0, 4000.0, 1700.0), 0.0003, (0.005, 0.15, 0.025), unused("RIM X1"), unused("RIM X2"), unused("RIM X3")),
+        instrument!(
+            "CLV",
+            (1000.0, 5000.0, 2500.0),
+            0.0003,
+            (0.005, 0.2, 0.04),
+            unused("CLV X1"),
+            unused("CLV X2"),
+            unused("CLV X3")
+        ),
+        instrument!(
+            "HH",
+            (3000.0, 14_000.0, 8000.0),
+            0.0003,
+            (0.01, 0.4, 0.05),
+            amount("HH RESO", 0.3),
+            unused("HH X2"),
+            unused("HH X3")
+        ),
+        instrument!(
+            "RIM",
+            (800.0, 4000.0, 1700.0),
+            0.0003,
+            (0.005, 0.15, 0.025),
+            unused("RIM X1"),
+            unused("RIM X2"),
+            unused("RIM X3")
+        ),
         instrument!(
             "CY1",
             (3000.0, 14_000.0, 6500.0),
@@ -355,7 +420,12 @@ pub fn user(p: &ModuleParams, k: usize) -> Rhythm {
         let hi = p.data[at + 3 + i * 2].get().max(0.0) as u32 & 0xFFFF;
         lo | hi << 16
     });
-    Rhythm { name: "USER", per_beat: if on(p, at + 1) { 3 } else { 4 }, len, rows }
+    Rhythm {
+        name: "USER",
+        per_beat: if on(p, at + 1) { 3 } else { 4 },
+        len,
+        rows,
+    }
 }
 
 /// Switches one step of user pattern `k` on or off.
@@ -387,16 +457,25 @@ pub fn set_user(p: &ModuleParams, k: usize, r: &Rhythm) {
 /// The pattern playing: a user pattern, or the selected presets merged.
 pub fn current(p: &ModuleParams) -> Option<Rhythm> {
     if on(p, data::SOURCE) {
-        return Some(user(p, p.data[data::PATTERN].get().round().max(0.0) as usize));
+        return Some(user(
+            p,
+            p.data[data::PATTERN].get().round().max(0.0) as usize,
+        ));
     }
-    let selected: Vec<usize> = (0..ROW).filter(|&i| on(p, data::RHYTHM + i)).map(|i| row_rhythm(p, i)).collect();
+    let selected: Vec<usize> = (0..ROW)
+        .filter(|&i| on(p, data::RHYTHM + i))
+        .map(|i| row_rhythm(p, i))
+        .collect();
     combine(&selected)
 }
 
 /// The same without allocating, for the audio thread.
 fn current_rt(p: &ModuleParams) -> Option<Rhythm> {
     if on(p, data::SOURCE) {
-        return Some(user(p, p.data[data::PATTERN].get().round().max(0.0) as usize));
+        return Some(user(
+            p,
+            p.data[data::PATTERN].get().round().max(0.0) as usize,
+        ));
     }
     let mut selected = [0usize; ROW];
     let mut n = 0;
@@ -451,18 +530,21 @@ pub fn format(i: usize, v: f32) -> String {
 
 /// The instrument a General MIDI drum note plays.
 pub fn instrument_for(note: u8) -> Option<usize> {
-    INSTRUMENTS.iter().position(|i| i.note == note).or(match note {
-        35 => Some(voices::BASE),
-        39 | 31 => Some(voices::SNARE2),
-        44 | 46 => Some(voices::HIHAT),
-        52 | 55 | 57 => Some(voices::CYMBAL1),
-        53 | 59 => Some(voices::CYMBAL2),
-        62 | 64 => Some(voices::CONGA),
-        69 | 70 => Some(voices::TAMBOURINE),
-        74 => Some(voices::GUIRO),
-        76 | 77 => Some(voices::CLAVES),
-        _ => None,
-    })
+    INSTRUMENTS
+        .iter()
+        .position(|i| i.note == note)
+        .or(match note {
+            35 => Some(voices::BASE),
+            39 | 31 => Some(voices::SNARE2),
+            44 | 46 => Some(voices::HIHAT),
+            52 | 55 | 57 => Some(voices::CYMBAL1),
+            53 | 59 => Some(voices::CYMBAL2),
+            62 | 64 => Some(voices::CONGA),
+            69 | 70 => Some(voices::TAMBOURINE),
+            74 => Some(voices::GUIRO),
+            76 | 77 => Some(voices::CLAVES),
+            _ => None,
+        })
 }
 
 /// A hit to play this block: frame, instrument, velocity, gate (s), and
@@ -568,7 +650,13 @@ impl Processor for Pops {
     fn process(&mut self, ctx: &ProcessCtx, inputs: &Inputs, outputs: &mut [Buf], n: usize) {
         self.out.clear();
         let p = self.params.clone();
-        let mut hits = [Hit { frame: 0, inst: 0, velocity: 0.0, gate: 0.0, send: false }; MAX_HITS];
+        let mut hits = [Hit {
+            frame: 0,
+            inst: 0,
+            velocity: 0.0,
+            gate: 0.0,
+            send: false,
+        }; MAX_HITS];
         let mut count = 0;
         let mut releases = [usize::MAX; 16];
         let mut released = 0;
@@ -577,10 +665,18 @@ impl Processor for Pops {
         if inputs.midi_connected {
             for e in inputs.midi.events() {
                 let [status, note, velocity] = e.data;
-                let Some(inst) = instrument_for(note) else { continue };
+                let Some(inst) = instrument_for(note) else {
+                    continue;
+                };
                 match status & 0xF0 {
                     0x90 if velocity > 0 && count < MAX_HITS => {
-                        hits[count] = Hit { frame: e.frame as usize, inst, velocity: velocity as f32 / 127.0, gate: 4.0, send: false };
+                        hits[count] = Hit {
+                            frame: e.frame as usize,
+                            inst,
+                            velocity: velocity as f32 / 127.0,
+                            gate: 4.0,
+                            send: false,
+                        };
                         count += 1;
                     }
                     0x80 | 0x90 if released < releases.len() => {
@@ -597,7 +693,13 @@ impl Processor for Pops {
             let v = p.viz[viz::AUDITION + inst].get();
             if v != *seen && count < MAX_HITS {
                 *seen = v;
-                hits[count] = Hit { frame: 0, inst, velocity: 1.0, gate: PAD_GATE, send: false };
+                hits[count] = Hit {
+                    frame: 0,
+                    inst,
+                    velocity: 1.0,
+                    gate: PAD_GATE,
+                    send: false,
+                };
                 count += 1;
             }
         }
@@ -614,8 +716,16 @@ impl Processor for Pops {
                 self.free_beat = 0.0;
             }
         }
-        let rhythm = if on(&p, data::POWER) { current_rt(&p) } else { None };
-        let mut steps = [Step { frame: 0, beat: 0.0, index: 0 }; MAX_STEPS];
+        let rhythm = if on(&p, data::POWER) {
+            current_rt(&p)
+        } else {
+            None
+        };
+        let mut steps = [Step {
+            frame: 0,
+            beat: 0.0,
+            index: 0,
+        }; MAX_STEPS];
         let mut found = 0;
         let swing = p.get(SWING);
         let mut step_seconds = 0.1;
@@ -626,7 +736,13 @@ impl Processor for Pops {
                 step_seconds = (1.0 / (per_beat * ctx.beats_per_sample * self.sr as f64)) as f32;
             } else if !sync && running {
                 let bps = p.get(TEMPO).clamp(20.0, 300.0) as f64 / (60.0 * self.sr as f64);
-                let own = ProcessCtx { beat: self.free_beat, beats_per_sample: bps, playing: true, restart: false, ..*ctx };
+                let own = ProcessCtx {
+                    beat: self.free_beat,
+                    beats_per_sample: bps,
+                    playing: true,
+                    restart: false,
+                    ..*ctx
+                };
                 found = self.clock.steps(&own, n, per_beat, swing, &mut steps);
                 self.free_beat += bps * n as f64;
                 step_seconds = (1.0 / (per_beat * bps * self.sr as f64)) as f32;
@@ -646,7 +762,13 @@ impl Processor for Pops {
                 p.viz[viz::STEP].set(s as f32);
                 for (inst, bits) in r.rows.iter().enumerate() {
                     if bits >> s & 1 == 1 && !on(&p, data::MUTE + inst) && count < MAX_HITS {
-                        hits[count] = Hit { frame: step.frame, inst, velocity: 1.0, gate: step_seconds * 0.9, send: true };
+                        hits[count] = Hit {
+                            frame: step.frame,
+                            inst,
+                            velocity: 1.0,
+                            gate: step_seconds * 0.9,
+                            send: true,
+                        };
                         count += 1;
                     }
                 }
@@ -657,7 +779,8 @@ impl Processor for Pops {
         // MIDI out: the pattern's hits as short notes on channel 10.
         for (inst, off) in self.note_off.iter_mut().enumerate() {
             if *off >= 0 && *off < n as i64 {
-                self.out.push(*off as usize, [0x89, INSTRUMENTS[inst].note, 0]);
+                self.out
+                    .push(*off as usize, [0x89, INSTRUMENTS[inst].note, 0]);
                 *off = -1;
             } else if *off >= 0 {
                 *off -= n as i64;
@@ -680,7 +803,10 @@ impl Processor for Pops {
         let gains: [(f32, f32); COUNT] = std::array::from_fn(|i| {
             let level = p.get(ip(i, knob::LEVEL));
             let (l, r) = pan_gains(p.get(ip(i, knob::PAN)));
-            (l * level * std::f32::consts::SQRT_2, r * level * std::f32::consts::SQRT_2)
+            (
+                l * level * std::f32::consts::SQRT_2,
+                r * level * std::f32::consts::SQRT_2,
+            )
         });
         let (vol_t, bal_t) = (p.get(VOLUME), p.get(BALANCE));
         let mut next = 0;

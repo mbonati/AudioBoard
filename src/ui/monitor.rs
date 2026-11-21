@@ -37,9 +37,16 @@ impl Monitor {
     pub fn scope(&mut self, ui: &mut Ui, shared: &EngineShared, sample_rate: f32, size: Vec2) {
         let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
         let p = ui.painter_at(rect);
-        let detail = format!("±1.0 · {:.0} ms", SCOPE_WINDOW as f32 / sample_rate * 1000.0);
+        let detail = format!(
+            "±1.0 · {:.0} ms",
+            SCOPE_WINDOW as f32 / sample_rate * 1000.0
+        );
         let inner = screen(&p, rect, "Oscilloscope", &detail);
-        p.hline(inner.x_range(), inner.center().y, Stroke::new(1.0, theme::GRID_MAJOR));
+        p.hline(
+            inner.x_range(),
+            inner.center().y,
+            Stroke::new(1.0, theme::GRID_MAJOR),
+        );
 
         shared.scope.snapshot(&mut self.samples, 4096);
         let s = &self.samples;
@@ -88,14 +95,26 @@ impl Monitor {
         let norm = 2.0 / (FFT_SIZE as f32 * 0.5); // Hann coherent gain = 0.5
         let x_of = |f: f32| inner.left() + inner.width() * (f / f_lo).ln() / (f_hi / f_lo).ln();
         let (db_lo, db_hi) = (-96.0f32, 0.0f32);
-        let y_of = |db: f32| inner.bottom() - inner.height() * ((db - db_lo) / (db_hi - db_lo)).clamp(0.0, 1.0);
+        let y_of = |db: f32| {
+            inner.bottom() - inner.height() * ((db - db_lo) / (db_hi - db_lo)).clamp(0.0, 1.0)
+        };
 
         // Frequency grid.
         for f in [100.0, 1000.0, 10_000.0] {
             let x = x_of(f);
             p.vline(x, inner.y_range(), Stroke::new(1.0, theme::GRID_MAJOR));
-            let label = if f >= 1000.0 { format!("{}k", f / 1000.0) } else { format!("{f}") };
-            p.text(pos2(x + 3.0, inner.bottom()), Align2::LEFT_BOTTOM, label, FontId::monospace(8.5), theme::TEXT_FAINT);
+            let label = if f >= 1000.0 {
+                format!("{}k", f / 1000.0)
+            } else {
+                format!("{f}")
+            };
+            p.text(
+                pos2(x + 3.0, inner.bottom()),
+                Align2::LEFT_BOTTOM,
+                label,
+                FontId::monospace(8.5),
+                theme::TEXT_FAINT,
+            );
         }
 
         let fall = 60.0 * dt; // dB per frame of release
@@ -112,13 +131,20 @@ impl Monitor {
             let db = 20.0 * mag.max(1e-7).log10();
             let col = &mut self.columns[c];
             *col = if db > *col { db } else { (*col - fall).max(db) };
-            pts.push(pos2(inner.left() + inner.width() * (c as f32 + 0.5) / cols as f32, y_of(*col)));
+            pts.push(pos2(
+                inner.left() + inner.width() * (c as f32 + 0.5) / cols as f32,
+                y_of(*col),
+            ));
         }
 
         let color = theme::ACCENT;
         let mut mesh = Mesh::default();
         for (i, pt) in pts.iter().enumerate() {
-            mesh.vertices.push(Vertex { pos: *pt, uv: WHITE_UV, color: alpha(color, 0.22) });
+            mesh.vertices.push(Vertex {
+                pos: *pt,
+                uv: WHITE_UV,
+                color: alpha(color, 0.22),
+            });
             mesh.vertices.push(Vertex {
                 pos: pos2(pt.x, inner.bottom()),
                 uv: WHITE_UV,
@@ -138,7 +164,12 @@ impl Monitor {
 /// Inset analyzer background with its title; returns the plotting area.
 fn screen(p: &Painter, rect: Rect, title: &str, detail: &str) -> Rect {
     p.rect_filled(rect, 4.0, theme::INSET);
-    p.rect_stroke(rect, 4.0, Stroke::new(1.0, theme::PANEL_BORDER), egui::StrokeKind::Inside);
+    p.rect_stroke(
+        rect,
+        4.0,
+        Stroke::new(1.0, theme::PANEL_BORDER),
+        egui::StrokeKind::Inside,
+    );
     let t = p.text(
         rect.left_top() + vec2(8.0, 9.0),
         Align2::LEFT_CENTER,

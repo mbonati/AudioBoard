@@ -32,14 +32,21 @@ pub struct Component {
 impl Component {
     /// Its pseudo-path.
     pub fn path(&self) -> PathBuf {
-        PathBuf::from(format!("{PREFIX}{:08x}-{:08x}-{:08x}", self.kind, self.subtype, self.manufacturer))
+        PathBuf::from(format!(
+            "{PREFIX}{:08x}-{:08x}-{:08x}",
+            self.kind, self.subtype, self.manufacturer
+        ))
     }
 
     /// The component a pseudo-path names.
     pub fn from_path(path: &Path) -> Option<Self> {
         let text = path.to_str()?.strip_prefix(PREFIX)?;
         let mut parts = text.split('-').map(|p| u32::from_str_radix(p, 16).ok());
-        let c = Self { kind: parts.next()??, subtype: parts.next()??, manufacturer: parts.next()?? };
+        let c = Self {
+            kind: parts.next()??,
+            subtype: parts.next()??,
+            manufacturer: parts.next()??,
+        };
         parts.next().is_none().then_some(c)
     }
 
@@ -92,7 +99,11 @@ pub fn parse_list(json: &str) -> Vec<Listed> {
     let mut list: Vec<Listed> = items
         .into_iter()
         .map(|j| Listed {
-            component: Component { kind: j.kind, subtype: j.subtype, manufacturer: j.manufacturer },
+            component: Component {
+                kind: j.kind,
+                subtype: j.subtype,
+                manufacturer: j.manufacturer,
+            },
             name: j.name,
             vendor: j.vendor,
             v3: j.v3,
@@ -117,7 +128,11 @@ pub struct Range {
 impl Range {
     pub fn new(min: f32, max: f32, flags: u32) -> Self {
         const DISPLAY_LOGARITHMIC: u32 = 1 << 22;
-        Self { min, max, log: flags & DISPLAY_LOGARITHMIC != 0 && min > 0.0 && max > min }
+        Self {
+            min,
+            max,
+            log: flags & DISPLAY_LOGARITHMIC != 0 && min > 0.0 && max > min,
+        }
     }
 
     pub fn to_norm(&self, value: f32) -> f64 {
@@ -125,13 +140,21 @@ impl Range {
             return 0.0;
         }
         let value = value.clamp(self.min, self.max);
-        let t = if self.log { (value / self.min).ln() / (self.max / self.min).ln() } else { (value - self.min) / (self.max - self.min) };
+        let t = if self.log {
+            (value / self.min).ln() / (self.max / self.min).ln()
+        } else {
+            (value - self.min) / (self.max - self.min)
+        };
         t.clamp(0.0, 1.0) as f64
     }
 
     pub fn from_norm(&self, norm: f64) -> f32 {
         let t = norm.clamp(0.0, 1.0) as f32;
-        if self.log { self.min * (self.max / self.min).powf(t) } else { self.min + (self.max - self.min) * t }
+        if self.log {
+            self.min * (self.max / self.min).powf(t)
+        } else {
+            self.min + (self.max - self.min) * t
+        }
     }
 }
 
@@ -139,8 +162,14 @@ impl Range {
 /// in 32 bits (they almost always do), else their order.
 pub fn param_ids(addresses: &[u64]) -> Vec<u32> {
     let mut seen = std::collections::HashSet::new();
-    let fits = addresses.iter().all(|&a| a <= u32::MAX as u64 && seen.insert(a));
-    if fits { addresses.iter().map(|&a| a as u32).collect() } else { (0..addresses.len() as u32).collect() }
+    let fits = addresses
+        .iter()
+        .all(|&a| a <= u32::MAX as u64 && seen.insert(a));
+    if fits {
+        addresses.iter().map(|&a| a as u32).collect()
+    } else {
+        (0..addresses.len() as u32).collect()
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -162,7 +191,14 @@ mod host {
     unsafe extern "C" {
         fn ab_free(p: *mut c_void);
         fn ab_au_list() -> *mut c_char;
-        fn ab_au_open(kind: u32, subtype: u32, manufacturer: u32, sample_rate: f64, max_frames: u32, error: *mut *mut c_char) -> *mut Raw;
+        fn ab_au_open(
+            kind: u32,
+            subtype: u32,
+            manufacturer: u32,
+            sample_rate: f64,
+            max_frames: u32,
+            error: *mut *mut c_char,
+        ) -> *mut Raw;
         fn ab_au_close(au: *mut Raw);
         fn ab_au_info(
             au: *mut Raw,
@@ -173,7 +209,15 @@ mod host {
             name: *mut *mut c_char,
             vendor: *mut *mut c_char,
         );
-        fn ab_au_set_transport(au: *mut Raw, tempo: f64, beat: f64, beats_per_sample: f64, sample_pos: f64, playing: c_int, changed: c_int);
+        fn ab_au_set_transport(
+            au: *mut Raw,
+            tempo: f64,
+            beat: f64,
+            beats_per_sample: f64,
+            sample_pos: f64,
+            playing: c_int,
+            changed: c_int,
+        );
         fn ab_au_midi(au: *mut Raw, offset: i64, bytes: *const u8, len: u32);
         fn ab_au_schedule_param(au: *mut Raw, index: u32, count: u32, value: f32);
         fn ab_au_render(
@@ -299,28 +343,65 @@ mod host {
     impl AudioUnit {
         /// Loads and prepares a unit for `sample_rate`, rendering up to
         /// `max_frames` per call. Runs plugin code: the UI thread only.
-        pub fn open(component: Component, sample_rate: f32, max_frames: usize) -> Result<Self, String> {
+        pub fn open(
+            component: Component,
+            sample_rate: f32,
+            max_frames: usize,
+        ) -> Result<Self, String> {
             let mut error = std::ptr::null_mut();
             // SAFETY: plain values in, an owned handle or a malloc'd error out.
             let raw = unsafe {
-                ab_au_open(component.kind, component.subtype, component.manufacturer, sample_rate as f64, max_frames as u32, &mut error)
+                ab_au_open(
+                    component.kind,
+                    component.subtype,
+                    component.manufacturer,
+                    sample_rate as f64,
+                    max_frames as u32,
+                    &mut error,
+                )
             };
             let Some(raw) = NonNull::new(raw) else {
                 let message = take_string(error);
-                return Err(if message.is_empty() { "could not load the Audio Unit".to_owned() } else { message });
+                return Err(if message.is_empty() {
+                    "could not load the Audio Unit".to_owned()
+                } else {
+                    message
+                });
             };
             let (mut ins, mut outs, mut midi, mut v3) = (0u32, 0u32, 0, 0);
             let (mut name, mut vendor) = (std::ptr::null_mut(), std::ptr::null_mut());
             // SAFETY: `raw` is live; out-pointers are valid.
-            unsafe { ab_au_info(raw.as_ptr(), &mut ins, &mut outs, &mut midi, &mut v3, &mut name, &mut vendor) };
+            unsafe {
+                ab_au_info(
+                    raw.as_ptr(),
+                    &mut ins,
+                    &mut outs,
+                    &mut midi,
+                    &mut v3,
+                    &mut name,
+                    &mut vendor,
+                )
+            };
             let count = unsafe { ab_au_param_count(raw.as_ptr()) };
             let mut addresses = Vec::with_capacity(count as usize);
             let mut infos = Vec::with_capacity(count as usize);
             for i in 0..count {
-                let (mut address, mut min, mut max, mut value, mut flags) = (0u64, 0f32, 0f32, 0f32, 0u32);
+                let (mut address, mut min, mut max, mut value, mut flags) =
+                    (0u64, 0f32, 0f32, 0f32, 0u32);
                 let mut pname = std::ptr::null_mut();
                 // SAFETY: `i` < count; out-pointers are valid.
-                unsafe { ab_au_param_info(raw.as_ptr(), i, &mut address, &mut min, &mut max, &mut value, &mut flags, &mut pname) };
+                unsafe {
+                    ab_au_param_info(
+                        raw.as_ptr(),
+                        i,
+                        &mut address,
+                        &mut min,
+                        &mut max,
+                        &mut value,
+                        &mut flags,
+                        &mut pname,
+                    )
+                };
                 addresses.push(address);
                 infos.push((take_string(pname), Range::new(min, max, flags), value));
             }
@@ -328,7 +409,12 @@ mod host {
             let params: Vec<AuParam> = infos
                 .into_iter()
                 .zip(&ids)
-                .map(|((name, range, value), &id)| AuParam { id, default: range.to_norm(value), name, range })
+                .map(|((name, range, value), &id)| AuParam {
+                    id,
+                    default: range.to_norm(value),
+                    name,
+                    range,
+                })
                 .collect();
             let index = params.iter().enumerate().map(|(i, p)| (p.id, i)).collect();
             Ok(Self {
@@ -350,13 +436,29 @@ mod host {
         }
 
         /// The host's clock for the next render (audio thread).
-        pub fn set_transport(&mut self, tempo: f64, beat: f64, beats_per_sample: f64, playing: bool, changed: bool, restart: bool) {
+        pub fn set_transport(
+            &mut self,
+            tempo: f64,
+            beat: f64,
+            beats_per_sample: f64,
+            playing: bool,
+            changed: bool,
+            restart: bool,
+        ) {
             if restart {
                 self.sample_time = 0;
             }
             // SAFETY: live handle; plain values.
             unsafe {
-                ab_au_set_transport(self.ptr(), tempo, beat, beats_per_sample, self.sample_time as f64, playing as c_int, changed as c_int)
+                ab_au_set_transport(
+                    self.ptr(),
+                    tempo,
+                    beat,
+                    beats_per_sample,
+                    self.sample_time as f64,
+                    playing as c_int,
+                    changed as c_int,
+                )
             };
         }
 
@@ -379,7 +481,12 @@ mod host {
         pub fn param_handle(&self) -> Option<ParamHandle> {
             // SAFETY: returns the retained parameter array.
             let raw = NonNull::new(unsafe { ab_au_param_handle(self.ptr()) })?;
-            let params = self.params.iter().enumerate().map(|(i, p)| (p.id, (i, p.range))).collect();
+            let params = self
+                .params
+                .iter()
+                .enumerate()
+                .map(|(i, p)| (p.id, (i, p.range)))
+                .collect();
             Some(ParamHandle { raw, params })
         }
 
@@ -388,7 +495,9 @@ mod host {
             if let Some(&i) = self.index.get(&id) {
                 let value = self.params[i].range.from_norm(norm);
                 // SAFETY: `i` < the unit's parameter count.
-                unsafe { ab_au_schedule_param(self.ptr(), i as u32, self.params.len() as u32, value) };
+                unsafe {
+                    ab_au_schedule_param(self.ptr(), i as u32, self.params.len() as u32, value)
+                };
             }
         }
 
@@ -405,13 +514,26 @@ mod host {
             for (slot, ch) in outs.iter_mut().zip(buffers.outputs.iter_mut()) {
                 *slot = ch.as_mut_ptr();
             }
-            if buffers.inputs.iter().chain(&buffers.outputs).any(|ch| ch.len() < n) {
+            if buffers
+                .inputs
+                .iter()
+                .chain(&buffers.outputs)
+                .any(|ch| ch.len() < n)
+            {
                 return false;
             }
             // SAFETY: every pointer is to a buffer of at least `n` floats
             // that lives through the call.
             let status = unsafe {
-                ab_au_render(self.ptr(), n as u32, ins.as_ptr(), in_count as u32, outs.as_ptr(), out_count as u32, self.sample_time)
+                ab_au_render(
+                    self.ptr(),
+                    n as u32,
+                    ins.as_ptr(),
+                    in_count as u32,
+                    outs.as_ptr(),
+                    out_count as u32,
+                    self.sample_time,
+                )
             };
             self.sample_time += n as i64;
             if status != 0 && cfg!(test) {
@@ -424,7 +546,11 @@ mod host {
         pub fn get_parameter(&self, id: u32) -> Option<f64> {
             let &i = self.index.get(&id)?;
             // SAFETY: `i` < the unit's parameter count.
-            Some(self.params[i].range.to_norm(unsafe { ab_au_get_param(self.ptr(), i as u32) }))
+            Some(
+                self.params[i]
+                    .range
+                    .to_norm(unsafe { ab_au_get_param(self.ptr(), i as u32) }),
+            )
         }
 
         /// The unit's text for parameter `id` at `norm` (UI thread).
@@ -432,7 +558,9 @@ mod host {
             let &i = self.index.get(&id)?;
             let value = self.params[i].range.from_norm(norm);
             // SAFETY: returns a malloc'd string.
-            Some(take_string(unsafe { ab_au_format_param(self.ptr(), i as u32, value) }))
+            Some(take_string(unsafe {
+                ab_au_format_param(self.ptr(), i as u32, value)
+            }))
         }
 
         /// The complete state (a binary property list), for projects.
@@ -494,12 +622,18 @@ mod tests {
 
     #[test]
     fn pseudo_paths_round_trip() {
-        let c = Component { kind: EFFECT, subtype: u32::from_be_bytes(*b"dely"), manufacturer: u32::from_be_bytes(*b"appl") };
+        let c = Component {
+            kind: EFFECT,
+            subtype: u32::from_be_bytes(*b"dely"),
+            manufacturer: u32::from_be_bytes(*b"appl"),
+        };
         let path = c.path();
         assert_eq!(path.to_str(), Some("audiounit:61756678-64656c79-6170706c"));
         assert!(is_au_path(&path));
         assert_eq!(Component::from_path(&path), Some(c));
-        assert!(!is_au_path(Path::new("/Library/Audio/Plug-Ins/VST3/Dexed.vst3")));
+        assert!(!is_au_path(Path::new(
+            "/Library/Audio/Plug-Ins/VST3/Dexed.vst3"
+        )));
         assert_eq!(Component::from_path(Path::new("audiounit:zz-1-2")), None);
         assert_eq!(Component::from_path(Path::new("audiounit:1-2-3-4")), None);
     }
@@ -511,9 +645,16 @@ mod tests {
         assert_eq!(lin.from_norm(0.25), -12.0);
         let log = Range::new(20.0, 20_000.0, 1 << 22);
         assert!(log.log);
-        assert!((log.from_norm(0.5) - 632.46).abs() < 0.1, "{}", log.from_norm(0.5));
+        assert!(
+            (log.from_norm(0.5) - 632.46).abs() < 0.1,
+            "{}",
+            log.from_norm(0.5)
+        );
         assert!((log.to_norm(2_000.0) - 0.6667).abs() < 1e-3);
-        assert!(!Range::new(0.0, 1.0, 1 << 22).log, "log needs a positive range");
+        assert!(
+            !Range::new(0.0, 1.0, 1 << 22).log,
+            "log needs a positive range"
+        );
         assert_eq!(param_ids(&[0, 7, 3]), vec![0, 7, 3]);
         assert_eq!(param_ids(&[1 << 40, 7]), vec![0, 1]);
         assert_eq!(param_ids(&[(1 << 32) + 7, 7]), vec![0, 1]);
@@ -527,18 +668,32 @@ mod tests {
     fn audio_units_load_and_play() {
         let started = std::time::Instant::now();
         let list = list();
-        eprintln!("{} Audio Units listed in {:?}", list.len(), started.elapsed());
-        assert!(list.iter().any(|l| l.name == "AUDelay"), "Apple's AUDelay is listed");
+        eprintln!(
+            "{} Audio Units listed in {:?}",
+            list.len(),
+            started.elapsed()
+        );
+        assert!(
+            list.iter().any(|l| l.name == "AUDelay"),
+            "Apple's AUDelay is listed"
+        );
         let code = |s: &[u8; 4]| u32::from_be_bytes(*s);
         let sr = 48_000.0;
         let frames = 512;
 
         // An effect: audio in, audio out.
-        let delay = Component { kind: EFFECT, subtype: code(b"dely"), manufacturer: code(b"appl") };
+        let delay = Component {
+            kind: EFFECT,
+            subtype: code(b"dely"),
+            manufacturer: code(b"appl"),
+        };
         let mut fx = AudioUnit::open(delay, sr, 2048).expect("AUDelay loads");
         assert_eq!((fx.inputs, fx.outputs), (2, 2));
         assert!(!fx.params.is_empty());
-        eprintln!("AUDelay params: {:?}", fx.params.iter().map(|p| &p.name).collect::<Vec<_>>());
+        eprintln!(
+            "AUDelay params: {:?}",
+            fx.params.iter().map(|p| &p.name).collect::<Vec<_>>()
+        );
         let mut b = vst3_host::AudioBuffers::new(2, 2, frames, sr as f64);
         let mut energy = 0.0f32;
         for k in 0..40 {
@@ -559,17 +714,28 @@ mod tests {
         assert!(fx.process(&mut b));
         let back = fx.get_parameter(p.id).unwrap();
         assert!((back - 0.25).abs() < 0.02, "{} reads {back}", p.name);
-        eprintln!("{} at 25%: {}", p.name, fx.format_parameter(p.id, 0.25).unwrap());
+        eprintln!(
+            "{} at 25%: {}",
+            p.name,
+            fx.format_parameter(p.id, 0.25).unwrap()
+        );
         // State round trip.
         let state = fx.save_state().expect("a state");
         handle.set(p.id, 0.9);
         assert!((fx.get_parameter(p.id).unwrap() - 0.9).abs() < 0.02);
         assert!(fx.process(&mut b));
         fx.load_state(&state).unwrap();
-        assert!((fx.get_parameter(p.id).unwrap() - 0.25).abs() < 0.02, "the state brings the value back");
+        assert!(
+            (fx.get_parameter(p.id).unwrap() - 0.25).abs() < 0.02,
+            "the state brings the value back"
+        );
 
         // An instrument: MIDI in, audio out.
-        let dls = Component { kind: INSTRUMENT, subtype: code(b"dls "), manufacturer: code(b"appl") };
+        let dls = Component {
+            kind: INSTRUMENT,
+            subtype: code(b"dls "),
+            manufacturer: code(b"appl"),
+        };
         let mut synth = AudioUnit::open(dls, sr, 2048).expect("DLSMusicDevice loads");
         assert!(synth.midi && synth.inputs == 0);
         let mut b = vst3_host::AudioBuffers::new(0, 2, frames, sr as f64);
@@ -587,9 +753,21 @@ mod tests {
         assert!(energy > 0.01, "a note sounds ({energy})");
 
         // Third-party ones that happen to be installed.
-        for l in list.iter().filter(|l| l.component.manufacturer != code(b"appl")).take(3) {
+        for l in list
+            .iter()
+            .filter(|l| l.component.manufacturer != code(b"appl"))
+            .take(3)
+        {
             match AudioUnit::open(l.component, sr, 2048) {
-                Ok(u) => eprintln!("{} ({}): {} in, {} out, {} params, midi {}", u.name, u.vendor, u.inputs, u.outputs, u.params.len(), u.midi),
+                Ok(u) => eprintln!(
+                    "{} ({}): {} in, {} out, {} params, midi {}",
+                    u.name,
+                    u.vendor,
+                    u.inputs,
+                    u.outputs,
+                    u.params.len(),
+                    u.midi
+                ),
                 Err(e) => eprintln!("{}: {e}", l.name),
             }
         }
@@ -602,11 +780,11 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn audio_units_work_as_nodes() {
-        use std::sync::Arc;
         use crate::audio::params::{EngineShared, Waveform, osc};
         use crate::audio::plugin::Format;
         use crate::graph::{Graph, NodeKind, PortRef};
         use egui::pos2;
+        use std::sync::Arc;
         let (a, mut e) = crate::audio::offline(Arc::new(EngineShared::new()), 48_000);
         let mut g = Graph::default();
         let render = |e: &mut crate::audio::engine::Engine, frames: usize| {
@@ -623,22 +801,46 @@ mod tests {
             o.params.set(osc::FREQ, 220.0);
             o.params.set(osc::LEVEL, 0.5);
         }
-        let delay = Component { kind: EFFECT, subtype: code(b"dely"), manufacturer: code(b"appl") }.path();
-        let fx = g.add_plugin(&delay, pos2(300.0, 0.0), &a).expect("AUDelay loads as a node");
+        let delay = Component {
+            kind: EFFECT,
+            subtype: code(b"dely"),
+            manufacturer: code(b"appl"),
+        }
+        .path();
+        let fx = g
+            .add_plugin(&delay, pos2(300.0, 0.0), &a)
+            .expect("AUDelay loads as a node");
         let mix = g.add_mixer(pos2(600.0, 0.0), &a);
-        g.connect(PortRef { node: src, port: 0 }, PortRef { node: fx, port: 0 }, &a);
-        g.connect(PortRef { node: fx, port: 0 }, PortRef { node: mix, port: 0 }, &a);
+        g.connect(
+            PortRef { node: src, port: 0 },
+            PortRef { node: fx, port: 0 },
+            &a,
+        );
+        g.connect(
+            PortRef { node: fx, port: 0 },
+            PortRef { node: mix, port: 0 },
+            &a,
+        );
         let node = g.node(fx).unwrap();
         assert_eq!(node.title, "AUDELAY 1");
         assert_eq!(node.inputs(), &["IN"]);
-        let NodeKind::Plugin(p) = &node.kind else { unreachable!() };
+        let NodeKind::Plugin(p) = &node.kind else {
+            unreachable!()
+        };
         assert_eq!(p.meta.format, Format::AudioUnit { v3: false });
         assert!(!p.meta.instrument && p.meta.editor);
         render(&mut e, 4800);
-        assert!(render(&mut e, 24_000) > 0.01, "sound comes through the Audio Unit");
+        assert!(
+            render(&mut e, 24_000) > 0.01,
+            "sound comes through the Audio Unit"
+        );
 
         // A knob reaches the unit at once (no audio thread involved).
-        let mix_index = p.params.iter().position(|q| q.name == "Dry/Wet Mix").expect("a mix parameter");
+        let mix_index = p
+            .params
+            .iter()
+            .position(|q| q.name == "Dry/Wet Mix")
+            .expect("a mix parameter");
         let id = p.params[mix_index].id;
         if let Some(NodeKind::Plugin(p)) = g.node_mut(fx).map(|n| &mut n.kind) {
             p.set_param(mix_index, 0.25, 0.0);
@@ -652,23 +854,55 @@ mod tests {
         // Saved by its component code with its state, and restored.
         let saved = crate::project::snapshot(&g);
         let json = serde_json::to_string(&saved).unwrap();
-        assert!(json.contains("audiounit:61756678-64656c79-6170706c"), "saved by component");
+        assert!(
+            json.contains("audiounit:61756678-64656c79-6170706c"),
+            "saved by component"
+        );
         g.clear(&a);
         assert_eq!(crate::project::restore(&mut g, &saved, &a), 0);
-        let fx = g.nodes.iter().find(|n| matches!(n.kind, NodeKind::Plugin(_))).expect("restored").id;
+        let fx = g
+            .nodes
+            .iter()
+            .find(|n| matches!(n.kind, NodeKind::Plugin(_)))
+            .expect("restored")
+            .id;
         let restored = match &g.node(fx).unwrap().kind {
             NodeKind::Plugin(p) => p.shared.plugin.lock().unwrap().get_parameter(id).unwrap(),
             _ => unreachable!(),
         };
-        assert!((restored - 0.25).abs() < 0.01, "the state came back: {restored}");
+        assert!(
+            (restored - 0.25).abs() < 0.01,
+            "the state came back: {restored}"
+        );
 
         // An instrument plays from the MIDI keyboard.
-        let dls = Component { kind: INSTRUMENT, subtype: code(b"dls "), manufacturer: code(b"appl") }.path();
-        let synth = g.add_plugin(&dls, pos2(300.0, 300.0), &a).expect("DLSMusicDevice loads as a node");
+        let dls = Component {
+            kind: INSTRUMENT,
+            subtype: code(b"dls "),
+            manufacturer: code(b"appl"),
+        }
+        .path();
+        let synth = g
+            .add_plugin(&dls, pos2(300.0, 300.0), &a)
+            .expect("DLSMusicDevice loads as a node");
         let mix2 = g.add_mixer(pos2(600.0, 300.0), &a);
-        g.connect(PortRef { node: synth, port: 0 }, PortRef { node: mix2, port: 0 }, &a);
+        g.connect(
+            PortRef {
+                node: synth,
+                port: 0,
+            },
+            PortRef {
+                node: mix2,
+                port: 0,
+            },
+            &a,
+        );
         if let Some(NodeKind::Plugin(p)) = g.node(synth).map(|n| &n.kind) {
-            assert!(p.meta.instrument && p.meta.midi && p.shared.midi_in.load(std::sync::atomic::Ordering::Relaxed));
+            assert!(
+                p.meta.instrument
+                    && p.meta.midi
+                    && p.shared.midi_in.load(std::sync::atomic::Ordering::Relaxed)
+            );
         }
         g.remove_node(fx, &a);
         render(&mut e, 4800);

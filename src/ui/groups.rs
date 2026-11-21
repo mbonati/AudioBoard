@@ -2,7 +2,10 @@
 //! nodes, which stay editable in place; a collapsed one is a single card
 //! showing only the ports that link it to the rest of the patch.
 
-use egui::{Align2, CornerRadius, CursorIcon, Id, Painter, Rect, Sense, Shape, Stroke, StrokeKind, Ui, Vec2, pos2, vec2};
+use egui::{
+    Align2, CornerRadius, CursorIcon, Id, Painter, Rect, Sense, Shape, Stroke, StrokeKind, Ui,
+    Vec2, pos2, vec2,
+};
 
 use super::nodes::HEADER_H;
 use super::theme::{self, alpha};
@@ -32,7 +35,10 @@ pub fn frame_rect(graph: &Graph, g: &Group) -> Option<Rect> {
 }
 
 pub fn card_size(inputs: usize, outputs: usize) -> Vec2 {
-    vec2(CARD_W, HEADER_H + 10.0 + ROW_H * inputs.max(outputs).max(1) as f32)
+    vec2(
+        CARD_W,
+        HEADER_H + 10.0 + ROW_H * inputs.max(outputs).max(1) as f32,
+    )
 }
 
 pub fn card_port(i: usize, output: bool) -> Vec2 {
@@ -67,17 +73,33 @@ fn header(
     let fold = ui
         .interact(fold_rect, Id::unique(("gfold", g.id)), Sense::CLICK)
         .on_hover_cursor(CursorIcon::PointingHand)
-        .on_hover_text(if g.collapsed { "Expand module (C)" } else { "Collapse module (C)" });
+        .on_hover_text(if g.collapsed {
+            "Expand module (C)"
+        } else {
+            "Collapse module (C)"
+        });
     let c = fold_rect.center();
     let s = 3.0 * z;
     let tri = if g.collapsed {
-        vec![c + vec2(-0.6 * s, -s), c + vec2(0.9 * s, 0.0), c + vec2(-0.6 * s, s)]
+        vec![
+            c + vec2(-0.6 * s, -s),
+            c + vec2(0.9 * s, 0.0),
+            c + vec2(-0.6 * s, s),
+        ]
     } else {
-        vec![c + vec2(-s, -0.6 * s), c + vec2(s, -0.6 * s), c + vec2(0.0, 0.9 * s)]
+        vec![
+            c + vec2(-s, -0.6 * s),
+            c + vec2(s, -0.6 * s),
+            c + vec2(0.0, 0.9 * s),
+        ]
     };
     p.add(Shape::convex_polygon(
         tri,
-        if fold.hovered() { theme::TEXT } else { theme::TEXT_FAINT },
+        if fold.hovered() {
+            theme::TEXT
+        } else {
+            theme::TEXT_FAINT
+        },
         Stroke::NONE,
     ));
 
@@ -86,7 +108,11 @@ fn header(
         p.circle_filled(
             pos2(x + 2.0 * z, cy),
             3.5 * z,
-            theme::mix(theme::CONTROL_HI, theme::ACCENT, 0.35 + 0.65 * level.clamp(0.0, 1.0).sqrt()),
+            theme::mix(
+                theme::CONTROL_HI,
+                theme::ACCENT,
+                0.35 + 0.65 * level.clamp(0.0, 1.0).sqrt(),
+            ),
         );
         x += 12.0 * z;
     }
@@ -95,7 +121,13 @@ fn header(
         pos2(rect.right() - 28.0 * z, rect.top() + (HEADER_H - 4.0) * z),
     );
     if !renaming {
-        let title = p.text(pos2(x, cy), Align2::LEFT_CENTER, &g.title, theme::strong(11.5 * z), theme::TEXT);
+        let title = p.text(
+            pos2(x, cy),
+            Align2::LEFT_CENTER,
+            &g.title,
+            theme::strong(11.5 * z),
+            theme::TEXT,
+        );
         p.text(
             pos2(title.right() + 8.0 * z, cy),
             Align2::LEFT_CENTER,
@@ -105,7 +137,8 @@ fn header(
         );
     }
 
-    let close_rect = Rect::from_center_size(pos2(rect.right() - 13.0 * z, cy), Vec2::splat(16.0 * z));
+    let close_rect =
+        Rect::from_center_size(pos2(rect.right() - 13.0 * z, cy), Vec2::splat(16.0 * z));
     let close = ui
         .interact(close_rect, Id::unique(("gclose", g.id)), Sense::CLICK)
         .on_hover_cursor(CursorIcon::PointingHand)
@@ -115,10 +148,17 @@ fn header(
         if close.hovered() {
             p.circle_filled(c, 8.0 * z, theme::CONTROL_HI);
         }
-        let col = if close.hovered() { theme::TEXT } else { theme::TEXT_FAINT };
+        let col = if close.hovered() {
+            theme::TEXT
+        } else {
+            theme::TEXT_FAINT
+        };
         let d = 3.0 * z;
         p.line_segment([c - vec2(d, d), c + vec2(d, d)], Stroke::new(1.2 * z, col));
-        p.line_segment([c + vec2(-d, d), c + vec2(d, -d)], Stroke::new(1.2 * z, col));
+        p.line_segment(
+            [c + vec2(-d, d), c + vec2(d, -d)],
+            Stroke::new(1.2 * z, col),
+        );
     }
 
     HeaderActions {
@@ -129,7 +169,15 @@ fn header(
 }
 
 /// An expanded module: a translucent frame behind its nodes.
-pub fn draw_frame(ui: &Ui, p: &Painter, g: &Group, rect: Rect, selected: bool, renaming: bool, z: f32) -> HeaderActions {
+pub fn draw_frame(
+    ui: &Ui,
+    p: &Painter,
+    g: &Group,
+    rect: Rect,
+    selected: bool,
+    renaming: bool,
+    z: f32,
+) -> HeaderActions {
     let r = RADIUS * z;
     p.rect_filled(rect, r, alpha(theme::TEXT, 0.025));
     let top = CornerRadius {
@@ -148,8 +196,22 @@ pub fn draw_frame(ui: &Ui, p: &Painter, g: &Group, rect: Rect, selected: bool, r
     p.rect_stroke(rect, r, border, StrokeKind::Inside);
 
     let n = g.members.len();
-    let note = if n == 1 { "1 node".to_owned() } else { format!("{n} nodes") };
-    header(ui, p, g, rect, &note, None, ui.rect_contains_pointer(head) || selected, renaming, z)
+    let note = if n == 1 {
+        "1 node".to_owned()
+    } else {
+        format!("{n} nodes")
+    };
+    header(
+        ui,
+        p,
+        g,
+        rect,
+        &note,
+        None,
+        ui.rect_contains_pointer(head) || selected,
+        renaming,
+        z,
+    )
 }
 
 /// A collapsed module: one card with the module's outer ports.
@@ -175,8 +237,16 @@ pub fn draw_card(
         sw: 0,
         se: 0,
     };
-    p.rect_filled(Rect::from_min_size(rect.min, vec2(rect.width(), HEADER_H * z)), top, theme::NODE_HEADER);
-    p.hline(rect.x_range(), rect.top() + HEADER_H * z, Stroke::new(1.0 * z, theme::NODE_BORDER));
+    p.rect_filled(
+        Rect::from_min_size(rect.min, vec2(rect.width(), HEADER_H * z)),
+        top,
+        theme::NODE_HEADER,
+    );
+    p.hline(
+        rect.x_range(),
+        rect.top() + HEADER_H * z,
+        Stroke::new(1.0 * z, theme::NODE_BORDER),
+    );
     // Stacked-card edge: this node holds several.
     p.hline(
         (rect.left() + 6.0 * z)..=(rect.right() - 6.0 * z),
@@ -191,7 +261,11 @@ pub fn draw_card(
         .map(|n| n.signal_level())
         .fold(0.0, f32::max);
     let n = g.members.len();
-    let note = if n == 1 { "1 node".to_owned() } else { format!("{n} nodes") };
+    let note = if n == 1 {
+        "1 node".to_owned()
+    } else {
+        format!("{n} nodes")
+    };
     let hovered = ui.rect_contains_pointer(rect) || selected;
     let actions = header(ui, p, g, rect, &note, Some(level), hovered, renaming, z);
 
@@ -203,15 +277,33 @@ pub fn draw_card(
         format!("{title} · {port}")
     };
     let font = theme::font(8.5 * z);
-    let col = |on: bool| if on { theme::TEXT_DIM } else { theme::TEXT_FAINT };
+    let col = |on: bool| {
+        if on {
+            theme::TEXT_DIM
+        } else {
+            theme::TEXT_FAINT
+        }
+    };
     let (ins, outs) = ports;
     for (i, pr) in ins.iter().enumerate() {
         let pos = rect.min + card_port(i, false) * z + vec2(12.0 * z, 0.0);
-        p.text(pos, Align2::LEFT_CENTER, label(*pr, true), font.clone(), col(connected(*pr, true)));
+        p.text(
+            pos,
+            Align2::LEFT_CENTER,
+            label(*pr, true),
+            font.clone(),
+            col(connected(*pr, true)),
+        );
     }
     for (i, pr) in outs.iter().enumerate() {
         let pos = rect.min + card_port(i, true) * z - vec2(12.0 * z, 0.0);
-        p.text(pos, Align2::RIGHT_CENTER, label(*pr, false), font.clone(), col(connected(*pr, false)));
+        p.text(
+            pos,
+            Align2::RIGHT_CENTER,
+            label(*pr, false),
+            font.clone(),
+            col(connected(*pr, false)),
+        );
     }
 
     let border = if selected {
@@ -223,7 +315,11 @@ pub fn draw_card(
         rect,
         r,
         border,
-        if selected { StrokeKind::Outside } else { StrokeKind::Inside },
+        if selected {
+            StrokeKind::Outside
+        } else {
+            StrokeKind::Inside
+        },
     );
     actions
 }

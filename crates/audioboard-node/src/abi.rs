@@ -54,10 +54,16 @@ pub struct RawStr {
 }
 
 impl RawStr {
-    pub const EMPTY: RawStr = RawStr { ptr: std::ptr::null(), len: 0 };
+    pub const EMPTY: RawStr = RawStr {
+        ptr: std::ptr::null(),
+        len: 0,
+    };
 
     pub const fn new(s: &'static str) -> Self {
-        Self { ptr: s.as_ptr(), len: s.len() }
+        Self {
+            ptr: s.as_ptr(),
+            len: s.len(),
+        }
     }
 
     /// The text, copied; an error for invalid UTF-8.
@@ -70,7 +76,9 @@ impl RawStr {
         }
         // SAFETY: see the function's contract.
         let bytes = unsafe { std::slice::from_raw_parts(self.ptr, self.len) };
-        std::str::from_utf8(bytes).map(str::to_owned).map_err(|_| "text that is not UTF-8".to_owned())
+        std::str::from_utf8(bytes)
+            .map(str::to_owned)
+            .map_err(|_| "text that is not UTF-8".to_owned())
     }
 }
 
@@ -90,10 +98,16 @@ impl<T> Clone for RawSlice<T> {
 impl<T> Copy for RawSlice<T> {}
 
 impl<T> RawSlice<T> {
-    pub const EMPTY: RawSlice<T> = RawSlice { ptr: std::ptr::null(), len: 0 };
+    pub const EMPTY: RawSlice<T> = RawSlice {
+        ptr: std::ptr::null(),
+        len: 0,
+    };
 
     fn of(items: &'static [T]) -> Self {
-        Self { ptr: items.as_ptr(), len: items.len() }
+        Self {
+            ptr: items.as_ptr(),
+            len: items.len(),
+        }
     }
 
     /// # Safety
@@ -293,7 +307,11 @@ pub struct NodeEntry {
 pub fn entry<N: Node>() -> NodeEntry {
     NodeEntry {
         descriptor: N::DESCRIPTOR,
-        vtable: NodeVTable { create: create::<N>, process: process::<N>, destroy: destroy::<N> },
+        vtable: NodeVTable {
+            create: create::<N>,
+            process: process::<N>,
+            destroy: destroy::<N>,
+        },
     }
 }
 
@@ -303,8 +321,13 @@ unsafe extern "C" fn create<N: Node>(init: *const RawInit) -> *mut c_void {
     }
     // SAFETY: the host passes a valid RawInit whose params outlive the node.
     let (sample_rate, params) = unsafe { ((*init).sample_rate, Shared::from_raw((*init).params)) };
-    catch_unwind(AssertUnwindSafe(|| Box::into_raw(Box::new(N::new(&Init { sample_rate, params }))) as *mut c_void))
-        .unwrap_or(std::ptr::null_mut())
+    catch_unwind(AssertUnwindSafe(|| {
+        Box::into_raw(Box::new(N::new(&Init {
+            sample_rate,
+            params,
+        }))) as *mut c_void
+    }))
+    .unwrap_or(std::ptr::null_mut())
 }
 
 unsafe extern "C" fn process<N: Node>(node: *mut c_void, io: *const RawProcess) -> u32 {
@@ -328,7 +351,9 @@ unsafe extern "C" fn process<N: Node>(node: *mut c_void, io: *const RawProcess) 
 unsafe extern "C" fn destroy<N: Node>(node: *mut c_void) {
     if !node.is_null() {
         // SAFETY: `node` came from `create::<N>` and is freed once.
-        let _ = catch_unwind(AssertUnwindSafe(|| drop(unsafe { Box::from_raw(node as *mut N) })));
+        let _ = catch_unwind(AssertUnwindSafe(|| {
+            drop(unsafe { Box::from_raw(node as *mut N) })
+        }));
     }
 }
 
@@ -361,17 +386,32 @@ pub fn build(
     version: &'static str,
     nodes: fn() -> Vec<NodeEntry>,
 ) -> *const PluginInfo {
-    let built = cell.get_or_init(|| catch_unwind(AssertUnwindSafe(|| build_tables(name, maker, version, nodes()))).ok());
-    built.as_ref().map_or(std::ptr::null(), |b| &b.info as *const PluginInfo)
+    let built = cell.get_or_init(|| {
+        catch_unwind(AssertUnwindSafe(|| {
+            build_tables(name, maker, version, nodes())
+        }))
+        .ok()
+    });
+    built
+        .as_ref()
+        .map_or(std::ptr::null(), |b| &b.info as *const PluginInfo)
 }
 
-fn build_tables(name: &'static str, maker: &'static str, version: &'static str, entries: Vec<NodeEntry>) -> Built {
+fn build_tables(
+    name: &'static str,
+    maker: &'static str,
+    version: &'static str,
+    entries: Vec<NodeEntry>,
+) -> Built {
     let mut strs: Vec<Box<[RawStr]>> = Vec::new();
     let mut params: Vec<Box<[RawParam]>> = Vec::new();
     let mut cvs: Vec<Box<[[u32; 2]]>> = Vec::new();
     let mut list = |items: &'static [&'static str]| -> RawSlice<RawStr> {
         let b: Box<[RawStr]> = items.iter().map(|s| RawStr::new(s)).collect();
-        let slice = RawSlice { ptr: b.as_ptr(), len: b.len() };
+        let slice = RawSlice {
+            ptr: b.as_ptr(),
+            len: b.len(),
+        };
         strs.push(b);
         slice
     };
@@ -392,7 +432,11 @@ fn build_tables(name: &'static str, maker: &'static str, version: &'static str, 
                     bipolar: p.bipolar,
                 })
                 .collect();
-            let cv: Box<[[u32; 2]]> = d.cv_depth.iter().map(|&(p, i)| [p as u32, i as u32]).collect();
+            let cv: Box<[[u32; 2]]> = d
+                .cv_depth
+                .iter()
+                .map(|&(p, i)| [p as u32, i as u32])
+                .collect();
             let node = RawNode {
                 id: RawStr::new(e.descriptor.id),
                 maker: RawStr::new(e.descriptor.maker),
@@ -401,8 +445,14 @@ fn build_tables(name: &'static str, maker: &'static str, version: &'static str, 
                 hint: RawStr::new(d.hint),
                 inputs: list(d.inputs),
                 outputs: list(d.outputs),
-                params: RawSlice { ptr: ps.as_ptr(), len: ps.len() },
-                cv_depth: RawSlice { ptr: cv.as_ptr(), len: cv.len() },
+                params: RawSlice {
+                    ptr: ps.as_ptr(),
+                    len: ps.len(),
+                },
+                cv_depth: RawSlice {
+                    ptr: cv.as_ptr(),
+                    len: cv.len(),
+                },
                 modes: list(d.modes),
                 toggle: d.toggle.map_or(RawStr::EMPTY, RawStr::new),
                 toggle_default: d.toggle_default,
@@ -428,7 +478,10 @@ fn build_tables(name: &'static str, maker: &'static str, version: &'static str, 
             name: RawStr::new(name),
             maker: RawStr::new(maker),
             version: RawStr::new(version),
-            nodes: RawSlice { ptr: nodes.as_ptr(), len: nodes.len() },
+            nodes: RawSlice {
+                ptr: nodes.as_ptr(),
+                len: nodes.len(),
+            },
         },
         _nodes: nodes,
         _strs: strs,
@@ -446,7 +499,11 @@ pub fn raw_display(d: Display) -> RawDisplay {
         Display::Trace { index } => (4, index, 0),
         Display::Dot { x, y } => (5, x, y),
     };
-    RawDisplay { kind, a: a as u32, b: b as u32 }
+    RawDisplay {
+        kind,
+        a: a as u32,
+        b: b as u32,
+    }
 }
 
 /// The display for its numbers; an unknown kind (from a newer SDK) shows
@@ -465,17 +522,36 @@ pub fn display_from_raw(r: RawDisplay) -> Display {
 
 pub fn raw_readout(r: Readout) -> RawReadout {
     match r {
-        Readout::Name => RawReadout { kind: 0, index: 0, unit: 0 },
-        Readout::Param(i) => RawReadout { kind: 1, index: i as u32, unit: 0 },
-        Readout::Viz { index, unit } => RawReadout { kind: 2, index: index as u32, unit: unit.code() },
-        Readout::Mode => RawReadout { kind: 3, index: 0, unit: 0 },
+        Readout::Name => RawReadout {
+            kind: 0,
+            index: 0,
+            unit: 0,
+        },
+        Readout::Param(i) => RawReadout {
+            kind: 1,
+            index: i as u32,
+            unit: 0,
+        },
+        Readout::Viz { index, unit } => RawReadout {
+            kind: 2,
+            index: index as u32,
+            unit: unit.code(),
+        },
+        Readout::Mode => RawReadout {
+            kind: 3,
+            index: 0,
+            unit: 0,
+        },
     }
 }
 
 pub fn readout_from_raw(r: RawReadout) -> Readout {
     match r.kind {
         1 => Readout::Param(r.index as usize),
-        2 => Readout::Viz { index: r.index as usize, unit: crate::Unit::from_code(r.unit) },
+        2 => Readout::Viz {
+            index: r.index as usize,
+            unit: crate::Unit::from_code(r.unit),
+        },
         3 => Readout::Mode,
         _ => Readout::Name,
     }

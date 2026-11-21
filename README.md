@@ -225,6 +225,76 @@ Like any node, it also collapses entirely to its title bar (C).
 
 The preset rhythms are new patterns written in each style, not decoded from the original's diode matrix.
 
+**Sibyl**: a sixteen-voice analog polysynth after the Sequential Prophet-5 (rev 3) and u-he's Repro-5, for
+warm, full pads, arpeggios and leads. The panel follows Repro-5's synth view in three rows (VOICE MOD,
+OSCILLATOR A, MIXER, FILTER; LFO, OSCILLATOR B, UNISON, FILTER ENVELOPE; WHEEL MOD, MOD MATRIX, AMPLIFIER),
+in the board's flat style (a colour per kind of section), with the keys or the effects underneath; its engine,
+sounds and names are its own.
+
+- **Voice.** Oscillator A (saw and pulse, hard sync to B) and B (saw, triangle, pulse, LO FREQ seven octaves
+  down, keyboard tracking on or off), each with OCTAVE (four positions), FREQUENCY ±12 semitones and a fine
+  tune; MIXER levels for A, B and noise (or, with a jumper, the voice's own output fed back); a four-pole
+  low pass of the CEM3320 kind (CUTOFF, RESONANCE — it self-oscillates above 60 % and thins the bass as it
+  rises —, ENV AMOUNT, KEYBOARD tracking, 100 % = in tune) saturating where its loop meets the input; two
+  envelopes with a curved attack (ATTACK 2 ms–15 s, DECAY 2 ms–15 s, SUSTAIN, RELEASE 2 ms–55 s, VEL),
+  restarting from where they are on a new note. Oscillators run free and are band-limited (polynomial
+  BLEP/BLAMP, one sample late so sync and audio-rate FM are exact).
+- **VOICE MOD (poly-mod).** The filter envelope and oscillator B, each with its amount, to oscillator A's
+  frequency, A's pulse width and the cutoff: sync sweeps, metallic FM, growls, per voice and at audio rate.
+- **LFO and WHEEL MOD.** Saw, triangle and square (they add up), 0.03–27.5 Hz or synced (8 bars to 1/64,
+  dotted and triplets); SOURCE MIX from LFO to noise; destinations FREQ A, FREQ B, PW A, PW B, FILTER, under
+  the mod wheel between two limits (the triangles beside the wheel: a minimum depth with the wheel down).
+- **UNISON, GLIDE, VOICE DETUNE.** VOICES (1–16) are the polyphony; UNISON stacks UNISON VOICES (1–16) on one
+  key with LOW, HIGH or LAST priority, spread by VOICE DETUNE; GLIDE slews each voice's pitch (poly or
+  unison). VOICE DETUNE also sets how much the voices differ (tuning, cutoff, envelope times, pulse width,
+  level) and drift, as real voice cards do; a light per voice shows them work.
+- **MOD MATRIX.** Four slots (MM A and MM B, two a page): a source (mod wheel, bend, two controllers,
+  LFO, trigger, gate, key, key + bend, velocity, aftertouch, the envelopes, voice index, voice detune), a
+  destination (44, from the oscillators, filter, envelopes, mixer and pan to the distortion, the effects
+  and the LFO's rate), DEPTH, and modifiers: CURVE, RECT(ify), QUANT(ize to semitones, steps of 12,
+  overtones, scales, chords, series of thirds, fifths), S+H (on a rising zero crossing of another signal)
+  and SLEW.
+- **TWEAKS.** Jumpers: LFO with or without DC, inverted LFO and oscillator B saws, S&H instead of noise in
+  WHEEL MOD, note priority, voice reallocation (the same key on the same voice, or round robin), mixer
+  feedback, inverted filter envelope, cutoff following the bend. Selectors: the oscillators' model (P5 with
+  its inverted pulse, P1, IDEAL, P5 OLD drifting; BOTTOM for B), the filter's (CRISPY, ROUNDED, DRIVEN, POLY:
+  darker, only open when modulated), the envelopes' (IDEAL, ANALOG, HIGH SUS, ONE SHOT, PIANO 1 and 2), the
+  bend's range up and down (to 24 semitones, then 36 and 48). A pan per voice; the wheels' limits; the two
+  controllers' numbers.
+- **Effects.** A DISTORTION per voice (soft clip, hard clip, foldback, or CORRODE: rate reduction and bit
+  crushing; AMOUNT, TONE, MIX), then five effects in a chain you reorder by dragging and switch by clicking:
+  TAPE (saturation at twice the rate, head bump, roll-off, hiss, wow and flutter on WORN), ECHO (a bucket
+  brigade: CHORUS, LONG, synced to 1/16 or 1/4 × 1–8; ECHO, PPONG, SWING, GROOVE; modulation; CLEAN, BRIGHT,
+  DARK repeats; changing TIME glides the pitch), RES·EQ (low shelf, mid bell and high shelf, or three
+  resonant band passes), PLATE (pre-delay, DECAY from 0.35 s through about 2 s in the middle to a minute, TONE, DRY/WET at equal
+  power, so the dry sound leads until the middle) and CONDITIONER (GAIN that
+  saturates above the middle, TRANSIENT, WIDTH). The EFFECTS tab, under KEYS on the left of the lower panel,
+  opens them and shows with a dot each which ones are on.
+- **ARPEGGIATOR** (ours): UP, DOWN, UP/DN, UP+DN, ORDER, RANDOM or CHORD, 1/4 to 1/32 with dotted and
+  triplet values, one to four octaves, GATE, SWING, LATCH. It steps on the board's grid while the
+  transport plays and at the board's tempo from the first key while it is stopped.
+- **Programs.** Forty-eight, in banks of eight as on the original (five there, six here), our own sounds
+  (arpeggios, pads, leads, keys and basses, textures, and bank 6: bouncing sequences, where each note
+  springs — the filter snaps shut and the pitch falls a little — over swung steps and echoes that answer
+  from the other side); BANK and PROGRAM recall them, RECORD then a program button stores the panel
+  there (kept with the node; right-click a program to put its factory sound back), Program Change 1–48
+  picks one. The display shows the sound's name (`*` once edited).
+- **Presets.** SAVE asks for a name (24 characters) and a category (ARP, PAD, LEAD, KEYS, BASS, TEXTURE,
+  BOUNCE, OTHER) and keeps the sound in your library, in the app's preset folder (`presets/Sibyl.json`), there
+  in every project (a preset of the same name is replaced); or stores it, with its name and effects order, in
+  the current program. PRESETS ▾ lists your sounds by category (click to load, × to delete), the factory
+  banks, and exports the sound or the whole library to a file, or imports one (a file with one sound loads it
+  too). A preset keeps the sound only: never the master section (TUNE, OUTPUT, HQ, A-440, the mod wheel,
+  VOICES, the controllers) nor the programs recorded in the node. The two-digit display reads bank and
+  program; `*` marks an edited panel. HQ runs the voices at twice the rate; A-440 replaces the output with a
+  reference tone; TUNE (±12 semitones) and OUTPUT stay with the panel.
+- **Keys.** The MIDI input (or the keyboards while it is free), the panel's five octaves (keys about six times
+  as long as wide) and its bend and mod wheels; mod wheel CC 1, sustain CC 64, aftertouch, bend.
+
+Performance: the slow parts of a voice (envelopes, glide, the matrix, pitches, levels) are worked out once
+every 16 frames (or at each MIDI event) and ramped; the oscillators run per voice, the filter four voices
+at a time in lanes; idle voices cost nothing and the node rests when silent.
+
 **Fjord**: a four-channel drum synthesizer after the Clavia Nord Drum (the first one, 2012), with a step
 sequencer. Each channel plays one sound at a time, blended from three components, each with its own
 parameters, as on the Nord Drum:
@@ -1780,6 +1850,11 @@ src/
 │   │   │               motion (hexagon sliders, magnet, drawn/recorded paths, timeline)
 │   │   ├── pops.rs     Pops 66 (after the KORG Mini Pops-7): instruments, user patterns, clock, MIDI in/out
 │   │   ├── pops/       voices (the fifteen synthesized instruments), rhythms (the twenty presets, combining)
+│   │   ├── sibyl.rs    Sibyl (after the Prophet-5 and Repro-5): parameters, programs (record, restore), keys,
+│   │   │               pedal, voice allocation and unison, MIDI, segments, the output
+│   │   ├── sibyl/      voice (oscillators with BLEP, sync and FM; the CEM3320-style filter in lanes of four
+│   │   │               voices; envelopes; distortion; the patch decoded), mods (LFO, wheel noise, the matrix
+│   │   │               and its modifiers), fx (tape, echo, res·eq, plate, conditioner), arp, bank (programs)
 │   │   ├── fjord.rs    Fjord (after the Clavia Nord Drum): the channels' knobs, programs (packed three settings
 │   │   │               to a value, store, Memory Protect), MIDI in and out, learning, Local, the step lanes
 │   │   ├── fjord/      voice (tone, noise and click, gates, sweeps, bend, punch, the tone's ADSRs, held notes,
@@ -1895,6 +1970,8 @@ src/
 │   │               and grains; cutting and moving slices), the slice keys; pages SLICE (SOUND, STUTTER,
 │   │               CRUSH, GRAINS, each drawn), SEQUENCE (the modes, the lane, PROB bars, Euclidean rings),
 │   │               MIDI (the keyboard, LEARN)
+│   ├── sibyl.rs    the Sibyl panel: control bar and programmer, the three rows, the tweaks' boards, keys
+│   │               with wheels and arpeggiator, the effects and their chain
 │   ├── fjord.rs    the Fjord panel: the bank map of the 99 programs, channel keys and their lights, ALEA and
 │   │               its die; pages SOUND (the strike's outlines, NOISE, TONE, CLICK, MIXER, AMP and FILTER
 │   │               ENV) and SEQUENCER · MIDI (the lanes, SYSTEM); the node resizes with the page
@@ -1953,7 +2030,7 @@ modes, toggle) and a `Processor`, an entry in `ModuleKind` and, in `ui/modules.r
 A node that should ship on its own is a plugin instead (see [Writing nodes](#writing-nodes-sdk-plugins-and-ui-kit)):
 it needs no change to the app.
 The panel (ports, selector, knobs) is generated from the definition; Frakture, too large for the generic
-panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`), Prism (`ui/prism.rs`), Magma (`ui/magma.rs`), Tape (`ui/tape.rs`), Nullpunkt (`ui/nullpunkt.rs`), Aether (`ui/aether.rs`), Larsen (`ui/larsen.rs`), Vesper (`ui/vesper.rs`), the MIDI Looper (`ui/looper.rs`), Automa (`ui/automa.rs`), Colloid (`ui/colloid.rs`), Orrery (`ui/orrery.rs`), Fjord (`ui/fjord.rs`), Splitter (`ui/splitter.rs`), Iris (`ui/iris.rs`, sized by the user) and Pops 66
+panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`), Prism (`ui/prism.rs`), Magma (`ui/magma.rs`), Tape (`ui/tape.rs`), Nullpunkt (`ui/nullpunkt.rs`), Aether (`ui/aether.rs`), Larsen (`ui/larsen.rs`), Vesper (`ui/vesper.rs`), the MIDI Looper (`ui/looper.rs`), Automa (`ui/automa.rs`), Colloid (`ui/colloid.rs`), Orrery (`ui/orrery.rs`), Sibyl (`ui/sibyl.rs`), Fjord (`ui/fjord.rs`), Splitter (`ui/splitter.rs`), Iris (`ui/iris.rs`, sized by the user) and Pops 66
 (`ui/pops.rs`; its size, like Fjord's and Iris's, follows its settings through `modules::size_of`). Frakture's hexagon runs on the audio thread, block by block: the panel
 hands it the mouse through the module's display values, so paths keep time even when the window doesn't
 redraw.

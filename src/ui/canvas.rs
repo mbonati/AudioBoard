@@ -19,7 +19,9 @@ use super::theme::{self, alpha};
 use super::widgets;
 use crate::audio::AudioHandle;
 use crate::audio::engine::NodeId;
-use crate::graph::{Cable, Console, Graph, Group, GroupId, MIDI_PORT, NodeKind, NodeType, PortRef, Target, is_midi};
+use crate::graph::{
+    Cable, Console, Graph, Group, GroupId, MIDI_PORT, NodeKind, NodeType, PortRef, Target, is_midi,
+};
 use crate::project::{self, Preset};
 
 const MIN_ZOOM: f32 = 0.3;
@@ -41,7 +43,9 @@ impl Glide {
     fn new(moves: Vec<(NodeId, Pos2, Pos2)>, start: f64) -> Self {
         let (lo, hi) = moves
             .iter()
-            .fold((f32::INFINITY, f32::NEG_INFINITY), |(lo, hi), m| (lo.min(m.2.x), hi.max(m.2.x)));
+            .fold((f32::INFINITY, f32::NEG_INFINITY), |(lo, hi), m| {
+                (lo.min(m.2.x), hi.max(m.2.x))
+            });
         let span = (hi - lo).max(1.0);
         let moves = moves
             .into_iter()
@@ -96,7 +100,10 @@ enum Action {
     AddPlugin(usize, Pos2),
     Request(Request),
     Remove(NodeId),
-    Connect { from: PortRef, to: PortRef },
+    Connect {
+        from: PortRef,
+        to: PortRef,
+    },
     Disconnect(Cable),
     /// Select these nodes, replacing the selection unless `true`.
     Select(Vec<NodeId>, bool),
@@ -293,7 +300,8 @@ impl Editor {
     /// The module whose nodes are exactly the selection, if any.
     pub fn selected_group<'a>(&self, graph: &'a Graph) -> Option<&'a Group> {
         graph.groups.iter().find(|g| {
-            g.members.len() == self.selected.len() && g.members.iter().all(|m| self.selected.contains(m))
+            g.members.len() == self.selected.len()
+                && g.members.iter().all(|m| self.selected.contains(m))
         })
     }
 
@@ -307,13 +315,30 @@ impl Editor {
             BarItem::Duplicate => "Duplicate",
             BarItem::Delete => "Delete",
         };
-        self.bar.map(|b| (b, self.bar_buttons.iter().map(|&(i, r)| (names(i), r.center())).collect()))
+        self.bar.map(|b| {
+            (
+                b,
+                self.bar_buttons
+                    .iter()
+                    .map(|&(i, r)| (names(i), r.center()))
+                    .collect(),
+            )
+        })
     }
 
     /// Selected nodes, left to right (the order modules list their ports in).
     fn ordered_selection(&self, graph: &Graph) -> Vec<NodeId> {
-        let mut nodes: Vec<_> = graph.nodes.iter().filter(|n| self.selected.contains(&n.id)).collect();
-        nodes.sort_by(|a, b| a.pos.x.total_cmp(&b.pos.x).then(a.pos.y.total_cmp(&b.pos.y)));
+        let mut nodes: Vec<_> = graph
+            .nodes
+            .iter()
+            .filter(|n| self.selected.contains(&n.id))
+            .collect();
+        nodes.sort_by(|a, b| {
+            a.pos
+                .x
+                .total_cmp(&b.pos.x)
+                .then(a.pos.y.total_cmp(&b.pos.y))
+        });
         nodes.into_iter().map(|n| n.id).collect()
     }
 
@@ -355,12 +380,17 @@ impl Editor {
         let zoom = (avail.x / bounds.width())
             .min(avail.y / bounds.height())
             .clamp(MIN_ZOOM, 1.0);
-        (self.rect.size() * 0.5 - bounds.center().to_vec2() * zoom, zoom)
+        (
+            self.rect.size() * 0.5 - bounds.center().to_vec2() * zoom,
+            zoom,
+        )
     }
 
     /// Where the view is heading (or is, when it isn't moving).
     fn view_target(&self) -> (Vec2, f32) {
-        self.view_anim.as_ref().map_or((self.pan, self.zoom), |a| a.to)
+        self.view_anim
+            .as_ref()
+            .map_or((self.pan, self.zoom), |a| a.to)
     }
 
     fn animate_view(&mut self, pan: Vec2, zoom: f32, now: f64) {
@@ -392,7 +422,10 @@ impl Editor {
             .iter()
             .rev()
             .filter(|n| graph.group_of(n.id).is_none_or(|g| !g.collapsed))
-            .find(|n| self.to_screen_rect(Rect::from_min_size(n.pos, n.size())).contains(q))
+            .find(|n| {
+                self.to_screen_rect(Rect::from_min_size(n.pos, n.size()))
+                    .contains(q)
+            })
             .map(|n| n.id)
     }
 
@@ -409,9 +442,14 @@ impl Editor {
         }
         let Some(bounds) = bounds else { return };
         let avail = self.rect.size() - vec2(48.0, 48.0);
-        let zoom = (avail.x / bounds.width()).min(avail.y / bounds.height()).clamp(MIN_ZOOM, MAX_ZOOM);
+        let zoom = (avail.x / bounds.width())
+            .min(avail.y / bounds.height())
+            .clamp(MIN_ZOOM, MAX_ZOOM);
         let pan = self.rect.size() * 0.5 - bounds.center().to_vec2() * zoom;
-        let back = self.focus.take().map_or_else(|| self.view_target(), |f| f.1);
+        let back = self
+            .focus
+            .take()
+            .map_or_else(|| self.view_target(), |f| f.1);
         self.auto_fit = false;
         self.animate_view(pan, zoom, now);
         for id in &ids {
@@ -421,7 +459,8 @@ impl Editor {
         if let [one] = ids.as_slice()
             && let Some(n) = graph.node(*one)
         {
-            self.notices.push(format!("{}  ·  Z or Esc to go back", n.title));
+            self.notices
+                .push(format!("{}  ·  Z or Esc to go back", n.title));
         }
         self.focus = Some((ids, back));
     }
@@ -473,7 +512,10 @@ impl Editor {
             .into_iter()
             .filter_map(|(id, to)| Some((id, graph.node(id)?.pos, to)))
             .collect();
-        if moves.iter().all(|(_, from, to)| (*from - *to).length() < 0.5) {
+        if moves
+            .iter()
+            .all(|(_, from, to)| (*from - *to).length() < 0.5)
+        {
             self.notices.push("Already tidy".to_owned());
             return;
         }
@@ -493,7 +535,8 @@ impl Editor {
         }
         self.layout_undo = Some(moves.iter().map(|(id, from, _)| (*id, *from)).collect());
         self.glide = Some(Glide::new(moves, now));
-        self.notices.push("Auto layout  ·  Cmd+Z to undo".to_owned());
+        self.notices
+            .push("Auto layout  ·  Cmd+Z to undo".to_owned());
     }
 
     /// Puts nodes back where they were before the last auto layout.
@@ -599,9 +642,22 @@ impl Editor {
 
         // The board's background, then its stickers: under everything
         // else, and under the nodes for the pointer too.
-        let board_view = super::board::View { origin: rect.min + self.pan, zoom: z };
-        self.board_ui.draw_background(ui, &painter, rect, board_view, &graph.board);
-        let stickers = self.board_ui.show(ui, &painter, rect, board_view, &mut graph.board, &bg, &mut self.selected, &mut self.notices);
+        let board_view = super::board::View {
+            origin: rect.min + self.pan,
+            zoom: z,
+        };
+        self.board_ui
+            .draw_background(ui, &painter, rect, board_view, &graph.board);
+        let stickers = self.board_ui.show(
+            ui,
+            &painter,
+            rect,
+            board_view,
+            &mut graph.board,
+            &bg,
+            &mut self.selected,
+            &mut self.notices,
+        );
         self.pan += stickers.pan;
 
         // A plain drag on empty canvas draws a selection rectangle.
@@ -628,13 +684,21 @@ impl Editor {
             .filter(|g| g.collapsed)
             .filter_map(|g| {
                 let (r, ins, outs) = groups::card_layout(graph, g)?;
-                Some(Card { gid: g.id, rect: self.to_screen_rect(r), ins, outs })
+                Some(Card {
+                    gid: g.id,
+                    rect: self.to_screen_rect(r),
+                    ins,
+                    outs,
+                })
             })
             .collect();
         let node_rects: Vec<Option<Rect>> = graph
             .nodes
             .iter()
-            .map(|n| (!hidden.contains(&n.id)).then(|| self.to_screen_rect(Rect::from_min_size(n.pos, n.size()))))
+            .map(|n| {
+                (!hidden.contains(&n.id))
+                    .then(|| self.to_screen_rect(Rect::from_min_size(n.pos, n.size())))
+            })
             .collect();
 
         // Screen position of every visible port. A collapsed module shows
@@ -645,13 +709,19 @@ impl Editor {
         let mut on_top: HashSet<PortRef> = HashSet::new();
         for n in graph.nodes.iter().filter(|n| !hidden.contains(&n.id)) {
             for port in n.input_ports() {
-                in_pos.insert(PortRef { node: n.id, port }, self.to_screen(n.input_pos(port)));
+                in_pos.insert(
+                    PortRef { node: n.id, port },
+                    self.to_screen(n.input_pos(port)),
+                );
                 if n.inputs_on_top() {
                     on_top.insert(PortRef { node: n.id, port });
                 }
             }
             for port in n.output_ports() {
-                out_pos.insert(PortRef { node: n.id, port }, self.to_screen(n.output_pos(port)));
+                out_pos.insert(
+                    PortRef { node: n.id, port },
+                    self.to_screen(n.output_pos(port)),
+                );
             }
         }
         for card in &cards {
@@ -718,8 +788,13 @@ impl Editor {
             let mut best: Option<(PortRef, Pos2, f32)> = None;
             for (&pr, &pos) in candidates {
                 // MIDI only into MIDI, audio only into audio.
-                let (from, to) = if d.from_output { (d.anchor.node, pr.node) } else { (pr.node, d.anchor.node) };
-                let valid = is_midi(pr.port) == is_midi(d.anchor.port) && !graph.would_cycle(from, to);
+                let (from, to) = if d.from_output {
+                    (d.anchor.node, pr.node)
+                } else {
+                    (pr.node, d.anchor.node)
+                };
+                let valid =
+                    is_midi(pr.port) == is_midi(d.anchor.port) && !graph.would_cycle(from, to);
                 let dist = (pos - p).length();
                 if valid && dist < 22.0 * z.max(0.8) && best.is_none_or(|b| dist < b.2) {
                     best = Some((pr, pos, dist));
@@ -739,10 +814,16 @@ impl Editor {
             && !stickers.hovered
             && ui.input(|i| {
                 i.pointer.secondary_clicked()
-                    || (cfg!(target_os = "macos") && i.modifiers.ctrl && i.pointer.primary_clicked())
+                    || (cfg!(target_os = "macos")
+                        && i.modifiers.ctrl
+                        && i.pointer.primary_clicked())
             });
         if open_menu && let Some(p) = pointer {
-            let card = cards.iter().rev().find(|c| c.rect.contains(p)).map(|c| c.gid);
+            let card = cards
+                .iter()
+                .rev()
+                .find(|c| c.rect.contains(p))
+                .map(|c| c.gid);
             let node = graph
                 .nodes
                 .iter()
@@ -806,7 +887,17 @@ impl Editor {
 
         // --- Cables ------------------------------------------------------
         for w in &wires {
-            widgets::draw_cable(&painter, w.a, w.b, w.top, w.color, w.level, hovered_cable == Some(w.cable), w.midi, z);
+            widgets::draw_cable(
+                &painter,
+                w.a,
+                w.b,
+                w.top,
+                w.color,
+                w.level,
+                hovered_cable == Some(w.cable),
+                w.midi,
+                z,
+            );
         }
 
         // --- Nodes -------------------------------------------------------
@@ -829,7 +920,14 @@ impl Editor {
             if let NodeKind::Module(m) = &node.kind
                 && m.params.kind == crate::audio::modules::ModuleKind::Iris
             {
-                super::iris::tick(ui.ctx(), node.id, &node.title, node.accent, &m.params, tempo);
+                super::iris::tick(
+                    ui.ctx(),
+                    node.id,
+                    &node.title,
+                    node.accent,
+                    &m.params,
+                    tempo,
+                );
             }
             let Some(rect_s) = node_rects[idx] else {
                 continue;
@@ -841,7 +939,11 @@ impl Editor {
             let selected = self.selected.contains(&id);
             let body = ui.interact(rect_s, Id::unique(("node", id)), Sense::CLICK | Sense::DRAG);
             if body.clicked() && picks {
-                actions.push(if additive { Action::ToggleSelect(id) } else { Action::Select(vec![id], false) });
+                actions.push(if additive {
+                    Action::ToggleSelect(id)
+                } else {
+                    Action::Select(vec![id], false)
+                });
             } else if body.drag_started_by(PointerButton::Primary) && !selected {
                 // Only a left drag moves (a right drag pans the view).
                 actions.push(Action::Select(vec![id], additive));
@@ -874,23 +976,41 @@ impl Editor {
             let on_header = body
                 .interact_pointer_pos()
                 .is_some_and(|p| p.y < rect_s.top() + nodes::HEADER_H * z);
-            if header.toggle_collapse || (body.double_clicked() && on_header && !nodes::frameless(node)) {
+            if header.toggle_collapse
+                || (body.double_clicked() && on_header && !nodes::frameless(node))
+            {
                 actions.push(Action::ToggleCollapse(id));
             }
 
             let in_ports = node.input_ports();
             let out_ports = node.output_ports();
             let sources: Vec<Option<(Color32, String)>> = (0..node.inputs().len())
-                .map(|i| inputs.get(&PortRef { node: id, port: i }).map(|(_, c, n)| (*c, n.clone())))
+                .map(|i| {
+                    inputs
+                        .get(&PortRef { node: id, port: i })
+                        .map(|(_, c, n)| (*c, n.clone()))
+                })
                 .collect();
             let accent = node.accent;
             let connected: Vec<bool> = sources.iter().map(Option::is_some).collect();
             let out = outputs.contains(&PortRef { node: id, port: 0 });
-            let midi_in = inputs.contains_key(&PortRef { node: id, port: MIDI_PORT });
-            let midi_out = outputs.contains(&PortRef { node: id, port: MIDI_PORT });
+            let midi_in = inputs.contains_key(&PortRef {
+                node: id,
+                port: MIDI_PORT,
+            });
+            let midi_out = outputs.contains(&PortRef {
+                node: id,
+                port: MIDI_PORT,
+            });
             if collapsed {
-                let ins: Vec<bool> = in_ports.iter().map(|&port| inputs.contains_key(&PortRef { node: id, port })).collect();
-                let outs: Vec<bool> = out_ports.iter().map(|&port| outputs.contains(&PortRef { node: id, port })).collect();
+                let ins: Vec<bool> = in_ports
+                    .iter()
+                    .map(|&port| inputs.contains_key(&PortRef { node: id, port }))
+                    .collect();
+                let outs: Vec<bool> = out_ports
+                    .iter()
+                    .map(|&port| outputs.contains(&PortRef { node: id, port }))
+                    .collect();
                 nodes::collapsed(&view, node, &ins, &outs);
             } else {
                 match &mut node.kind {
@@ -898,7 +1018,9 @@ impl Editor {
                     NodeKind::Mixer(m) => {
                         let outs = (out, outputs.contains(&PortRef { node: id, port: 1 }));
                         if m.console.is_some() {
-                            if let Some(shape) = super::console::draw(&view, id, accent, m, &sources, outs) {
+                            if let Some(shape) =
+                                super::console::draw(&view, id, accent, m, &sources, outs)
+                            {
                                 actions.push(Action::SetConsole(id, shape));
                             }
                         } else {
@@ -907,7 +1029,8 @@ impl Editor {
                     }
                     NodeKind::Plugin(p) => {
                         let input = connected.first().copied().unwrap_or(false);
-                        let events = plugin_node::draw(&view, id, accent, p, (input, midi_in), out, now);
+                        let events =
+                            plugin_node::draw(&view, id, accent, p, (input, midi_in), out, now);
                         if let Some(e) = p.editor_error.take() {
                             self.notices.push(format!("Could not open the editor: {e}"));
                         }
@@ -920,7 +1043,9 @@ impl Editor {
                                 Ok(()) => super::macos::float_new_windows(&before),
                                 #[cfg(not(target_os = "macos"))]
                                 Ok(()) => {}
-                                Err(e) => self.notices.push(format!("Could not open the editor: {e}")),
+                                Err(e) => {
+                                    self.notices.push(format!("Could not open the editor: {e}"))
+                                }
                             }
                         }
                     }
@@ -934,7 +1059,8 @@ impl Editor {
                             target: target_labels.get(&id).map(String::as_str),
                             picking,
                         };
-                        let button = modules::draw(&view, id, accent, m, (&connected, &outs), midi, map);
+                        let button =
+                            modules::draw(&view, id, accent, m, (&connected, &outs), midi, map);
                         if button.clicked {
                             actions.push(if picking {
                                 Action::CancelMapping
@@ -958,11 +1084,29 @@ impl Editor {
             // Ports last so they sit on top of everything else in the node.
             for port in in_ports {
                 let pr = PortRef { node: id, port };
-                self.port(ui, &painter, pr, true, in_pos[&pr], accent, &ctx, &mut actions);
+                self.port(
+                    ui,
+                    &painter,
+                    pr,
+                    true,
+                    in_pos[&pr],
+                    accent,
+                    &ctx,
+                    &mut actions,
+                );
             }
             for port in out_ports {
                 let pr = PortRef { node: id, port };
-                self.port(ui, &painter, pr, false, out_pos[&pr], accent, &ctx, &mut actions);
+                self.port(
+                    ui,
+                    &painter,
+                    pr,
+                    false,
+                    out_pos[&pr],
+                    accent,
+                    &ctx,
+                    &mut actions,
+                );
             }
         }
 
@@ -973,28 +1117,65 @@ impl Editor {
             }
             let g = graph.group(card.gid).expect("card of an existing module");
             let selected = g.members.iter().all(|m| self.selected.contains(m));
-            let resp = ui.interact(card.rect, Id::unique(("card", card.gid)), Sense::CLICK | Sense::DRAG);
+            let resp = ui.interact(
+                card.rect,
+                Id::unique(("card", card.gid)),
+                Sense::CLICK | Sense::DRAG,
+            );
             item_pan += module_pointer(ui, &resp, g, selected, (additive, picks), z, &mut actions);
             let gid = g.id;
             let connected = |pr: PortRef, input: bool| {
-                if input { inputs.contains_key(&pr) } else { outputs.contains(&pr) }
+                if input {
+                    inputs.contains_key(&pr)
+                } else {
+                    outputs.contains(&pr)
+                }
             };
             let ports = (card.ins.as_slice(), card.outs.as_slice());
             let renaming = self.renaming.as_ref().is_some_and(|r| r.gid == gid);
-            let h = groups::draw_card(ui, &painter, graph, g, card.rect, ports, connected, selected, renaming, z);
+            let h = groups::draw_card(
+                ui, &painter, graph, g, card.rect, ports, connected, selected, renaming, z,
+            );
             self.title_editor(ui, gid, h.title_rect, &mut actions);
             push_header(h, gid, &mut actions);
 
             let accent_of = |pr: &PortRef| graph.node(pr.node).map_or(theme::ACCENT, |n| n.accent);
             for pr in &card.ins {
-                self.port(ui, &painter, *pr, true, in_pos[pr], accent_of(pr), &ctx, &mut actions);
+                self.port(
+                    ui,
+                    &painter,
+                    *pr,
+                    true,
+                    in_pos[pr],
+                    accent_of(pr),
+                    &ctx,
+                    &mut actions,
+                );
             }
             for pr in &card.outs {
-                self.port(ui, &painter, *pr, false, out_pos[pr], accent_of(pr), &ctx, &mut actions);
+                self.port(
+                    ui,
+                    &painter,
+                    *pr,
+                    false,
+                    out_pos[pr],
+                    accent_of(pr),
+                    &ctx,
+                    &mut actions,
+                );
             }
         }
 
-        self.midi_mapping(ui, &painter, graph, &node_rects, hits.into_inner(), map_button, pointer, &mut actions);
+        self.midi_mapping(
+            ui,
+            &painter,
+            graph,
+            &node_rects,
+            hits.into_inner(),
+            map_button,
+            pointer,
+            &mut actions,
+        );
         if item_pan != Vec2::ZERO {
             self.take_over_view();
             self.pan += item_pan;
@@ -1005,21 +1186,53 @@ impl Editor {
 
         // --- Cable being dragged -----------------------------------------
         if let Some(d) = self.drag {
-            let anchor = if d.from_output { out_pos.get(&d.anchor) } else { in_pos.get(&d.anchor) };
-            if let (Some(&anchor), Some(src), Some(p)) = (anchor, graph.node(d.anchor.node), pointer) {
+            let anchor = if d.from_output {
+                out_pos.get(&d.anchor)
+            } else {
+                in_pos.get(&d.anchor)
+            };
+            if let (Some(&anchor), Some(src), Some(p)) =
+                (anchor, graph.node(d.anchor.node), pointer)
+            {
                 let end = drop_target.map_or(p, |(_, pos)| pos);
-                let (a, b) = if d.from_output { (anchor, end) } else { (end, anchor) };
-                let input = if d.from_output { drop_target.map(|(pr, _)| pr) } else { Some(d.anchor) };
+                let (a, b) = if d.from_output {
+                    (anchor, end)
+                } else {
+                    (end, anchor)
+                };
+                let input = if d.from_output {
+                    drop_target.map(|(pr, _)| pr)
+                } else {
+                    Some(d.anchor)
+                };
                 let top = input.is_some_and(|pr| on_top.contains(&pr));
-                let color = if drop_target.is_some() { src.accent } else { alpha(src.accent, 0.7) };
-                widgets::draw_cable(&painter, a, b, top, color, 0.0, drop_target.is_some(), is_midi(d.anchor.port), z);
+                let color = if drop_target.is_some() {
+                    src.accent
+                } else {
+                    alpha(src.accent, 0.7)
+                };
+                widgets::draw_cable(
+                    &painter,
+                    a,
+                    b,
+                    top,
+                    color,
+                    0.0,
+                    drop_target.is_some(),
+                    is_midi(d.anchor.port),
+                    z,
+                );
                 if drop_target.is_none() {
                     painter.circle_filled(p, 3.0 * z, color);
                 }
             }
             if ui.input(|i| i.pointer.any_released()) {
                 if let Some((target, _)) = drop_target {
-                    let (from, to) = if d.from_output { (d.anchor, target) } else { (target, d.anchor) };
+                    let (from, to) = if d.from_output {
+                        (d.anchor, target)
+                    } else {
+                        (target, d.anchor)
+                    };
                     actions.push(Action::Connect { from, to });
                 }
                 self.drag = None;
@@ -1096,24 +1309,29 @@ impl Editor {
         // --- Type label --------------------------------------------------
         // The topmost node or module under the pointer (a module's frame
         // only by its header), as for the context menu.
-        let hovered = pointer.filter(|_| ui.rect_contains_pointer(rect) && !on_bar).and_then(|p| {
-            if let Some(c) = cards.iter().rev().find(|c| c.rect.contains(p)) {
-                return Some((TipTarget::Group(c.gid), c.rect));
-            }
-            let node = graph
-                .nodes
-                .iter()
-                .zip(&node_rects)
-                .rev()
-                .find_map(|(n, r)| r.filter(|r| r.contains(p)).map(|r| (TipTarget::Node(n.id), r)));
-            node.or_else(|| {
-                frames
+        let hovered = pointer
+            .filter(|_| ui.rect_contains_pointer(rect) && !on_bar)
+            .and_then(|p| {
+                if let Some(c) = cards.iter().rev().find(|c| c.rect.contains(p)) {
+                    return Some((TipTarget::Group(c.gid), c.rect));
+                }
+                let node = graph
+                    .nodes
                     .iter()
+                    .zip(&node_rects)
                     .rev()
-                    .find(|(_, f)| p.y < f.top() + nodes::HEADER_H * z && f.contains(p))
-                    .map(|&(gid, f)| (TipTarget::Group(gid), f))
-            })
-        });
+                    .find_map(|(n, r)| {
+                        r.filter(|r| r.contains(p))
+                            .map(|r| (TipTarget::Node(n.id), r))
+                    });
+                node.or_else(|| {
+                    frames
+                        .iter()
+                        .rev()
+                        .find(|(_, f)| p.y < f.top() + nodes::HEADER_H * z && f.contains(p))
+                        .map(|&(gid, f)| (TipTarget::Group(gid), f))
+                })
+            });
         self.type_tip(ui, graph, rect, hovered, now);
 
         // --- Context menu -------------------------------------------------
@@ -1128,7 +1346,14 @@ impl Editor {
             .at_pointer_fixed()
             .show(|ui| match menu {
                 MenuTarget::Canvas(pos) => {
-                    canvas_menu(ui, pos, subject.as_deref().filter(|_| has_selection), &self.library, &self.plugins, &mut actions);
+                    canvas_menu(
+                        ui,
+                        pos,
+                        subject.as_deref().filter(|_| has_selection),
+                        &self.library,
+                        &self.plugins,
+                        &mut actions,
+                    );
                     self.board_ui.canvas_menu(ui, pos, &graph.board);
                 }
                 MenuTarget::Cable(cable) => {
@@ -1140,7 +1365,13 @@ impl Editor {
                 MenuTarget::Node(id) => match graph.node(id) {
                     Some(n) => {
                         subject_heading(ui, subject.as_deref().unwrap_or(&n.title));
-                        node_menu(ui, n.collapsed, n.is_effect(), graph.group_of(id).is_some(), &mut actions)
+                        node_menu(
+                            ui,
+                            n.collapsed,
+                            n.is_effect(),
+                            graph.group_of(id).is_some(),
+                            &mut actions,
+                        )
                     }
                     None => ui.close(),
                 },
@@ -1156,7 +1387,9 @@ impl Editor {
             });
 
         // Auto-fit: follow the patch as it changes (not mid-gesture).
-        if self.auto_fit && self.glide.is_none() && !ui.input(|i| i.pointer.any_down())
+        if self.auto_fit
+            && self.glide.is_none()
+            && !ui.input(|i| i.pointer.any_down())
             && let Some(bounds) = content_bounds(graph)
         {
             let (pan, zoom) = self.fit_params(bounds);
@@ -1180,7 +1413,14 @@ impl Editor {
     /// module's name says nothing of what is inside). It stays put rather
     /// than following the pointer, takes no clicks, and keeps out of the
     /// way of drags, menus and renaming.
-    fn type_tip(&mut self, ui: &Ui, graph: &Graph, canvas: Rect, hovered: Option<(TipTarget, Rect)>, now: f64) {
+    fn type_tip(
+        &mut self,
+        ui: &Ui,
+        graph: &Graph,
+        canvas: Rect,
+        hovered: Option<(TipTarget, Rect)>,
+        now: f64,
+    ) {
         let busy = self.drag.is_some()
             || self.marquee.is_some()
             || self.mapping.is_some()
@@ -1199,17 +1439,22 @@ impl Editor {
         self.tip = Some((target, since));
         let shown = now - since - TIP_DELAY;
         if shown < 0.0 {
-            ui.ctx().request_repaint_after(std::time::Duration::from_secs_f64(-shown));
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_secs_f64(-shown));
             return;
         }
         let opacity = (shown / TIP_FADE).min(1.0) as f32;
         if opacity < 1.0 {
             ui.ctx().request_repaint();
         }
-        let Some((kind, detail)) = type_label(graph, target) else { return };
+        let Some((kind, detail)) = type_label(graph, target) else {
+            return;
+        };
 
         let mut job = egui::text::LayoutJob::default();
-        let format = |size: f32, color: Color32| egui::TextFormat::simple(FontId::proportional(size), alpha(color, opacity));
+        let format = |size: f32, color: Color32| {
+            egui::TextFormat::simple(FontId::proportional(size), alpha(color, opacity))
+        };
         job.append(&kind, 0.0, format(11.0, theme::TEXT));
         if !detail.is_empty() {
             job.append(&detail, 8.0, format(10.5, theme::TEXT_DIM));
@@ -1222,11 +1467,17 @@ impl Editor {
         if min.y < canvas.top() + 4.0 {
             min.y = item.bottom() + 6.0;
         }
-        min.x = min.x.clamp(canvas.left() + 4.0, (canvas.right() - size.x - 4.0).max(canvas.left() + 4.0));
+        min.x = min.x.clamp(
+            canvas.left() + 4.0,
+            (canvas.right() - size.x - 4.0).max(canvas.left() + 4.0),
+        );
         let pill = Rect::from_min_size(min, size);
         let painter = ui
             .ctx()
-            .layer_painter(egui::LayerId::new(egui::Order::Foreground, Id::unique("type_tip")))
+            .layer_painter(egui::LayerId::new(
+                egui::Order::Foreground,
+                Id::unique("type_tip"),
+            ))
             .with_clip_rect(canvas);
         painter.rect(
             pill,
@@ -1288,9 +1539,19 @@ impl Editor {
         }
         let area = painter.clip_rect();
         let text = "Click a knob or fader to drive it with MIDI  ·  Esc to cancel";
-        let galley = painter.layout_no_wrap(text.to_owned(), FontId::proportional(12.0), theme::TEXT);
-        let banner = Rect::from_center_size(pos2(area.center().x, area.top() + 24.0), galley.size() + vec2(24.0, 12.0));
-        painter.rect(banner, 6.0, theme::NODE_HEADER, Stroke::new(1.0, theme::ACCENT), StrokeKind::Inside);
+        let galley =
+            painter.layout_no_wrap(text.to_owned(), FontId::proportional(12.0), theme::TEXT);
+        let banner = Rect::from_center_size(
+            pos2(area.center().x, area.top() + 24.0),
+            galley.size() + vec2(24.0, 12.0),
+        );
+        painter.rect(
+            banner,
+            6.0,
+            theme::NODE_HEADER,
+            Stroke::new(1.0, theme::ACCENT),
+            StrokeKind::Inside,
+        );
         painter.galley(banner.center() - galley.size() * 0.5, galley, theme::TEXT);
 
         let Some(p) = pointer else {
@@ -1303,7 +1564,13 @@ impl Editor {
         if ui.input(|i| i.pointer.primary_pressed()) {
             match under {
                 Some(h) => {
-                    actions.push(Action::SetTarget(source, Some(Target { node: h.node, param: h.param })));
+                    actions.push(Action::SetTarget(
+                        source,
+                        Some(Target {
+                            node: h.node,
+                            param: h.param,
+                        }),
+                    ));
                     actions.push(Action::CancelMapping);
                 }
                 // The MAP button itself toggles picking off on its own.
@@ -1342,7 +1609,9 @@ impl Editor {
         if !cmd && !shift && pressed(Key::Z) {
             // The node under the pointer, else the selection; Z again (on
             // the same node, or off any) goes back.
-            let hovered = ui.input(|i| i.pointer.hover_pos()).and_then(|q| self.node_under(graph, q));
+            let hovered = ui
+                .input(|i| i.pointer.hover_pos())
+                .and_then(|q| self.node_under(graph, q));
             let focused = self.focus.as_ref().map(|f| f.0.clone());
             match (hovered, focused) {
                 (Some(id), Some(f)) if f != [id] => actions.push(Action::Focus(vec![id])),
@@ -1358,12 +1627,17 @@ impl Editor {
             actions.push(Action::StartRename(g.id));
         }
         if cmd && pressed(Key::G) {
-            actions.push(if shift { Action::UngroupSelection } else { Action::GroupSelection });
+            actions.push(if shift {
+                Action::UngroupSelection
+            } else {
+                Action::GroupSelection
+            });
         }
         if !cmd && pressed(Key::C) {
             if shift {
                 // Collapse everything, or expand if all is already collapsed.
-                let any_open = graph.nodes.iter().any(|n| !n.collapsed) || graph.groups.iter().any(|g| !g.collapsed);
+                let any_open = graph.nodes.iter().any(|n| !n.collapsed)
+                    || graph.groups.iter().any(|g| !g.collapsed);
                 actions.push(Action::CollapseAll(any_open));
             } else if has_selection {
                 actions.push(Action::CollapseSelection);
@@ -1371,7 +1645,9 @@ impl Editor {
         }
         if !cmd && !shift && pressed(Key::B) {
             // The effect under the pointer, else the selected ones.
-            let hovered = ui.input(|i| i.pointer.hover_pos()).and_then(|q| self.node_under(graph, q));
+            let hovered = ui
+                .input(|i| i.pointer.hover_pos())
+                .and_then(|q| self.node_under(graph, q));
             match hovered {
                 Some(id) => actions.push(Action::ToggleBypass(vec![id])),
                 None if has_selection => actions.push(Action::BypassSelection),
@@ -1379,7 +1655,11 @@ impl Editor {
             }
         }
         if !cmd && pressed(Key::F) {
-            actions.push(if shift { Action::FitSelection } else { Action::FitAll });
+            actions.push(if shift {
+                Action::FitSelection
+            } else {
+                Action::FitAll
+            });
         }
         if !cmd && pressed(Key::L) {
             actions.push(Action::AutoLayout);
@@ -1417,7 +1697,11 @@ impl Editor {
         let z = self.zoom;
         let id = Id::unique((if input { "in" } else { "out" }, pr.node, pr.port));
         let resp = ui
-            .interact(Rect::from_center_size(c, Vec2::splat(20.0 * z)), id, Sense::CLICK | Sense::DRAG)
+            .interact(
+                Rect::from_center_size(c, Vec2::splat(20.0 * z)),
+                id,
+                Sense::CLICK | Sense::DRAG,
+            )
             .on_hover_cursor(CursorIcon::Crosshair);
         let targeted = ctx
             .drop_target
@@ -1430,18 +1714,43 @@ impl Editor {
                 self.drag = Some(match existing {
                     Some((cable, ..)) => {
                         actions.push(Action::Disconnect(*cable));
-                        CableDrag { anchor: cable.from, from_output: true }
+                        CableDrag {
+                            anchor: cable.from,
+                            from_output: true,
+                        }
                     }
-                    None => CableDrag { anchor: pr, from_output: false },
+                    None => CableDrag {
+                        anchor: pr,
+                        from_output: false,
+                    },
                 });
             }
             let color = existing.map_or(accent, |(_, c, _)| *c);
-            widgets::port(painter, c, existing.is_some(), hot, color, is_midi(pr.port), z);
+            widgets::port(
+                painter,
+                c,
+                existing.is_some(),
+                hot,
+                color,
+                is_midi(pr.port),
+                z,
+            );
         } else {
             if resp.drag_started() {
-                self.drag = Some(CableDrag { anchor: pr, from_output: true });
+                self.drag = Some(CableDrag {
+                    anchor: pr,
+                    from_output: true,
+                });
             }
-            widgets::port(painter, c, ctx.outputs.contains(&pr), hot, accent, is_midi(pr.port), z);
+            widgets::port(
+                painter,
+                c,
+                ctx.outputs.contains(&pr),
+                hot,
+                accent,
+                is_midi(pr.port),
+                z,
+            );
         }
     }
 
@@ -1487,14 +1796,20 @@ impl Editor {
                 }
                 Action::AddPreset(i, p) => {
                     if let Some(preset) = self.library.get(i) {
-                        self.selected = project::insert_preset(graph, preset, p, audio).into_iter().collect();
+                        self.selected = project::insert_preset(graph, preset, p, audio)
+                            .into_iter()
+                            .collect();
                     }
                 }
                 Action::AddPlugin(i, p) => {
-                    let Some(entry) = self.plugins.get(i) else { continue };
+                    let Some(entry) = self.plugins.get(i) else {
+                        continue;
+                    };
                     match graph.add_plugin(&entry.path, p, audio) {
                         Ok(id) => self.select_only(id),
-                        Err(e) => self.notices.push(format!("Could not load {}: {e}", entry.name)),
+                        Err(e) => self
+                            .notices
+                            .push(format!("Could not load {}: {e}", entry.name)),
                     }
                 }
                 Action::Request(r) => self.requests.push(r),
@@ -1621,16 +1936,29 @@ impl Editor {
     /// fixed size whatever the zoom, centred above the selection (below it
     /// when there is no room), inside the canvas; hidden while nodes are
     /// dragged, a rectangle drawn, a module renamed or a control mapped.
-    fn selection_bar(&mut self, ui: &mut Ui, painter: &Painter, graph: &Graph, canvas: Rect, actions: &mut Vec<Action>) {
+    fn selection_bar(
+        &mut self,
+        ui: &mut Ui,
+        painter: &Painter,
+        graph: &Graph,
+        canvas: Rect,
+        actions: &mut Vec<Action>,
+    ) {
         self.bar = None;
         self.bar_buttons.clear();
-        let count = self.selected.iter().filter(|id| graph.node(**id).is_some()).count();
+        let count = self
+            .selected
+            .iter()
+            .filter(|id| graph.node(**id).is_some())
+            .count();
         let busy = self.marquee.is_some()
             || self.drag.is_some()
             || self.renaming.is_some()
             || self.mapping.is_some()
             || egui::DragAndDrop::has_any_payload(ui.ctx())
-            || actions.iter().any(|a| matches!(a, Action::MoveSelection(_)));
+            || actions
+                .iter()
+                .any(|a| matches!(a, Action::MoveSelection(_)));
         if count < 2 || busy {
             return;
         }
@@ -1641,7 +1969,11 @@ impl Editor {
             .iter()
             .filter(|g| !g.collapsed && g.members.iter().any(|m| self.selected.contains(m)))
             .filter_map(|g| groups::frame_rect(graph, g));
-        let Some(bounds) = selection_bounds(graph, &self.selected).into_iter().chain(frames).reduce(|a, b| a.union(b)) else {
+        let Some(bounds) = selection_bounds(graph, &self.selected)
+            .into_iter()
+            .chain(frames)
+            .reduce(|a, b| a.union(b))
+        else {
             return;
         };
         let bounds = self.to_screen_rect(bounds);
@@ -1652,12 +1984,18 @@ impl Editor {
         // Make module only when it would make something new.
         let one_module = self.selected_group(graph).is_some();
         let open = self.selected.iter().any(|id| {
-            graph.node(*id).is_some_and(|n| !n.collapsed) && !graph.group_of(*id).is_some_and(|g| g.collapsed)
+            graph.node(*id).is_some_and(|n| !n.collapsed)
+                && !graph.group_of(*id).is_some_and(|g| g.collapsed)
         });
-        let items: Vec<BarItem> = [BarItem::Module, BarItem::Collapse, BarItem::Duplicate, BarItem::Delete]
-            .into_iter()
-            .filter(|i| *i != BarItem::Module || !one_module)
-            .collect();
+        let items: Vec<BarItem> = [
+            BarItem::Module,
+            BarItem::Collapse,
+            BarItem::Duplicate,
+            BarItem::Delete,
+        ]
+        .into_iter()
+        .filter(|i| *i != BarItem::Module || !one_module)
+        .collect();
         let label = |i: BarItem| match i {
             BarItem::Module => "Make module",
             BarItem::Collapse if open => "Collapse",
@@ -1671,13 +2009,34 @@ impl Editor {
         const BUTTON_H: f32 = 26.0;
         let font = FontId::proportional(11.5);
         let count_text = format!("{count} nodes");
-        let count_w = painter.layout_no_wrap(count_text.clone(), font.clone(), theme::TEXT_DIM).size().x;
+        let count_w = painter
+            .layout_no_wrap(count_text.clone(), font.clone(), theme::TEXT_DIM)
+            .size()
+            .x;
         let widths: Vec<f32> = items
             .iter()
-            .map(|&i| 10.0 + 14.0 + 6.0 + painter.layout_no_wrap(label(i).to_owned(), font.clone(), theme::TEXT).size().x + 10.0)
+            .map(|&i| {
+                10.0 + 14.0
+                    + 6.0
+                    + painter
+                        .layout_no_wrap(label(i).to_owned(), font.clone(), theme::TEXT)
+                        .size()
+                        .x
+                    + 10.0
+            })
             .collect();
-        let w = 14.0 + count_w + 12.0 + 1.0 + 6.0 + widths.iter().sum::<f32>() + 2.0 * (items.len() - 1) as f32 + 4.0;
-        let x = (bounds.center().x - w * 0.5).clamp(canvas.left() + 8.0, (canvas.right() - 8.0 - w).max(canvas.left() + 8.0));
+        let w = 14.0
+            + count_w
+            + 12.0
+            + 1.0
+            + 6.0
+            + widths.iter().sum::<f32>()
+            + 2.0 * (items.len() - 1) as f32
+            + 4.0;
+        let x = (bounds.center().x - w * 0.5).clamp(
+            canvas.left() + 8.0,
+            (canvas.right() - 8.0 - w).max(canvas.left() + 8.0),
+        );
         let above = bounds.top() - 10.0 - H;
         let below = bounds.bottom() + 10.0;
         let y = if above >= canvas.top() + 8.0 {
@@ -1692,14 +2051,33 @@ impl Editor {
         // doesn't reach the canvas (and deselect, or move nodes).
         ui.interact(bar, Id::unique("selection_bar"), Sense::CLICK | Sense::DRAG);
         self.bar = Some(bar);
-        painter.rect(bar, H * 0.5, theme::PANEL, Stroke::new(1.0, theme::NODE_BORDER), StrokeKind::Inside);
-        painter.text(pos2(bar.left() + 14.0, bar.center().y), Align2::LEFT_CENTER, count_text, font.clone(), theme::TEXT_DIM);
+        painter.rect(
+            bar,
+            H * 0.5,
+            theme::PANEL,
+            Stroke::new(1.0, theme::NODE_BORDER),
+            StrokeKind::Inside,
+        );
+        painter.text(
+            pos2(bar.left() + 14.0, bar.center().y),
+            Align2::LEFT_CENTER,
+            count_text,
+            font.clone(),
+            theme::TEXT_DIM,
+        );
         let rule_x = bar.left() + 14.0 + count_w + 12.0;
-        painter.vline(rule_x, (bar.top() + 8.0)..=(bar.bottom() - 8.0), Stroke::new(1.0, theme::PANEL_BORDER));
+        painter.vline(
+            rule_x,
+            (bar.top() + 8.0)..=(bar.bottom() - 8.0),
+            Stroke::new(1.0, theme::PANEL_BORDER),
+        );
 
         let mut bx = rule_x + 6.0;
         for (&item, &bw) in items.iter().zip(&widths) {
-            let r = Rect::from_min_size(pos2(bx, bar.center().y - BUTTON_H * 0.5), vec2(bw, BUTTON_H));
+            let r = Rect::from_min_size(
+                pos2(bx, bar.center().y - BUTTON_H * 0.5),
+                vec2(bw, BUTTON_H),
+            );
             bx += bw + 2.0;
             self.bar_buttons.push((item, r));
             let resp = ui
@@ -1721,8 +2099,19 @@ impl Editor {
                 _ if hot => theme::TEXT,
                 _ => theme::TEXT_DIM,
             };
-            bar_icon(painter, pos2(r.left() + 10.0 + 7.0, r.center().y), item, ink);
-            painter.text(pos2(r.left() + 10.0 + 14.0 + 6.0, r.center().y), Align2::LEFT_CENTER, label(item), font.clone(), theme::TEXT);
+            bar_icon(
+                painter,
+                pos2(r.left() + 10.0 + 7.0, r.center().y),
+                item,
+                ink,
+            );
+            painter.text(
+                pos2(r.left() + 10.0 + 14.0 + 6.0, r.center().y),
+                Align2::LEFT_CENTER,
+                label(item),
+                font.clone(),
+                theme::TEXT,
+            );
             if resp.clicked() {
                 actions.push(match item {
                     BarItem::Module => Action::GroupSelection,
@@ -1741,17 +2130,21 @@ impl Editor {
             .filter(|g| g.members.iter().all(|m| self.selected.contains(m)))
             .map(|g| (g.id, g.collapsed))
             .collect();
-        let covered = self
-            .selected
-            .iter()
-            .all(|id| graph.group_of(*id).is_some_and(|g| whole.iter().any(|(gid, _)| *gid == g.id)));
+        let covered = self.selected.iter().all(|id| {
+            graph
+                .group_of(*id)
+                .is_some_and(|g| whole.iter().any(|(gid, _)| *gid == g.id))
+        });
         if !whole.is_empty() && covered {
             let collapse = whole.iter().any(|(_, c)| !c);
             for (gid, _) in whole {
                 graph.set_group_collapsed(gid, collapse);
             }
         } else {
-            let collapse = self.selected.iter().any(|id| graph.node(*id).is_some_and(|n| !n.collapsed));
+            let collapse = self
+                .selected
+                .iter()
+                .any(|id| graph.node(*id).is_some_and(|n| !n.collapsed));
             for id in &self.selected {
                 graph.set_collapsed(*id, collapse);
             }
@@ -1786,10 +2179,20 @@ fn content_bounds(graph: &Graph) -> Option<Rect> {
 /// of its nodes (Shift or Cmd+click adds it to the selection, or takes it
 /// out); double-clicking folds it. `picks`: see `Editor::show`. Returns how
 /// far a right or middle drag on it pans the view.
-fn module_pointer(ui: &Ui, resp: &Response, g: &Group, selected: bool, (additive, picks): (bool, bool), z: f32, actions: &mut Vec<Action>) -> Vec2 {
+fn module_pointer(
+    ui: &Ui,
+    resp: &Response,
+    g: &Group,
+    selected: bool,
+    (additive, picks): (bool, bool),
+    z: f32,
+    actions: &mut Vec<Action>,
+) -> Vec2 {
     if resp.clicked() && picks && additive && selected {
         actions.extend(g.members.iter().map(|&m| Action::ToggleSelect(m)));
-    } else if (resp.clicked() && picks) || (resp.drag_started_by(PointerButton::Primary) && !selected) {
+    } else if (resp.clicked() && picks)
+        || (resp.drag_started_by(PointerButton::Primary) && !selected)
+    {
         actions.push(Action::Select(g.members.clone(), additive));
     }
     if resp.dragged_by(PointerButton::Primary) {
@@ -1799,7 +2202,11 @@ fn module_pointer(ui: &Ui, resp: &Response, g: &Group, selected: bool, (additive
     if resp.double_clicked() {
         actions.push(Action::ToggleGroup(g.id));
     }
-    if resp.dragged_by(PointerButton::Secondary) || resp.dragged_by(PointerButton::Middle) { resp.drag_delta() } else { Vec2::ZERO }
+    if resp.dragged_by(PointerButton::Secondary) || resp.dragged_by(PointerButton::Middle) {
+        resp.drag_delta()
+    } else {
+        Vec2::ZERO
+    }
 }
 
 fn push_header(h: groups::HeaderActions, gid: GroupId, actions: &mut Vec<Action>) {
@@ -1814,7 +2221,11 @@ fn push_header(h: groups::HeaderActions, gid: GroupId, actions: &mut Vec<Action>
 pub(super) fn menu_item(ui: &mut Ui, label: &str, hint: &str) -> bool {
     ui.add(
         egui::Button::new(egui::RichText::new(label).color(theme::TEXT).size(12.5))
-            .right_text(egui::RichText::new(hint).color(theme::TEXT_FAINT).size(10.5))
+            .right_text(
+                egui::RichText::new(hint)
+                    .color(theme::TEXT_FAINT)
+                    .size(10.5),
+            )
             .min_size(vec2(220.0, 22.0)),
     )
     .clicked()
@@ -1840,15 +2251,32 @@ fn subject_heading(ui: &mut Ui, text: &str) {
 /// would say: the whole selection when the target is in it with others.
 /// None: the target alone (its title says it), or nothing selected.
 fn menu_subject(graph: &Graph, selected: &HashSet<NodeId>, target: MenuTarget) -> Option<String> {
-    let count = selected.iter().filter(|id| graph.node(**id).is_some()).count();
-    let many = |n: usize| if n == 1 { "1 node selected".to_owned() } else { format!("{n} nodes selected") };
+    let count = selected
+        .iter()
+        .filter(|id| graph.node(**id).is_some())
+        .count();
+    let many = |n: usize| {
+        if n == 1 {
+            "1 node selected".to_owned()
+        } else {
+            format!("{n} nodes selected")
+        }
+    };
     match target {
         MenuTarget::Canvas(_) | MenuTarget::Cable(_) => (count > 0).then(|| many(count)),
         MenuTarget::Node(id) => (count > 1 && selected.contains(&id)).then(|| many(count)),
         MenuTarget::Group(gid) => {
             let g = graph.group(gid)?;
             let more = selected.iter().any(|id| !g.members.contains(id));
-            Some(if more { many(count) } else { format!("{} · {}", g.title, many(g.members.len()).replace(" selected", "")) })
+            Some(if more {
+                many(count)
+            } else {
+                format!(
+                    "{} · {}",
+                    g.title,
+                    many(g.members.len()).replace(" selected", "")
+                )
+            })
         }
     }
 }
@@ -1910,13 +2338,20 @@ pub fn add_menu(ui: &mut Ui, library: &[Preset], plugins: &[PluginEntry]) -> Opt
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
             let n = preset.node_count();
-            let hint = if n == 1 { "1 node".to_owned() } else { format!("{n} nodes") };
+            let hint = if n == 1 {
+                "1 node".to_owned()
+            } else {
+                format!("{n} nodes")
+            };
             if menu_item(ui, &preset.name, &hint) {
                 picked = Some(AddChoice::Preset(i));
                 ui.close();
             }
             let remove = ui
-                .add(egui::Button::new(egui::RichText::new("×").color(theme::TEXT_FAINT)).min_size(vec2(22.0, 22.0)))
+                .add(
+                    egui::Button::new(egui::RichText::new("×").color(theme::TEXT_FAINT))
+                        .min_size(vec2(22.0, 22.0)),
+                )
                 .on_hover_text("Remove from the library");
             if remove.clicked() {
                 picked = Some(AddChoice::Request(Request::DeletePreset(i)));
@@ -1986,19 +2421,35 @@ fn canvas_menu(
 /// Asks before deleting nodes, which can't be undone: "Delete “FILTER 1”?"
 /// in a native dialog (Enter deletes, Esc cancels).
 fn confirm_removal(graph: &Graph, ids: &[NodeId]) -> bool {
-    let names: Vec<&str> = ids.iter().filter_map(|&id| graph.node(id).map(|n| n.title.as_str())).collect();
+    let names: Vec<&str> = ids
+        .iter()
+        .filter_map(|&id| graph.node(id).map(|n| n.title.as_str()))
+        .collect();
     let what = match names.as_slice() {
         [] => return false,
         [one] => format!("“{one}”"),
         many if many.len() <= 4 => format!("{} nodes ({})", many.len(), many.join(", ")),
         many => format!("{} nodes ({}, …)", many.len(), many[..4].join(", ")),
     };
-    let lost = if names.len() == 1 { "Its settings and cables" } else { "Their settings and cables" };
+    let lost = if names.len() == 1 {
+        "Its settings and cables"
+    } else {
+        "Their settings and cables"
+    };
     let answer = rfd::MessageDialog::new()
         .set_level(rfd::MessageLevel::Warning)
-        .set_title(if names.len() == 1 { "Delete node" } else { "Delete nodes" })
-        .set_description(format!("Delete {what}?\n{lost} will be lost: this can't be undone."))
-        .set_buttons(rfd::MessageButtons::OkCancelCustom("Delete".into(), "Cancel".into()))
+        .set_title(if names.len() == 1 {
+            "Delete node"
+        } else {
+            "Delete nodes"
+        })
+        .set_description(format!(
+            "Delete {what}?\n{lost} will be lost: this can't be undone."
+        ))
+        .set_buttons(rfd::MessageButtons::OkCancelCustom(
+            "Delete".into(),
+            "Cancel".into(),
+        ))
         .show();
     match answer {
         rfd::MessageDialogResult::Ok => true,
@@ -2009,12 +2460,21 @@ fn confirm_removal(graph: &Graph, ids: &[NodeId]) -> bool {
 
 /// Asks before going down to 12 channels unplugs `lost` cables.
 fn confirm_unplug(lost: usize) -> bool {
-    let cables = if lost == 1 { "1 cable".to_owned() } else { format!("{lost} cables") };
+    let cables = if lost == 1 {
+        "1 cable".to_owned()
+    } else {
+        format!("{lost} cables")
+    };
     let answer = rfd::MessageDialog::new()
         .set_level(rfd::MessageLevel::Warning)
         .set_title("12 channels")
-        .set_description(format!("Channels 13–24 have {cables} plugged in.\nGoing to 12 channels unplugs them."))
-        .set_buttons(rfd::MessageButtons::OkCancelCustom("Unplug".into(), "Cancel".into()))
+        .set_description(format!(
+            "Channels 13–24 have {cables} plugged in.\nGoing to 12 channels unplugs them."
+        ))
+        .set_buttons(rfd::MessageButtons::OkCancelCustom(
+            "Unplug".into(),
+            "Cancel".into(),
+        ))
         .show();
     match answer {
         rfd::MessageDialogResult::Ok => true,
@@ -2027,14 +2487,24 @@ fn confirm_unplug(lost: usize) -> bool {
 /// Bypasses the effects among `ids`, or switches them all back on when
 /// every one already is.
 fn toggle_bypass(graph: &Graph, ids: &[NodeId]) {
-    let effects: Vec<_> = ids.iter().filter_map(|&id| graph.node(id)).filter(|n| n.is_effect()).collect();
+    let effects: Vec<_> = ids
+        .iter()
+        .filter_map(|&id| graph.node(id))
+        .filter(|n| n.is_effect())
+        .collect();
     let on = effects.iter().any(|n| !n.bypassed());
     for n in effects {
         n.set_bypass(on);
     }
 }
 
-fn node_menu(ui: &mut Ui, collapsed: bool, effect: bool, in_group: bool, actions: &mut Vec<Action>) {
+fn node_menu(
+    ui: &mut Ui,
+    collapsed: bool,
+    effect: bool,
+    in_group: bool,
+    actions: &mut Vec<Action>,
+) {
     let fold = if collapsed { "Expand" } else { "Collapse" };
     let mut item = |label: &str, hint: &str, action: Action| {
         if menu_item(ui, label, hint) {
@@ -2078,7 +2548,15 @@ fn group_menu(ui: &mut Ui, gid: GroupId, collapsed: bool, more: bool, actions: &
         ui.close();
     }
     // These act on the whole selection: say so when it is more than this.
-    if menu_item(ui, if more { "Duplicate selection" } else { "Duplicate module" }, "Cmd+D") {
+    if menu_item(
+        ui,
+        if more {
+            "Duplicate selection"
+        } else {
+            "Duplicate module"
+        },
+        "Cmd+D",
+    ) {
         actions.push(Action::DuplicateSelection);
         ui.close();
     }
@@ -2086,7 +2564,15 @@ fn group_menu(ui: &mut Ui, gid: GroupId, collapsed: bool, more: bool, actions: &
         actions.push(Action::Ungroup(gid));
         ui.close();
     }
-    if menu_item(ui, if more { "Delete selection" } else { "Delete module and its nodes" }, "Del") {
+    if menu_item(
+        ui,
+        if more {
+            "Delete selection"
+        } else {
+            "Delete module and its nodes"
+        },
+        "Del",
+    ) {
         actions.push(Action::RemoveSelection);
         ui.close();
     }
@@ -2117,7 +2603,10 @@ fn bar_icon(p: &Painter, c: Pos2, item: BarItem, col: Color32) {
                 p.line_segment([corner, corner + vec2(3.5 * dx, 0.0)], s);
                 p.line_segment([corner, corner + vec2(0.0, 3.0 * dy)], s);
             }
-            let (a, b) = (Rect::from_center_size(c + vec2(-2.8, 0.0), vec2(3.6, 3.6)), Rect::from_center_size(c + vec2(2.8, 0.0), vec2(3.6, 3.6)));
+            let (a, b) = (
+                Rect::from_center_size(c + vec2(-2.8, 0.0), vec2(3.6, 3.6)),
+                Rect::from_center_size(c + vec2(2.8, 0.0), vec2(3.6, 3.6)),
+            );
             p.rect_stroke(a, 0.5, s, StrokeKind::Inside);
             p.rect_stroke(b, 0.5, s, StrokeKind::Inside);
             p.line_segment([a.right_center(), b.left_center()], s);
@@ -2125,12 +2614,22 @@ fn bar_icon(p: &Painter, c: Pos2, item: BarItem, col: Color32) {
         BarItem::Collapse => {
             // Two slim cards: nodes folded to their headers.
             for dy in [-3.0, 3.0] {
-                p.rect_stroke(Rect::from_center_size(c + vec2(0.0, dy), vec2(13.0, 4.0)), 1.5, s, StrokeKind::Inside);
+                p.rect_stroke(
+                    Rect::from_center_size(c + vec2(0.0, dy), vec2(13.0, 4.0)),
+                    1.5,
+                    s,
+                    StrokeKind::Inside,
+                );
             }
         }
         BarItem::Duplicate => {
             // Two overlapping cards.
-            p.rect_stroke(Rect::from_min_size(c + vec2(-6.0, -6.0), vec2(8.5, 8.5)), 1.5, s, StrokeKind::Inside);
+            p.rect_stroke(
+                Rect::from_min_size(c + vec2(-6.0, -6.0), vec2(8.5, 8.5)),
+                1.5,
+                s,
+                StrokeKind::Inside,
+            );
             let front = Rect::from_min_size(c + vec2(-2.5, -2.5), vec2(8.5, 8.5));
             p.rect_filled(front, 1.5, theme::PANEL);
             p.rect_stroke(front, 1.5, s, StrokeKind::Inside);
@@ -2139,7 +2638,12 @@ fn bar_icon(p: &Painter, c: Pos2, item: BarItem, col: Color32) {
             // A bin: its lid and handle, its body with two ribs.
             p.line_segment([c + vec2(-6.0, -4.0), c + vec2(6.0, -4.0)], s);
             p.line_segment([c + vec2(-2.0, -6.0), c + vec2(2.0, -6.0)], s);
-            let body = vec![c + vec2(-4.5, -4.0), c + vec2(-3.5, 6.0), c + vec2(3.5, 6.0), c + vec2(4.5, -4.0)];
+            let body = vec![
+                c + vec2(-4.5, -4.0),
+                c + vec2(-3.5, 6.0),
+                c + vec2(3.5, 6.0),
+                c + vec2(4.5, -4.0),
+            ];
             p.add(Shape::line(body, s));
             for x in [-1.2, 1.2] {
                 p.line_segment([c + vec2(x, -1.5), c + vec2(x, 3.5)], s);
@@ -2182,18 +2686,34 @@ fn type_label(graph: &Graph, target: TipTarget) -> Option<(String, String)> {
             let n = graph.node(id)?;
             Some(match &n.kind {
                 NodeKind::Plugin(p) => {
-                    let kind = if p.meta.instrument { "instrument" } else { "effect" };
+                    let kind = if p.meta.instrument {
+                        "instrument"
+                    } else {
+                        "effect"
+                    };
                     let what = format!("{} {kind}", p.meta.format.label());
-                    let detail = if p.meta.vendor.is_empty() { what } else { format!("{what} · {}", p.meta.vendor) };
+                    let detail = if p.meta.vendor.is_empty() {
+                        what
+                    } else {
+                        format!("{what} · {}", p.meta.vendor)
+                    };
                     (p.meta.name.clone(), detail)
                 }
-                k => (k.node_type().name().to_owned(), k.node_type().hint().to_owned()),
+                k => (
+                    k.node_type().name().to_owned(),
+                    k.node_type().hint().to_owned(),
+                ),
             })
         }
         TipTarget::Group(gid) => {
             // Member types in order of appearance, repeats counted.
             let mut kinds: Vec<(String, usize)> = Vec::new();
-            for n in graph.group(gid)?.members.iter().filter_map(|id| graph.node(*id)) {
+            for n in graph
+                .group(gid)?
+                .members
+                .iter()
+                .filter_map(|id| graph.node(*id))
+            {
                 let name = node_type(n);
                 match kinds.iter_mut().find(|(k, _)| *k == name) {
                     Some((_, count)) => *count += 1,
@@ -2203,7 +2723,13 @@ fn type_label(graph: &Graph, target: TipTarget) -> Option<(String, String)> {
             let mut parts: Vec<String> = kinds
                 .iter()
                 .take(5)
-                .map(|(k, c)| if *c > 1 { format!("{c}× {k}") } else { k.clone() })
+                .map(|(k, c)| {
+                    if *c > 1 {
+                        format!("{c}× {k}")
+                    } else {
+                        k.clone()
+                    }
+                })
                 .collect();
             if kinds.len() > 5 {
                 parts.push("…".to_owned());

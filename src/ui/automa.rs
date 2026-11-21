@@ -11,19 +11,25 @@
 use std::collections::VecDeque;
 use std::f32::consts::FRAC_PI_2;
 
-use egui::{Align2, Color32, ColorImage, CursorIcon, Id, Painter, Pos2, Rect, Sense, Shape, Stroke, StrokeKind, TextureHandle, TextureOptions, Vec2, pos2, vec2};
+use egui::{
+    Align2, Color32, ColorImage, CursorIcon, Id, Painter, Pos2, Rect, Sense, Shape, Stroke,
+    StrokeKind, TextureHandle, TextureOptions, Vec2, pos2, vec2,
+};
 
 use super::nodes::{NodeView, segmented};
 use super::theme::{self, alpha, mix};
 use super::widgets;
 use crate::audio::engine::NodeId;
 use crate::audio::modules::ModuleParams;
-use crate::audio::modules::automa::engines::{CASCADE_RULES, H, HISTORY, LIFE_RULES, W as COLS, escape, julia_c, series};
+use crate::audio::modules::automa::engines::{
+    CASCADE_RULES, H, HISTORY, LIFE_RULES, W as COLS, escape, julia_c, series,
+};
 use crate::audio::modules::automa::harmony::{CHANGES, Chord, PRESETS, SCALES, SLOTS, family};
 use crate::audio::modules::automa::{
-    self as am, CASCADE, CASCADE_GEN, CASCADE_RULE, CHANGE, CHANNEL, CHAOS, DENSITY, DYNAMICS, ENGINES, GATE, INTERVAL, JULIA, KEY, LEAP,
-    LIFE, LIFE_GEN, LIFE_RULE, MORPH, MUTATE, OCTAVE, PAD_VOICE, PHRASE, RATE, SCALE, SHAPE, STRIDE, SWING, TENSION, TREE, VELOCITY, VOICES,
-    data, viz,
+    self as am, CASCADE, CASCADE_GEN, CASCADE_RULE, CHANGE, CHANNEL, CHAOS, DENSITY, DYNAMICS,
+    ENGINES, GATE, INTERVAL, JULIA, KEY, LEAP, LIFE, LIFE_GEN, LIFE_RULE, MORPH, MUTATE, OCTAVE,
+    PAD_VOICE, PHRASE, RATE, SCALE, SHAPE, STRIDE, SWING, TENSION, TREE, VELOCITY, VOICES, data,
+    viz,
 };
 use crate::audio::modules::steps::steps_per_beat;
 use crate::audio::params::{DIVISIONS, Unit, note_label};
@@ -56,39 +62,106 @@ const HIGH: Color32 = Color32::from_rgb(250, 150, 96);
 
 type Knobs = [(usize, &'static str)];
 const ENGINE_KNOBS: [[(usize, &str); 4]; 4] = [
-    [(LIFE_RULE, "RULE"), (LIFE_GEN, "GEN"), (MUTATE, "MUTATE"), (PHRASE, "PHRASE")],
-    [(CASCADE_RULE, "RULE"), (CASCADE_GEN, "GEN"), (MUTATE, "MUTATE"), (PHRASE, "PHRASE")],
-    [(STRIDE, "STRIDE"), (INTERVAL, "INTERVAL"), (MUTATE, "MUTATE"), (PHRASE, "PHRASE")],
-    [(SHAPE, "SHAPE"), (CHAOS, "CHAOS"), (MORPH, "MORPH"), (PHRASE, "PHRASE")],
+    [
+        (LIFE_RULE, "RULE"),
+        (LIFE_GEN, "GEN"),
+        (MUTATE, "MUTATE"),
+        (PHRASE, "PHRASE"),
+    ],
+    [
+        (CASCADE_RULE, "RULE"),
+        (CASCADE_GEN, "GEN"),
+        (MUTATE, "MUTATE"),
+        (PHRASE, "PHRASE"),
+    ],
+    [
+        (STRIDE, "STRIDE"),
+        (INTERVAL, "INTERVAL"),
+        (MUTATE, "MUTATE"),
+        (PHRASE, "PHRASE"),
+    ],
+    [
+        (SHAPE, "SHAPE"),
+        (CHAOS, "CHAOS"),
+        (MORPH, "MORPH"),
+        (PHRASE, "PHRASE"),
+    ],
 ];
-const RHYTHM: [(usize, &str); 4] = [(RATE, "RATE"), (DENSITY, "DENSITY"), (SWING, "SWING"), (GATE, "GATE")];
-const MELODY: [(usize, &str); 4] = [(LEAP, "LEAP"), (TENSION, "TENSION"), (VOICES, "VOICES"), (OCTAVE, "OCTAVE")];
+const RHYTHM: [(usize, &str); 4] = [
+    (RATE, "RATE"),
+    (DENSITY, "DENSITY"),
+    (SWING, "SWING"),
+    (GATE, "GATE"),
+];
+const MELODY: [(usize, &str); 4] = [
+    (LEAP, "LEAP"),
+    (TENSION, "TENSION"),
+    (VOICES, "VOICES"),
+    (OCTAVE, "OCTAVE"),
+];
 const HARMONY: [(usize, &str); 3] = [(KEY, "KEY"), (SCALE, "SCALE"), (CHANGE, "CHANGE")];
-const OUTPUT: [(usize, &str); 3] = [(VELOCITY, "VELOCITY"), (DYNAMICS, "DYNAMICS"), (CHANNEL, "CHANNEL")];
+const OUTPUT: [(usize, &str); 3] = [
+    (VELOCITY, "VELOCITY"),
+    (DYNAMICS, "DYNAMICS"),
+    (CHANNEL, "CHANNEL"),
+];
 
 const TIPS: [(usize, &str); 22] = [
     (RATE, "Step length on the global grid"),
     (DENSITY, "How many steps play (the strong ones more often)"),
     (SWING, "Delays the off-beat steps"),
     (GATE, "Note length, as a part of the step"),
-    (LEAP, "How far the line may jump: low, to the nearest offered note; high, anywhere\n(TREE and JULIA: how wide a range they play in)"),
-    (TENSION, "Colour notes (9ths, 11ths, 13ths) on the weaker steps; at 0 only chord tones.\nThe first step of each chord always lands on it"),
-    (VOICES, "Parts: the melody, then harmony from the other cells that offered (as chord tones)"),
+    (
+        LEAP,
+        "How far the line may jump: low, to the nearest offered note; high, anywhere\n(TREE and JULIA: how wide a range they play in)",
+    ),
+    (
+        TENSION,
+        "Colour notes (9ths, 11ths, 13ths) on the weaker steps; at 0 only chord tones.\nThe first step of each chord always lands on it",
+    ),
+    (
+        VOICES,
+        "Parts: the melody, then harmony from the other cells that offered (as chord tones)",
+    ),
     (OCTAVE, "Octave of the bottom row"),
     (KEY, "The key's tonic"),
     (CHANGE, "How long each chord lasts"),
     (VELOCITY, "Velocity of the strongest notes"),
-    (DYNAMICS, "How much accents (the beat, the generator's energy) shape the velocity"),
+    (
+        DYNAMICS,
+        "How much accents (the beat, the generator's energy) shape the velocity",
+    ),
     (CHANNEL, "MIDI channel of the notes"),
-    (LIFE_GEN, "Steps per generation: at 16 the world evolves once a sweep, at 1 on every step"),
+    (
+        LIFE_GEN,
+        "Steps per generation: at 16 the world evolves once a sweep, at 1 on every step",
+    ),
     (CASCADE_GEN, "Steps per generation"),
-    (MUTATE, "Keeps it alive: cells born now and then, a new shape when the world dies or loops\n(TREE: jumps to another branch; JULIA: noise on the orbit)"),
-    (PHRASE, "The generator starts again every so many steps, on the grid (∞: never)"),
-    (STRIDE, "Terms per step: 2 plays the series upside down, 4 as it is, odd strides make new melodies"),
+    (
+        MUTATE,
+        "Keeps it alive: cells born now and then, a new shape when the world dies or loops\n(TREE: jumps to another branch; JULIA: noise on the orbit)",
+    ),
+    (
+        PHRASE,
+        "The generator starts again every so many steps, on the grid (∞: never)",
+    ),
+    (
+        STRIDE,
+        "Terms per step: 2 plays the series upside down, 4 as it is, odd strides make new melodies",
+    ),
     (INTERVAL, "Scale degrees per step of the series"),
-    (SHAPE, "Where c sits round the main cardioid: the angle the orbit turns by, so the figure the melody traces"),
-    (CHAOS, "Inside the cardioid the orbit settles, on its edge it circles, past it it escapes (rests)"),
-    (MORPH, "c drifts round the cardioid with the beat (at 100%, once every 16 bars)"),
+    (
+        SHAPE,
+        "Where c sits round the main cardioid: the angle the orbit turns by, so the figure the melody traces",
+    ),
+    (
+        CHAOS,
+        "Inside the cardioid the orbit settles, on its edge it circles, past it it escapes (rests)",
+    ),
+    (
+        MORPH,
+        "c drifts round the cardioid with the beat (at 100%, once every 16 bars)",
+    ),
 ];
 
 fn function_color(degree: u8) -> Color32 {
@@ -125,8 +198,14 @@ pub fn format(p: &ModuleParams, i: usize) -> String {
 pub fn readout(p: &ModuleParams) -> (String, String) {
     let h = am::harmony(p);
     let prog = am::progression(p);
-    let chords: Vec<String> = prog.degrees[..prog.len].iter().map(|&d| h.chord(d).name(&h)).collect();
-    (format!("{} · {}", ENGINES[p.mode().min(JULIA)].0, h.label()), chords.join(" "))
+    let chords: Vec<String> = prog.degrees[..prog.len]
+        .iter()
+        .map(|&d| h.chord(d).name(&h))
+        .collect();
+    (
+        format!("{} · {}", ENGINES[p.mode().min(JULIA)].0, h.label()),
+        chords.join(" "),
+    )
 }
 
 /// A note on the roll.
@@ -205,7 +284,12 @@ impl View {
         }
         self.seq = seq;
         let oldest = self.beat.0 as f64 * steps_per_beat(p.get(RATE)) - ROLL_STEPS * 2.0;
-        while self.marks.front().is_some_and(|m| m.step + m.length < oldest) || self.marks.len() > 400 {
+        while self
+            .marks
+            .front()
+            .is_some_and(|m| m.step + m.length < oldest)
+            || self.marks.len() > 400
+        {
             self.marks.pop_front();
         }
 
@@ -242,12 +326,26 @@ impl View {
     /// The beat now, carried on from the last one published at the tempo.
     fn beat_now(&self, playing: bool, tempo: f32, now: f64) -> f64 {
         let (beat, seen) = self.beat;
-        if playing { beat as f64 + ((now - seen) * tempo as f64 / 60.0).clamp(0.0, 0.5) } else { beat as f64 }
+        if playing {
+            beat as f64 + ((now - seen) * tempo as f64 / 60.0).clamp(0.0, 0.5)
+        } else {
+            beat as f64
+        }
     }
 
     fn settled(&self, p: &ModuleParams, now: f64) -> bool {
-        let on = |i: usize| if p.viz[viz::CELLS + i].get() > 0.0 { 1.0 } else { 0.0 };
-        self.glow.iter().enumerate().all(|(i, g)| (g - on(i)).abs() < 0.01) && self.flash.iter().all(|&t| now - t > 0.5)
+        let on = |i: usize| {
+            if p.viz[viz::CELLS + i].get() > 0.0 {
+                1.0
+            } else {
+                0.0
+            }
+        };
+        self.glow
+            .iter()
+            .enumerate()
+            .all(|(i, g)| (g - on(i)).abs() < 0.01)
+            && self.flash.iter().all(|&t| now - t > 0.5)
     }
 }
 
@@ -271,16 +369,36 @@ pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, out: bool
     view.time = now;
     view.update(p, now, dt);
     let playing = p.viz[viz::STEP].get() >= 0.0;
-    let s = Panel { v, id, p, accent, now, beat: view.beat_now(playing, v.tempo, now), playing };
+    let s = Panel {
+        v,
+        id,
+        p,
+        accent,
+        now,
+        beat: view.beat_now(playing, v.tempo, now),
+        playing,
+    };
 
-    v.text(W - PAD, 42.0, Align2::RIGHT_CENTER, "MIDI", v.font(9.0), if out { theme::TEXT_DIM } else { theme::TEXT_FAINT });
+    v.text(
+        W - PAD,
+        42.0,
+        Align2::RIGHT_CENTER,
+        "MIDI",
+        v.font(9.0),
+        if out {
+            theme::TEXT_DIM
+        } else {
+            theme::TEXT_FAINT
+        },
+    );
     s.header();
     s.world(&mut view);
     s.roll(&view);
     s.strip();
     s.knobs();
     if playing || !view.settled(p, now) {
-        v.ui.ctx().request_repaint_after(std::time::Duration::from_millis(16));
+        v.ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(16));
     }
     v.ui.data_mut(|d| d.insert_temp(key, view));
 }
@@ -306,9 +424,27 @@ impl Panel<'_, '_> {
         self.p.data[i].set(if self.on(i) { 0.0 } else { 1.0 });
     }
 
-    fn button(&self, salt: &str, x0: f32, x1: f32, label: &str, lit: bool, tip: &str) -> egui::Response {
+    fn button(
+        &self,
+        salt: &str,
+        x0: f32,
+        x1: f32,
+        label: &str,
+        lit: bool,
+        tip: &str,
+    ) -> egui::Response {
         let (v, z) = (self.v, self.z());
-        widgets::toggle(v.ui, v.painter, self.uid(salt), v.r(x0, 34.0, x1, 50.0), label, lit, self.accent, z).on_hover_text(tip)
+        widgets::toggle(
+            v.ui,
+            v.painter,
+            self.uid(salt),
+            v.r(x0, 34.0, x1, 50.0),
+            label,
+            lit,
+            self.accent,
+            z,
+        )
+        .on_hover_text(tip)
     }
 
     /// The chord under `beat` (and the degree it stands on).
@@ -323,34 +459,83 @@ impl Panel<'_, '_> {
     fn header(&self) {
         let (v, p) = (self.v, self.p);
         let engine = self.engine();
-        let picked = segmented(v, self.uid("engine"), v.r(PAD, 34.0, PAD + 246.0, 50.0), ENGINES.len(), engine, self.accent, |k, r, col| {
-            v.painter.text(r.center(), Align2::CENTER_CENTER, ENGINES[k].0, v.font(8.0), col);
-            ENGINES[k].1
-        });
+        let picked = segmented(
+            v,
+            self.uid("engine"),
+            v.r(PAD, 34.0, PAD + 246.0, 50.0),
+            ENGINES.len(),
+            engine,
+            self.accent,
+            |k, r, col| {
+                v.painter.text(
+                    r.center(),
+                    Align2::CENTER_CENTER,
+                    ENGINES[k].0,
+                    v.font(8.0),
+                    col,
+                );
+                ENGINES[k].1
+            },
+        );
         if let Some(k) = picked {
             p.set_mode(k);
         }
-        let reseed = self.button("reseed", 266.0, 326.0, "RESEED", false, "A new start: a new seed for every generator and a random pattern for LIFE");
+        let reseed = self.button(
+            "reseed",
+            266.0,
+            326.0,
+            "RESEED",
+            false,
+            "A new start: a new seed for every generator and a random pattern for LIFE",
+        );
         if reseed.clicked() {
-            am::reseed(p, (self.now * 1000.0) as u32 ^ self.id.wrapping_mul(0x9E37_79B9));
+            am::reseed(
+                p,
+                (self.now * 1000.0) as u32 ^ self.id.wrapping_mul(0x9E37_79B9),
+            );
         }
         let frozen = self.on(data::FREEZE);
         let freeze = self.button("freeze", 332.0, 386.0, "FREEZE", frozen, "Loop what is playing: LIFE stops evolving, the others repeat their last bar (or PHRASE)");
         if freeze.clicked() {
             self.flip(data::FREEZE);
         }
-        let play = self.button("play", 392.0, 434.0, "PLAY", p.toggled(), "Play or pause the generator (the transport runs on)");
+        let play = self.button(
+            "play",
+            392.0,
+            434.0,
+            "PLAY",
+            p.toggled(),
+            "Play or pause the generator (the transport runs on)",
+        );
         if play.clicked() {
             p.set_toggle(!p.toggled());
         }
         let mut x = 442.0;
         if engine == LIFE {
-            let keep = self.button("keep", x, x + 40.0, "KEEP", false, "Make the grid as it is now LIFE's start (Start plays from it)");
+            let keep = self.button(
+                "keep",
+                x,
+                x + 40.0,
+                "KEEP",
+                false,
+                "Make the grid as it is now LIFE's start (Start plays from it)",
+            );
             if keep.clicked() {
-                let rows: [u16; H] = std::array::from_fn(|y| (0..COLS).filter(|&x| p.viz[viz::CELLS + y * COLS + x].get() > 0.0).fold(0, |r, x| r | 1 << x));
+                let rows: [u16; H] = std::array::from_fn(|y| {
+                    (0..COLS)
+                        .filter(|&x| p.viz[viz::CELLS + y * COLS + x].get() > 0.0)
+                        .fold(0, |r, x| r | 1 << x)
+                });
                 am::set_pattern(p, &rows);
             }
-            let clear = self.button("clear", x + 46.0, x + 90.0, "CLEAR", false, "Kill every cell (MUTATE sows new ones)");
+            let clear = self.button(
+                "clear",
+                x + 46.0,
+                x + 90.0,
+                "CLEAR",
+                false,
+                "Kill every cell (MUTATE sows new ones)",
+            );
             if clear.clicked() {
                 for i in 0..COLS * H {
                     self.edit(i % COLS, i / COLS, false);
@@ -371,18 +556,34 @@ impl Panel<'_, '_> {
         let generation = p.viz[viz::GENERATION].get();
         let detail = match engine {
             LIFE => {
-                let population = (0..COLS * H).filter(|&i| p.viz[viz::CELLS + i].get() > 0.0).count();
+                let population = (0..COLS * H)
+                    .filter(|&i| p.viz[viz::CELLS + i].get() > 0.0)
+                    .count();
                 format!("gen {generation} · {population} cells")
             }
-            CASCADE => format!("rule {} · gen {generation}", CASCADE_RULES[am::int(p, CASCADE_RULE, 0, 7) as usize].0),
+            CASCADE => format!(
+                "rule {} · gen {generation}",
+                CASCADE_RULES[am::int(p, CASCADE_RULE, 0, 7) as usize].0
+            ),
             TREE => {
                 let n = p.viz[viz::TERM].get() as u64;
                 format!("n {n} · a(n) {:+}", series(n))
             }
             _ => format!("phrase {}", generation + 1.0),
         };
-        let text = if state.is_empty() { detail } else { format!("{state} · {detail}") };
-        v.text(x, 42.0, Align2::LEFT_CENTER, text, v.font(7.5), theme::TEXT_FAINT);
+        let text = if state.is_empty() {
+            detail
+        } else {
+            format!("{state} · {detail}")
+        };
+        v.text(
+            x,
+            42.0,
+            Align2::LEFT_CENTER,
+            text,
+            v.font(7.5),
+            theme::TEXT_FAINT,
+        );
     }
 
     /// A cell drawn (or rubbed out) on LIFE's grid. Stopped, the drawing is
@@ -408,7 +609,9 @@ impl Panel<'_, '_> {
         let v = self.v;
         let rect = v.r(PAD, TOP, PAD + WORLD, BOTTOM);
         v.painter.rect_filled(rect, 4.0 * self.z(), theme::INSET);
-        let painter = v.painter.with_clip_rect(rect.intersect(v.painter.clip_rect()));
+        let painter = v
+            .painter
+            .with_clip_rect(rect.intersect(v.painter.clip_rect()));
         match self.engine() {
             LIFE => self.life(&painter, rect, view),
             CASCADE => self.cascade(&painter, rect, view),
@@ -425,7 +628,11 @@ impl Panel<'_, '_> {
         } else if age <= 3.0 {
             self.accent
         } else {
-            mix(self.accent, theme::TEXT_FAINT, ((age - 3.0) / 14.0).min(0.75))
+            mix(
+                self.accent,
+                theme::TEXT_FAINT,
+                ((age - 3.0) / 14.0).min(0.75),
+            )
         }
     }
 
@@ -434,7 +641,12 @@ impl Panel<'_, '_> {
         let t = (since / 0.45) as f32;
         if (0.0..1.0).contains(&t) {
             let r = size * (0.5 + 0.9 * t);
-            painter.rect_stroke(Rect::from_center_size(c, vec2(r, r) * 2.0), 3.0 * self.z(), Stroke::new(1.5 * self.z(), alpha(Color32::WHITE, (1.0 - t) * 0.8)), StrokeKind::Middle);
+            painter.rect_stroke(
+                Rect::from_center_size(c, vec2(r, r) * 2.0),
+                3.0 * self.z(),
+                Stroke::new(1.5 * self.z(), alpha(Color32::WHITE, (1.0 - t) * 0.8)),
+                StrokeKind::Middle,
+            );
             painter.circle_filled(c, size * 0.9, alpha(self.accent, (1.0 - t) * 0.25));
         }
     }
@@ -444,7 +656,15 @@ impl Panel<'_, '_> {
         let cs = rect.width() / COLS as f32;
         let h = am::harmony(p);
         let (degree, chord) = self.chord_at(self.beat);
-        let cell = |x: usize, y: usize| Rect::from_min_size(pos2(rect.left() + x as f32 * cs, rect.bottom() - (y + 1) as f32 * cs), vec2(cs, cs));
+        let cell = |x: usize, y: usize| {
+            Rect::from_min_size(
+                pos2(
+                    rect.left() + x as f32 * cs,
+                    rect.bottom() - (y + 1) as f32 * cs,
+                ),
+                vec2(cs, cs),
+            )
+        };
         // Lanes for the chord's tones, the root's brighter.
         for y in 0..H {
             let pc = h.pc(y as i32);
@@ -458,8 +678,16 @@ impl Panel<'_, '_> {
         if self.playing {
             let at = (self.beat * steps_per_beat(p.get(RATE))).rem_euclid(COLS as f64) as f32;
             let x = rect.left() + at * cs;
-            painter.rect_filled(Rect::from_min_max(pos2(x, rect.top()), pos2(x + cs, rect.bottom())), 2.0 * z, alpha(self.accent, 0.1));
-            painter.vline(x + cs, rect.y_range(), Stroke::new(1.0 * z, alpha(self.accent, 0.4)));
+            painter.rect_filled(
+                Rect::from_min_max(pos2(x, rect.top()), pos2(x + cs, rect.bottom())),
+                2.0 * z,
+                alpha(self.accent, 0.1),
+            );
+            painter.vline(
+                x + cs,
+                rect.y_range(),
+                Stroke::new(1.0 * z, alpha(self.accent, 0.4)),
+            );
         }
         for y in 0..H {
             for x in 0..COLS {
@@ -474,9 +702,17 @@ impl Panel<'_, '_> {
                 let color = self.cell_color(if age > 0.0 { age } else { 8.0 });
                 let size = cs * (0.3 + 0.55 * g);
                 if age <= 1.5 && age > 0.0 {
-                    painter.rect_filled(Rect::from_center_size(r.center(), vec2(size, size) * 1.5), 4.0 * z, alpha(color, 0.12 * g));
+                    painter.rect_filled(
+                        Rect::from_center_size(r.center(), vec2(size, size) * 1.5),
+                        4.0 * z,
+                        alpha(color, 0.12 * g),
+                    );
                 }
-                painter.rect_filled(Rect::from_center_size(r.center(), vec2(size, size)), 2.5 * z, alpha(color, g));
+                painter.rect_filled(
+                    Rect::from_center_size(r.center(), vec2(size, size)),
+                    2.5 * z,
+                    alpha(color, g),
+                );
                 self.ripple(painter, r.center(), size, self.now - view.flash[i]);
             }
         }
@@ -513,13 +749,28 @@ impl Panel<'_, '_> {
         for x in 0..COLS {
             let pc = h.pc(x as i32);
             if chord.contains(pc) {
-                let col = Rect::from_min_max(pos2(rect.left() + x as f32 * cs, rect.top()), pos2(rect.left() + (x + 1) as f32 * cs, rect.bottom()));
-                painter.rect_filled(col, 0.0, alpha(function_color(degree), if pc == chord.pcs[0] { 0.1 } else { 0.05 }));
+                let col = Rect::from_min_max(
+                    pos2(rect.left() + x as f32 * cs, rect.top()),
+                    pos2(rect.left() + (x + 1) as f32 * cs, rect.bottom()),
+                );
+                painter.rect_filled(
+                    col,
+                    0.0,
+                    alpha(
+                        function_color(degree),
+                        if pc == chord.pcs[0] { 0.1 } else { 0.05 },
+                    ),
+                );
             }
         }
         // The generations slide down one row as a new one arrives.
         let step_seconds = 60.0 / (v.tempo.max(1.0) as f64 * steps_per_beat(p.get(RATE)));
-        let scroll = if self.playing { (1.0 - (self.now - view.generation.1) / (step_seconds * 0.6).min(0.15)).clamp(0.0, 1.0) as f32 } else { 0.0 };
+        let scroll = if self.playing {
+            (1.0 - (self.now - view.generation.1) / (step_seconds * 0.6).min(0.15)).clamp(0.0, 1.0)
+                as f32
+        } else {
+            0.0
+        };
         for age in 0..HISTORY {
             let fade = (1.0 - age as f32 / HISTORY as f32).powf(1.3);
             let top = rect.top() + (age as f32 - scroll) * cs;
@@ -527,8 +778,13 @@ impl Panel<'_, '_> {
                 if p.viz[viz::CELLS + age * COLS + x].get() < 0.5 {
                     continue;
                 }
-                let r = Rect::from_min_size(pos2(rect.left() + x as f32 * cs, top), vec2(cs, cs)).shrink(1.5 * z);
-                let color = if age == 0 { mix(self.accent, Color32::WHITE, 0.5) } else { self.accent };
+                let r = Rect::from_min_size(pos2(rect.left() + x as f32 * cs, top), vec2(cs, cs))
+                    .shrink(1.5 * z);
+                let color = if age == 0 {
+                    mix(self.accent, Color32::WHITE, 0.5)
+                } else {
+                    self.accent
+                };
                 if age == 0 {
                     painter.rect_filled(r.expand(2.5 * z), 4.0 * z, alpha(color, 0.15));
                 }
@@ -539,9 +795,20 @@ impl Panel<'_, '_> {
             }
         }
         let line = rect.top() + (1.0 - scroll) * cs;
-        painter.hline(rect.x_range(), line, Stroke::new(1.0 * z, alpha(self.accent, 0.3)));
+        painter.hline(
+            rect.x_range(),
+            line,
+            Stroke::new(1.0 * z, alpha(self.accent, 0.3)),
+        );
         let (rule, what) = CASCADE_RULES[am::int(p, CASCADE_RULE, 0, 7) as usize];
-        v.text(PAD + 6.0, BOTTOM - 8.0, Align2::LEFT_CENTER, format!("rule {rule} · {what}"), v.font(6.5), alpha(theme::TEXT_FAINT, 0.8));
+        v.text(
+            PAD + 6.0,
+            BOTTOM - 8.0,
+            Align2::LEFT_CENTER,
+            format!("rule {rule} · {what}"),
+            v.font(6.5),
+            alpha(theme::TEXT_FAINT, 0.8),
+        );
     }
 
     /// The infinity series as a binary tree, six levels down from the
@@ -560,37 +827,103 @@ impl Panel<'_, '_> {
             let c = leaves[(term & 63) as usize];
             let t = ((self.now - at) / 1.6) as f32;
             if t < 1.0 {
-                painter.circle_filled(c, (2.5 + 3.5 * (1.0 - t)) * z, alpha(Color32::WHITE, 0.6 * (1.0 - t)));
+                painter.circle_filled(
+                    c,
+                    (2.5 + 3.5 * (1.0 - t)) * z,
+                    alpha(Color32::WHITE, 0.6 * (1.0 - t)),
+                );
             }
         }
         if self.playing {
             let c = leaves[(n & 63) as usize];
-            let since = view.leaves.back().map_or(1.0, |&(_, at)| (self.now - at) as f32);
+            let since = view
+                .leaves
+                .back()
+                .map_or(1.0, |&(_, at)| (self.now - at) as f32);
             let pulse = (1.0 - since / 0.4).clamp(0.0, 1.0);
-            painter.circle_filled(c, (4.0 + 4.0 * pulse) * z, alpha(self.accent, 0.35 + 0.4 * pulse));
-            painter.circle_stroke(c, (7.0 + 10.0 * (1.0 - pulse)) * z, Stroke::new(1.2 * z, alpha(Color32::WHITE, pulse)));
+            painter.circle_filled(
+                c,
+                (4.0 + 4.0 * pulse) * z,
+                alpha(self.accent, 0.35 + 0.4 * pulse),
+            );
+            painter.circle_stroke(
+                c,
+                (7.0 + 10.0 * (1.0 - pulse)) * z,
+                Stroke::new(1.2 * z, alpha(Color32::WHITE, pulse)),
+            );
         }
         // The term's address: its last six bits, the turns taken.
-        let bits: String = (0..6).rev().map(|k| if n >> k & 1 == 1 { '1' } else { '0' }).collect();
-        v.text(PAD + 8.0, TOP + 12.0, Align2::LEFT_CENTER, format!("n = {n}"), v.mono(8.0), theme::TEXT_DIM);
-        v.text(PAD + 8.0, TOP + 24.0, Align2::LEFT_CENTER, format!("…{bits}"), v.mono(8.0), alpha(self.accent, 0.9));
-        v.text(PAD + WORLD - 8.0, TOP + 12.0, Align2::RIGHT_CENTER, format!("a(n) = {:+}", series(n)), v.mono(8.0), theme::TEXT_DIM);
-        v.text(PAD + 6.0, BOTTOM - 8.0, Align2::LEFT_CENTER, "0 ← turn over · step up → 1", v.font(6.5), alpha(theme::TEXT_FAINT, 0.8));
+        let bits: String = (0..6)
+            .rev()
+            .map(|k| if n >> k & 1 == 1 { '1' } else { '0' })
+            .collect();
+        v.text(
+            PAD + 8.0,
+            TOP + 12.0,
+            Align2::LEFT_CENTER,
+            format!("n = {n}"),
+            v.mono(8.0),
+            theme::TEXT_DIM,
+        );
+        v.text(
+            PAD + 8.0,
+            TOP + 24.0,
+            Align2::LEFT_CENTER,
+            format!("…{bits}"),
+            v.mono(8.0),
+            alpha(self.accent, 0.9),
+        );
+        v.text(
+            PAD + WORLD - 8.0,
+            TOP + 12.0,
+            Align2::RIGHT_CENTER,
+            format!("a(n) = {:+}", series(n)),
+            v.mono(8.0),
+            theme::TEXT_DIM,
+        );
+        v.text(
+            PAD + 6.0,
+            BOTTOM - 8.0,
+            Align2::LEFT_CENTER,
+            "0 ← turn over · step up → 1",
+            v.font(6.5),
+            alpha(theme::TEXT_FAINT, 0.8),
+        );
     }
 
     /// One branch and those above it; returns where the 64 leaves are.
     #[allow(clippy::too_many_arguments)]
-    fn branch(&self, painter: &Painter, n: u64, depth: u32, prefix: u64, from: Pos2, angle: f32, length: f32) -> [Pos2; 64] {
+    fn branch(
+        &self,
+        painter: &Painter,
+        n: u64,
+        depth: u32,
+        prefix: u64,
+        from: Pos2,
+        angle: f32,
+        length: f32,
+    ) -> [Pos2; 64] {
         let z = self.z();
         let to = from + vec2(angle.cos(), angle.sin()) * length;
         let term = series((n >> 6) << depth | prefix);
         let t = (term as f32 / 5.0).clamp(-1.0, 1.0);
-        let base = if t < 0.0 { mix(theme::TEXT_DIM, LOW, -t) } else { mix(theme::TEXT_DIM, HIGH, t) };
+        let base = if t < 0.0 {
+            mix(theme::TEXT_DIM, LOW, -t)
+        } else {
+            mix(theme::TEXT_DIM, HIGH, t)
+        };
         let lit = (n & 63) >> (6 - depth) == prefix;
         let width = (3.2 - 0.42 * depth as f32) * z;
-        let (color, width) = if lit && self.playing { (mix(base, Color32::WHITE, 0.6), width + 1.2 * z) } else { (alpha(base, 0.75), width) };
+        let (color, width) = if lit && self.playing {
+            (mix(base, Color32::WHITE, 0.6), width + 1.2 * z)
+        } else {
+            (alpha(base, 0.75), width)
+        };
         if lit && self.playing {
-            painter.line_segment([from, to], Stroke::new(width + 4.0 * z, alpha(self.accent, 0.18)));
+            painter.line_segment(
+                [from, to],
+                Stroke::new(width + 4.0 * z, alpha(self.accent, 0.18)),
+            );
         }
         painter.line_segment([from, to], Stroke::new(width, color));
         let mut leaves = [to; 64];
@@ -600,8 +933,24 @@ impl Panel<'_, '_> {
         }
         let spread = 0.5 - 0.035 * depth as f32;
         let shrink = if depth == 0 { 0.72 } else { 0.7 };
-        let left = self.branch(painter, n, depth + 1, prefix << 1, to, angle - spread, length * shrink);
-        let right = self.branch(painter, n, depth + 1, prefix << 1 | 1, to, angle + spread, length * shrink);
+        let left = self.branch(
+            painter,
+            n,
+            depth + 1,
+            prefix << 1,
+            to,
+            angle - spread,
+            length * shrink,
+        );
+        let right = self.branch(
+            painter,
+            n,
+            depth + 1,
+            prefix << 1 | 1,
+            to,
+            angle + spread,
+            length * shrink,
+        );
         // The leaves under this branch: left's first, then right's.
         let below = 1usize << (5 - depth);
         let first = ((prefix as usize) << (6 - depth)) & 63;
@@ -621,7 +970,9 @@ impl Panel<'_, '_> {
     fn julia(&self, painter: &Painter, rect: Rect, view: &mut View) {
         let (v, p, z) = (self.v, self.p, self.z());
         let c = (p.viz[viz::C].get(), p.viz[viz::C + 1].get());
-        let stale = view.julia.as_ref().is_none_or(|(_, at, color)| (at.0 - c.0).abs() + (at.1 - c.1).abs() > 2e-4 || *color != self.accent);
+        let stale = view.julia.as_ref().is_none_or(|(_, at, color)| {
+            (at.0 - c.0).abs() + (at.1 - c.1).abs() > 2e-4 || *color != self.accent
+        });
         if stale {
             let image = julia_image(c, self.accent);
             match &mut view.julia {
@@ -629,11 +980,23 @@ impl Panel<'_, '_> {
                     texture.set(image, TextureOptions::LINEAR);
                     (*at, *color) = (c, self.accent);
                 }
-                None => view.julia = Some((v.ui.ctx().load_texture("automa-julia", image, TextureOptions::LINEAR), c, self.accent)),
+                None => {
+                    view.julia = Some((
+                        v.ui.ctx()
+                            .load_texture("automa-julia", image, TextureOptions::LINEAR),
+                        c,
+                        self.accent,
+                    ))
+                }
             }
         }
         if let Some((texture, _, _)) = &view.julia {
-            painter.image(texture.id(), rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+            painter.image(
+                texture.id(),
+                rect,
+                Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+                Color32::WHITE,
+            );
         }
 
         // The fixed point the orbit turns round.
@@ -648,23 +1011,55 @@ impl Panel<'_, '_> {
         let points: Vec<Pos2> = (0..viz::ORBIT_LEN)
             .map(|k| {
                 let i = (pos + k) % viz::ORBIT_LEN;
-                Self::plane(rect, (p.viz[viz::ORBIT + 2 * i].get(), p.viz[viz::ORBIT + 2 * i + 1].get()))
+                Self::plane(
+                    rect,
+                    (
+                        p.viz[viz::ORBIT + 2 * i].get(),
+                        p.viz[viz::ORBIT + 2 * i + 1].get(),
+                    ),
+                )
             })
             .collect();
         for (k, pair) in points.windows(2).enumerate() {
             let a = (k + 1) as f32 / viz::ORBIT_LEN as f32;
-            painter.line_segment([pair[0], pair[1]], Stroke::new((0.6 + 1.4 * a) * z, alpha(mix(self.accent, Color32::WHITE, 0.5), a * 0.9)));
+            painter.line_segment(
+                [pair[0], pair[1]],
+                Stroke::new(
+                    (0.6 + 1.4 * a) * z,
+                    alpha(mix(self.accent, Color32::WHITE, 0.5), a * 0.9),
+                ),
+            );
             painter.circle_filled(pair[1], (1.0 + 1.5 * a) * z, alpha(Color32::WHITE, a));
         }
         if let Some(&last) = points.last() {
-            let since = (self.now - view.generation.1.max(view.marks.back().map_or(f64::NEG_INFINITY, |m| m.at))) as f32;
-            let pulse = if self.playing { (1.0 - since / 0.35).clamp(0.0, 1.0) } else { 0.0 };
+            let since = (self.now
+                - view
+                    .generation
+                    .1
+                    .max(view.marks.back().map_or(f64::NEG_INFINITY, |m| m.at)))
+                as f32;
+            let pulse = if self.playing {
+                (1.0 - since / 0.35).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
             painter.circle_filled(last, (3.5 + 3.0 * pulse) * z, alpha(Color32::WHITE, 0.9));
-            painter.circle_stroke(last, (6.0 + 8.0 * (1.0 - pulse)) * z, Stroke::new(1.2 * z, alpha(self.accent, 0.3 + 0.7 * pulse)));
+            painter.circle_stroke(
+                last,
+                (6.0 + 8.0 * (1.0 - pulse)) * z,
+                Stroke::new(1.2 * z, alpha(self.accent, 0.3 + 0.7 * pulse)),
+            );
         }
 
         self.mandelbrot(painter, rect, view, c);
-        v.text(PAD + 6.0, BOTTOM - 8.0, Align2::LEFT_CENTER, format!("c = {:.3} {:+.3}i", c.0, c.1), v.mono(7.0), alpha(theme::TEXT_DIM, 0.9));
+        v.text(
+            PAD + 6.0,
+            BOTTOM - 8.0,
+            Align2::LEFT_CENTER,
+            format!("c = {:.3} {:+.3}i", c.0, c.1),
+            v.mono(7.0),
+            alpha(theme::TEXT_DIM, 0.9),
+        );
     }
 
     /// The Mandelbrot set in a corner, the path c takes round the cardioid
@@ -673,22 +1068,55 @@ impl Panel<'_, '_> {
         let z = self.z();
         const RE: (f32, f32) = (-2.1, 0.7);
         const IM: f32 = 1.2;
-        if view.mandelbrot.as_ref().is_none_or(|(_, color)| *color != self.accent) {
+        if view
+            .mandelbrot
+            .as_ref()
+            .is_none_or(|(_, color)| *color != self.accent)
+        {
             let image = mandelbrot_image(RE, IM, self.accent);
-            view.mandelbrot = Some((self.v.ui.ctx().load_texture("automa-mandelbrot", image, TextureOptions::LINEAR), self.accent));
+            view.mandelbrot = Some((
+                self.v
+                    .ui
+                    .ctx()
+                    .load_texture("automa-mandelbrot", image, TextureOptions::LINEAR),
+                self.accent,
+            ));
         }
-        let inset = Rect::from_min_size(rect.right_top() + vec2(-82.0 * z, 6.0 * z), vec2(76.0, 65.0) * z);
+        let inset = Rect::from_min_size(
+            rect.right_top() + vec2(-82.0 * z, 6.0 * z),
+            vec2(76.0, 65.0) * z,
+        );
         painter.rect_filled(inset.expand(1.0 * z), 3.0 * z, theme::INSET);
         if let Some((texture, _)) = &view.mandelbrot {
-            painter.image(texture.id(), inset, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+            painter.image(
+                texture.id(),
+                inset,
+                Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+                Color32::WHITE,
+            );
         }
-        let at = |(x, y): (f32, f32)| pos2(inset.left() + (x - RE.0) / (RE.1 - RE.0) * inset.width(), inset.center().y - y / IM * inset.height() * 0.5);
+        let at = |(x, y): (f32, f32)| {
+            pos2(
+                inset.left() + (x - RE.0) / (RE.1 - RE.0) * inset.width(),
+                inset.center().y - y / IM * inset.height() * 0.5,
+            )
+        };
         let chaos = self.p.get(CHAOS);
-        let path: Vec<Pos2> = (0..=48).map(|k| at(julia_c(k as f32 / 48.0, chaos, 0.0, 0.0))).collect();
-        painter.add(Shape::line(path, Stroke::new(0.8 * z, alpha(theme::TEXT, 0.35))));
+        let path: Vec<Pos2> = (0..=48)
+            .map(|k| at(julia_c(k as f32 / 48.0, chaos, 0.0, 0.0)))
+            .collect();
+        painter.add(Shape::line(
+            path,
+            Stroke::new(0.8 * z, alpha(theme::TEXT, 0.35)),
+        ));
         painter.circle_filled(at(c), 2.5 * z, Color32::WHITE);
         painter.circle_stroke(at(c), 4.5 * z, Stroke::new(1.0 * z, self.accent));
-        painter.rect_stroke(inset, 3.0 * z, Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.5)), StrokeKind::Outside);
+        painter.rect_stroke(
+            inset,
+            3.0 * z,
+            Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.5)),
+            StrokeKind::Outside,
+        );
     }
 
     /// The notes as they play, over the lanes of each chord's tones; the
@@ -697,7 +1125,9 @@ impl Panel<'_, '_> {
         let (v, p, z) = (self.v, self.p, self.z());
         let rect = v.r(ROLL_X, TOP, W - PAD, BOTTOM);
         v.painter.rect_filled(rect, 4.0 * z, theme::INSET);
-        let painter = v.painter.with_clip_rect(rect.intersect(v.painter.clip_rect()));
+        let painter = v
+            .painter
+            .with_clip_rect(rect.intersect(v.painter.clip_rect()));
         let per_beat = steps_per_beat(p.get(RATE));
         let now = self.beat * per_beat;
         let px = rect.width() as f64 / ROLL_STEPS;
@@ -725,13 +1155,29 @@ impl Panel<'_, '_> {
                     if chord.contains(pc) {
                         let a = if pc == chord.pcs[0] { 0.2 } else { 0.09 };
                         let y = y_of(pitch);
-                        painter.rect_filled(Rect::from_min_max(pos2(x0, y - rh * 0.45), pos2(x1, y + rh * 0.45)), 0.0, alpha(color, a));
+                        painter.rect_filled(
+                            Rect::from_min_max(pos2(x0, y - rh * 0.45), pos2(x1, y + rh * 0.45)),
+                            0.0,
+                            alpha(color, a),
+                        );
                     }
                 }
                 painter.vline(x0, rect.y_range(), Stroke::new(1.0 * z, alpha(color, 0.35)));
                 if theme::font(8.0 * z).size >= 4.0 {
-                    painter.text(pos2(x0 + 4.0 * z, rect.top() + 8.0 * z), Align2::LEFT_CENTER, chord.name(&h), v.mono(8.5), alpha(color, 0.95));
-                    painter.text(pos2(x0 + 4.0 * z, rect.top() + 19.0 * z), Align2::LEFT_CENTER, chord.numeral(), v.font(7.0), alpha(color, 0.6));
+                    painter.text(
+                        pos2(x0 + 4.0 * z, rect.top() + 8.0 * z),
+                        Align2::LEFT_CENTER,
+                        chord.name(&h),
+                        v.mono(8.5),
+                        alpha(color, 0.95),
+                    );
+                    painter.text(
+                        pos2(x0 + 4.0 * z, rect.top() + 19.0 * z),
+                        Align2::LEFT_CENTER,
+                        chord.numeral(),
+                        v.font(7.0),
+                        alpha(color, 0.6),
+                    );
                 }
             }
             beat += prog.beats;
@@ -740,13 +1186,23 @@ impl Panel<'_, '_> {
         let mut bar = (first / 4.0).floor() * 4.0;
         while bar < last {
             if bar >= 0.0 && (bar / prog.beats).fract().abs() > 1e-6 {
-                painter.vline(x_of(bar * per_beat), rect.y_range(), Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.12)));
+                painter.vline(
+                    x_of(bar * per_beat),
+                    rect.y_range(),
+                    Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.12)),
+                );
             }
             bar += 4.0;
         }
         // The tonic of each octave.
         for pitch in (low..=high).filter(|&n| n.rem_euclid(12) == h.key as i32) {
-            painter.text(pos2(rect.left() + 4.0 * z, y_of(pitch)), Align2::LEFT_CENTER, note_label(pitch), v.font(6.5), alpha(theme::TEXT_FAINT, 0.9));
+            painter.text(
+                pos2(rect.left() + 4.0 * z, y_of(pitch)),
+                Align2::LEFT_CENTER,
+                note_label(pitch),
+                v.font(6.5),
+                alpha(theme::TEXT_FAINT, 0.9),
+            );
         }
 
         // The melody's line: its notes joined, broken by rests over a beat.
@@ -775,24 +1231,55 @@ impl Panel<'_, '_> {
             let y = y_of(m.pitch as i32);
             let fresh = (1.0 - (self.now - m.at) / 0.35).clamp(0.0, 1.0) as f32;
             let level = 0.45 + 0.55 * m.velocity as f32 / 127.0;
-            let r = Rect::from_min_max(pos2(x0, y - rh * 0.42), pos2(x1.max(x0 + 2.0 * z), y + rh * 0.42));
+            let r = Rect::from_min_max(
+                pos2(x0, y - rh * 0.42),
+                pos2(x1.max(x0 + 2.0 * z), y + rh * 0.42),
+            );
             if m.voice as usize == PAD_VOICE {
                 // The pad: the chord held, framed in its function's colour.
                 let color = function_color(self.chord_at(m.step / per_beat).0);
                 let r = r.shrink2(vec2(1.0 * z, 0.0));
                 painter.rect_filled(r, 2.0 * z, alpha(color, 0.38 * level));
-                painter.rect_stroke(r, 2.0 * z, Stroke::new(1.0 * z, alpha(color, 0.85)), StrokeKind::Inside);
+                painter.rect_stroke(
+                    r,
+                    2.0 * z,
+                    Stroke::new(1.0 * z, alpha(color, 0.85)),
+                    StrokeKind::Inside,
+                );
                 continue;
             }
-            let color = if m.voice == 0 { mix(self.accent, Color32::WHITE, 0.35) } else { mix(self.accent, theme::TEXT_DIM, 0.35) };
+            let color = if m.voice == 0 {
+                mix(self.accent, Color32::WHITE, 0.35)
+            } else {
+                mix(self.accent, theme::TEXT_DIM, 0.35)
+            };
             if fresh > 0.0 {
-                painter.rect_filled(r.expand(3.0 * z * fresh), 3.0 * z, alpha(color, 0.3 * fresh));
+                painter.rect_filled(
+                    r.expand(3.0 * z * fresh),
+                    3.0 * z,
+                    alpha(color, 0.3 * fresh),
+                );
             }
-            painter.rect_filled(r, 1.5 * z, alpha(mix(color, Color32::WHITE, fresh * 0.6), level));
+            painter.rect_filled(
+                r,
+                1.5 * z,
+                alpha(mix(color, Color32::WHITE, fresh * 0.6), level),
+            );
         }
         // What is to come, behind a veil; now.
-        painter.rect_filled(Rect::from_min_max(pos2(now_x, rect.top()), rect.right_bottom()), 0.0, alpha(Color32::BLACK, 0.28));
-        painter.vline(now_x, rect.y_range(), Stroke::new(1.0 * z, alpha(theme::TEXT, if self.playing { 0.45 } else { 0.2 })));
+        painter.rect_filled(
+            Rect::from_min_max(pos2(now_x, rect.top()), rect.right_bottom()),
+            0.0,
+            alpha(Color32::BLACK, 0.28),
+        );
+        painter.vline(
+            now_x,
+            rect.y_range(),
+            Stroke::new(
+                1.0 * z,
+                alpha(theme::TEXT, if self.playing { 0.45 } else { 0.2 }),
+            ),
+        );
     }
 
     /// The progression: drag a chord up or down to change it, click one
@@ -807,37 +1294,82 @@ impl Panel<'_, '_> {
         let (playing_slot, cycle) = prog.slot_at(self.beat.max(0.0));
         let phase = (self.beat.max(0.0).rem_euclid(prog.beats) / prog.beats) as f32;
         for i in 0..SLOTS {
-            let rect = v.r(x0 + sw * i as f32 + 2.0, y0, x0 + sw * (i + 1) as f32 - 2.0, y1);
+            let rect = v.r(
+                x0 + sw * i as f32 + 2.0,
+                y0,
+                x0 + sw * (i + 1) as f32 - 2.0,
+                y1,
+            );
             let active = i < prog.len;
             let written = prog.degrees[i];
-            let degree = if active { prog.degree(i, if self.playing { cycle } else { 0 }) } else { written };
+            let degree = if active {
+                prog.degree(i, if self.playing { cycle } else { 0 })
+            } else {
+                written
+            };
             let chord = h.chord(degree);
             let color = function_color(degree);
             let current = active && i == playing_slot;
-            v.painter.rect_filled(rect, 3.0 * z, if current { theme::CONTROL } else { theme::INSET });
+            v.painter.rect_filled(
+                rect,
+                3.0 * z,
+                if current {
+                    theme::CONTROL
+                } else {
+                    theme::INSET
+                },
+            );
             let ink = if active { 1.0 } else { 0.3 };
-            v.painter.rect_filled(Rect::from_min_size(rect.min, vec2(rect.width(), 3.0 * z)), 1.5 * z, alpha(color, 0.9 * ink));
+            v.painter.rect_filled(
+                Rect::from_min_size(rect.min, vec2(rect.width(), 3.0 * z)),
+                1.5 * z,
+                alpha(color, 0.9 * ink),
+            );
             let cx = rect.center().x;
-            let numeral_color = if current { theme::TEXT } else { alpha(theme::TEXT_DIM, ink) };
-            v.painter.text(pos2(cx, rect.top() + 15.0 * z), Align2::CENTER_CENTER, chord.numeral(), theme::strong(11.0 * z), numeral_color);
-            v.painter.text(pos2(cx, rect.top() + 29.0 * z), Align2::CENTER_CENTER, chord.name(&h), v.mono(8.0), alpha(color, 0.85 * ink));
+            let numeral_color = if current {
+                theme::TEXT
+            } else {
+                alpha(theme::TEXT_DIM, ink)
+            };
+            v.painter.text(
+                pos2(cx, rect.top() + 15.0 * z),
+                Align2::CENTER_CENTER,
+                chord.numeral(),
+                theme::strong(11.0 * z),
+                numeral_color,
+            );
+            v.painter.text(
+                pos2(cx, rect.top() + 29.0 * z),
+                Align2::CENTER_CENTER,
+                chord.name(&h),
+                v.mono(8.0),
+                alpha(color, 0.85 * ink),
+            );
             if degree != written {
                 // WANDER put another chord of the same function here.
-                v.painter.text(rect.right_top() + vec2(-4.0, 9.0) * z, Align2::RIGHT_CENTER, "~", v.mono(8.0), alpha(color, 0.9));
+                v.painter.text(
+                    rect.right_top() + vec2(-4.0, 9.0) * z,
+                    Align2::RIGHT_CENTER,
+                    "~",
+                    v.mono(8.0),
+                    alpha(color, 0.9),
+                );
             }
             if current && self.playing {
-                let bar = Rect::from_min_size(pos2(rect.left(), rect.bottom() - 2.0 * z), vec2(rect.width() * phase, 2.0 * z));
+                let bar = Rect::from_min_size(
+                    pos2(rect.left(), rect.bottom() - 2.0 * z),
+                    vec2(rect.width() * phase, 2.0 * z),
+                );
                 v.painter.rect_filled(bar, 1.0 * z, self.accent);
             }
-            let resp = v
-                .ui
-                .interact(rect, self.uid(("slot", i)), Sense::click_and_drag())
-                .on_hover_cursor(CursorIcon::ResizeVertical)
-                .on_hover_text(if active {
-                    "Drag up or down to change the chord"
-                } else {
-                    "Click to make the progression this long"
-                });
+            let resp =
+                v.ui.interact(rect, self.uid(("slot", i)), Sense::click_and_drag())
+                    .on_hover_cursor(CursorIcon::ResizeVertical)
+                    .on_hover_text(if active {
+                        "Drag up or down to change the chord"
+                    } else {
+                        "Click to make the progression this long"
+                    });
             if resp.clicked() && !active {
                 p.data[data::CHORDS].set((i + 1) as f32);
             }
@@ -860,29 +1392,58 @@ impl Panel<'_, '_> {
             }
         }
 
-        let menu = widgets::toggle(v.ui, v.painter, self.uid("chords"), v.r(W - PAD - 84.0, y0 + 2.0, W - PAD, y0 + 18.0), "CHORDS ▾", false, self.accent, z)
-            .on_hover_text("Progressions, and how many chords");
-        v.text(W - PAD - 42.0, y0 + 31.0, Align2::CENTER_CENTER, format!("{} × {}", prog.len, CHANGES[am::int(p, CHANGE, 0, 3) as usize].0.to_lowercase()), v.font(7.5), theme::TEXT_FAINT);
-        egui::Popup::menu(&menu).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
-            ui.set_min_width(240.0);
-            ui.weak("Progressions (in this key and scale)");
-            for (name, degrees) in PRESETS {
-                let numerals: Vec<String> = degrees.iter().map(|&d| h.chord(d).numeral()).collect();
-                if ui.button(format!("{name}   {}", numerals.join("–"))).clicked() {
-                    am::set_progression(p, degrees);
-                    ui.close();
-                }
-            }
-            ui.separator();
-            ui.horizontal(|ui| {
-                ui.weak("Chords");
-                for len in 1..=SLOTS {
-                    if ui.selectable_label(prog.len == len, len.to_string()).clicked() {
-                        p.data[data::CHORDS].set(len as f32);
+        let menu = widgets::toggle(
+            v.ui,
+            v.painter,
+            self.uid("chords"),
+            v.r(W - PAD - 84.0, y0 + 2.0, W - PAD, y0 + 18.0),
+            "CHORDS ▾",
+            false,
+            self.accent,
+            z,
+        )
+        .on_hover_text("Progressions, and how many chords");
+        v.text(
+            W - PAD - 42.0,
+            y0 + 31.0,
+            Align2::CENTER_CENTER,
+            format!(
+                "{} × {}",
+                prog.len,
+                CHANGES[am::int(p, CHANGE, 0, 3) as usize].0.to_lowercase()
+            ),
+            v.font(7.5),
+            theme::TEXT_FAINT,
+        );
+        egui::Popup::menu(&menu)
+            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+            .show(|ui| {
+                ui.set_min_width(240.0);
+                ui.weak("Progressions (in this key and scale)");
+                for (name, degrees) in PRESETS {
+                    let numerals: Vec<String> =
+                        degrees.iter().map(|&d| h.chord(d).numeral()).collect();
+                    if ui
+                        .button(format!("{name}   {}", numerals.join("–")))
+                        .clicked()
+                    {
+                        am::set_progression(p, degrees);
+                        ui.close();
                     }
                 }
+                ui.separator();
+                ui.horizontal(|ui| {
+                    ui.weak("Chords");
+                    for len in 1..=SLOTS {
+                        if ui
+                            .selectable_label(prog.len == len, len.to_string())
+                            .clicked()
+                        {
+                            p.data[data::CHORDS].set(len as f32);
+                        }
+                    }
+                });
             });
-        });
     }
 
     /// The knob groups: the generator's, RHYTHM and MELODY, then HARMONY
@@ -899,13 +1460,35 @@ impl Panel<'_, '_> {
             self.knob(i, PAD + 38.0 + 76.0 * k as f32, bottom + 14.0, label);
         }
         const CHIPS: [(usize, &str, &str); 3] = [
-            (data::SEVENTHS, "7THS", "Chords with their seventh (the melody's chord tones too)"),
-            (data::PAD, "PAD", "Play the chords as well, under the melody's range, by inversion"),
-            (data::WANDER, "WANDER", "After the first time round, a chord may give way to another of the same function"),
+            (
+                data::SEVENTHS,
+                "7THS",
+                "Chords with their seventh (the melody's chord tones too)",
+            ),
+            (
+                data::PAD,
+                "PAD",
+                "Play the chords as well, under the melody's range, by inversion",
+            ),
+            (
+                data::WANDER,
+                "WANDER",
+                "After the first time round, a chord may give way to another of the same function",
+            ),
         ];
         for (k, (i, label, tip)) in CHIPS.into_iter().enumerate() {
             let x = 250.0 + 54.0 * k as f32;
-            let resp = widgets::toggle(v.ui, v.painter, self.uid(label), v.r(x, bottom + 16.0, x + 50.0, bottom + 32.0), label, self.on(i), self.accent, z).on_hover_text(tip);
+            let resp = widgets::toggle(
+                v.ui,
+                v.painter,
+                self.uid(label),
+                v.r(x, bottom + 16.0, x + 50.0, bottom + 32.0),
+                label,
+                self.on(i),
+                self.accent,
+                z,
+            )
+            .on_hover_text(tip);
             if resp.clicked() {
                 self.flip(i);
             }
@@ -913,15 +1496,33 @@ impl Panel<'_, '_> {
         let h = am::harmony(p);
         let (_, chord) = self.chord_at(self.beat);
         let tones: Vec<&str> = chord.tones().iter().map(|&pc| h.name(pc)).collect();
-        v.text(330.0, bottom + 46.0, Align2::CENTER_CENTER, format!("{} · {}", chord.name(&h), tones.join(" ")), v.mono(8.0), theme::TEXT_DIM);
+        v.text(
+            330.0,
+            bottom + 46.0,
+            Align2::CENTER_CENTER,
+            format!("{} · {}", chord.name(&h), tones.join(" ")),
+            v.mono(8.0),
+            theme::TEXT_DIM,
+        );
         self.group("OUTPUT", 422.0, W - PAD, bottom, &OUTPUT);
     }
 
     fn group_title(&self, title: &str, x0: f32, x1: f32, y: f32) {
         let (v, z) = (self.v, self.z());
-        let r = v.text(x0, y, Align2::LEFT_CENTER, title, theme::strong(8.5 * z), theme::TEXT_DIM);
+        let r = v.text(
+            x0,
+            y,
+            Align2::LEFT_CENTER,
+            title,
+            theme::strong(8.5 * z),
+            theme::TEXT_DIM,
+        );
         let from = (r.right() + 8.0 * z).max(v.p(x0 + 50.0, 0.0).x);
-        v.painter.hline(from..=v.p(x1, 0.0).x, v.p(0.0, y).y, Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.3)));
+        v.painter.hline(
+            from..=v.p(x1, 0.0).x,
+            v.p(0.0, y).y,
+            Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.3)),
+        );
     }
 
     fn group(&self, title: &str, x0: f32, x1: f32, y: f32, knobs: &Knobs) {
@@ -938,31 +1539,65 @@ impl Panel<'_, '_> {
         let (v, p, z) = (self.v, self.p, self.z());
         const R: f32 = 10.0;
         let spec = am::spec(i);
-        v.text(cx, y, Align2::CENTER_CENTER, label, v.font(7.5), theme::TEXT_FAINT);
+        v.text(
+            cx,
+            y,
+            Align2::CENTER_CENTER,
+            label,
+            v.font(7.5),
+            theme::TEXT_FAINT,
+        );
         let top = y + 8.0;
         let mut norm = spec.to_norm(p.get(i));
-        let resp = widgets::knob(v.ui, v.painter, self.uid(("knob", i)), v.p(cx, top + R), R * z, &mut norm, spec.to_norm(spec.default), spec.bipolar, self.accent, z);
+        let resp = widgets::knob(
+            v.ui,
+            v.painter,
+            self.uid(("knob", i)),
+            v.p(cx, top + R),
+            R * z,
+            &mut norm,
+            spec.to_norm(spec.default),
+            spec.bipolar,
+            self.accent,
+            z,
+        );
         let tip = match i {
             SCALE => SCALES[am::int(p, SCALE, 0, 7) as usize].1.to_owned(),
-            LIFE_RULE => LIFE_RULES[am::int(p, LIFE_RULE, 0, 5) as usize].1.to_owned(),
+            LIFE_RULE => LIFE_RULES[am::int(p, LIFE_RULE, 0, 5) as usize]
+                .1
+                .to_owned(),
             CASCADE_RULE => {
                 let (rule, what) = CASCADE_RULES[am::int(p, CASCADE_RULE, 0, 7) as usize];
                 format!("Rule {rule}: {what}")
             }
-            _ => TIPS.iter().find(|(k, _)| *k == i).map_or("", |(_, t)| *t).to_owned(),
+            _ => TIPS
+                .iter()
+                .find(|(k, _)| *k == i)
+                .map_or("", |(_, t)| *t)
+                .to_owned(),
         };
         let resp = resp.on_hover_text(tip);
         v.hit(resp.rect, ParamRef::Module(i));
         if resp.dragged() || resp.double_clicked() {
             let value = spec.denorm(norm);
-            let whole = matches!(spec.unit, Unit::Integer | Unit::Division | Unit::NoteName | Unit::Channel);
+            let whole = matches!(
+                spec.unit,
+                Unit::Integer | Unit::Division | Unit::NoteName | Unit::Channel
+            );
             let value = if whole { value.round() } else { value };
             if value != p.get(i) {
                 p.set(i, value);
             }
         }
         let hot = resp.dragged() || resp.hovered();
-        v.text(cx, top + 2.0 * R + 8.0, Align2::CENTER_CENTER, format(p, i), v.mono(7.0), if hot { theme::TEXT } else { theme::TEXT_DIM });
+        v.text(
+            cx,
+            top + 2.0 * R + 8.0,
+            Align2::CENTER_CENTER,
+            format(p, i),
+            v.mono(7.0),
+            if hot { theme::TEXT } else { theme::TEXT_DIM },
+        );
     }
 }
 
@@ -1001,5 +1636,9 @@ fn shade(t: f32, accent: Color32) -> Color32 {
     }
     let g = t.powf(0.5);
     let edge = ((t - 0.5) / 0.5).clamp(0.0, 1.0);
-    mix(mix(theme::INSET, accent, g), Color32::WHITE, edge * edge * 0.7)
+    mix(
+        mix(theme::INSET, accent, g),
+        Color32::WHITE,
+        edge * edge * 0.7,
+    )
 }

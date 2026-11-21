@@ -29,7 +29,15 @@ impl Fft {
 
     /// Runs units `from..` (at most `budget`) of the `n`-point transform of
     /// `re`, `im` in place; returns how far it got. Unnormalised both ways.
-    pub fn step(&self, re: &mut [f32], im: &mut [f32], n: usize, inverse: bool, from: usize, budget: usize) -> usize {
+    pub fn step(
+        &self,
+        re: &mut [f32],
+        im: &mut [f32],
+        n: usize,
+        inverse: bool,
+        from: usize,
+        budget: usize,
+    ) -> usize {
         debug_assert!(n.is_power_of_two() && n <= self.max_n);
         let log = n.trailing_zeros();
         let end = (from.saturating_add(budget)).min(Self::units(n));
@@ -94,7 +102,10 @@ mod tests {
                 dr += v as f64 * a.cos();
                 di += v as f64 * a.sin();
             }
-            assert!((re[k] as f64 - dr).abs() < 1e-4 && (im[k] as f64 - di).abs() < 1e-4, "bin {k}");
+            assert!(
+                (re[k] as f64 - dr).abs() < 1e-4 && (im[k] as f64 - di).abs() < 1e-4,
+                "bin {k}"
+            );
         }
         fft.run(&mut re, &mut im, n, true);
         for (i, &v) in x.iter().enumerate() {

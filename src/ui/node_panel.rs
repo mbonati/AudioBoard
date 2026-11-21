@@ -15,7 +15,12 @@ use crate::graph::{ModuleNode, TRACE_LEN};
 /// Draws plugin node `e`'s display in `rect` (already padded and clipped).
 pub fn display(painter: &Painter, rect: Rect, accent: Color32, z: f32, m: &ModuleNode, e: ExtId) {
     let node = ext(e);
-    let s = Screen { p: painter, rect, accent, z };
+    let s = Screen {
+        p: painter,
+        rect,
+        accent,
+        z,
+    };
     let viz = |i: usize| m.params.viz.get(i).map_or(0.0, |v| v.get());
     match node.panel.display {
         Display::None => {}
@@ -38,7 +43,11 @@ pub fn readout(p: &ModuleParams, e: ExtId) -> (String, String) {
     let mode = def.modes.get(p.mode()).copied().unwrap_or("");
     let main = match node.panel.readout {
         Readout::Name => def.name.to_owned(),
-        Readout::Param(i) => def.params.get(i).map(|spec| spec.format(p.get(i))).unwrap_or_default(),
+        Readout::Param(i) => def
+            .params
+            .get(i)
+            .map(|spec| spec.format(p.get(i)))
+            .unwrap_or_default(),
         Readout::Viz { index, unit } => {
             let v = p.viz.get(index).map_or(0.0, |v| v.get());
             ParamSpec::lin("", f32::MIN, f32::MAX, 0.0, unit).format(v)

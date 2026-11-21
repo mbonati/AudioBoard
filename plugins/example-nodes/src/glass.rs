@@ -63,7 +63,9 @@ impl Glass {
             .position(|v| v.env < 1e-4)
             .or_else(|| self.voices.iter().position(|v| v.note == note))
             .unwrap_or_else(|| {
-                (0..VOICES).min_by(|&a, &b| self.voices[a].env.total_cmp(&self.voices[b].env)).unwrap_or(0)
+                (0..VOICES)
+                    .min_by(|&a, &b| self.voices[a].env.total_cmp(&self.voices[b].env))
+                    .unwrap_or(0)
             });
         self.voices[i] = Voice {
             note,
@@ -99,12 +101,26 @@ impl Node for Glass {
             data: &[],
             ..NodeDef::EMPTY
         },
-        panel: Panel { display: Display::Curve { from: 0, count: CYCLE }, readout: Readout::Viz { index: LAST_NOTE, unit: Unit::Note } },
+        panel: Panel {
+            display: Display::Curve {
+                from: 0,
+                count: CYCLE,
+            },
+            readout: Readout::Viz {
+                index: LAST_NOTE,
+                unit: Unit::Note,
+            },
+        },
     };
 
     fn new(init: &Init) -> Self {
         init.params.set_viz(LAST_NOTE, 60.0);
-        Glass { params: init.params, sample_rate: init.sample_rate, voices: [Voice::default(); VOICES], level: Smoothed::new(0.0) }
+        Glass {
+            params: init.params,
+            sample_rate: init.sample_rate,
+            voices: [Voice::default(); VOICES],
+            level: Smoothed::new(0.0),
+        }
     }
 
     fn process(&mut self, ctx: &ProcessCtx, io: &mut Io<'_>) {

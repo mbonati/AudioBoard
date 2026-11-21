@@ -36,16 +36,25 @@ pub struct C {
 impl C {
     /// e^(−jw): one sample's delay at `w` radians a sample.
     pub fn delay(w: f32) -> C {
-        C { re: w.cos(), im: -w.sin() }
+        C {
+            re: w.cos(),
+            im: -w.sin(),
+        }
     }
 
     pub fn mul(self, o: C) -> C {
-        C { re: self.re * o.re - self.im * o.im, im: self.re * o.im + self.im * o.re }
+        C {
+            re: self.re * o.re - self.im * o.im,
+            im: self.re * o.im + self.im * o.re,
+        }
     }
 
     pub fn div(self, o: C) -> C {
         let d = (o.re * o.re + o.im * o.im).max(1e-30);
-        C { re: (self.re * o.re + self.im * o.im) / d, im: (self.im * o.re - self.re * o.im) / d }
+        C {
+            re: (self.re * o.re + self.im * o.im) / d,
+            im: (self.im * o.re - self.re * o.im) / d,
+        }
     }
 
     pub fn arg(self) -> f32 {
@@ -118,15 +127,33 @@ impl Strand {
         let z1 = C::delay(w);
         let r = 1.0 - TAU * DC_HZ / sr;
         let c = one_pole(DAMP_HZ, sr);
-        let dc = C { re: 1.0 - z1.re, im: -z1.im }.div(C { re: 1.0 - r * z1.re, im: -r * z1.im });
-        let lp = C { re: 1.0 - c, im: 0.0 }.div(C { re: 1.0 - c * z1.re, im: -c * z1.im });
+        let dc = C {
+            re: 1.0 - z1.re,
+            im: -z1.im,
+        }
+        .div(C {
+            re: 1.0 - r * z1.re,
+            im: -r * z1.im,
+        });
+        let lp = C {
+            re: 1.0 - c,
+            im: 0.0,
+        }
+        .div(C {
+            re: 1.0 - c * z1.re,
+            im: -c * z1.im,
+        });
         dc.mul(lp)
     }
 
     #[inline]
     fn age(&self, k: usize) -> f32 {
         // SAFETY: the length is a power of two and `mask` is length − 1.
-        unsafe { *self.line.get_unchecked(self.pos.wrapping_sub(k) & self.mask) }
+        unsafe {
+            *self
+                .line
+                .get_unchecked(self.pos.wrapping_sub(k) & self.mask)
+        }
     }
 
     #[inline]
@@ -135,7 +162,12 @@ impl Strand {
         let k = self.period - 1.0;
         let i = k as u32 as usize;
         let f = k - i as f32;
-        let (ym1, y0, y1, y2) = (self.age(i.wrapping_sub(1)), self.age(i), self.age(i + 1), self.age(i + 2));
+        let (ym1, y0, y1, y2) = (
+            self.age(i.wrapping_sub(1)),
+            self.age(i),
+            self.age(i + 1),
+            self.age(i + 2),
+        );
         let c = (y1 - ym1) * 0.5;
         let v = y0 - y1;
         let w = c + v;
@@ -192,8 +224,14 @@ impl Biquad {
     pub fn response(&self, w: f32) -> C {
         let z1 = C::delay(w);
         let z2 = z1.mul(z1);
-        let num = C { re: self.b[0] + self.b[1] * z1.re + self.b[2] * z2.re, im: self.b[1] * z1.im + self.b[2] * z2.im };
-        let den = C { re: 1.0 + self.a[0] * z1.re + self.a[1] * z2.re, im: self.a[0] * z1.im + self.a[1] * z2.im };
+        let num = C {
+            re: self.b[0] + self.b[1] * z1.re + self.b[2] * z2.re,
+            im: self.b[1] * z1.im + self.b[2] * z2.im,
+        };
+        let den = C {
+            re: 1.0 + self.a[0] * z1.re + self.a[1] * z2.re,
+            im: self.a[0] * z1.im + self.a[1] * z2.im,
+        };
         num.div(den)
     }
 
@@ -257,7 +295,9 @@ pub struct Verb {
 
 /// The lines' lengths (seconds): spread, with no common factors to speak
 /// of.
-const VERB_TIMES: [f32; 8] = [0.0473, 0.0539, 0.0611, 0.0682, 0.0457, 0.0517, 0.0751, 0.0829];
+const VERB_TIMES: [f32; 8] = [
+    0.0473, 0.0539, 0.0611, 0.0682, 0.0457, 0.0517, 0.0751, 0.0829,
+];
 /// Their sway (turns a second).
 const VERB_RATES: [f32; 8] = [0.31, 0.23, 0.37, 0.19, 0.29, 0.41, 0.17, 0.27];
 

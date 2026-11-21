@@ -528,6 +528,23 @@ mod site_snap {
             node_shot(name, FRAMES, &mut s, id);
         }
 
+        // Sibyl: a pad program held on its keyboard (SYNTH, KEYS), the
+        // effects underneath, and the tweaks.
+        for (name, view, lower, prog) in [("sibyl", 0.0, 0.0, 40usize), ("sibyl-fx", 0.0, 1.0, 40), ("sibyl-tweaks", 1.0, 0.0, 16)] {
+            if !want(name) {
+                continue;
+            }
+            let mut s = scene(112.0);
+            let id = add(&mut s, ModuleKind::Sibyl, 0.0, 0.0);
+            let p = module_params(&s.g, id);
+            md::sibyl::load_program(&p, prog);
+            p.data[md::sibyl::data::VIEW].set(view);
+            p.data[md::sibyl::data::LOWER].set(lower);
+            node_shot_with(name, FRAMES, &mut s, id, |_, f| {
+                p.viz[md::sibyl::viz::PANEL_KEY].set(if f > 20 { 61.0 } else { 0.0 });
+            });
+        }
+
         // Splitter: a loop of its own cut at its transients (SLICE, MIDI),
         // and the built-in kit on its Euclidean rings (SEQUENCE).
         for (name, tab, mode, loaded) in [
