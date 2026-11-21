@@ -3,6 +3,8 @@
 A node-based modular synthesizer in Rust, in the spirit of Max/MSP and Pure Data:
 small blocks (nodes) joined by virtual cables generate sound in real time.
 It is designed especially for ambient sounds, drones, and organic and granular textures.
+The patch is shown on a free canvas or, at the press of V, as tracks in the spirit of Ableton Live, each
+track's chain of devices in a row (see Track view).
 
 ## Getting started
 
