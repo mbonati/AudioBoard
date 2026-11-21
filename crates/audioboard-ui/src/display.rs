@@ -48,14 +48,20 @@ impl Screen<'_> {
 
     /// A faint horizontal guide at `y` (screen space).
     pub fn guide(&self, y: f32) {
-        self.p.line_segment([pos2(self.rect.left(), y), pos2(self.rect.right(), y)], Stroke::new(1.0 * self.z, theme::CONTROL));
+        self.p.line_segment(
+            [pos2(self.rect.left(), y), pos2(self.rect.right(), y)],
+            Stroke::new(1.0 * self.z, theme::CONTROL),
+        );
     }
 
     /// Vertical line from the baseline, `amp` (0…1) of the height.
     pub fn partial(&self, x: f32, amp: f32, color: Color32) {
         let r = self.rect;
         self.p.line_segment(
-            [pos2(x, r.bottom()), pos2(x, r.bottom() - r.height() * amp.clamp(0.0, 1.0))],
+            [
+                pos2(x, r.bottom()),
+                pos2(x, r.bottom() - r.height() * amp.clamp(0.0, 1.0)),
+            ],
             Stroke::new(1.3 * self.z, color),
         );
     }
@@ -66,8 +72,16 @@ impl Screen<'_> {
         let mut mesh = Mesh::default();
         let fill = alpha(self.accent, 0.18);
         for (i, pt) in pts.iter().enumerate() {
-            mesh.vertices.push(Vertex { pos: *pt, uv: WHITE_UV, color: fill });
-            mesh.vertices.push(Vertex { pos: pos2(pt.x, base), uv: WHITE_UV, color: Color32::TRANSPARENT });
+            mesh.vertices.push(Vertex {
+                pos: *pt,
+                uv: WHITE_UV,
+                color: fill,
+            });
+            mesh.vertices.push(Vertex {
+                pos: pos2(pt.x, base),
+                uv: WHITE_UV,
+                color: Color32::TRANSPARENT,
+            });
             if i > 0 {
                 let k = (i * 2) as u32;
                 mesh.add_triangle(k - 2, k - 1, k);
@@ -75,7 +89,8 @@ impl Screen<'_> {
             }
         }
         self.p.add(Shape::mesh(mesh));
-        self.p.add(Shape::line(pts, Stroke::new(1.5 * self.z, self.accent)));
+        self.p
+            .add(Shape::line(pts, Stroke::new(1.5 * self.z, self.accent)));
     }
 
     /// Vertical bars for `values` (0…1 each), left to right.
@@ -87,8 +102,12 @@ impl Screen<'_> {
             let x0 = self.rect.left() + w * i as f32 + gap * 0.5;
             let top = self.y_unit(v);
             let bar = Rect::from_min_max(pos2(x0, top), pos2(x0 + w - gap, self.rect.bottom()));
-            self.p.rect_filled(bar, 1.0 * self.z, alpha(self.accent, 0.25));
-            self.p.line_segment([pos2(bar.left(), top), pos2(bar.right(), top)], Stroke::new(1.5 * self.z, self.accent));
+            self.p
+                .rect_filled(bar, 1.0 * self.z, alpha(self.accent, 0.25));
+            self.p.line_segment(
+                [pos2(bar.left(), top), pos2(bar.right(), top)],
+                Stroke::new(1.5 * self.z, self.accent),
+            );
         }
     }
 
@@ -100,8 +119,12 @@ impl Screen<'_> {
         if n < 2 {
             return;
         }
-        let pts: Vec<Pos2> = values.enumerate().map(|(i, v)| pos2(self.x(i as f32 / (n - 1) as f32), self.y_bipolar(v))).collect();
-        self.p.add(Shape::line(pts, Stroke::new(1.5 * self.z, self.accent)));
+        let pts: Vec<Pos2> = values
+            .enumerate()
+            .map(|(i, v)| pos2(self.x(i as f32 / (n - 1) as f32), self.y_bipolar(v)))
+            .collect();
+        self.p
+            .add(Shape::line(pts, Stroke::new(1.5 * self.z, self.accent)));
     }
 
     /// A history (oldest first, −1…1), scrolling in from the right, with
@@ -115,10 +138,16 @@ impl Screen<'_> {
         let cap = capacity.max(n).max(2);
         let pts: Vec<Pos2> = history
             .enumerate()
-            .map(|(i, v)| pos2(self.x((cap - n + i) as f32 / (cap - 1) as f32), self.y_bipolar(v)))
+            .map(|(i, v)| {
+                pos2(
+                    self.x((cap - n + i) as f32 / (cap - 1) as f32),
+                    self.y_bipolar(v),
+                )
+            })
             .collect();
         let last = *pts.last().expect("two points or more");
-        self.p.add(Shape::line(pts, Stroke::new(1.5 * self.z, self.accent)));
+        self.p
+            .add(Shape::line(pts, Stroke::new(1.5 * self.z, self.accent)));
         self.p.circle_filled(last, 2.5 * self.z, self.accent);
     }
 
@@ -126,23 +155,36 @@ impl Screen<'_> {
     pub fn dot(&self, x: f32, y: f32) {
         let c = pos2(self.x(x.clamp(0.0, 1.0)), self.y_unit(y));
         let s = Stroke::new(1.0 * self.z, alpha(self.accent, 0.35));
-        self.p.line_segment([pos2(self.rect.left(), c.y), pos2(self.rect.right(), c.y)], s);
-        self.p.line_segment([pos2(c.x, self.rect.top()), pos2(c.x, self.rect.bottom())], s);
-        self.p.circle_stroke(c, 4.0 * self.z, Stroke::new(1.5 * self.z, self.accent));
+        self.p.line_segment(
+            [pos2(self.rect.left(), c.y), pos2(self.rect.right(), c.y)],
+            s,
+        );
+        self.p.line_segment(
+            [pos2(c.x, self.rect.top()), pos2(c.x, self.rect.bottom())],
+            s,
+        );
+        self.p
+            .circle_stroke(c, 4.0 * self.z, Stroke::new(1.5 * self.z, self.accent));
     }
 
     /// The output level, as a horizontal meter across the middle.
     pub fn level(&self, meter: &MeterState) {
         let h = (6.0 * self.z).min(self.rect.height());
         let c = self.rect.center().y;
-        hmeter(self.p, Rect::from_x_y_ranges(self.rect.x_range(), c - h * 0.5..=c + h * 0.5), meter, self.z);
+        hmeter(
+            self.p,
+            Rect::from_x_y_ranges(self.rect.x_range(), c - h * 0.5..=c + h * 0.5),
+            meter,
+            self.z,
+        );
     }
 
     /// A short message in the middle (a node that stopped, an empty state).
     pub fn message(&self, text: &str, color: Color32) {
         let font = theme::font(9.5 * self.z);
         if font.size >= crate::view::MIN_TEXT {
-            self.p.text(self.rect.center(), Align2::CENTER_CENTER, text, font, color);
+            self.p
+                .text(self.rect.center(), Align2::CENTER_CENTER, text, font, color);
         }
     }
 }

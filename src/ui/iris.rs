@@ -15,15 +15,17 @@ use std::f32::consts::{FRAC_1_SQRT_2, PI, TAU};
 
 use egui::epaint::Mesh;
 use egui::{
-    Align2, Color32, CursorIcon, Id, Painter, PopupCloseBehavior, Pos2, Rect, RectAlign, RichText, Sense, Shape,
-    Stroke, StrokeKind, Ui, Vec2, pos2, vec2,
+    Align2, Color32, CursorIcon, Id, Painter, PopupCloseBehavior, Pos2, Rect, RectAlign, RichText,
+    Sense, Shape, Stroke, StrokeKind, Ui, Vec2, pos2, vec2,
 };
 
 use super::nodes::{HEADER_H, NodeView};
 use super::theme::{self, alpha, mix};
 use crate::audio::engine::NodeId;
 use crate::audio::modules::ModuleParams;
-use crate::audio::modules::iris::{self, DETAIL, REACT, RING, SCENES, SMOOTH, SPEED, TRAIL, data, viz};
+use crate::audio::modules::iris::{
+    self, DETAIL, REACT, RING, SCENES, SMOOTH, SPEED, TRAIL, data, viz,
+};
 use crate::graph::ModuleNode;
 
 mod synth;
@@ -59,7 +61,10 @@ fn screen_local(size: Vec2, frameless: bool) -> Rect {
     if frameless {
         return Rect::from_min_size(Pos2::ZERO, size);
     }
-    Rect::from_min_max(pos2(BEZEL, HEADER_H + 6.0), pos2(size.x - BEZEL, size.y - BEZEL))
+    Rect::from_min_max(
+        pos2(BEZEL, HEADER_H + 6.0),
+        pos2(size.x - BEZEL, size.y - BEZEL),
+    )
 }
 
 /// Sets the node's size so the screen has the aspect `w / h`, keeping its width.
@@ -79,13 +84,24 @@ pub fn scene_name(i: usize) -> String {
     let s = SCENES[i.min(SCENES.len() - 1)];
     let mut out = s[..1].to_owned();
     out.push_str(&s[1..].to_lowercase());
-    if out == "Moire" { "Moiré".to_owned() } else { out }
+    if out == "Moire" {
+        "Moiré".to_owned()
+    } else {
+        out
+    }
 }
 
 pub fn readout(p: &ModuleParams) -> (String, String) {
     // What the processor listens to now (Auto follows the cable).
-    let source = if p.viz[viz::FROM_INPUT].get() > 0.5 { "IN" } else { "main mix" };
-    (scene_name(scene_of(p)), format!("{} · {}", source, PALETTES[palette_index(p)].name))
+    let source = if p.viz[viz::FROM_INPUT].get() > 0.5 {
+        "IN"
+    } else {
+        "main mix"
+    };
+    (
+        scene_name(scene_of(p)),
+        format!("{} · {}", source, PALETTES[palette_index(p)].name),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -108,40 +124,86 @@ pub const PALETTES: [Palette; 8] = [
     Palette {
         name: "Board",
         bg: rgb(17, 18, 21),
-        inks: [rgb(226, 228, 232), rgb(96, 165, 238), rgb(226, 112, 150), rgb(132, 194, 108), rgb(228, 142, 88)],
+        inks: [
+            rgb(226, 228, 232),
+            rgb(96, 165, 238),
+            rgb(226, 112, 150),
+            rgb(132, 194, 108),
+            rgb(228, 142, 88),
+        ],
     },
     // The node's own colour (filled in when drawing).
-    Palette { name: "Mono", bg: rgb(15, 16, 19), inks: [rgb(226, 228, 232); 5] },
+    Palette {
+        name: "Mono",
+        bg: rgb(15, 16, 19),
+        inks: [rgb(226, 228, 232); 5],
+    },
     Palette {
         name: "Paper",
         bg: rgb(236, 231, 220),
-        inks: [rgb(34, 34, 38), rgb(214, 72, 56), rgb(38, 92, 170), rgb(222, 160, 36), rgb(62, 132, 104)],
+        inks: [
+            rgb(34, 34, 38),
+            rgb(214, 72, 56),
+            rgb(38, 92, 170),
+            rgb(222, 160, 36),
+            rgb(62, 132, 104),
+        ],
     },
     Palette {
         name: "Riso",
         bg: rgb(244, 239, 228),
-        inks: [rgb(46, 44, 60), rgb(255, 72, 150), rgb(0, 120, 190), rgb(250, 190, 0), rgb(0, 150, 112)],
+        inks: [
+            rgb(46, 44, 60),
+            rgb(255, 72, 150),
+            rgb(0, 120, 190),
+            rgb(250, 190, 0),
+            rgb(0, 150, 112),
+        ],
     },
     Palette {
         name: "Ember",
         bg: rgb(22, 13, 11),
-        inks: [rgb(255, 222, 170), rgb(255, 150, 60), rgb(232, 72, 52), rgb(190, 44, 80), rgb(255, 204, 92)],
+        inks: [
+            rgb(255, 222, 170),
+            rgb(255, 150, 60),
+            rgb(232, 72, 52),
+            rgb(190, 44, 80),
+            rgb(255, 204, 92),
+        ],
     },
     Palette {
         name: "Ice",
         bg: rgb(9, 17, 27),
-        inks: [rgb(222, 240, 255), rgb(110, 200, 255), rgb(64, 132, 232), rgb(120, 230, 210), rgb(170, 150, 255)],
+        inks: [
+            rgb(222, 240, 255),
+            rgb(110, 200, 255),
+            rgb(64, 132, 232),
+            rgb(120, 230, 210),
+            rgb(170, 150, 255),
+        ],
     },
     Palette {
         name: "Acid",
         bg: rgb(8, 8, 10),
-        inks: [rgb(240, 240, 240), rgb(200, 255, 60), rgb(255, 60, 200), rgb(40, 230, 255), rgb(255, 236, 70)],
+        inks: [
+            rgb(240, 240, 240),
+            rgb(200, 255, 60),
+            rgb(255, 60, 200),
+            rgb(40, 230, 255),
+            rgb(255, 236, 70),
+        ],
     },
     // On white, blue through cyan to green and back (the Halo's own look).
     Palette {
         name: "Lagoon",
         bg: rgb(244, 246, 247),
-        inks: [rgb(30, 46, 62), rgb(28, 108, 240), rgb(0, 190, 226), rgb(44, 196, 110), rgb(0, 166, 178)],
+        inks: [
+            rgb(30, 46, 62),
+            rgb(28, 108, 240),
+            rgb(0, 190, 226),
+            rgb(44, 196, 110),
+            rgb(0, 166, 178),
+        ],
     },
 ];
 
@@ -163,10 +225,19 @@ impl Pal {
             let white = Color32::WHITE;
             return Self {
                 bg: p.bg,
-                inks: [mix(accent, white, 0.55), accent, mix(accent, white, 0.35), mix(accent, p.bg, 0.35), mix(accent, white, 0.7)],
+                inks: [
+                    mix(accent, white, 0.55),
+                    accent,
+                    mix(accent, white, 0.35),
+                    mix(accent, p.bg, 0.35),
+                    mix(accent, white, 0.7),
+                ],
             };
         }
-        Self { bg: p.bg, inks: p.inks }
+        Self {
+            bg: p.bg,
+            inks: p.inks,
+        }
     }
 
     fn line(&self) -> Color32 {
@@ -231,7 +302,9 @@ struct Analysis {
 
 impl Analysis {
     fn new() -> Self {
-        let window = (0..FFT).map(|i| 0.5 - 0.5 * (TAU * i as f32 / FFT as f32).cos()).collect();
+        let window = (0..FFT)
+            .map(|i| 0.5 - 0.5 * (TAU * i as f32 / FFT as f32).cos())
+            .collect();
         Self {
             wave: vec![0.0; RING],
             re: vec![0.0; FFT],
@@ -292,7 +365,8 @@ impl Analysis {
         }
         super::monitor::fft(&mut self.re, &mut self.im);
         let bin_hz = self.sr / FFT as f32;
-        let amp = |re: &[f32], im: &[f32], k: usize| (re[k] * re[k] + im[k] * im[k]).sqrt() * 2.0 / wsum;
+        let amp =
+            |re: &[f32], im: &[f32], k: usize| (re[k] * re[k] + im[k] * im[k]).sqrt() * 2.0 / wsum;
         let (lo, hi) = (30.0f32, 16_000.0f32);
         for b in 0..BANDS {
             let f0 = lo * (hi / lo).powf(b as f32 / BANDS as f32);
@@ -302,7 +376,11 @@ impl Analysis {
             let fc = (f0 * f1).sqrt();
             let k0 = (f0 / bin_hz).ceil() as usize;
             let k1 = ((f1 / bin_hz).ceil() as usize).min(FFT / 2);
-            let bins = if k1 > k0 { k0..k1 } else { ((fc / bin_hz).round() as usize).max(1)..((fc / bin_hz).round() as usize).max(1) + 1 };
+            let bins = if k1 > k0 {
+                k0..k1
+            } else {
+                ((fc / bin_hz).round() as usize).max(1)..((fc / bin_hz).round() as usize).max(1) + 1
+            };
             let mut m = 0.0f32;
             for k in bins {
                 m = m.max(amp(&self.re, &self.im, k.max(1)));
@@ -534,7 +612,11 @@ impl State {
         Self {
             a: Analysis::new(),
             // Layer 1 as Iris always seeded its scenes.
-            layers: std::array::from_fn(|k| synth::Layer::new(seed.to_bits() ^ 0x9E37_79B9 ^ (k as u32).wrapping_mul(0x632B_E5AB))),
+            layers: std::array::from_fn(|k| {
+                synth::Layer::new(
+                    seed.to_bits() ^ 0x9E37_79B9 ^ (k as u32).wrapping_mul(0x632B_E5AB),
+                )
+            }),
             mods: synth::Mods::new(seed.to_bits()),
             last: f64::NAN,
             seen: 0.0,
@@ -644,21 +726,36 @@ impl Ctx<'_> {
         let mut i = 0;
         while i < pts.len() - 1 {
             let end = (i + per).min(pts.len() - 1);
-            self.line(pts[i..=end].to_vec(), w, col(i as f32 / (pts.len() - 1) as f32));
+            self.line(
+                pts[i..=end].to_vec(),
+                w,
+                col(i as f32 / (pts.len() - 1) as f32),
+            );
             i = end;
         }
     }
 
     /// A dashed circle.
-    fn dashed_circle(&self, c: Pos2, r: f32, dashes: usize, fill: f32, rot: f32, w: f32, col: Color32) {
+    fn dashed_circle(
+        &self,
+        c: Pos2,
+        r: f32,
+        dashes: usize,
+        fill: f32,
+        rot: f32,
+        w: f32,
+        col: Color32,
+    ) {
         let dashes = dashes.max(3);
         for d in 0..dashes {
             let a0 = rot + d as f32 / dashes as f32 * TAU;
             let a1 = a0 + fill / dashes as f32 * TAU;
-            let pts: Vec<Pos2> = (0..=6).map(|k| {
-                let a = a0 + (a1 - a0) * k as f32 / 6.0;
-                c + vec2(a.cos(), a.sin()) * r
-            }).collect();
+            let pts: Vec<Pos2> = (0..=6)
+                .map(|k| {
+                    let a = a0 + (a1 - a0) * k as f32 / 6.0;
+                    c + vec2(a.cos(), a.sin()) * r
+                })
+                .collect();
             self.line(pts, w, col);
         }
     }
@@ -732,7 +829,12 @@ fn ridges(c: &Ctx, s: &mut Scenes) {
         let pts: Vec<Pos2> = row
             .iter()
             .enumerate()
-            .map(|(j, v)| pos2(r.left() + r.width() * j as f32 / (pts - 1) as f32, base - v * amp))
+            .map(|(j, v)| {
+                pos2(
+                    r.left() + r.width() * j as f32 / (pts - 1) as f32,
+                    base - v * amp,
+                )
+            })
             .collect();
         // Hide what is behind.
         let mut mesh = Mesh::default();
@@ -765,7 +867,11 @@ fn mandala(c: &Ctx, _s: &mut Scenes) {
     for k in 0..sym {
         let a = k as f32 / sym as f32 * TAU + c.t * 0.04;
         let d = vec2(a.cos(), a.sin());
-        c.line(vec![o + d * rad * 0.08, o + d * rad * 0.98], c.w(0.8), alpha(c.pal.line(), 0.14));
+        c.line(
+            vec![o + d * rad * 0.08, o + d * rad * 0.98],
+            c.w(0.8),
+            alpha(c.pal.line(), 0.14),
+        );
     }
     for i in 0..rings {
         let u = (i as f32 + 0.5) / rings as f32;
@@ -798,7 +904,15 @@ fn mandala(c: &Ctx, _s: &mut Scenes) {
     }
     if c.a.beat > 0.03 {
         let r = rad * (0.12 + (1.0 - c.a.beat) * 0.86);
-        c.dashed_circle(o, r, sym * 3, 0.5, c.t * 0.2, c.w(1.0 + 2.0 * c.a.beat), alpha(c.pal.line(), c.a.beat));
+        c.dashed_circle(
+            o,
+            r,
+            sym * 3,
+            0.5,
+            c.t * 0.2,
+            c.w(1.0 + 2.0 * c.a.beat),
+            alpha(c.pal.line(), c.a.beat),
+        );
     }
     let core: Vec<Pos2> = (0..sym)
         .map(|k| {
@@ -809,7 +923,16 @@ fn mandala(c: &Ctx, _s: &mut Scenes) {
     c.closed(core, c.w(1.4), c.pal.line());
 }
 
-const RATIOS: [[f32; 2]; 8] = [[2.0, 3.0], [3.0, 4.0], [3.0, 5.0], [4.0, 5.0], [1.0, 2.0], [2.0, 5.0], [5.0, 6.0], [3.0, 7.0]];
+const RATIOS: [[f32; 2]; 8] = [
+    [2.0, 3.0],
+    [3.0, 4.0],
+    [3.0, 5.0],
+    [4.0, 5.0],
+    [1.0, 2.0],
+    [2.0, 5.0],
+    [5.0, 6.0],
+    [3.0, 7.0],
+];
 
 /// A pendulum drawing: two damped swings per axis in small ratios, which
 /// jump to new ratios on onsets.
@@ -894,7 +1017,8 @@ fn tunnel(c: &Ctx, s: &mut Scenes) {
         if scale < 1.0 {
             continue;
         }
-        let vp = c.c() + vec2((c.t * 0.3).sin(), (c.t * 0.23).cos()) * c.rad() * 0.18 * (1.0 - depth);
+        let vp =
+            c.c() + vec2((c.t * 0.3).sin(), (c.t * 0.23).cos()) * c.rad() * 0.18 * (1.0 - depth);
         let rot = depth * twist * PI + c.t * 0.08;
         let pts: Vec<Pos2> = (0..sides)
             .map(|k| {
@@ -903,7 +1027,10 @@ fn tunnel(c: &Ctx, s: &mut Scenes) {
             })
             .collect();
         let flash = if id.rem_euclid(4) == 0 { c.a.beat } else { 0.0 };
-        let col = alpha(c.pal.ink(id.rem_euclid(4) as usize), smoothstep(depth * 3.0));
+        let col = alpha(
+            c.pal.ink(id.rem_euclid(4) as usize),
+            smoothstep(depth * 3.0),
+        );
         c.closed(pts, c.w(0.6 + 3.0 * depth + 3.0 * flash), col);
     }
 }
@@ -930,7 +1057,10 @@ fn flow(c: &Ctx, s: &mut Scenes, seed: f32) {
     let mut mesh = Mesh::default();
     for (i, q) in s.flow.iter_mut().enumerate() {
         let (x, y) = (q.p.x, q.p.y * aspect);
-        let a = ((x * 3.3 + t * 0.29 + seed).sin() * (y * 2.9 - t * 0.23).cos() + 0.5 * ((x - y) * 4.7 + t * 0.41).sin()) * PI * 1.4;
+        let a = ((x * 3.3 + t * 0.29 + seed).sin() * (y * 2.9 - t * 0.23).cos()
+            + 0.5 * ((x - y) * 4.7 + t * 0.41).sin())
+            * PI
+            * 1.4;
         if c.a.onset {
             let out = q.p - vec2(0.5, 0.5);
             q.v += out.normalized() * 0.35 * (0.3 + c.a.bass);
@@ -955,7 +1085,13 @@ fn flow(c: &Ctx, s: &mut Scenes, seed: f32) {
         let m = q.trail.len();
         for k in 1..m {
             let f = k as f32 / m as f32;
-            seg(&mut mesh, to(q.trail[k - 1]), to(q.trail[k]), w, alpha(col, f * e));
+            seg(
+                &mut mesh,
+                to(q.trail[k - 1]),
+                to(q.trail[k]),
+                w,
+                alpha(col, f * e),
+            );
         }
     }
     c.p.add(Shape::mesh(mesh));
@@ -965,14 +1101,29 @@ const PATTERNS: [&[(i32, i32)]; 4] = [
     &[(1, 0), (2, 1), (0, 2), (1, 2), (2, 2)],
     &[(1, 0), (2, 0), (0, 1), (1, 1), (1, 2)],
     &[(1, 0), (3, 1), (0, 2), (1, 2), (4, 2), (5, 2), (6, 2)],
-    &[(1, 0), (4, 0), (0, 1), (0, 2), (4, 2), (0, 3), (1, 3), (2, 3), (3, 3)],
+    &[
+        (1, 0),
+        (4, 0),
+        (0, 1),
+        (0, 2),
+        (4, 2),
+        (0, 3),
+        (1, 3),
+        (2, 3),
+        (3, 3),
+    ],
 ];
 
 fn fit_grid(g: &mut Grid, cols: usize, rows: usize) -> bool {
     if g.cols == cols && g.rows == rows {
         return false;
     }
-    *g = Grid { cols, rows, cells: vec![0; cols * rows], ghost: vec![0.0; cols * rows] };
+    *g = Grid {
+        cols,
+        rows,
+        cells: vec![0; cols * rows],
+        ghost: vec![0.0; cols * rows],
+    };
     true
 }
 
@@ -988,9 +1139,13 @@ fn life(c: &Ctx, s: &mut Scenes) {
             g.cells[i] = 1;
         }
     }
-    let at = |x: i32, y: i32| (y.rem_euclid(rows as i32) as usize) * cols + x.rem_euclid(cols as i32) as usize;
+    let at = |x: i32, y: i32| {
+        (y.rem_euclid(rows as i32) as usize) * cols + x.rem_euclid(cols as i32) as usize
+    };
     if c.a.onset {
-        let peak = (0..BANDS).max_by(|&a, &b| c.a.bands[a].total_cmp(&c.a.bands[b])).unwrap_or(0);
+        let peak = (0..BANDS)
+            .max_by(|&a, &b| c.a.bands[a].total_cmp(&c.a.bands[b]))
+            .unwrap_or(0);
         let x = (peak as f32 / BANDS as f32 * cols as f32) as i32;
         let y = s.rng.below(rows) as i32;
         let pat = PATTERNS[s.rng.below(PATTERNS.len())];
@@ -1015,7 +1170,16 @@ fn life(c: &Ctx, s: &mut Scenes) {
         for y in 0..rows as i32 {
             for x in 0..cols as i32 {
                 let mut nb = 0;
-                for (dx, dy) in [(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)] {
+                for (dx, dy) in [
+                    (-1, -1),
+                    (0, -1),
+                    (1, -1),
+                    (-1, 0),
+                    (1, 0),
+                    (-1, 1),
+                    (0, 1),
+                    (1, 1),
+                ] {
                     nb += (g.cells[at(x + dx, y + dy)] > 0) as u8;
                 }
                 let i = at(x, y);
@@ -1094,7 +1258,11 @@ fn automaton(c: &Ctx, s: &mut Scenes) {
         s.ca_clock -= 1.0;
         steps += 1;
         let rule = RULES[s.ca_rule];
-        let prev = &s.ca.back().map(|r| r.0.clone()).unwrap_or_else(|| vec![false; cols]);
+        let prev = &s
+            .ca
+            .back()
+            .map(|r| r.0.clone())
+            .unwrap_or_else(|| vec![false; cols]);
         let mut row: Vec<bool> = (0..cols)
             .map(|x| {
                 let l = prev[(x + cols - 1) % cols] as u8;
@@ -1179,11 +1347,18 @@ fn truchet(c: &Ctx, s: &mut Scenes) {
         s.truchet_anim[i] += (target - s.truchet_anim[i]) * follow;
     }
     let g = 0.08 + 0.12 * c.a.bass;
-    let radii: &[f32] = if c.detail > 0.35 { &[0.5 - g, 0.5 + g] } else { &[0.5] };
+    let radii: &[f32] = if c.detail > 0.35 {
+        &[0.5 - g, 0.5 + g]
+    } else {
+        &[0.5]
+    };
     for y in 0..rows {
         for x in 0..cols {
             let i = y * cols + x;
-            let center = pos2(c.r.left() + (x as f32 + 0.5) * ts, c.r.top() + (y as f32 + 0.5) * ts);
+            let center = pos2(
+                c.r.left() + (x as f32 + 0.5) * ts,
+                c.r.top() + (y as f32 + 0.5) * ts,
+            );
             let rot = s.truchet_anim[i] * PI * 0.5;
             let (sn, cs) = rot.sin_cos();
             let e = c.band(x as f32 / cols as f32);
@@ -1222,7 +1397,14 @@ fn moire(c: &Ctx, _s: &mut Scenes) {
     }
     let w = spacing * (0.12 + 0.16 * c.a.level);
     for (k, o) in centres.iter().enumerate() {
-        let col = alpha(if k == 0 { c.pal.line() } else { c.pal.ink(k - 1) }, 0.8);
+        let col = alpha(
+            if k == 0 {
+                c.pal.line()
+            } else {
+                c.pal.ink(k - 1)
+            },
+            0.8,
+        );
         for i in 1..=rings {
             let wobble = 1.0 + 0.03 * c.a.mid * (t * 2.0 + i as f32 * 0.7).sin();
             c.p.circle_stroke(*o, spacing * i as f32 * wobble, Stroke::new(w, col));
@@ -1258,7 +1440,13 @@ fn attractor(c: &Ctx, s: &mut Scenes) {
     mesh.reserve_vertices(n * 4);
     clifford(c, ATTRACTORS[s.attractor], n, 1.0 - m, &mut mesh);
     if m > 0.0 {
-        clifford(c, ATTRACTORS[(s.attractor + 1) % ATTRACTORS.len()], n, m, &mut mesh);
+        clifford(
+            c,
+            ATTRACTORS[(s.attractor + 1) % ATTRACTORS.len()],
+            n,
+            m,
+            &mut mesh,
+        );
     }
     c.p.add(Shape::mesh(mesh));
 }
@@ -1315,7 +1503,10 @@ fn clifford(c: &Ctx, base: [f32; 4], n: usize, opacity: f32, mesh: &mut Mesh) {
     let size = c.w(1.0).max(1.0);
     for (x, y, v) in pts {
         let col = alpha(c.pal.grad((v / 2.2).min(1.0)), 0.8 * opacity);
-        mesh.add_colored_rect(Rect::from_center_size(o + vec2(x, y) * scale, Vec2::splat(size)), col);
+        mesh.add_colored_rect(
+            Rect::from_center_size(o + vec2(x, y) * scale, Vec2::splat(size)),
+            col,
+        );
     }
 }
 
@@ -1354,11 +1545,20 @@ fn phase(c: &Ctx, s: &mut Scenes) {
         let grow = 1.0 + 0.07 * k as f32;
         let rot = k as f32 * 0.06 * (1.0 + c.a.level);
         let (sn, cs) = rot.sin_cos();
-        let line: Vec<Pos2> = e.iter().map(|v| o + vec2(v.x * cs - v.y * sn, v.x * sn + v.y * cs) * rad * grow).collect();
-        c.line(line, c.w(0.8), alpha(c.pal.ink(k), 0.4 * (1.0 - f) * (1.0 - f)));
+        let line: Vec<Pos2> = e
+            .iter()
+            .map(|v| o + vec2(v.x * cs - v.y * sn, v.x * sn + v.y * cs) * rad * grow)
+            .collect();
+        c.line(
+            line,
+            c.w(0.8),
+            alpha(c.pal.ink(k), 0.4 * (1.0 - f) * (1.0 - f)),
+        );
     }
     let line: Vec<Pos2> = pts.iter().map(|v| o + *v * rad).collect();
-    c.gradient_line(&line, 8, c.w(1.2 + c.a.beat), |u| alpha(c.pal.grad(u), 0.25 + 0.75 * u));
+    c.gradient_line(&line, 8, c.w(1.2 + c.a.beat), |u| {
+        alpha(c.pal.grad(u), 0.25 + 0.75 * u)
+    });
 }
 
 /// A dot-matrix spectrum with falling peaks.
@@ -1380,7 +1580,10 @@ fn dots(c: &Ctx, s: &mut Scenes) {
         s.peaks[x] = lit.max(s.peaks[x] - fall);
         let peak = s.peaks[x].floor() as usize;
         for y in 0..rows {
-            let p = pos2(c.r.left() + (x as f32 + 0.5) * pitch, top + (rows - 1 - y) as f32 * pitch + pitch * 0.5);
+            let p = pos2(
+                c.r.left() + (x as f32 + 0.5) * pitch,
+                top + (rows - 1 - y) as f32 * pitch + pitch * 0.5,
+            );
             let rect = Rect::from_center_size(p, Vec2::splat(dot));
             let col = if (y as f32) < lit {
                 c.pal.grad(y as f32 / rows as f32)
@@ -1411,7 +1614,15 @@ fn orbits(c: &Ctx, s: &mut Scenes) {
         let r = rad * (0.14 + 0.82 * u);
         let omega = 0.25 + 0.9 * (n - i) as f32 / n as f32;
         s.orbits[i] += c.dt * omega * (0.5 + c.a.level);
-        c.dashed_circle(o, r, 18 + i * 6, 0.45, 0.0, c.w(0.7), alpha(c.pal.line(), 0.22));
+        c.dashed_circle(
+            o,
+            r,
+            18 + i * 6,
+            0.45,
+            0.0,
+            c.w(0.7),
+            alpha(c.pal.line(), 0.22),
+        );
         let planets = 1 + i % 3;
         let col = c.pal.ink(i);
         let arc = 0.3 + 1.6 * c.trail;
@@ -1459,7 +1670,10 @@ impl Discs {
                 vec2(a.cos(), a.sin())
             })
         }
-        Self { six: ring(), ten: ring() }
+        Self {
+            six: ring(),
+            ten: ring(),
+        }
     }
 
     /// A dot of radius `r`: a square while tiny, a polygon otherwise.
@@ -1524,11 +1738,18 @@ impl V3 {
     }
 
     fn cross(self, o: V3) -> V3 {
-        v3(self.y * o.z - self.z * o.y, self.z * o.x - self.x * o.z, self.x * o.y - self.y * o.x)
+        v3(
+            self.y * o.z - self.z * o.y,
+            self.z * o.x - self.x * o.z,
+            self.x * o.y - self.y * o.x,
+        )
     }
 
     fn normalized(self) -> V3 {
-        self * (1.0 / (self.x * self.x + self.y * self.y + self.z * self.z).sqrt().max(1e-6))
+        self * (1.0
+            / (self.x * self.x + self.y * self.y + self.z * self.z)
+                .sqrt()
+                .max(1e-6))
     }
 
     /// Turned by `a` round the vertical axis.
@@ -1584,7 +1805,13 @@ fn halo(c: &Ctx, s: &mut Scenes) {
         let reach = rc + wd * (1.0 + 2.2 * e + 0.9 * hash(i as u32, s.salt));
         let col = c.pal.cyc(f + s.halo_hue);
         let from = (rc - wd * 1.6).max(r_in);
-        seg(&mut streaks, o + dir * from, o + dir * reach.min(r_out), c.w(0.7) + size * 0.5, alpha(col, 0.08 + 0.2 * e));
+        seg(
+            &mut streaks,
+            o + dir * from,
+            o + dir * reach.min(r_out),
+            c.w(0.7) + size * 0.5,
+            alpha(col, 0.08 + 0.2 * e),
+        );
         let stagger = if i % 2 == 1 { 0.5 * dr } else { 0.0 };
         for j in 0..per {
             let r = r_in + j as f32 * dr + stagger;
@@ -1606,7 +1833,12 @@ fn halo(c: &Ctx, s: &mut Scenes) {
                 continue;
             }
             let col = c.pal.cyc(f + s.halo_hue + (r / rad - 0.55) * 0.12);
-            discs.add(&mut dots, o + dir * r, dot, alpha(col, 0.35 + 0.65 * k.min(1.0)));
+            discs.add(
+                &mut dots,
+                o + dir * r,
+                dot,
+                alpha(col, 0.35 + 0.65 * k.min(1.0)),
+            );
         }
     }
     c.p.add(Shape::mesh(streaks));
@@ -1630,14 +1862,26 @@ fn globe_point(shape: usize, u: f32, v: f32) -> (V3, V3) {
         }
         1 => {
             let (big, small) = (TAU * v, TAU * u + PI);
-            let n = v3(small.cos() * big.cos(), small.sin(), small.cos() * big.sin());
+            let n = v3(
+                small.cos() * big.cos(),
+                small.sin(),
+                small.cos() * big.sin(),
+            );
             (v3(big.cos() * 0.68, 0.0, big.sin() * 0.68) + n * 0.32, n)
         }
         _ => {
             let a = TAU * v;
             let k = 1.0 / 3.1;
-            let p = v3(a.sin() + 2.0 * (2.0 * a).sin(), a.cos() - 2.0 * (2.0 * a).cos(), -(3.0 * a).sin()) * k;
-            let t = v3(a.cos() + 4.0 * (2.0 * a).cos(), -a.sin() + 4.0 * (2.0 * a).sin(), -3.0 * (3.0 * a).cos());
+            let p = v3(
+                a.sin() + 2.0 * (2.0 * a).sin(),
+                a.cos() - 2.0 * (2.0 * a).cos(),
+                -(3.0 * a).sin(),
+            ) * k;
+            let t = v3(
+                a.cos() + 4.0 * (2.0 * a).cos(),
+                -a.sin() + 4.0 * (2.0 * a).sin(),
+                -3.0 * (3.0 * a).cos(),
+            );
             // The tangent never points along z, so this frame never folds.
             let nn = t.cross(v3(0.0, 0.0, 1.0)).normalized();
             let b = t.normalized().cross(nn);
@@ -1688,7 +1932,9 @@ fn globe(c: &Ctx, s: &mut Scenes) {
             nrm = nrm.lerp(n2, m);
         }
         let push = GLOBE_PUSH[from] + (GLOBE_PUSH[to] - GLOBE_PUSH[from]) * m;
-        let q = ((p + nrm * (push * e)) * swell).yaw(s.globe_yaw).pitch(pitch);
+        let q = ((p + nrm * (push * e)) * swell)
+            .yaw(s.globe_yaw)
+            .pitch(pitch);
         let z = q.z + dist;
         let sp = o + vec2(q.x, -q.y) * (f / z);
         if !bounds.contains(sp) {
@@ -1719,7 +1965,11 @@ fn terrain_row(c: &Ctx, s: &mut Scenes, cols: usize, live: bool) -> Vec<f32> {
             let d = (2.0 * u - 1.0).abs();
             let side = smoothstep((d - 0.08) * 2.6);
             let hills = 0.5 + 0.5 * ((u * 9.0 + z).sin() * (u * 4.0 - z * 0.7).cos());
-            let (e, jitter) = if live { (c.band(d * 0.88), s.rng.unit() * 0.05 * c.a.level) } else { (0.0, 0.0) };
+            let (e, jitter) = if live {
+                (c.band(d * 0.88), s.rng.unit() * 0.05 * c.a.level)
+            } else {
+                (0.0, 0.0)
+            };
             (0.05 + 0.12 * hills + 0.85 * e + jitter) * side
         })
         .collect();
@@ -1771,8 +2021,14 @@ fn terrain(c: &Ctx, s: &mut Scenes) {
     let frac = s.terrain_clock;
 
     // Behind it: the horizon, and a sun in outline above it.
-    c.line(vec![pos2(r.left(), hy), pos2(r.right(), hy)], c.w(0.8), alpha(c.pal.line(), 0.25));
-    let sky = c.p.with_clip_rect(Rect::from_min_max(r.min, pos2(r.right(), hy)).intersect(c.p.clip_rect()));
+    c.line(
+        vec![pos2(r.left(), hy), pos2(r.right(), hy)],
+        c.w(0.8),
+        alpha(c.pal.line(), 0.25),
+    );
+    let sky = c
+        .p
+        .with_clip_rect(Rect::from_min_max(r.min, pos2(r.right(), hy)).intersect(c.p.clip_rect()));
     let sun_r = r.height() * (0.15 + 0.04 * c.a.bass);
     let sun = pos2(r.center().x, hy - sun_r * 0.55);
     let sun_col = mix(c.pal.ink(1), c.pal.line(), c.a.beat * 0.6);
@@ -1780,7 +2036,10 @@ fn terrain(c: &Ctx, s: &mut Scenes) {
     for k in 0..5 {
         let y = hy - sun_r * 0.16 * (k as f32 + 1.0 - (c.t * 0.3).fract());
         let dx = (sun_r * sun_r - (y - sun.y).powi(2)).max(0.0).sqrt();
-        sky.line_segment([pos2(sun.x - dx, y), pos2(sun.x + dx, y)], Stroke::new(c.w(1.0), alpha(sun_col, 0.8)));
+        sky.line_segment(
+            [pos2(sun.x - dx, y), pos2(sun.x + dx, y)],
+            Stroke::new(c.w(1.0), alpha(sun_col, 0.8)),
+        );
     }
 
     let pts: Vec<Vec<Pos2>> = (0..=n)
@@ -1823,7 +2082,13 @@ fn terrain(c: &Ctx, s: &mut Scenes) {
         let mark = s.terrain[k].1;
         for j in 0..cols {
             let col = mix(c.pal.grad((hn[j] + hn[j + 1]) * 0.6), c.pal.line(), mark);
-            seg(&mut mesh, front[j], front[j + 1], w * (1.0 + mark), mix(col, c.pal.bg, fog));
+            seg(
+                &mut mesh,
+                front[j],
+                front[j + 1],
+                w * (1.0 + mark),
+                mix(col, c.pal.bg, fog),
+            );
         }
         c.p.add(Shape::mesh(mesh));
     }
@@ -1847,7 +2112,10 @@ fn flight(c: &Ctx, s: &mut Scenes) {
     s.flight_roll += c.dt * (0.06 + 0.4 * c.a.mid);
     let (sn, cs) = s.flight_roll.sin_cos();
     // The eye weaves about, a little off the middle of a cell.
-    let eye = vec2(0.5 + 0.3 * (c.t * 0.19).sin(), 0.5 + 0.3 * (c.t * 0.15).cos());
+    let eye = vec2(
+        0.5 + 0.3 * (c.t * 0.19).sin(),
+        0.5 + 0.3 * (c.t * 0.15).cos(),
+    );
     let fl = s.flight_z.floor();
     let fr = s.flight_z - fl;
     let f = c.rad() * 1.15;
@@ -1869,14 +2137,20 @@ fn flight(c: &Ctx, s: &mut Scenes) {
         let id = (layer as i64).rem_euclid(1 << 20) as u32;
         let fog = (z / depth as f32).powf(1.3);
         let flash = c.a.beat * (1.0 - z / 4.0).max(0.0);
-        let col = mix(mix(c.pal.cyc(layer * 0.06 + c.t * 0.01), c.pal.line(), flash), c.pal.bg, fog * 0.9);
+        let col = mix(
+            mix(c.pal.cyc(layer * 0.06 + c.t * 0.01), c.pal.line(), flash),
+            c.pal.bg,
+            fog * 0.9,
+        );
         let k = (reach * z).ceil() as i32 + 1;
         let scale = f / z;
         let back = f / (z + tail);
         for iy in -k..=k {
             for ix in -k..=k {
                 // Somewhere in its cell, the same every time it comes round.
-                let cell = id.wrapping_mul(0x01F3_5A67) ^ ((ix + 512) as u32).wrapping_mul(0x9E37) ^ ((iy + 512) as u32).wrapping_mul(0x632B_E5AB);
+                let cell = id.wrapping_mul(0x01F3_5A67)
+                    ^ ((ix + 512) as u32).wrapping_mul(0x9E37)
+                    ^ ((iy + 512) as u32).wrapping_mul(0x632B_E5AB);
                 if hash(cell, s.salt) > keep {
                     continue;
                 }
@@ -1909,16 +2183,35 @@ fn scope(c: &Ctx, s: &mut Scenes) {
     let faint = alpha(c.pal.line(), 0.08);
     for i in 1..10 {
         let x = r.left() + r.width() * i as f32 / 10.0;
-        c.line(vec![pos2(x, r.top()), pos2(x, r.bottom())], c.w(0.6), if i == 5 { alpha(c.pal.line(), 0.16) } else { faint });
+        c.line(
+            vec![pos2(x, r.top()), pos2(x, r.bottom())],
+            c.w(0.6),
+            if i == 5 {
+                alpha(c.pal.line(), 0.16)
+            } else {
+                faint
+            },
+        );
     }
     for i in 1..8 {
         let y = r.top() + r.height() * i as f32 / 8.0;
-        c.line(vec![pos2(r.left(), y), pos2(r.right(), y)], c.w(0.6), if i == 4 { alpha(c.pal.line(), 0.16) } else { faint });
+        c.line(
+            vec![pos2(r.left(), y), pos2(r.right(), y)],
+            c.w(0.6),
+            if i == 4 {
+                alpha(c.pal.line(), 0.16)
+            } else {
+                faint
+            },
+        );
     }
     let span = (c.a.sr / c.a.pitch.max(30.0) * 3.0).clamp(256.0, 2048.0) as usize;
     let w = &c.a.wave;
     let latest = RING - span - 1;
-    let start = (latest.saturating_sub(1024)..=latest).rev().find(|&i| i > 0 && w[i - 1] < 0.0 && w[i] >= 0.0).unwrap_or(latest);
+    let start = (latest.saturating_sub(1024)..=latest)
+        .rev()
+        .find(|&i| i > 0 && w[i - 1] < 0.0 && w[i] >= 0.0)
+        .unwrap_or(latest);
     let n = 200 + (c.detail * 500.0) as usize;
     let g = (c.a.gain * 0.85).min(30.0);
     let trace: Vec<f32> = (0..n)
@@ -1930,14 +2223,27 @@ fn scope(c: &Ctx, s: &mut Scenes) {
         })
         .collect();
     let to = |trace: &[f32]| -> Vec<Pos2> {
-        trace.iter().enumerate().map(|(j, v)| pos2(r.left() + r.width() * j as f32 / (trace.len() - 1) as f32, r.center().y - v * r.height() * 0.42)).collect()
+        trace
+            .iter()
+            .enumerate()
+            .map(|(j, v)| {
+                pos2(
+                    r.left() + r.width() * j as f32 / (trace.len() - 1) as f32,
+                    r.center().y - v * r.height() * 0.42,
+                )
+            })
+            .collect()
     };
     let keep = (c.trail * 12.0) as usize;
     s.scope.push_front(trace);
     s.scope.truncate(keep + 1);
     for (k, old) in s.scope.iter().enumerate().skip(1).rev() {
         let f = k as f32 / (keep + 1) as f32;
-        c.line(to(old), c.w(0.8), alpha(c.pal.ink(k), 0.35 * (1.0 - f) * (1.0 - f)));
+        c.line(
+            to(old),
+            c.w(0.8),
+            alpha(c.pal.ink(k), 0.35 * (1.0 - f) * (1.0 - f)),
+        );
     }
     let pts = to(&s.scope[0]);
     c.gradient_line(&pts, 16, c.w(1.4 + 1.2 * c.a.beat), |u| c.pal.grad(u));
@@ -1971,7 +2277,13 @@ fn draw_scene(i: usize, c: &Ctx, s: &mut Scenes, seed: f32) {
 // The panel
 // ---------------------------------------------------------------------------
 
-pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, (input, _thru): (bool, bool)) {
+pub fn draw(
+    v: &NodeView,
+    id: NodeId,
+    accent: Color32,
+    m: &ModuleNode,
+    (input, _thru): (bool, bool),
+) {
     let p = &m.params;
     let z = v.z;
     let size = size(p);
@@ -1997,7 +2309,11 @@ pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, (input, _
         if st.seed != seed {
             *st = State::new(seed);
         }
-        let dt = if st.last.is_finite() { ((now - st.last) as f32).clamp(0.0, 0.1) } else { 1.0 / 60.0 };
+        let dt = if st.last.is_finite() {
+            ((now - st.last) as f32).clamp(0.0, 0.1)
+        } else {
+            1.0 / 60.0
+        };
         st.last = now;
         st.seen = now;
         if st.scene != scene {
@@ -2030,11 +2346,31 @@ pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, (input, _
             let text = format!("{}  ·  {}", SCENES[scene], source);
             let font = theme::mono(9.0 * z);
             let galley = v.painter.layout_no_wrap(text, font, theme::TEXT);
-            let pill = Rect::from_min_size(screen.min + vec2(8.0, 8.0) * z, galley.size() + vec2(14.0, 8.0) * z);
-            let a = if hovered { 1.0 } else { (st.hud / 0.4).min(1.0) };
-            painter.rect_filled(pill, 9.0 * z, alpha(Color32::from_rgb(14, 15, 18), 0.86 * a));
-            painter.rect_stroke(pill, 9.0 * z, Stroke::new(1.0, alpha(accent, 0.7 * a)), StrokeKind::Inside);
-            painter.galley_with_override_text_color(pill.min + vec2(7.0, 4.0) * z, galley, alpha(theme::TEXT, a));
+            let pill = Rect::from_min_size(
+                screen.min + vec2(8.0, 8.0) * z,
+                galley.size() + vec2(14.0, 8.0) * z,
+            );
+            let a = if hovered {
+                1.0
+            } else {
+                (st.hud / 0.4).min(1.0)
+            };
+            painter.rect_filled(
+                pill,
+                9.0 * z,
+                alpha(Color32::from_rgb(14, 15, 18), 0.86 * a),
+            );
+            painter.rect_stroke(
+                pill,
+                9.0 * z,
+                Stroke::new(1.0, alpha(accent, 0.7 * a)),
+                StrokeKind::Inside,
+            );
+            painter.galley_with_override_text_color(
+                pill.min + vec2(7.0, 4.0) * z,
+                galley,
+                alpha(theme::TEXT, a),
+            );
         }
     });
 
@@ -2057,17 +2393,34 @@ pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, (input, _
         let c = screen.right_top() + vec2(-16.0, 16.0) * z;
         let r = Rect::from_center_size(c, Vec2::splat(22.0 * z));
         gear_rect = Some(r);
-        let resp = v.ui.interact(r, Id::unique(("iris-gear", id)), Sense::click());
+        let resp =
+            v.ui.interact(r, Id::unique(("iris-gear", id)), Sense::click());
         let hot = resp.hovered() || open;
-        v.painter.circle_filled(c, 11.0 * z, alpha(Color32::from_rgb(14, 15, 18), 0.86));
-        v.painter.circle_stroke(c, 11.0 * z, Stroke::new(1.0, if hot { accent } else { alpha(theme::TEXT_DIM, 0.6) }));
+        v.painter
+            .circle_filled(c, 11.0 * z, alpha(Color32::from_rgb(14, 15, 18), 0.86));
+        v.painter.circle_stroke(
+            c,
+            11.0 * z,
+            Stroke::new(
+                1.0,
+                if hot {
+                    accent
+                } else {
+                    alpha(theme::TEXT_DIM, 0.6)
+                },
+            ),
+        );
         gear(v.painter, c, z, if hot { accent } else { theme::TEXT });
         let resp = resp.on_hover_text("Iris settings");
         if resp.hovered() {
             v.ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
         }
         let ctx = v.ui.ctx();
-        let open = if resp.clicked() { !open } else { open && !settings_close(ctx, popup_id, r) };
+        let open = if resp.clicked() {
+            !open
+        } else {
+            open && !settings_close(ctx, popup_id, r)
+        };
         if open {
             let node_rect = v.r(0.0, 0.0, size.x, size.y);
             egui::Popup::from_response(&resp)
@@ -2075,7 +2428,11 @@ pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, (input, _
                 .open(true)
                 .anchor(node_rect)
                 .align(RectAlign::RIGHT_START)
-                .align_alternatives(&[RectAlign::LEFT_START, RectAlign::BOTTOM_START, RectAlign::TOP_START])
+                .align_alternatives(&[
+                    RectAlign::LEFT_START,
+                    RectAlign::BOTTOM_START,
+                    RectAlign::TOP_START,
+                ])
                 .gap(10.0)
                 .close_behavior(PopupCloseBehavior::IgnoreClicks)
                 .width(380.0)
@@ -2088,12 +2445,19 @@ pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, (input, _
     if hovered && z > 0.2 {
         let c = screen.right_bottom() - vec2(9.0, 9.0) * z;
         let r = Rect::from_center_size(c, Vec2::splat(18.0 * z));
-        let resp = v.ui.interact(r, Id::unique(("iris-grip", id)), Sense::drag());
+        let resp =
+            v.ui.interact(r, Id::unique(("iris-grip", id)), Sense::drag());
         let hot = resp.hovered() || resp.dragged();
         let col = if hot { accent } else { alpha(theme::TEXT, 0.7) };
         for k in 1..=3 {
             let d = k as f32 * 4.0 * z;
-            v.painter.line_segment([c + vec2(6.0 * z - d, 6.0 * z), c + vec2(6.0 * z, 6.0 * z - d)], Stroke::new(1.4 * z, col));
+            v.painter.line_segment(
+                [
+                    c + vec2(6.0 * z - d, 6.0 * z),
+                    c + vec2(6.0 * z, 6.0 * z - d),
+                ],
+                Stroke::new(1.4 * z, col),
+            );
         }
         if hot {
             v.ui.ctx().set_cursor_icon(CursorIcon::ResizeNwSe);
@@ -2125,7 +2489,10 @@ fn gear(p: &Painter, c: Pos2, z: f32, col: Color32) {
     for k in 0..8 {
         let a = k as f32 / 8.0 * TAU;
         let d = vec2(a.cos(), a.sin());
-        p.line_segment([c + d * 4.6 * z, c + d * 6.6 * z], Stroke::new(1.8 * z, col));
+        p.line_segment(
+            [c + d * 4.6 * z, c + d * 6.6 * z],
+            Stroke::new(1.8 * z, col),
+        );
     }
 }
 
@@ -2168,13 +2535,26 @@ fn set_window(id: NodeId, open: bool) {
 /// it is drawn or not (off screen, collapsed, inside a collapsed module):
 /// moves on to the next scene every CYCLE bars, and shows the node's
 /// window while it is open.
-pub fn tick(ctx: &egui::Context, id: NodeId, title: &str, accent: Color32, p: &ModuleParams, tempo: f32) {
+pub fn tick(
+    ctx: &egui::Context,
+    id: NodeId,
+    title: &str,
+    accent: Color32,
+    p: &ModuleParams,
+    tempo: f32,
+) {
     let now = ctx.input(|i| i.time);
     let open = window_open(id);
     let mut close = false;
     TICKERS.with(|t| {
         let mut tickers = t.borrow_mut();
-        let tk = tickers.entry(id).or_insert(Ticker { scene: usize::MAX, on_scene: 0.0, last: now, window: None, moved: now });
+        let tk = tickers.entry(id).or_insert(Ticker {
+            scene: usize::MAX,
+            on_scene: 0.0,
+            last: now,
+            window: None,
+            moved: now,
+        });
         let dt = ((now - tk.last) as f32).clamp(0.0, 0.1);
         tk.last = now;
         let scene = scene_of(p);
@@ -2204,7 +2584,11 @@ pub fn tick(ctx: &egui::Context, id: NodeId, title: &str, accent: Color32, p: &M
             let pal = Pal::of(palette_index(p), accent);
             ui.painter().rect_filled(rect, 0.0, pal.bg);
             let now = ui.input(|i| i.time);
-            let dt = if st.last.is_finite() { ((now - st.last) as f32).clamp(0.0, 0.1) } else { 1.0 / 60.0 };
+            let dt = if st.last.is_finite() {
+                ((now - st.last) as f32).clamp(0.0, 0.1)
+            } else {
+                1.0 / 60.0
+            };
             st.last = now;
             if st.seed != seed {
                 *st = State::new(seed);
@@ -2228,11 +2612,13 @@ pub fn tick(ctx: &egui::Context, id: NodeId, title: &str, accent: Color32, p: &M
             let resp = ui.interact(rect, Id::unique(("iris-window-area", id)), Sense::click());
             let fullscreen = ui.input(|i| i.viewport().fullscreen.unwrap_or(false));
             if resp.double_clicked() {
-                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Fullscreen(!fullscreen));
+                ui.ctx()
+                    .send_viewport_cmd(egui::ViewportCommand::Fullscreen(!fullscreen));
             }
             if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 if fullscreen {
-                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Fullscreen(false));
+                    ui.ctx()
+                        .send_viewport_cmd(egui::ViewportCommand::Fullscreen(false));
                 } else {
                     close = true;
                 }
@@ -2248,7 +2634,11 @@ pub fn tick(ctx: &egui::Context, id: NodeId, title: &str, accent: Color32, p: &M
             let shown = (now - *moved) as f32;
             if shown < 2.5 {
                 let a = (2.5 - shown).min(1.0);
-                let text = if fullscreen { "Double-click or Esc: leave full screen" } else { "Double-click: full screen  ·  Esc: close" };
+                let text = if fullscreen {
+                    "Double-click or Esc: leave full screen"
+                } else {
+                    "Double-click: full screen  ·  Esc: close"
+                };
                 ui.painter().text(
                     rect.center_bottom() - vec2(0.0, 22.0),
                     Align2::CENTER_CENTER,
@@ -2280,7 +2670,9 @@ pub fn tick(ctx: &egui::Context, id: NodeId, title: &str, accent: Color32, p: &M
 
 fn settings_open(ctx: &egui::Context, popup_id: Id) -> bool {
     // Shown last frame too: a node no longer drawn has no settings open.
-    ctx.data(|d| d.get_temp::<bool>(popup_id.with("open"))).unwrap_or(false) && ctx.read_response(popup_id).is_some()
+    ctx.data(|d| d.get_temp::<bool>(popup_id.with("open")))
+        .unwrap_or(false)
+        && ctx.read_response(popup_id).is_some()
 }
 
 fn set_settings_open(ctx: &egui::Context, popup_id: Id, open: bool) {
@@ -2304,23 +2696,41 @@ fn settings_close(ctx: &egui::Context, popup_id: Id, gear: Rect) -> bool {
     // egui's one open popup, when it is not the settings, is a list opened
     // from them: anything opened from elsewhere took a click outside them.
     let list_open = egui::Popup::is_any_open(ctx) && !egui::Popup::is_id_open(ctx, popup_id);
-    let (pressed, origin, clicked, esc) =
-        ctx.input(|i| (i.pointer.any_pressed(), i.pointer.press_origin(), i.pointer.any_click(), i.key_pressed(egui::Key::Escape)));
+    let (pressed, origin, clicked, esc) = ctx.input(|i| {
+        (
+            i.pointer.any_pressed(),
+            i.pointer.press_origin(),
+            i.pointer.any_click(),
+            i.key_pressed(egui::Key::Escape),
+        )
+    });
     let key = popup_id.with("pressed-outside");
     if pressed {
         let inside = origin.is_some_and(|pos| {
             gear.contains(pos)
-                || ctx.layer_id_at(pos).is_some_and(|l| l.id == popup_id || (l.order == egui::Order::Foreground && egui::Popup::is_id_open(ctx, l.id)))
+                || ctx.layer_id_at(pos).is_some_and(|l| {
+                    l.id == popup_id
+                        || (l.order == egui::Order::Foreground
+                            && egui::Popup::is_id_open(ctx, l.id))
+                })
         });
         ctx.data_mut(|d| d.insert_temp(key, !inside));
     }
-    let outside = clicked && ctx.data_mut(|d| d.remove_temp::<bool>(key)).unwrap_or(false);
+    let outside = clicked
+        && ctx
+            .data_mut(|d| d.remove_temp::<bool>(key))
+            .unwrap_or(false);
     outside || (esc && !list_open)
 }
 
 fn heading(ui: &mut Ui, text: &str) {
     ui.add_space(6.0);
-    ui.label(RichText::new(text).small().strong().color(theme::TEXT_FAINT));
+    ui.label(
+        RichText::new(text)
+            .small()
+            .strong()
+            .color(theme::TEXT_FAINT),
+    );
 }
 
 fn settings(ui: &mut Ui, id: NodeId, p: &ModuleParams, accent: Color32, input: bool) {
@@ -2329,8 +2739,18 @@ fn settings(ui: &mut Ui, id: NodeId, p: &ModuleParams, accent: Color32, input: b
         ui.label(RichText::new("Iris").strong().color(theme::TEXT));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let open = window_open(id);
-            let label = if open { "Close window" } else { "Open in a window" };
-            if ui.button(label).on_hover_text("The picture in a window of its own: double-click it for full screen").clicked() {
+            let label = if open {
+                "Close window"
+            } else {
+                "Open in a window"
+            };
+            if ui
+                .button(label)
+                .on_hover_text(
+                    "The picture in a window of its own: double-click it for full screen",
+                )
+                .clicked()
+            {
                 set_window(id, !open);
             }
         });
@@ -2348,40 +2768,58 @@ fn settings(ui: &mut Ui, id: NodeId, p: &ModuleParams, accent: Color32, input: b
     });
     ui.data_mut(|d| d.insert_temp(tab_id, tab));
     if tab > 0 {
-        egui::ScrollArea::vertical().max_height(600.0).min_scrolled_height(520.0).show(ui, |ui| {
-            if tab == 1 {
-                synth::layers_tab(ui, id, p);
-            } else {
-                synth::mod_tab(ui, id, p, accent);
-            }
-        });
+        egui::ScrollArea::vertical()
+            .max_height(600.0)
+            .min_scrolled_height(520.0)
+            .show(ui, |ui| {
+                if tab == 1 {
+                    synth::layers_tab(ui, id, p);
+                } else {
+                    synth::mod_tab(ui, id, p, accent);
+                }
+            });
         return;
     }
 
     heading(ui, "SCENE");
     let scene = scene_of(p);
-    egui::Grid::new(ui.scope_id().with("scenes")).num_columns(3).spacing([5.0, 5.0]).show(ui, |ui| {
-        for (k, _) in SCENES.iter().enumerate() {
-            let label = RichText::new(scene_name(k)).size(11.0);
-            let button = egui::Button::selectable(k == scene, label);
-            if ui.add_sized([100.0, 24.0], button).clicked() {
-                p.set_mode(k);
+    egui::Grid::new(ui.scope_id().with("scenes"))
+        .num_columns(3)
+        .spacing([5.0, 5.0])
+        .show(ui, |ui| {
+            for (k, _) in SCENES.iter().enumerate() {
+                let label = RichText::new(scene_name(k)).size(11.0);
+                let button = egui::Button::selectable(k == scene, label);
+                if ui.add_sized([100.0, 24.0], button).clicked() {
+                    p.set_mode(k);
+                }
+                if k % 3 == 2 {
+                    ui.end_row();
+                }
             }
-            if k % 3 == 2 {
-                ui.end_row();
-            }
-        }
-    });
+        });
 
     heading(ui, "REACTS TO");
     let source = p.data[data::SOURCE].get().round();
     ui.horizontal(|ui| {
         for (value, label, tip) in [
-            (iris::AUTO, "Auto", "The node patched into IN; the main mix while IN is free"),
+            (
+                iris::AUTO,
+                "Auto",
+                "The node patched into IN; the main mix while IN is free",
+            ),
             (iris::INPUT, "IN", "Only what is patched into IN"),
-            (iris::MAIN, "Main mix", "Everything the board plays, even with IN patched"),
+            (
+                iris::MAIN,
+                "Main mix",
+                "Everything the board plays, even with IN patched",
+            ),
         ] {
-            if ui.selectable_label(source == value, label).on_hover_text(tip).clicked() {
+            if ui
+                .selectable_label(source == value, label)
+                .on_hover_text(tip)
+                .clicked()
+            {
                 p.data[data::SOURCE].set(value);
             }
         }
@@ -2404,9 +2842,19 @@ fn settings(ui: &mut Ui, id: NodeId, p: &ModuleParams, accent: Color32, input: b
             painter.rect_filled(rect, 4.0, colors.bg);
             for (j, ink) in colors.inks.iter().enumerate() {
                 let x = rect.left() + 5.0 + j as f32 * 5.0;
-                painter.line_segment([pos2(x, rect.top() + 6.0), pos2(x + 4.0, rect.bottom() - 6.0)], Stroke::new(2.0, *ink));
+                painter.line_segment(
+                    [
+                        pos2(x, rect.top() + 6.0),
+                        pos2(x + 4.0, rect.bottom() - 6.0),
+                    ],
+                    Stroke::new(2.0, *ink),
+                );
             }
-            let stroke = if k == current { Stroke::new(2.0, accent) } else { Stroke::new(1.0, theme::PANEL_BORDER) };
+            let stroke = if k == current {
+                Stroke::new(2.0, accent)
+            } else {
+                Stroke::new(1.0, theme::PANEL_BORDER)
+            };
             painter.rect_stroke(rect, 4.0, stroke, StrokeKind::Inside);
             if resp.on_hover_text(pal.name).clicked() {
                 p.data[data::PALETTE].set(k as f32);
@@ -2415,23 +2863,40 @@ fn settings(ui: &mut Ui, id: NodeId, p: &ModuleParams, accent: Color32, input: b
     });
 
     heading(ui, "MOTION");
-    let names = [(REACT, "React", 2.0), (SPEED, "Speed", 2.0), (DETAIL, "Detail", 1.0), (SMOOTH, "Smooth", 1.0), (TRAIL, "Trail", 1.0)];
-    egui::Grid::new(ui.scope_id().with("knobs")).num_columns(2).spacing([10.0, 4.0]).show(ui, |ui| {
-        for (i, name, max) in names {
-            ui.label(name);
-            let mut val = p.get(i);
-            let slider = egui::Slider::new(&mut val, 0.0..=max).custom_formatter(|v, _| format!("{:.0} %", v * 100.0));
-            if ui.add(slider).changed() {
-                p.set(i, val);
+    let names = [
+        (REACT, "React", 2.0),
+        (SPEED, "Speed", 2.0),
+        (DETAIL, "Detail", 1.0),
+        (SMOOTH, "Smooth", 1.0),
+        (TRAIL, "Trail", 1.0),
+    ];
+    egui::Grid::new(ui.scope_id().with("knobs"))
+        .num_columns(2)
+        .spacing([10.0, 4.0])
+        .show(ui, |ui| {
+            for (i, name, max) in names {
+                ui.label(name);
+                let mut val = p.get(i);
+                let slider = egui::Slider::new(&mut val, 0.0..=max)
+                    .custom_formatter(|v, _| format!("{:.0} %", v * 100.0));
+                if ui.add(slider).changed() {
+                    p.set(i, val);
+                }
+                ui.end_row();
             }
-            ui.end_row();
-        }
-    });
+        });
 
     heading(ui, "NEXT SCENE EVERY");
     let cycle = p.data[data::CYCLE].get().round() as u32;
     ui.horizontal(|ui| {
-        for (bars, label) in [(0, "Never"), (1, "1 bar"), (2, "2"), (4, "4"), (8, "8"), (16, "16")] {
+        for (bars, label) in [
+            (0, "Never"),
+            (1, "1 bar"),
+            (2, "2"),
+            (4, "4"),
+            (8, "8"),
+            (16, "16"),
+        ] {
             if ui.selectable_label(cycle == bars, label).clicked() {
                 p.data[data::CYCLE].set(bars as f32);
             }
@@ -2452,7 +2917,12 @@ fn settings(ui: &mut Ui, id: NodeId, p: &ModuleParams, accent: Color32, input: b
 
     heading(ui, "SIZE");
     ui.horizontal(|ui| {
-        for (label, w, h) in [("16:9", 16.0, 9.0), ("4:3", 4.0, 3.0), ("1:1", 1.0, 1.0), ("9:16", 9.0, 16.0)] {
+        for (label, w, h) in [
+            ("16:9", 16.0, 9.0),
+            ("4:3", 4.0, 3.0),
+            ("1:1", 1.0, 1.0),
+            ("9:16", 9.0, 16.0),
+        ] {
             if ui.button(label).clicked() {
                 set_aspect(p, w, h);
             }
@@ -2462,10 +2932,18 @@ fn settings(ui: &mut Ui, id: NodeId, p: &ModuleParams, accent: Color32, input: b
             p.data[data::H].set(iris::DEFAULT_SIZE[1]);
         }
         let s = size(p);
-        ui.label(RichText::new(format!("{:.0} × {:.0}", s.x, s.y)).small().color(theme::TEXT_FAINT));
+        ui.label(
+            RichText::new(format!("{:.0} × {:.0}", s.x, s.y))
+                .small()
+                .color(theme::TEXT_FAINT),
+        );
     });
     ui.horizontal(|ui| {
-        if ui.button("New seed").on_hover_text("Starts the generative scenes afresh").clicked() {
+        if ui
+            .button("New seed")
+            .on_hover_text("Starts the generative scenes afresh")
+            .clicked()
+        {
             let seed = (p.data[data::SEED].get() + 1.0) % 1000.0;
             p.data[data::SEED].set(seed);
         }
@@ -2501,19 +2979,31 @@ mod tests {
         let mut a = Analysis::new();
         let mut n = 0usize;
         for _ in 0..30 {
-            feed(&p, (0..800).map(|_| {
-                n += 1;
-                0.05 * (TAU * 440.0 * n as f32 / 48_000.0).sin()
-            }));
+            feed(
+                &p,
+                (0..800).map(|_| {
+                    n += 1;
+                    0.05 * (TAU * 440.0 * n as f32 / 48_000.0).sin()
+                }),
+            );
             a.update(&p, 1.0 / 60.0);
         }
         assert!((a.pitch - 440.0).abs() < 25.0, "pitch {}", a.pitch);
-        let loudest = (0..BANDS).max_by(|&x, &y| a.bands[x].total_cmp(&a.bands[y])).unwrap();
+        let loudest = (0..BANDS)
+            .max_by(|&x, &y| a.bands[x].total_cmp(&a.bands[y]))
+            .unwrap();
         let f0 = 30.0 * (16_000.0f32 / 30.0).powf(loudest as f32 / BANDS as f32);
         let f1 = 30.0 * (16_000.0f32 / 30.0).powf((loudest + 1) as f32 / BANDS as f32);
-        assert!(f0 <= 460.0 && f1 >= 420.0, "440 Hz lands in band {loudest} ({f0}–{f1} Hz)");
+        assert!(
+            f0 <= 460.0 && f1 >= 420.0,
+            "440 Hz lands in band {loudest} ({f0}–{f1} Hz)"
+        );
         assert!(a.level > 0.3, "level {}", a.level);
-        assert!(a.bands[BANDS - 1] < 0.3, "nothing up high: {}", a.bands[BANDS - 1]);
+        assert!(
+            a.bands[BANDS - 1] < 0.3,
+            "nothing up high: {}",
+            a.bands[BANDS - 1]
+        );
     }
 
     #[test]
@@ -2525,12 +3015,19 @@ mod tests {
         // Two seconds of a click every half second over quiet noise.
         let mut rng = Rng(7);
         for _ in 0..120 {
-            feed(&p, (0..800).map(|_| {
-                n += 1;
-                let hit = n % 24_000 < 600;
-                let env = if hit { 1.0 - (n % 24_000) as f32 / 600.0 } else { 0.0 };
-                env * (rng.unit() * 2.0 - 1.0) * 0.9 + (rng.unit() - 0.5) * 0.002
-            }));
+            feed(
+                &p,
+                (0..800).map(|_| {
+                    n += 1;
+                    let hit = n % 24_000 < 600;
+                    let env = if hit {
+                        1.0 - (n % 24_000) as f32 / 600.0
+                    } else {
+                        0.0
+                    };
+                    env * (rng.unit() * 2.0 - 1.0) * 0.9 + (rng.unit() - 0.5) * 0.002
+                }),
+            );
             a.update(&p, 1.0 / 60.0);
             onsets += a.onset as usize;
         }
@@ -2561,11 +3058,14 @@ mod tests {
                 let mut total = std::time::Duration::ZERO;
                 let frames = 120;
                 for f in 0..frames {
-                    feed(&p, (0..800).map(|_| {
-                        n += 1;
-                        let t = n as f32 / 48_000.0;
-                        (TAU * 110.0 * t).sin() * 0.5 + if n % 24_000 < 400 { 0.8 } else { 0.0 }
-                    }));
+                    feed(
+                        &p,
+                        (0..800).map(|_| {
+                            n += 1;
+                            let t = n as f32 / 48_000.0;
+                            (TAU * 110.0 * t).sin() * 0.5 + if n % 24_000 < 400 { 0.8 } else { 0.0 }
+                        }),
+                    );
                     a.update(&p, 1.0 / 60.0);
                     let start = std::time::Instant::now();
                     let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
@@ -2588,7 +3088,13 @@ mod tests {
                     out.textures_delta.clear();
                     total += start.elapsed();
                 }
-                eprintln!("{:>4}×{:<4} {:<13} {:>6.2} ms a frame", w, h, SCENES[scene], total.as_secs_f64() * 1000.0 / frames as f64);
+                eprintln!(
+                    "{:>4}×{:<4} {:<13} {:>6.2} ms a frame",
+                    w,
+                    h,
+                    SCENES[scene],
+                    total.as_secs_f64() * 1000.0 / frames as f64
+                );
             }
             // Four layers, each mirrored with four echoes, through the matrix.
             let layers = ModuleParams::new(ModuleKind::Iris);
@@ -2598,10 +3104,13 @@ mod tests {
             let mut total = std::time::Duration::ZERO;
             let frames = 120;
             for _ in 0..frames {
-                feed(&layers, (0..800).map(|_| {
-                    n += 1;
-                    (TAU * 110.0 * n as f32 / 48_000.0).sin() * 0.5
-                }));
+                feed(
+                    &layers,
+                    (0..800).map(|_| {
+                        n += 1;
+                        (TAU * 110.0 * n as f32 / 48_000.0).sin() * 0.5
+                    }),
+                );
                 st.a.update(&layers, 1.0 / 60.0);
                 let start = std::time::Instant::now();
                 let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
@@ -2623,7 +3132,13 @@ mod tests {
                 out.textures_delta.clear();
                 total += start.elapsed();
             }
-            eprintln!("{:>4}×{:<4} {:<13} {:>6.2} ms a frame", w, h, "4 LAYERS", total.as_secs_f64() * 1000.0 / frames as f64);
+            eprintln!(
+                "{:>4}×{:<4} {:<13} {:>6.2} ms a frame",
+                w,
+                h,
+                "4 LAYERS",
+                total.as_secs_f64() * 1000.0 / frames as f64
+            );
         }
     }
 
@@ -2643,8 +3158,19 @@ mod tests {
             p.data[b + layer::MIRROR].set(k as f32 + 1.0);
             p.data[b + layer::ECHO].set(4.0);
         }
-        let dest = |name: &str| (0..synth::DESTS).find(|&d| synth::dest_name(d) == name).unwrap() as f32;
-        for (s, (src, dst, amount)) in [(1.0, dest("Layer 2 Zoom"), 0.5), (5.0, dest("Layer 3 Opacity"), -0.6), (7.0, dest("Speed"), 0.4)].into_iter().enumerate() {
+        let dest = |name: &str| {
+            (0..synth::DESTS)
+                .find(|&d| synth::dest_name(d) == name)
+                .unwrap() as f32
+        };
+        for (s, (src, dst, amount)) in [
+            (1.0, dest("Layer 2 Zoom"), 0.5),
+            (5.0, dest("Layer 3 Opacity"), -0.6),
+            (7.0, dest("Speed"), 0.4),
+        ]
+        .into_iter()
+        .enumerate()
+        {
             let b = data::MATRIX + s * data::SLOT_LEN;
             p.data[b + data::slot::SOURCE].set(src);
             p.data[b + data::slot::DEST].set(dst);
@@ -2662,10 +3188,13 @@ mod tests {
         let mut n = 0usize;
         let mut most = 0;
         for f in 0..30 {
-            feed(&p, (0..800).map(|_| {
-                n += 1;
-                (TAU * 110.0 * n as f32 / 48_000.0).sin() * 0.6
-            }));
+            feed(
+                &p,
+                (0..800).map(|_| {
+                    n += 1;
+                    (TAU * 110.0 * n as f32 / 48_000.0).sin() * 0.6
+                }),
+            );
             st.a.update(&p, 1.0 / 60.0);
             st.a.onset = f % 7 == 0;
             let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
@@ -2686,7 +3215,11 @@ mod tests {
             });
             out.textures_delta.clear();
             for s in &out.shapes {
-                assert!(screen.expand(0.5).contains_rect(s.clip_rect), "drawn outside the screen: {:?}", s.clip_rect);
+                assert!(
+                    screen.expand(0.5).contains_rect(s.clip_rect),
+                    "drawn outside the screen: {:?}",
+                    s.clip_rect
+                );
             }
             most = most.max(out.shapes.len());
         }
@@ -2701,7 +3234,10 @@ mod tests {
         assert!(screen_local(size(&p), false).width() < size(&p).x);
         p.data[data::FRAMELESS].set(1.0);
         assert!(frameless(&p));
-        assert_eq!(screen_local(size(&p), true), Rect::from_min_size(Pos2::ZERO, size(&p)));
+        assert_eq!(
+            screen_local(size(&p), true),
+            Rect::from_min_size(Pos2::ZERO, size(&p))
+        );
         set_aspect(&p, 16.0, 9.0);
         let s = size(&p);
         assert!((s.x / s.y - 16.0 / 9.0).abs() < 0.01, "{s:?}");
@@ -2725,7 +3261,11 @@ mod tests {
                     cells.insert((cx, cy));
                 }
             }
-            assert!(cells.len() >= 150, "{k:?} covers only {} cells", cells.len());
+            assert!(
+                cells.len() >= 150,
+                "{k:?} covers only {} cells",
+                cells.len()
+            );
         }
     }
 
@@ -2734,10 +3274,13 @@ mod tests {
         let p = ModuleParams::new(ModuleKind::Iris);
         let mut a = Analysis::new();
         let mut n = 0usize;
-        feed(&p, (0..4096).map(|_| {
-            n += 1;
-            (TAU * 110.0 * n as f32 / 48_000.0).sin() * 0.7
-        }));
+        feed(
+            &p,
+            (0..4096).map(|_| {
+                n += 1;
+                (TAU * 110.0 * n as f32 / 48_000.0).sin() * 0.7
+            }),
+        );
         a.update(&p, 1.0 / 60.0);
         a.onset = true;
         a.beat = 1.0;
@@ -2747,7 +3290,10 @@ mod tests {
                 for detail in [0.0, 1.0] {
                     for scene in 0..SCENES.len() {
                         let mut s = Scenes::new(pi as u32);
-                        for r in [Rect::from_min_size(pos2(0.0, 0.0), vec2(220.0, 140.0)), Rect::from_min_size(pos2(0.0, 0.0), vec2(1600.0, 300.0))] {
+                        for r in [
+                            Rect::from_min_size(pos2(0.0, 0.0), vec2(220.0, 140.0)),
+                            Rect::from_min_size(pos2(0.0, 0.0), vec2(1600.0, 300.0)),
+                        ] {
                             let c = Ctx {
                                 p: ui.painter(),
                                 r,
@@ -2770,4 +3316,3 @@ mod tests {
         out.textures_delta.clear();
     }
 }
-

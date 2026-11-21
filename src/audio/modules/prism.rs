@@ -36,7 +36,10 @@ pub mod spectral;
 
 use std::sync::Arc;
 
-use design::{Analog, BAND_PASS, BELL, BRICKWALL, Digital, HIGH_CUT, HIGH_SHELF, LOW_CUT, LOW_SHELF, MAX_SECTIONS, NOTCH, SHAPES, Shape, State};
+use design::{
+    Analog, BAND_PASS, BELL, BRICKWALL, Digital, HIGH_CUT, HIGH_SHELF, LOW_CUT, LOW_SHELF,
+    MAX_SECTIONS, NOTCH, SHAPES, Shape, State,
+};
 use dynamics::{Detector, Trigger};
 use spectral::{GRID, SpecBand, Stage};
 
@@ -81,15 +84,47 @@ pub const Q_RANGE: (f32, f32) = (0.025, 40.0);
 macro_rules! band_params {
     ($n:literal) => {
         [
-            ParamSpec::log(concat!("B", $n, " FREQ"), FREQ_RANGE.0, FREQ_RANGE.1, 1000.0, Unit::Hz),
-            ParamSpec::lin(concat!("B", $n, " GAIN"), -GAIN_RANGE, GAIN_RANGE, 0.0, Unit::Db).bipolar(),
+            ParamSpec::log(
+                concat!("B", $n, " FREQ"),
+                FREQ_RANGE.0,
+                FREQ_RANGE.1,
+                1000.0,
+                Unit::Hz,
+            ),
+            ParamSpec::lin(
+                concat!("B", $n, " GAIN"),
+                -GAIN_RANGE,
+                GAIN_RANGE,
+                0.0,
+                Unit::Db,
+            )
+            .bipolar(),
             ParamSpec::log(concat!("B", $n, " Q"), Q_RANGE.0, Q_RANGE.1, 1.0, Unit::Q),
-            ParamSpec::lin(concat!("B", $n, " RANGE"), -GAIN_RANGE, GAIN_RANGE, 0.0, Unit::Db).bipolar(),
+            ParamSpec::lin(
+                concat!("B", $n, " RANGE"),
+                -GAIN_RANGE,
+                GAIN_RANGE,
+                0.0,
+                Unit::Db,
+            )
+            .bipolar(),
             ParamSpec::lin(concat!("B", $n, " THRESHOLD"), -60.0, 0.0, -20.0, Unit::Db),
             ParamSpec::lin(concat!("B", $n, " ATTACK"), 0.0, 1.0, 0.5, Unit::Percent),
             ParamSpec::lin(concat!("B", $n, " RELEASE"), 0.0, 1.0, 0.5, Unit::Percent),
-            ParamSpec::log(concat!("B", $n, " SC LO"), FREQ_RANGE.0, FREQ_RANGE.1, 20.0, Unit::Hz),
-            ParamSpec::log(concat!("B", $n, " SC HI"), FREQ_RANGE.0, FREQ_RANGE.1, 20_000.0, Unit::Hz),
+            ParamSpec::log(
+                concat!("B", $n, " SC LO"),
+                FREQ_RANGE.0,
+                FREQ_RANGE.1,
+                20.0,
+                Unit::Hz,
+            ),
+            ParamSpec::log(
+                concat!("B", $n, " SC HI"),
+                FREQ_RANGE.0,
+                FREQ_RANGE.1,
+                20_000.0,
+                Unit::Hz,
+            ),
             ParamSpec::lin(concat!("B", $n, " DENSITY"), 0.0, 1.0, 0.5, Unit::Percent),
         ]
     };
@@ -151,7 +186,13 @@ pub const NATURAL_PHASE: usize = 1;
 pub const LINEAR_PHASE: usize = 2;
 
 /// Linear-phase resolutions: (name, frame at 44.1/48 kHz).
-pub const RESOLUTIONS: [(&str, usize); 5] = [("LOW", 2048), ("MEDIUM", 4096), ("HIGH", 8192), ("VERY HIGH", 16_384), ("MAX", 32_768)];
+pub const RESOLUTIONS: [(&str, usize); 5] = [
+    ("LOW", 2048),
+    ("MEDIUM", 4096),
+    ("HIGH", 8192),
+    ("VERY HIGH", 16_384),
+    ("MAX", 32_768),
+];
 /// Dynamics and spectral bands work up to this resolution.
 pub const DYNAMIC_RESOLUTIONS: usize = 3;
 
@@ -160,8 +201,15 @@ pub const CHARACTERS: [&str; 3] = ["CLEAN", "SUBTLE", "WARM"];
 /// Analyzer settings: range (dB), resolution (FFT points), speed (seconds
 /// for the display to fall 20 dB), tilt (dB/octave around 1 kHz).
 pub const AN_RANGES: [f32; 3] = [60.0, 90.0, 120.0];
-pub const AN_RESOLUTIONS: [(&str, usize); 4] = [("LOW", 1024), ("MED", 2048), ("HIGH", 4096), ("MAX", 8192)];
-pub const AN_SPEEDS: [(&str, f32); 5] = [("V.FAST", 0.15), ("FAST", 0.35), ("MED", 0.8), ("SLOW", 1.8), ("V.SLOW", 4.0)];
+pub const AN_RESOLUTIONS: [(&str, usize); 4] =
+    [("LOW", 1024), ("MED", 2048), ("HIGH", 4096), ("MAX", 8192)];
+pub const AN_SPEEDS: [(&str, f32); 5] = [
+    ("V.FAST", 0.15),
+    ("FAST", 0.35),
+    ("MED", 0.8),
+    ("SLOW", 1.8),
+    ("V.SLOW", 4.0),
+];
 pub const AN_TILTS: [f32; 5] = [0.0, 1.5, 3.0, 4.5, 6.0];
 /// Display ranges of the EQ scale (± dB).
 pub const DISPLAY_RANGES: [f32; 4] = [3.0, 6.0, 12.0, 30.0];
@@ -356,12 +404,19 @@ pub fn gain_q(gain: f32, q: f32) -> (f32, f32) {
 pub fn effective(p: &ModuleParams, b: usize, extra: f32) -> Shape {
     let sh = shape(p, b);
     let scale = p.get(SCALE);
-    let mut gain = (p.get(bp(b, band::GAIN)) * scale + extra).clamp(-2.0 * GAIN_RANGE, 2.0 * GAIN_RANGE);
+    let mut gain =
+        (p.get(bp(b, band::GAIN)) * scale + extra).clamp(-2.0 * GAIN_RANGE, 2.0 * GAIN_RANGE);
     let mut q = p.get(bp(b, band::Q));
     if sh == BELL && on(p, data::GAIN_Q) {
         (gain, q) = gain_q(gain, q);
     }
-    Shape { shape: sh, slope: slope(p, b), freq: p.get(bp(b, band::FREQ)) as f64, gain: gain as f64, q: q as f64 }
+    Shape {
+        shape: sh,
+        slope: slope(p, b),
+        freq: p.get(bp(b, band::FREQ)) as f64,
+        gain: gain as f64,
+        q: q as f64,
+    }
 }
 
 /// The band's analog design now (for the panel).
@@ -394,7 +449,11 @@ pub fn create_band(p: &ModuleParams, b: usize, sh: usize, freq: f32, gain: f32, 
     p.data[data::USED + b].set(1.0);
     p.data[data::ON + b].set(1.0);
     p.data[data::SHAPE + b].set(sh as f32);
-    let slope = if matches!(sh, LOW_CUT | HIGH_CUT) { 3 } else { 1 };
+    let slope = if matches!(sh, LOW_CUT | HIGH_CUT) {
+        3
+    } else {
+        1
+    };
     p.data[data::SLOPE + b].set(design::fix_slope(sh, slope) as f32);
     p.data[data::PLACE + b].set(0.0);
     p.data[data::AUTO + b].set(1.0);
@@ -403,14 +462,27 @@ pub fn create_band(p: &ModuleParams, b: usize, sh: usize, freq: f32, gain: f32, 
     p.data[data::SPECTRAL + b].set(0.0);
     p.data[data::SPEC_TILT + b].set(1.0);
     p.set(bp(b, band::FREQ), freq.clamp(FREQ_RANGE.0, FREQ_RANGE.1));
-    p.set(bp(b, band::GAIN), if design::has_gain(sh) { gain.clamp(-GAIN_RANGE, GAIN_RANGE) } else { 0.0 });
+    p.set(
+        bp(b, band::GAIN),
+        if design::has_gain(sh) {
+            gain.clamp(-GAIN_RANGE, GAIN_RANGE)
+        } else {
+            0.0
+        },
+    );
     p.set(bp(b, band::Q), q.clamp(Q_RANGE.0, Q_RANGE.1));
     p.set(bp(b, band::RANGE), 0.0);
     p.set(bp(b, band::THRESHOLD), -20.0);
     p.set(bp(b, band::ATTACK), 0.5);
     p.set(bp(b, band::RELEASE), 0.5);
-    p.set(bp(b, band::SC_LO), (freq * 0.5).clamp(FREQ_RANGE.0, FREQ_RANGE.1));
-    p.set(bp(b, band::SC_HI), (freq * 2.0).clamp(FREQ_RANGE.0, FREQ_RANGE.1));
+    p.set(
+        bp(b, band::SC_LO),
+        (freq * 0.5).clamp(FREQ_RANGE.0, FREQ_RANGE.1),
+    );
+    p.set(
+        bp(b, band::SC_HI),
+        (freq * 2.0).clamp(FREQ_RANGE.0, FREQ_RANGE.1),
+    );
     p.set(bp(b, band::DENSITY), 0.5);
 }
 
@@ -568,7 +640,11 @@ impl Prism {
             mode: usize::MAX,
             resolution: usize::MAX,
             os: Oversampler::new(),
-            stage: Box::new(Stage::new(sample_rate, RESOLUTIONS[4].1 * f, RESOLUTIONS[DYNAMIC_RESOLUTIONS - 1].1 * f)),
+            stage: Box::new(Stage::new(
+                sample_rate,
+                RESOLUTIONS[4].1 * f,
+                RESOLUTIONS[DYNAMIC_RESOLUTIONS - 1].1 * f,
+            )),
             stage_on: false,
             stage_members: 0,
             grids_dirty: true,
@@ -643,7 +719,11 @@ impl Prism {
             self.stage.reset();
             self.grids_dirty = true;
         }
-        let n = if mode == LINEAR_PHASE { frame(resolution, self.sr) } else { spectral_n };
+        let n = if mode == LINEAR_PHASE {
+            frame(resolution, self.sr)
+        } else {
+            spectral_n
+        };
         if n != self.stage.n() {
             self.stage.resize(n);
             self.grids_dirty = true;
@@ -690,7 +770,11 @@ impl Prism {
         // Linear phase: dynamic bands' live change, now and then.
         if lp && slow {
             for (band, s) in self.bands.iter_mut().zip(sets) {
-                let d = if s.dynamic && !s.spectral { band.det.dynamic } else { 0.0 };
+                let d = if s.dynamic && !s.spectral {
+                    band.det.dynamic
+                } else {
+                    0.0
+                };
                 if (d - band.lp_dyn).abs() > 0.05 || (d == 0.0 && band.lp_dyn != 0.0) {
                     band.lp_dyn = d;
                     if d != 0.0 {
@@ -737,7 +821,8 @@ impl Prism {
                     t.gain = range as f64;
                     let a = Analog::design(&t);
                     for (i, v) in self.stage.weight[b].iter_mut().enumerate() {
-                        *v = ((a.db(spectral::grid_freq(i, sr) as f64) as f32) / range).clamp(0.0, 1.0);
+                        *v = ((a.db(spectral::grid_freq(i, sr) as f64) as f32) / range)
+                            .clamp(0.0, 1.0);
                     }
                 }
             }
@@ -778,7 +863,10 @@ impl Prism {
 
         // Auto gain: what the curve does to pink noise, 20 Hz–20 kHz, on
         // both sides (mid bands count fully, side bands not at all).
-        let (lo, hi) = (spectral::grid_pos(20.0, sr) as usize, spectral::grid_pos(20_000.0, sr) as usize);
+        let (lo, hi) = (
+            spectral::grid_pos(20.0, sr) as usize,
+            spectral::grid_pos(20_000.0, sr) as usize,
+        );
         let mut power = 0.0f64;
         let mut count = 0usize;
         for i in lo..=hi.min(GRID - 1) {
@@ -800,7 +888,11 @@ impl Prism {
             power += 0.5 * (10f64.powf(l as f64 / 10.0) + 10f64.powf(r as f64 / 10.0));
             count += 1;
         }
-        self.auto_target = if count > 0 { (-10.0 * (power / count as f64).log10()).clamp(-24.0, 24.0) as f32 } else { 0.0 };
+        self.auto_target = if count > 0 {
+            (-10.0 * (power / count as f64).log10()).clamp(-24.0, 24.0) as f32
+        } else {
+            0.0
+        };
     }
 
     fn solo_filter(&mut self, s: &Set) {
@@ -837,7 +929,11 @@ fn on_place(place: usize, x: (f64, f64), mut f: impl FnMut(usize, f64) -> f64) -
         RIGHT => (x.0, f(1, x.1)),
         MID | SIDE => {
             let (m, s) = ((x.0 + x.1) * 0.5, (x.0 - x.1) * 0.5);
-            let (m, s) = if place == MID { (f(0, m), s) } else { (m, f(0, s)) };
+            let (m, s) = if place == MID {
+                (f(0, m), s)
+            } else {
+                (m, f(0, s))
+            };
             (m + s, m - s)
         }
         _ => (f(0, x.0), f(1, x.1)),
@@ -861,12 +957,27 @@ impl Processor for Prism {
         let stage_on = mode == LINEAR_PHASE || any_spectral;
         let spectral_n = frame(resolution.min(DYNAMIC_RESOLUTIONS - 1), sr);
         self.configure(mode, resolution, stage_on, spectral_n);
-        let latency = if self.stage_on { self.stage.latency() as f32 } else { 0.0 } + if mode == NATURAL_PHASE { NATURAL_LATENCY } else { 0.0 };
+        let latency = if self.stage_on {
+            self.stage.latency() as f32
+        } else {
+            0.0
+        } + if mode == NATURAL_PHASE {
+            NATURAL_LATENCY
+        } else {
+            0.0
+        };
         p.viz[viz::LATENCY].set(latency);
-        p.viz[viz::WARN].set((mode == LINEAR_PHASE && resolution >= DYNAMIC_RESOLUTIONS && (0..BANDS).any(|b| active(&p, b) && dynamic(&p, b))) as u8 as f32);
+        p.viz[viz::WARN].set(
+            (mode == LINEAR_PHASE
+                && resolution >= DYNAMIC_RESOLUTIONS
+                && (0..BANDS).any(|b| active(&p, b) && dynamic(&p, b))) as u8 as f32,
+        );
 
         let silent_in = Quiet::silent(input, n);
-        let listening = on(&p, data::AN_PRE) || on(&p, data::AN_POST) || on(&p, data::AN_SC) || on(&p, data::MATCH);
+        let listening = on(&p, data::AN_PRE)
+            || on(&p, data::AN_POST)
+            || on(&p, data::AN_SC)
+            || on(&p, data::MATCH);
         if silent_in && self.quiet.resting() && !(listening && side.is_some()) {
             silence(outputs, n);
             for b in 0..BANDS {
@@ -884,7 +995,15 @@ impl Processor for Prism {
             self.lp_count = 0;
         }
         self.update_curves(&sets, slow);
-        glide(&mut self.auto_gain, if on(&p, data::AUTO_GAIN) { self.auto_target } else { 0.0 }, k_block);
+        glide(
+            &mut self.auto_gain,
+            if on(&p, data::AUTO_GAIN) {
+                self.auto_target
+            } else {
+                0.0
+            },
+            k_block,
+        );
         p.viz[viz::AUTO_GAIN].set(self.auto_gain);
 
         let os = mode == NATURAL_PHASE;
@@ -930,10 +1049,13 @@ impl Processor for Prism {
             let sc = side.map_or((0.0, 0.0), |b| (b[0][i], b[1][i]));
             let control = i % CONTROL == 0;
             for b in 0..BANDS {
-                let Some((ka, kr)) = triggers[b] else { continue };
+                let Some((ka, kr)) = triggers[b] else {
+                    continue;
+                };
                 let s = &sets[b];
                 let band = &mut self.bands[b];
-                band.det.tick(&s.trigger, sr, if s.ext { sc } else { x }, ka, kr);
+                band.det
+                    .tick(&s.trigger, sr, if s.ext { sc } else { x }, ka, kr);
                 if control {
                     band.det.update(&s.trigger, avg_k);
                 }
@@ -948,7 +1070,12 @@ impl Processor for Prism {
                         continue;
                     }
                     let dyn_db = if s.dynamic { band.det.dynamic } else { 0.0 };
-                    let want = Shape { freq: band.freq as f64, gain: band.gain as f64 + dyn_db as f64, q: band.q as f64, ..s.target };
+                    let want = Shape {
+                        freq: band.freq as f64,
+                        gain: band.gain as f64 + dyn_db as f64,
+                        q: band.q as f64,
+                        ..s.target
+                    };
                     let stale = match band.made {
                         Some((m, o)) => {
                             o != os
@@ -961,7 +1088,10 @@ impl Processor for Prism {
                         None => true,
                     };
                     if stale {
-                        if band.made.is_some_and(|(m, _)| m.shape != want.shape || m.slope != want.slope) {
+                        if band
+                            .made
+                            .is_some_and(|(m, _)| m.shape != want.shape || m.slope != want.slope)
+                        {
                             band.reset_states();
                         }
                         band.digital = Analog::design(&want).digital(rate as f64);
@@ -983,7 +1113,10 @@ impl Processor for Prism {
                                 v = on_place(s.place, v, |ch, val| band.tick(ch, val));
                             }
                         }
-                        down[k] = [saturate(v.0 as f32, character), saturate(v.1 as f32, character)];
+                        down[k] = [
+                            saturate(v.0 as f32, character),
+                            saturate(v.1 as f32, character),
+                        ];
                     }
                     let d = self.os.down(down);
                     y = (d[0] as f64, d[1] as f64);
@@ -1082,7 +1215,11 @@ impl Processor for Prism {
             loud = loud.max(l.abs()).max(r.abs());
             if listening_rings {
                 let sc = side.map_or((0.0, 0.0), |b| (b[0][i], b[1][i]));
-                for (ring, v) in [(RING_PRE, (x.0 + x.1) * 0.5), (RING_POST, (l + r) * 0.5), (RING_SC, (sc.0 + sc.1) * 0.5)] {
+                for (ring, v) in [
+                    (RING_PRE, (x.0 + x.1) * 0.5),
+                    (RING_POST, (l + r) * 0.5),
+                    (RING_SC, (sc.0 + sc.1) * 0.5),
+                ] {
                     p.viz[viz::RINGS + ring * RTA_LEN + self.rings[ring]].set(v);
                     self.rings[ring] = (self.rings[ring] + 1) % RTA_LEN;
                 }

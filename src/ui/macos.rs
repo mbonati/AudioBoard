@@ -11,7 +11,9 @@ pub struct NativeWindow(Retained<NSWindow>);
 impl NativeWindow {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Option<Self> {
         let handle = cc.window_handle().ok()?;
-        let RawWindowHandle::AppKit(h) = handle.as_raw() else { return None };
+        let RawWindowHandle::AppKit(h) = handle.as_raw() else {
+            return None;
+        };
         // SAFETY: an AppKit handle's `ns_view` is the live NSView of the
         // window being created, and app creation runs on the main thread.
         let view: &NSView = unsafe { h.ns_view.cast::<NSView>().as_ref() };
@@ -31,7 +33,9 @@ impl NativeWindow {
 
 /// The app's windows as they are now, to tell which one a call opens.
 pub fn windows() -> Vec<Retained<NSWindow>> {
-    MainThreadMarker::new().map_or_else(Vec::new, |mtm| NSApplication::sharedApplication(mtm).windows().to_vec())
+    MainThreadMarker::new().map_or_else(Vec::new, |mtm| {
+        NSApplication::sharedApplication(mtm).windows().to_vec()
+    })
 }
 
 /// Floats the windows opened since `before` (plugin editors) above the

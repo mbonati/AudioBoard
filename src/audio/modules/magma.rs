@@ -29,7 +29,10 @@ use crate::audio::params::{ParamSpec, Unit, format_db, format_hz, format_seconds
 use filter::{Complex, Filter, Setting};
 use modulation::{SOURCES, Sources};
 
-pub use filter::{BAND_PASS, BELL, BELL_DB, HIGH_PASS, HIGH_SHELF, LOW_PASS, LOW_SHELF, NOTCH, SHAPES, SLOPES, STYLES, db, mul};
+pub use filter::{
+    BAND_PASS, BELL, BELL_DB, HIGH_PASS, HIGH_SHELF, LOW_PASS, LOW_SHELF, NOTCH, SHAPES, SLOPES,
+    STYLES, db, mul,
+};
 
 pub const FILTERS: usize = 4;
 
@@ -159,7 +162,14 @@ macro_rules! xlfo_params {
         [
             ParamSpec::log(concat!("XLFO", $n, " RATE"), 0.02, 500.0, 1.0, Unit::Hz),
             ParamSpec::log(concat!("XLFO", $n, " OFFSET"), 0.5, 2.0, 1.0, Unit::Q),
-            ParamSpec::lin(concat!("XLFO", $n, " BALANCE"), -1.0, 1.0, 0.0, Unit::Percent).bipolar(),
+            ParamSpec::lin(
+                concat!("XLFO", $n, " BALANCE"),
+                -1.0,
+                1.0,
+                0.0,
+                Unit::Percent,
+            )
+            .bipolar(),
             ParamSpec::lin(concat!("XLFO", $n, " GLIDE"), -1.0, 1.0, 0.0, Unit::Percent).bipolar(),
             ParamSpec::lin(concat!("XLFO", $n, " PHASE"), 0.0, 1.0, 0.0, Unit::Percent),
         ]
@@ -170,12 +180,36 @@ macro_rules! eg_params {
     ($n:literal) => {
         [
             ParamSpec::lin(concat!("EG", $n, " THRESHOLD"), -60.0, 0.0, -30.0, Unit::Db),
-            ParamSpec::log(concat!("EG", $n, " DELAY"), 0.0005, 10.0, 0.0005, Unit::Seconds),
-            ParamSpec::log(concat!("EG", $n, " ATTACK"), 0.0005, 10.0, 0.005, Unit::Seconds),
+            ParamSpec::log(
+                concat!("EG", $n, " DELAY"),
+                0.0005,
+                10.0,
+                0.0005,
+                Unit::Seconds,
+            ),
+            ParamSpec::log(
+                concat!("EG", $n, " ATTACK"),
+                0.0005,
+                10.0,
+                0.005,
+                Unit::Seconds,
+            ),
             ParamSpec::log(concat!("EG", $n, " DECAY"), 0.001, 20.0, 0.3, Unit::Seconds),
             ParamSpec::lin(concat!("EG", $n, " SUSTAIN"), 0.0, 1.0, 0.5, Unit::Percent),
-            ParamSpec::log(concat!("EG", $n, " HOLD"), 0.0005, 10.0, 0.0005, Unit::Seconds),
-            ParamSpec::log(concat!("EG", $n, " RELEASE"), 0.001, 20.0, 0.4, Unit::Seconds),
+            ParamSpec::log(
+                concat!("EG", $n, " HOLD"),
+                0.0005,
+                10.0,
+                0.0005,
+                Unit::Seconds,
+            ),
+            ParamSpec::log(
+                concat!("EG", $n, " RELEASE"),
+                0.001,
+                20.0,
+                0.4,
+                Unit::Seconds,
+            ),
             ParamSpec::lin(concat!("EG", $n, " A SLOPE"), -1.0, 1.0, 0.0, Unit::Percent).bipolar(),
             ParamSpec::lin(concat!("EG", $n, " D SLOPE"), -1.0, 1.0, 0.0, Unit::Percent).bipolar(),
             ParamSpec::lin(concat!("EG", $n, " R SLOPE"), -1.0, 1.0, 0.0, Unit::Percent).bipolar(),
@@ -441,7 +475,11 @@ pub fn add_slot(p: &ModuleParams, source: usize, param: usize) -> Option<usize> 
     let free = (0..SLOTS).find(|&s| slot_raw(p, s) == (0, 0))?;
     set_slot(p, free, source, param + 1);
     // Frequencies span 11 octaves: start with a musical ±2.
-    let level = if param < IN_GAIN && param % filt::COUNT == filt::FREQ { 0.18 } else { 0.5 };
+    let level = if param < IN_GAIN && param % filt::COUNT == filt::FREQ {
+        0.18
+    } else {
+        0.5
+    };
     p.set(SLOT0 + free, level);
     Some(free)
 }
@@ -458,8 +496,10 @@ pub fn label(i: usize) -> &'static str {
         return ["RATE", "OFFSET", "BALANCE", "GLIDE", "PHASE"][(i - XLFO0) % xlfo::COUNT];
     }
     if (EG0..EF0).contains(&i) {
-        return ["THRESH", "DELAY", "ATTACK", "DECAY", "SUSTAIN", "HOLD", "RELEASE", "A.SLOPE", "D.SLOPE", "R.SLOPE"]
-            [(i - EG0) % eg::COUNT];
+        return [
+            "THRESH", "DELAY", "ATTACK", "DECAY", "SUSTAIN", "HOLD", "RELEASE", "A.SLOPE",
+            "D.SLOPE", "R.SLOPE",
+        ][(i - EG0) % eg::COUNT];
     }
     if (EF0..XY0).contains(&i) {
         return ["ATTACK", "RELEASE"][(i - EF0) % ef::COUNT];
@@ -518,7 +558,9 @@ pub fn format(p: &ModuleParams, i: usize, v: f32) -> String {
             filt::DRIVE => format!("{:.0}%", v * 100.0),
             filt::FREQ => format_hz(v),
             filt::FPAN => format!("{:+.1} oct", v * 2.0),
-            filt::PEAK if matches!(choice(p, data::SHAPE + f, 8), BELL | LOW_SHELF | HIGH_SHELF) => {
+            filt::PEAK
+                if matches!(choice(p, data::SHAPE + f, 8), BELL | LOW_SHELF | HIGH_SHELF) =>
+            {
                 format!("{:+.1} dB", v * BELL_DB)
             }
             filt::PEAK => format!("{:.0}%", (v + 1.0) * 50.0),
@@ -587,7 +629,14 @@ pub fn base_values(p: &ModuleParams) -> [f32; PARAM_COUNT] {
 
 /// Filter `f`'s own response at `f_hz` on channel `ch`, with its level and
 /// delay.
-pub fn filter_response(p: &ModuleParams, vals: &[f32; PARAM_COUNT], f: usize, ch: usize, f_hz: f32, sr: f32) -> Complex {
+pub fn filter_response(
+    p: &ModuleParams,
+    vals: &[f32; PARAM_COUNT],
+    f: usize,
+    ch: usize,
+    f_hz: f32,
+    sr: f32,
+) -> Complex {
     let s = setting(p, vals, f);
     let h = filter::response(&s, s.freq[ch], f_hz, sr);
     let gain = 10f32.powf(vals[fp(f, filt::LEVEL)] / 20.0);
@@ -597,7 +646,13 @@ pub fn filter_response(p: &ModuleParams, vals: &[f32; PARAM_COUNT], f: usize, ch
 
 /// The whole response at `f_hz` for channel `ch` (in L/R and M/S modes, 0
 /// is the first pair's channel, 1 the second's), routing and all.
-pub fn total_response(p: &ModuleParams, vals: &[f32; PARAM_COUNT], ch: usize, f_hz: f32, sr: f32) -> Complex {
+pub fn total_response(
+    p: &ModuleParams,
+    vals: &[f32; PARAM_COUNT],
+    ch: usize,
+    f_hz: f32,
+    sr: f32,
+) -> Complex {
     let enabled = |f: usize| on(p, data::FILTER_ON + f);
     let response = |f: usize| filter_response(p, vals, f, ch, f_hz, sr);
     let routing = choice(p, data::ROUTING, ROUTINGS.len());
@@ -623,7 +678,10 @@ pub fn total_response(p: &ModuleParams, vals: &[f32; PARAM_COUNT], ch: usize, f_
         for chain in *step {
             if chain.iter().any(|&f| enabled(f)) {
                 any = true;
-                let c = chain.iter().filter(|&&f| enabled(f)).fold((1.0, 0.0), |acc, &f| mul(acc, response(f)));
+                let c = chain
+                    .iter()
+                    .filter(|&&f| enabled(f))
+                    .fold((1.0, 0.0), |acc, &f| mul(acc, response(f)));
                 sum = (sum.0 + c.0, sum.1 + c.1);
             }
         }
@@ -756,12 +814,18 @@ impl Magma {
         let mut touched = [false; PARAM_COUNT];
         for pass in 0..2 {
             for (s, sl) in slots.iter().enumerate() {
-                let Some((source, target)) = *sl else { continue };
+                let Some((source, target)) = *sl else {
+                    continue;
+                };
                 let on_slot = target >= SLOT0;
                 if (pass == 0) != on_slot {
                     continue;
                 }
-                let level = if pass == 0 { p.get(SLOT0 + s) } else { self.vals[SLOT0 + s] };
+                let level = if pass == 0 {
+                    p.get(SLOT0 + s)
+                } else {
+                    self.vals[SLOT0 + s]
+                };
                 delta[target] += level * src[source - 1];
                 touched[target] = true;
             }
@@ -808,12 +872,21 @@ impl Magma {
 
 /// Filter `f` on a stereo sample, with its delay, level and pan.
 #[inline]
-fn run_stereo(slot: &mut FilterSlot, x: (f32, f32), t: &Targets, smooth: f32, rate: f32) -> (f32, f32) {
+fn run_stereo(
+    slot: &mut FilterSlot,
+    x: (f32, f32),
+    t: &Targets,
+    smooth: f32,
+    rate: f32,
+) -> (f32, f32) {
     approach(&mut slot.delay_s, t.delay, smooth);
     approach(&mut slot.level, t.level, smooth);
     approach(&mut slot.pan, t.pan, smooth);
     let d = slot.delay_s * rate;
-    let mut y = [slot.filter.process(0, x.0, slot.drive), slot.filter.process(1, x.1, slot.drive)];
+    let mut y = [
+        slot.filter.process(0, x.0, slot.drive),
+        slot.filter.process(1, x.1, slot.drive),
+    ];
     for (ch, v) in y.iter_mut().enumerate() {
         slot.delay[ch].push(*v);
         *v = slot.delay[ch].tap(d);
@@ -855,7 +928,11 @@ impl Magma {
     ) -> (f32, f32) {
         let slots = &mut self.slots;
         if mode != STEREO {
-            let (a, b) = if mode == LEFT_RIGHT { x } else { ((x.0 + x.1) * 0.5, (x.0 - x.1) * 0.5) };
+            let (a, b) = if mode == LEFT_RIGHT {
+                x
+            } else {
+                ((x.0 + x.1) * 0.5, (x.0 - x.1) * 0.5)
+            };
             let mut half = |pair: [usize; 2], v: f32| {
                 let (f0, f1) = (pair[0], pair[1]);
                 match (enabled[f0], enabled[f1]) {
@@ -874,7 +951,11 @@ impl Magma {
             };
             let a = half([0, 1], a);
             let b = half([2, 3], b);
-            return if mode == LEFT_RIGHT { (a, b) } else { (a + b, a - b) };
+            return if mode == LEFT_RIGHT {
+                (a, b)
+            } else {
+                (a + b, a - b)
+            };
         }
         let mut v = x;
         for step in ROUTES[routing] {
@@ -910,20 +991,37 @@ impl Processor for Magma {
         let bps = ctx.beats_per_sample.max(1e-9);
         let beat0 = if ctx.playing { ctx.beat } else { self.clock };
         self.clock = beat0 + bps * n as f64;
-        let clock = Clock { beat0, seconds_per_beat: 1.0 / (bps * sr as f64), playing: ctx.playing };
+        let clock = Clock {
+            beat0,
+            seconds_per_beat: 1.0 / (bps * sr as f64),
+            playing: ctx.playing,
+        };
 
         // MIDI: the cable if patched, else the keyboards.
-        let cable: &[crate::audio::engine::MidiMsg] = if inputs.midi_connected { inputs.midi.events() } else { &[] };
+        let cable: &[crate::audio::engine::MidiMsg] = if inputs.midi_connected {
+            inputs.midi.events()
+        } else {
+            &[]
+        };
         if !inputs.midi_connected {
             let sources = &mut self.sources;
-            self.midi.read_stream(&mut self.midi_cursor, |msg| sources.midi.handle(msg));
+            self.midi
+                .read_stream(&mut self.midi_cursor, |msg| sources.midi.handle(msg));
         } else {
             self.midi_cursor = self.midi.stream_head();
         }
 
-        let in_peak = input.map_or(0.0, |b| b.iter().flat_map(|ch| &ch[..n]).fold(0.0f32, |m, s| m.max(s.abs())));
+        let in_peak = input.map_or(0.0, |b| {
+            b.iter()
+                .flat_map(|ch| &ch[..n])
+                .fold(0.0f32, |m, s| m.max(s.abs()))
+        });
         let silent_in = in_peak < 1e-5;
-        self.silent_for = if silent_in { self.silent_for + n as f32 / sr } else { 0.0 };
+        self.silent_for = if silent_in {
+            self.silent_for + n as f32 / sr
+        } else {
+            0.0
+        };
         let auto_mute = on(&p, data::AUTO_MUTE) && self.silent_for > 0.1;
         let bypass_t = if on(&p, data::BYPASS) { 1.0 } else { 0.0 };
         let audition = p.viz[viz::AUDITION].get();
@@ -935,7 +1033,10 @@ impl Processor for Magma {
         }
         let rate = if hq { sr * 2.0 } else { sr };
         let enabled: [bool; FILTERS] = std::array::from_fn(|f| on(&p, data::FILTER_ON + f));
-        let layout = (choice(&p, data::ROUTING, ROUTINGS.len()), choice(&p, data::ROUTING_MODE, 3));
+        let layout = (
+            choice(&p, data::ROUTING, ROUTINGS.len()),
+            choice(&p, data::ROUTING_MODE, 3),
+        );
         let analyzer = on(&p, data::ANALYZER);
 
         // Only the sources a slot uses (or the panel shows) are worked out.
@@ -952,7 +1053,18 @@ impl Processor for Magma {
             used[source - 1] = true;
         }
         let shown = choice(&p, data::SOURCE_SHOWN, 10);
-        let tab_sources: [&[usize]; 10] = [&[0], &[1], &[2], &[3], &[4], &[5], &[6], &[7], &[8, 9], &[10, 11]];
+        let tab_sources: [&[usize]; 10] = [
+            &[0],
+            &[1],
+            &[2],
+            &[3],
+            &[4],
+            &[5],
+            &[6],
+            &[7],
+            &[8, 9],
+            &[10, 11],
+        ];
         for &s in tab_sources[shown] {
             used[s] = true;
         }
@@ -962,15 +1074,23 @@ impl Processor for Magma {
         let mut start = 0;
         while start < n {
             let end = (start + CHUNK).min(n);
-            for e in cable.iter().filter(|e| (e.frame as usize) >= start && (e.frame as usize) < end) {
+            for e in cable
+                .iter()
+                .filter(|e| (e.frame as usize) >= start && (e.frame as usize) < end)
+            {
                 self.sources.midi.handle(e.data);
             }
             let chunk_peak = |b: Option<&Buf>| {
-                b.map_or(0.0, |b| b.iter().flat_map(|ch| &ch[start..end]).fold(0.0f32, |m, s| m.max(s.abs())))
+                b.map_or(0.0, |b| {
+                    b.iter()
+                        .flat_map(|ch| &ch[start..end])
+                        .fold(0.0f32, |m, s| m.max(s.abs()))
+                })
             };
             let (main, sc) = (chunk_peak(input), chunk_peak(side));
             let dt = (end - start) as f32 / sr;
-            self.sources.update(&p, &self.vals, &clock, dt, main, sc, &used);
+            self.sources
+                .update(&p, &self.vals, &clock, dt, main, sc, &used);
             self.modulate(&slots, end == n);
             self.tune(rate);
             let v = &self.vals;
@@ -982,7 +1102,11 @@ impl Processor for Magma {
             let (in_g, out_g) = (gain(v[IN_GAIN]), gain(v[OUT_GAIN]));
             let (in_p, out_p, mix_t) = (v[IN_PAN], v[OUT_PAN], v[MIX]);
             let mute_t = if auto_mute { 0.0 } else { 1.0 };
-            let smooth = if hq { 1.0 - (1.0 - ctx.smooth).sqrt() } else { ctx.smooth };
+            let smooth = if hq {
+                1.0 - (1.0 - ctx.smooth).sqrt()
+            } else {
+                ctx.smooth
+            };
 
             for i in start..end {
                 let (dry_l, dry_r) = input.map_or((0.0, 0.0), |b| (b[0][i], b[1][i]));
@@ -997,8 +1121,22 @@ impl Processor for Magma {
                 let x = (dry_l * self.in_gain * il, dry_r * self.in_gain * ir);
                 let y = if hq {
                     let up = self.over.up([x.0, x.1]);
-                    let a = self.chain((up[0][0], up[0][1]), &enabled, &targets, layout, smooth, rate);
-                    let b = self.chain((up[1][0], up[1][1]), &enabled, &targets, layout, smooth, rate);
+                    let a = self.chain(
+                        (up[0][0], up[0][1]),
+                        &enabled,
+                        &targets,
+                        layout,
+                        smooth,
+                        rate,
+                    );
+                    let b = self.chain(
+                        (up[1][0], up[1][1]),
+                        &enabled,
+                        &targets,
+                        layout,
+                        smooth,
+                        rate,
+                    );
                     let d = self.over.down([[a.0, a.1], [b.0, b.1]]);
                     (d[0], d[1])
                 } else {
@@ -1006,7 +1144,10 @@ impl Processor for Magma {
                 };
                 let (ol, or) = balance(self.out_pan);
                 let wet = (y.0 * self.out_gain * ol, y.1 * self.out_gain * or);
-                let mut out = (dry_l + (wet.0 - dry_l) * self.mix, dry_r + (wet.1 - dry_r) * self.mix);
+                let mut out = (
+                    dry_l + (wet.0 - dry_l) * self.mix,
+                    dry_r + (wet.1 - dry_r) * self.mix,
+                );
                 out = (out.0 * self.mute, out.1 * self.mute);
                 if audition >= 0.0 {
                     // Listening to an envelope's side chain.

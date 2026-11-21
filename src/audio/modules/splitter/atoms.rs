@@ -20,14 +20,46 @@ pub struct Atom {
 
 /// Source 0 is the sample; sources 1…8 are these.
 pub const ATOMS: [Atom; 8] = [
-    Atom { name: "SINE", hz: 880.0, tip: "A pure sine (880 Hz at pitch 0): tones and long beeps" },
-    Atom { name: "PING", hz: 1760.0, tip: "A sine that dies away in 200 ms: pings" },
-    Atom { name: "CLICK", hz: 3000.0, tip: "One sample's impulse with a short ring: clicks and ticks" },
-    Atom { name: "SUB", hz: 50.0, tip: "A sub-bass pulse falling onto its pitch (50 Hz at pitch 0)" },
-    Atom { name: "NOISE", hz: 1000.0, tip: "Sample-and-hold noise at 8× the pitch: hiss to data bursts" },
-    Atom { name: "DATA", hz: 1000.0, tip: "A stream of random bits in packets, 4× the pitch per second: modem and fax chatter" },
-    Atom { name: "PULSE", hz: 220.0, tip: "A narrow pulse wave: buzzes and digital bleeps" },
-    Atom { name: "CRACK", hz: 1000.0, tip: "Sparse impulses of random size and sign: crackle and dust" },
+    Atom {
+        name: "SINE",
+        hz: 880.0,
+        tip: "A pure sine (880 Hz at pitch 0): tones and long beeps",
+    },
+    Atom {
+        name: "PING",
+        hz: 1760.0,
+        tip: "A sine that dies away in 200 ms: pings",
+    },
+    Atom {
+        name: "CLICK",
+        hz: 3000.0,
+        tip: "One sample's impulse with a short ring: clicks and ticks",
+    },
+    Atom {
+        name: "SUB",
+        hz: 50.0,
+        tip: "A sub-bass pulse falling onto its pitch (50 Hz at pitch 0)",
+    },
+    Atom {
+        name: "NOISE",
+        hz: 1000.0,
+        tip: "Sample-and-hold noise at 8× the pitch: hiss to data bursts",
+    },
+    Atom {
+        name: "DATA",
+        hz: 1000.0,
+        tip: "A stream of random bits in packets, 4× the pitch per second: modem and fax chatter",
+    },
+    Atom {
+        name: "PULSE",
+        hz: 220.0,
+        tip: "A narrow pulse wave: buzzes and digital bleeps",
+    },
+    Atom {
+        name: "CRACK",
+        hz: 1000.0,
+        tip: "Sparse impulses of random size and sign: crackle and dust",
+    },
 ];
 
 pub const SINE: usize = 0;

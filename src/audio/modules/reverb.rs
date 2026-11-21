@@ -5,7 +5,10 @@
 use std::f32::consts::TAU;
 use std::sync::Arc;
 
-use super::{DelayLine, ModuleDef, ModuleParams, approach, mix_gains, soft_ceiling, soft_limit, time_coeff, Quiet, silence};
+use super::{
+    DelayLine, ModuleDef, ModuleParams, Quiet, approach, mix_gains, silence, soft_ceiling,
+    soft_limit, time_coeff,
+};
 use crate::audio::engine::{Buf, Inputs, ProcessCtx, Processor};
 use crate::audio::fastmath;
 use crate::audio::params::{ParamSpec, Unit};
@@ -50,7 +53,8 @@ pub(crate) const LINES: usize = 8;
 /// Line lengths at full size, in milliseconds (roughly co-prime).
 pub(crate) const LINE_MS: [f32; LINES] = [61.3, 73.7, 89.1, 101.9, 117.1, 131.7, 149.3, 167.9];
 /// Input diffusers: (length ms, gain), applied in series to each channel.
-pub(crate) const DIFFUSERS: [(f32, f32); 4] = [(4.77, 0.75), (3.59, 0.75), (12.73, 0.625), (9.31, 0.625)];
+pub(crate) const DIFFUSERS: [(f32, f32); 4] =
+    [(4.77, 0.75), (3.59, 0.75), (12.73, 0.625), (9.31, 0.625)];
 /// Line modulation rates in Hz.
 pub(crate) const MOD_HZ: [f32; LINES] = [0.11, 0.17, 0.23, 0.29, 0.37, 0.43, 0.53, 0.61];
 
@@ -109,7 +113,8 @@ impl Shifter {
         self.phase = (self.phase + 1.0 / self.window).fract();
         let p2 = (self.phase + 0.5).fract();
         // sin(π·phase) windows: sin_turns takes half turns here.
-        let a = self.line.tap((1.0 - self.phase) * self.window) * fastmath::sin_turns(self.phase * 0.5);
+        let a =
+            self.line.tap((1.0 - self.phase) * self.window) * fastmath::sin_turns(self.phase * 0.5);
         let b = self.line.tap((1.0 - p2) * self.window) * fastmath::sin_turns(p2 * 0.5);
         a + b
     }
@@ -140,9 +145,12 @@ impl Reverb {
     pub fn new(params: Arc<ModuleParams>, sample_rate: f32) -> Self {
         let ms = sample_rate / 1000.0;
         let mod_margin = 0.002 * sample_rate;
-        let lines = std::array::from_fn(|i| DelayLine::new((LINE_MS[i] * ms + mod_margin) as usize + 8));
+        let lines =
+            std::array::from_fn(|i| DelayLine::new((LINE_MS[i] * ms + mod_margin) as usize + 8));
         let diffusers = std::array::from_fn(|ch| {
-            std::array::from_fn(|k| DelayLine::new((DIFFUSERS[k].0 * ms * 1.07 + 4.0) as usize + ch))
+            std::array::from_fn(|k| {
+                DelayLine::new((DIFFUSERS[k].0 * ms * 1.07 + 4.0) as usize + ch)
+            })
         });
         let lfo = std::array::from_fn(|i| {
             let a = i as f32 * 0.9;
@@ -218,7 +226,11 @@ impl Processor for Reverb {
         // Per-line loop gain for the requested RT60 (per block: SIZE glides slowly).
         let gains: [f32; LINES] = std::array::from_fn(|k| {
             let secs = LINE_MS[k] * size_scale(self.size) / 1000.0;
-            if frozen { 1.0 } else { 10f32.powf(-3.0 * secs / decay) }
+            if frozen {
+                1.0
+            } else {
+                10f32.powf(-3.0 * secs / decay)
+            }
         });
 
         let mut peak = 0.0f32;
@@ -244,7 +256,11 @@ impl Processor for Reverb {
             };
 
             // Input: diffuse each channel, plus the shimmer return.
-            let shim = if shimmer > 0.0 { fastmath::tanh(self.shimmer_fb * shimmer * 0.7) } else { 0.0 };
+            let shim = if shimmer > 0.0 {
+                fastmath::tanh(self.shimmer_fb * shimmer * 0.7)
+            } else {
+                0.0
+            };
             let mut x = [dry_l * self.feed + shim, dry_r * self.feed + shim];
             for (ch, xc) in x.iter_mut().enumerate() {
                 for (k, &(_, g)) in DIFFUSERS.iter().enumerate() {

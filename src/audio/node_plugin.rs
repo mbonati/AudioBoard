@@ -22,8 +22,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::SystemTime;
 
 use audioboard_node::abi::{
-    ABI_VERSION, ENTRY_SYMBOL, EntryFn, NodeVTable, PluginInfo, RawCtx, RawInit, RawNode, RawProcess, RawStr, display_from_raw,
-    readout_from_raw,
+    ABI_VERSION, ENTRY_SYMBOL, EntryFn, NodeVTable, PluginInfo, RawCtx, RawInit, RawNode,
+    RawProcess, RawStr, display_from_raw, readout_from_raw,
 };
 use audioboard_node::def::{MAX_DATA, MAX_MODES, MAX_PARAMS, MAX_PORTS, MAX_VIZ};
 use audioboard_node::{Descriptor, Panel, ParamSpec, SDK_VERSION, Taper, Unit};
@@ -95,12 +95,17 @@ struct Registry {
 
 fn registry() -> std::sync::MutexGuard<'static, Registry> {
     static REGISTRY: OnceLock<Mutex<Registry>> = OnceLock::new();
-    REGISTRY.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner())
+    REGISTRY
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
 }
 
 /// The plugin node type `e`.
 pub fn ext(e: ExtId) -> &'static ExtNode {
-    SLOTS[e.0 as usize].get().expect("ExtIds are only made for registered types")
+    SLOTS[e.0 as usize]
+        .get()
+        .expect("ExtIds are only made for registered types")
 }
 
 /// The type saved as `id`, if loaded.
@@ -138,9 +143,22 @@ pub fn libraries() -> Vec<(String, String, String, usize)> {
         .libraries
         .iter()
         .map(|l| {
-            let file = l.path.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_else(|| l.name.clone());
-            let name = if l.maker.is_empty() { l.name.clone() } else { format!("{} ({})", l.name, l.maker) };
-            (file, name, format!("{} · SDK {}", l.version, l.sdk), l.nodes.len())
+            let file = l
+                .path
+                .file_name()
+                .map(|f| f.to_string_lossy().into_owned())
+                .unwrap_or_else(|| l.name.clone());
+            let name = if l.maker.is_empty() {
+                l.name.clone()
+            } else {
+                format!("{} ({})", l.name, l.maker)
+            };
+            (
+                file,
+                name,
+                format!("{} · SDK {}", l.version, l.sdk),
+                l.nodes.len(),
+            )
         })
         .collect()
 }
@@ -178,13 +196,19 @@ impl Scan {
         let mut parts = Vec::new();
         if !self.loaded.is_empty() {
             let nodes: usize = self.loaded.iter().map(|l| l.1).sum();
-            parts.push(format!("{} node plugin(s) loaded ({nodes} nodes)", self.loaded.len()));
+            parts.push(format!(
+                "{} node plugin(s) loaded ({nodes} nodes)",
+                self.loaded.len()
+            ));
         }
         if !self.refused.is_empty() {
             parts.push(format!("refused: {}", self.refused.join("; ")));
         }
         if !self.changed.is_empty() {
-            parts.push(format!("restart to load the new {}", self.changed.join(", ")));
+            parts.push(format!(
+                "restart to load the new {}",
+                self.changed.join(", ")
+            ));
         }
         (parts.join(" · "), !self.refused.is_empty())
     }
@@ -199,14 +223,25 @@ pub fn scan_dirs(dirs: &[PathBuf]) -> Scan {
     let mut scan = Scan::default();
     let ext = std::env::consts::DLL_EXTENSION;
     for dir in dirs {
-        let Ok(entries) = std::fs::read_dir(dir) else { continue };
-        let mut files: Vec<PathBuf> =
-            entries.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == ext)).collect();
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            continue;
+        };
+        let mut files: Vec<PathBuf> = entries
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|x| x == ext))
+            .collect();
         files.sort();
         for path in files {
             let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
-            let modified = std::fs::metadata(&canonical).and_then(|m| m.modified()).ok();
-            let known = registry().libraries.iter().find(|l| l.path == canonical).map(|l| l.modified);
+            let modified = std::fs::metadata(&canonical)
+                .and_then(|m| m.modified())
+                .ok();
+            let known = registry()
+                .libraries
+                .iter()
+                .find(|l| l.path == canonical)
+                .map(|l| l.modified);
             match known {
                 Some(m) if m != modified => scan.changed.push(file_name(&path)),
                 Some(_) => {}
@@ -222,14 +257,17 @@ pub fn scan_dirs(dirs: &[PathBuf]) -> Scan {
 }
 
 fn file_name(path: &Path) -> String {
-    path.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default()
+    path.file_name()
+        .map(|f| f.to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
 
 /// Loads one library; returns its name and node count.
 pub fn load(path: &Path) -> Result<(String, usize), String> {
     // SAFETY: loading a library runs its initializers; node plugins are
     // trusted code the user installed, like VST3s and Audio Units.
-    let lib = unsafe { libloading::Library::new(path) }.map_err(|e| format!("could not be loaded ({e})"))?;
+    let lib = unsafe { libloading::Library::new(path) }
+        .map_err(|e| format!("could not be loaded ({e})"))?;
     // SAFETY: the symbol has this type in every ABI version.
     let entry: EntryFn = unsafe { lib.get::<EntryFn>(ENTRY_SYMBOL.as_bytes()) }
         .map(|s| *s)
@@ -247,10 +285,20 @@ pub fn register_static(entry: EntryFn, name: &str) -> Result<Vec<ExtId>, String>
         return Ok(lib.nodes.clone());
     }
     register(entry, path.clone(), None, None)?;
-    Ok(registry().libraries.iter().find(|l| l.path == path).map(|l| l.nodes.clone()).unwrap_or_default())
+    Ok(registry()
+        .libraries
+        .iter()
+        .find(|l| l.path == path)
+        .map(|l| l.nodes.clone())
+        .unwrap_or_default())
 }
 
-fn register(entry: EntryFn, path: PathBuf, modified: Option<SystemTime>, lib: Option<libloading::Library>) -> Result<(String, usize), String> {
+fn register(
+    entry: EntryFn,
+    path: PathBuf,
+    modified: Option<SystemTime>,
+    lib: Option<libloading::Library>,
+) -> Result<(String, usize), String> {
     // SAFETY: the entry point takes the host's ABI version and returns a
     // pointer to static data (or null).
     let info = unsafe { entry(ABI_VERSION) };
@@ -268,7 +316,10 @@ fn register(entry: EntryFn, path: PathBuf, modified: Option<SystemTime>, lib: Op
     // SAFETY: same ABI version: the layout is ours.
     let info: &PluginInfo = unsafe { &*info };
     if info.block as usize != BLOCK {
-        return Err(format!("built for {}-frame blocks, AudioBoard uses {BLOCK}", info.block));
+        return Err(format!(
+            "built for {}-frame blocks, AudioBoard uses {BLOCK}",
+            info.block
+        ));
     }
     // SAFETY (all reads below): the plugin's tables, valid for good.
     let text = |s: &RawStr, what: &str| -> Result<String, String> {
@@ -304,7 +355,11 @@ fn register(entry: EntryFn, path: PathBuf, modified: Option<SystemTime>, lib: Op
         let e = ExtId(reg.count as u16);
         let node = ExtNode {
             id: d.id,
-            maker: if d.maker.is_empty() { leak(maker.clone()) } else { d.maker },
+            maker: if d.maker.is_empty() {
+                leak(maker.clone())
+            } else {
+                d.maker
+            },
             def: Box::leak(Box::new(d.def)),
             panel: d.panel,
             vtable,
@@ -318,8 +373,21 @@ fn register(entry: EntryFn, path: PathBuf, modified: Option<SystemTime>, lib: Op
         ids.push(e);
     }
     let count = ids.len();
-    let label = if name.is_empty() { file_name(&path) } else { name.clone() };
-    reg.libraries.push(Library { path, name, maker, version, sdk, nodes: ids, modified, _lib: lib });
+    let label = if name.is_empty() {
+        file_name(&path)
+    } else {
+        name.clone()
+    };
+    reg.libraries.push(Library {
+        path,
+        name,
+        maker,
+        version,
+        sdk,
+        nodes: ids,
+        modified,
+        _lib: lib,
+    });
     Ok((label, count))
 }
 
@@ -339,7 +407,11 @@ fn describe(raw: &RawNode) -> Result<(Descriptor, NodeVTable), String> {
     };
     let id = s(&raw.id)?;
     let limit = |len: usize, max: usize, what: &str| {
-        if len > max { Err(format!("{id}: more than {max} {what}")) } else { Ok(()) }
+        if len > max {
+            Err(format!("{id}: more than {max} {what}"))
+        } else {
+            Ok(())
+        }
     };
     limit(raw.inputs.len, MAX_PORTS, "inputs")?;
     limit(raw.outputs.len, MAX_PORTS, "outputs")?;
@@ -348,22 +420,42 @@ fn describe(raw: &RawNode) -> Result<(Descriptor, NodeVTable), String> {
     limit(raw.data.len, MAX_DATA, "data values")?;
     limit(raw.cv_depth.len, MAX_PARAMS, "CV depths")?;
     limit(raw.viz as usize, MAX_VIZ, "display values")?;
-    let list = |r: &audioboard_node::abi::RawSlice<RawStr>| -> Result<&'static [&'static str], String> {
-        let v = unsafe { r.as_slice() }.iter().map(&s).collect::<Result<Vec<_>, _>>()?;
-        Ok(Box::leak(v.into_boxed_slice()))
-    };
+    let list =
+        |r: &audioboard_node::abi::RawSlice<RawStr>| -> Result<&'static [&'static str], String> {
+            let v = unsafe { r.as_slice() }
+                .iter()
+                .map(&s)
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(Box::leak(v.into_boxed_slice()))
+        };
     let mut params = Vec::new();
     for p in unsafe { raw.params.as_slice() } {
-        let taper = Taper::from_code(p.taper).ok_or_else(|| format!("{id}: unknown taper {}", p.taper))?;
-        params.push(ParamSpec { name: s(&p.name)?, min: p.min, max: p.max, default: p.default, taper, unit: Unit::from_code(p.unit), bipolar: p.bipolar });
+        let taper =
+            Taper::from_code(p.taper).ok_or_else(|| format!("{id}: unknown taper {}", p.taper))?;
+        params.push(ParamSpec {
+            name: s(&p.name)?,
+            min: p.min,
+            max: p.max,
+            default: p.default,
+            taper,
+            unit: Unit::from_code(p.unit),
+            bipolar: p.bipolar,
+        });
     }
-    let cv: Vec<(usize, usize)> = unsafe { raw.cv_depth.as_slice() }.iter().map(|&[p, i]| (p as usize, i as usize)).collect();
+    let cv: Vec<(usize, usize)> = unsafe { raw.cv_depth.as_slice() }
+        .iter()
+        .map(|&[p, i]| (p as usize, i as usize))
+        .collect();
     let toggle = s(&raw.toggle)?;
     let name = s(&raw.name)?;
     let prefix = s(&raw.prefix)?;
     let def = ModuleDef {
         name,
-        prefix: if prefix.is_empty() { leak(name.to_uppercase()) } else { prefix },
+        prefix: if prefix.is_empty() {
+            leak(name.to_uppercase())
+        } else {
+            prefix
+        },
         hint: s(&raw.hint)?,
         inputs: list(&raw.inputs)?,
         outputs: list(&raw.outputs)?,
@@ -384,7 +476,10 @@ fn describe(raw: &RawNode) -> Result<(Descriptor, NodeVTable), String> {
         id,
         maker: s(&raw.maker)?,
         def,
-        panel: Panel { display: display_from_raw(raw.display), readout: readout_from_raw(raw.readout) },
+        panel: Panel {
+            display: display_from_raw(raw.display),
+            readout: readout_from_raw(raw.readout),
+        },
     };
     if let Some(problem) = d.problem() {
         return Err(problem);
@@ -400,14 +495,23 @@ fn describe(raw: &RawNode) -> Result<(Descriptor, NodeVTable), String> {
 /// a node, the processor is silent and the type reports it.
 pub fn processor(e: ExtId, params: Arc<ModuleParams>, sample_rate: f32) -> Box<dyn Processor> {
     let ext = ext(e);
-    let init = RawInit { sample_rate, params: params.raw() };
+    let init = RawInit {
+        sample_rate,
+        params: params.raw(),
+    };
     // SAFETY: `init` is valid for the call; the params it points into live
     // in `params`, which the processor keeps until after `destroy`.
     let instance = unsafe { (ext.vtable.create)(&init) };
     if instance.is_null() {
         ext.trouble.store(PANICKED, Ordering::Relaxed);
     }
-    Box::new(DynNode { ext, instance, params, midi: MidiBuf::default(), stopped: false })
+    Box::new(DynNode {
+        ext,
+        instance,
+        params,
+        midi: MidiBuf::default(),
+        stopped: false,
+    })
 }
 
 /// A plugin node on the audio thread: forwards each block through the

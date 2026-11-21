@@ -9,7 +9,15 @@ use crate::audio::dsp::preview_sample;
 use crate::audio::params::Waveform;
 
 /// Polyline of `cycles` periods of a waveform fitted inside `rect`.
-pub fn wave_points(rect: Rect, wave: Waveform, shape: f32, cycles: f32, amp: f32, phase: f32, seed: u32) -> Vec<Pos2> {
+pub fn wave_points(
+    rect: Rect,
+    wave: Waveform,
+    shape: f32,
+    cycles: f32,
+    amp: f32,
+    phase: f32,
+    seed: u32,
+) -> Vec<Pos2> {
     let n = (rect.width() / 2.0).clamp(16.0, 240.0) as usize;
     (0..=n)
         .map(|i| {

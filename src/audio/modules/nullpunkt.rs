@@ -70,28 +70,67 @@ pub const LEVEL: usize = CRUSH + 14;
 pub const PARAM_COUNT: usize = LEVEL + 1;
 
 /// Each voice's TONE and DECAY ranges (lo, hi, default).
-const TONES: [(f32, f32, f32); voice::COUNT] = [(300.0, 16_000.0, 3800.0), (800.0, 18_000.0, 8200.0), (25.0, 160.0, 47.0), (200.0, 24_000.0, 6000.0)];
-const DECAYS: [(f32, f32, f32); voice::COUNT] = [(0.0005, 0.05, 0.004), (0.002, 0.4, 0.03), (0.02, 1.5, 0.32), (0.001, 0.4, 0.018)];
+const TONES: [(f32, f32, f32); voice::COUNT] = [
+    (300.0, 16_000.0, 3800.0),
+    (800.0, 18_000.0, 8200.0),
+    (25.0, 160.0, 47.0),
+    (200.0, 24_000.0, 6000.0),
+];
+const DECAYS: [(f32, f32, f32); voice::COUNT] = [
+    (0.0005, 0.05, 0.004),
+    (0.002, 0.4, 0.03),
+    (0.02, 1.5, 0.32),
+    (0.001, 0.4, 0.018),
+];
 /// Each voice's starting pattern: hits, length, rotation.
-const STARTS: [(usize, usize, usize); voice::COUNT] = [(7, 16, 0), (3, 13, 2), (4, 16, 0), (5, 12, 3)];
+const STARTS: [(usize, usize, usize); voice::COUNT] =
+    [(7, 16, 0), (3, 13, 2), (4, 16, 0), (5, 12, 3)];
 
 /// HITS, LEN, PROB, TONE, DECAY, LEVEL of voice `$v`.
 macro_rules! voice {
     ($s:literal, $tone:literal, $v:expr, $level:expr) => {
         [
-            ParamSpec::lin(concat!($s, " HITS"), 0.0, MAX_LEN as f32, STARTS[$v].0 as f32, Unit::Integer),
-            ParamSpec::lin(concat!($s, " LEN"), 1.0, MAX_LEN as f32, STARTS[$v].1 as f32, Unit::Integer),
+            ParamSpec::lin(
+                concat!($s, " HITS"),
+                0.0,
+                MAX_LEN as f32,
+                STARTS[$v].0 as f32,
+                Unit::Integer,
+            ),
+            ParamSpec::lin(
+                concat!($s, " LEN"),
+                1.0,
+                MAX_LEN as f32,
+                STARTS[$v].1 as f32,
+                Unit::Integer,
+            ),
             ParamSpec::lin(concat!($s, " PROB"), 0.0, 1.0, 1.0, Unit::Percent),
-            ParamSpec::log(concat!($s, " ", $tone), TONES[$v].0, TONES[$v].1, TONES[$v].2, Unit::Hz),
-            ParamSpec::log(concat!($s, " DECAY"), DECAYS[$v].0, DECAYS[$v].1, DECAYS[$v].2, Unit::Seconds),
+            ParamSpec::log(
+                concat!($s, " ", $tone),
+                TONES[$v].0,
+                TONES[$v].1,
+                TONES[$v].2,
+                Unit::Hz,
+            ),
+            ParamSpec::log(
+                concat!($s, " DECAY"),
+                DECAYS[$v].0,
+                DECAYS[$v].1,
+                DECAYS[$v].2,
+                Unit::Seconds,
+            ),
             ParamSpec::lin(concat!($s, " LEVEL"), 0.0, 1.0, $level, Unit::Percent),
         ]
     };
 }
 
 const PARAMS: [ParamSpec; PARAM_COUNT] = {
-    const V: [[ParamSpec; knob::COUNT]; voice::COUNT] =
-        [voice!("CLICK", "COLOR", 0, 0.7), voice!("SINE", "PITCH", 1, 0.3), voice!("SUB", "PITCH", 2, 0.8), voice!("DATA", "GRAIN", 3, 0.3)];
+    const V: [[ParamSpec; knob::COUNT]; voice::COUNT] = [
+        voice!("CLICK", "COLOR", 0, 0.7),
+        voice!("SINE", "PITCH", 1, 0.3),
+        voice!("SUB", "PITCH", 2, 0.8),
+        voice!("DATA", "GRAIN", 3, 0.3),
+    ];
     let mut out = [ParamSpec::lin("", 0.0, 1.0, 0.0, Unit::Percent); PARAM_COUNT];
     let mut v = 0;
     while v < voice::COUNT {
@@ -148,8 +187,16 @@ const DATA: [f32; data::LEN] = {
     d
 };
 /// The grid's divisions: name and steps per beat.
-pub const DIVS: [(&str, f64); 8] =
-    [("1/4", 1.0), ("1/8", 2.0), ("1/8T", 3.0), ("1/16", 4.0), ("1/16T", 6.0), ("1/32", 8.0), ("1/32T", 12.0), ("1/64", 16.0)];
+pub const DIVS: [(&str, f64); 8] = [
+    ("1/4", 1.0),
+    ("1/8", 2.0),
+    ("1/8T", 3.0),
+    ("1/16", 4.0),
+    ("1/16T", 6.0),
+    ("1/32", 8.0),
+    ("1/32T", 12.0),
+    ("1/64", 16.0),
+];
 const SIXTEENTHS: usize = 3;
 /// A stutter's grains: subdivisions of a step, coarse to fine (triplets
 /// among them). GRAIN sets how far down the list a stutter may go.
@@ -218,7 +265,13 @@ pub const fn euclid(hits: usize, len: usize, pos: usize) -> bool {
 
 /// A Euclidean pattern as step bits, turned `rot` steps later.
 pub const fn euclid_steps(hits: usize, len: usize, rot: usize) -> u32 {
-    let len = if len == 0 { 1 } else if len > MAX_LEN { MAX_LEN } else { len };
+    let len = if len == 0 {
+        1
+    } else if len > MAX_LEN {
+        MAX_LEN
+    } else {
+        len
+    };
     let mut bits = 0u32;
     let mut s = 0;
     while s < len {
@@ -301,7 +354,8 @@ pub fn randomize(p: &ModuleParams, seed: u32, sounds: bool) {
     let mut rng = Rng::new(seed);
     // How busy each voice tends to be (share of steps), and the lengths
     // that phase well.
-    const DENSITY: [(f32, f32); voice::COUNT] = [(0.25, 0.7), (0.08, 0.35), (0.1, 0.3), (0.15, 0.55)];
+    const DENSITY: [(f32, f32); voice::COUNT] =
+        [(0.25, 0.7), (0.08, 0.35), (0.1, 0.3), (0.15, 0.55)];
     const LENGTHS: [usize; 9] = [8, 11, 12, 13, 15, 16, 16, 24, 32];
     for v in 0..voice::COUNT {
         if muted(p, v) {
@@ -309,7 +363,9 @@ pub fn randomize(p: &ModuleParams, seed: u32, sounds: bool) {
         }
         let len = LENGTHS[(rng.unit() * LENGTHS.len() as f32) as usize % LENGTHS.len()];
         let (lo, hi) = DENSITY[v];
-        let hits = ((lo + (hi - lo) * rng.unit()) * len as f32).round().max(1.0) as usize;
+        let hits = ((lo + (hi - lo) * rng.unit()) * len as f32)
+            .round()
+            .max(1.0) as usize;
         let rot = (rng.unit() * len as f32) as usize % len;
         p.set(vp(v, knob::LEN), len as f32);
         p.set(vp(v, knob::HITS), hits as f32);
@@ -325,8 +381,14 @@ pub fn randomize(p: &ModuleParams, seed: u32, sounds: bool) {
             // Within the lower, more musical part of each range.
             let (tlo, thi, _) = TONES[v];
             let (dlo, dhi, _) = DECAYS[v];
-            p.set(vp(v, knob::TONE), tlo * (thi / tlo).powf(0.15 + 0.7 * rng.unit()));
-            p.set(vp(v, knob::DECAY), dlo * (dhi / dlo).powf(0.1 + 0.5 * rng.unit()));
+            p.set(
+                vp(v, knob::TONE),
+                tlo * (thi / tlo).powf(0.15 + 0.7 * rng.unit()),
+            );
+            p.set(
+                vp(v, knob::DECAY),
+                dlo * (dhi / dlo).powf(0.1 + 0.5 * rng.unit()),
+            );
         }
     }
 }
@@ -463,7 +525,9 @@ impl Voice {
     }
 
     fn active(&self, kind: usize) -> bool {
-        self.rise > 0.0 || self.env > 1e-4 || (kind == voice::CLICK && (self.ic1.abs() > 1e-5 || self.ic2.abs() > 1e-5))
+        self.rise > 0.0
+            || self.env > 1e-4
+            || (kind == voice::CLICK && (self.ic1.abs() > 1e-5 || self.ic2.abs() > 1e-5))
     }
 }
 
@@ -482,15 +546,30 @@ struct Event {
 enum Glitch {
     None,
     /// A slice of what just played, looping: its length, samples in.
-    Skip { slice: usize, t: usize },
+    Skip {
+        slice: usize,
+        t: usize,
+    },
     /// The last step, backwards.
-    Reverse { t: usize },
+    Reverse {
+        t: usize,
+    },
     /// A slice looping an octave up (speed 2) or down (½).
-    Warp { slice: usize, speed: f32, t: usize },
+    Warp {
+        slice: usize,
+        speed: f32,
+        t: usize,
+    },
     /// Grains of the sound since the stutter began, `grain` long (a
     /// subdivision of the step), over `steps` steps; `e` samples in, on
     /// grain `k`, which plays as `shape`.
-    Stutter { grain: f32, steps: usize, e: usize, k: usize, shape: Grain },
+    Stutter {
+        grain: f32,
+        steps: usize,
+        e: usize,
+        k: usize,
+        shape: Grain,
+    },
 }
 
 /// How a stutter's grain plays its source (the stutter's first grain, or
@@ -630,7 +709,13 @@ fn stutter(p: &ModuleParams, rng: &mut Rng, step_len: usize, steps: usize) -> Gl
     let depth = grain_depth(p.get(GRAIN));
     let sub = SUBDIVISIONS[(rng.unit() * (depth + 1) as f32) as usize % (depth + 1)];
     let grain = (step_len as f32 / sub as f32).max(GRAIN_FADE * 2.0);
-    Glitch::Stutter { grain, steps, e: 0, k: 0, shape: Grain::Plain }
+    Glitch::Stutter {
+        grain,
+        steps,
+        e: 0,
+        k: 0,
+        shape: Grain::Plain,
+    }
 }
 
 impl Processor for Nullpunkt {
@@ -641,14 +726,30 @@ impl Processor for Nullpunkt {
 
         // The grid: which voices strike on which steps, and the glitches.
         let per_beat = DIVS[division(&p)].1;
-        let mut steps_now = [Step { frame: 0, beat: 0.0, index: 0 }; MAX_STEPS];
-        let found = if ctx.playing { self.clock.steps(ctx, n, per_beat, 0.0, &mut steps_now) } else { 0 };
+        let mut steps_now = [Step {
+            frame: 0,
+            beat: 0.0,
+            index: 0,
+        }; MAX_STEPS];
+        let found = if ctx.playing {
+            self.clock.steps(ctx, n, per_beat, 0.0, &mut steps_now)
+        } else {
+            0
+        };
         if ctx.restart || !ctx.playing {
             self.clock = StepClock::new();
         }
-        let step_len = if ctx.beats_per_sample > 0.0 { (1.0 / (per_beat * ctx.beats_per_sample)) as usize } else { (sr * 0.125) as usize };
+        let step_len = if ctx.beats_per_sample > 0.0 {
+            (1.0 / (per_beat * ctx.beats_per_sample)) as usize
+        } else {
+            (sr * 0.125) as usize
+        };
         let mutate = p.get(MUTATE);
-        let mut events = [Event { frame: 0, voice: 0, ratchet: 0 }; MAX_EVENTS];
+        let mut events = [Event {
+            frame: 0,
+            voice: 0,
+            ratchet: 0,
+        }; MAX_EVENTS];
         let mut count = 0;
         for step in &steps_now[..found] {
             p.viz[viz::STEP].set((step.index.rem_euclid(1 << 20)) as f32);
@@ -662,13 +763,28 @@ impl Processor for Nullpunkt {
                 if bits != 0 && roll(&mut self.rng, mutate * 0.12) {
                     hit = !hit;
                 }
-                if hit && p.get(vp(v, knob::LEVEL)) > 0.0 && roll(&mut self.rng, p.get(vp(v, knob::PROB))) {
-                    let ratchet = if roll(&mut self.rng, mutate * 0.25) { 1 + (self.rng.unit() * 3.0) as u8 } else { 0 };
-                    events[count] = Event { frame: step.frame, voice: v, ratchet };
+                if hit
+                    && p.get(vp(v, knob::LEVEL)) > 0.0
+                    && roll(&mut self.rng, p.get(vp(v, knob::PROB)))
+                {
+                    let ratchet = if roll(&mut self.rng, mutate * 0.25) {
+                        1 + (self.rng.unit() * 3.0) as u8
+                    } else {
+                        0
+                    };
+                    events[count] = Event {
+                        frame: step.frame,
+                        voice: v,
+                        ratchet,
+                    };
                     count += 1;
                 }
             }
-            events[count] = Event { frame: step.frame, voice: usize::MAX, ratchet: 0 };
+            events[count] = Event {
+                frame: step.frame,
+                voice: usize::MAX,
+                ratchet: 0,
+            };
             count += 1;
         }
         if !ctx.playing {
@@ -700,7 +816,8 @@ impl Processor for Nullpunkt {
                 let pan = self.place(width);
                 // JITTER: each hit a little off in level, tone and decay.
                 let tone = tones[e.voice] * fastmath::exp2((self.rng.unit() - 0.5) * jitter);
-                let decay = decays[e.voice] * fastmath::exp2((self.rng.unit() - 0.5) * jitter * 1.5);
+                let decay =
+                    decays[e.voice] * fastmath::exp2((self.rng.unit() - 0.5) * jitter * 1.5);
                 let gain = 1.0 - jitter * 0.6 * self.rng.unit();
                 let v = &mut self.voices[e.voice];
                 v.trigger(e.voice, tone, decay, pan, sr);
@@ -739,7 +856,9 @@ impl Processor for Nullpunkt {
             let mut fade = 1.0;
             let back = match &mut self.glitch {
                 Glitch::None => None,
-                Glitch::Stutter { grain, e, k, shape, .. } => {
+                Glitch::Stutter {
+                    grain, e, k, shape, ..
+                } => {
                     let g = *grain;
                     let kk = (*e as f32 / g) as usize;
                     if kk != *k {
@@ -819,7 +938,11 @@ impl Processor for Nullpunkt {
                 }
                 self.static_hold -= 1;
                 yl = self.static_value;
-                yr = if self.rng.unit() < 0.7 { self.static_value } else { -self.static_value };
+                yr = if self.rng.unit() < 0.7 {
+                    self.static_value
+                } else {
+                    -self.static_value
+                };
             }
             if hold_n > 1.0 {
                 self.hold_count += 1.0;
@@ -853,7 +976,11 @@ impl Processor for Nullpunkt {
             Glitch::Stutter { .. } => glitch::STUTTER,
         };
         p.viz[viz::GLITCH].set(shown as f32);
-        p.viz[viz::STATIC].set(if self.static_wait == 0 && self.static_left > 0 { 1.0 } else { 0.0 });
+        p.viz[viz::STATIC].set(if self.static_wait == 0 && self.static_left > 0 {
+            1.0
+        } else {
+            0.0
+        });
         // The strip: one bar per four blocks.
         self.strip_peak = self.strip_peak.max(peak);
         self.strip_blocks += 1;

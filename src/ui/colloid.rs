@@ -20,18 +20,24 @@ use std::collections::VecDeque;
 use std::f32::consts::{PI, TAU};
 
 use egui::epaint::Mesh;
-use egui::{Align2, Color32, CursorIcon, Id, Painter, Pos2, Rect, Sense, Shape, Stroke, StrokeKind, Vec2, pos2, vec2};
+use egui::{
+    Align2, Color32, CursorIcon, Id, Painter, Pos2, Rect, Sense, Shape, Stroke, StrokeKind, Vec2,
+    pos2, vec2,
+};
 
 use super::nodes::{MIN_TEXT, NodeView, segmented};
 use super::theme::{self, alpha, mix};
 use super::widgets;
 use crate::audio::engine::NodeId;
 use crate::audio::modules::ModuleParams;
-use crate::audio::modules::colloid::chords::{CHORDS, COLOUR, ChordSet, FIFTH, FIRST_CHORD, HANDPANS, ROLES, SEVENTH, THIRD, shape_name};
+use crate::audio::modules::colloid::chords::{
+    CHORDS, COLOUR, ChordSet, FIFTH, FIRST_CHORD, HANDPANS, ROLES, SEVENTH, THIRD, shape_name,
+};
 use crate::audio::modules::colloid::physics::{ASPECT, MAX_ATOMS, MAX_MOLECULES};
 use crate::audio::modules::colloid::{
-    self as co, ATOMS, ATTRACT, BOUNCE, CHANNEL, CHARGE, COLOR, DRIFT, DYNAMICS, FLOW, HEAT, LENGTH, MASS, MOLECULES, NOTE, OCTAVE, QUANT,
-    RANGE, ROOT, SPREAD, STRIKE, VELOCITY, VISCOSITY, cc, viz,
+    self as co, ATOMS, ATTRACT, BOUNCE, CHANNEL, CHARGE, COLOR, DRIFT, DYNAMICS, FLOW, HEAT,
+    LENGTH, MASS, MOLECULES, NOTE, OCTAVE, QUANT, RANGE, ROOT, SPREAD, STRIKE, VELOCITY, VISCOSITY,
+    cc, viz,
 };
 use crate::audio::params::{DIVISIONS, NOTE_NAMES, Unit, note_label};
 use crate::graph::{ModuleNode, ParamRef};
@@ -77,31 +83,95 @@ const INK: Color32 = Color32::from_rgb(12, 14, 20);
 
 type Knobs = [(usize, &'static str)];
 const PARTICLES: [(usize, &str); 3] = [(MOLECULES, "MOLECULES"), (ATOMS, "ATOMS"), (MASS, "MASS")];
-const FIELD: [(usize, &str); 4] = [(ATTRACT, "ATTRACT"), (RANGE, "RANGE"), (CHARGE, "CHARGE"), (BOUNCE, "BOUNCE")];
-const LIQUID: [(usize, &str); 4] = [(VISCOSITY, "VISCOSITY"), (HEAT, "HEAT"), (FLOW, "FLOW"), (DRIFT, "DRIFT")];
+const FIELD: [(usize, &str); 4] = [
+    (ATTRACT, "ATTRACT"),
+    (RANGE, "RANGE"),
+    (CHARGE, "CHARGE"),
+    (BOUNCE, "BOUNCE"),
+];
+const LIQUID: [(usize, &str); 4] = [
+    (VISCOSITY, "VISCOSITY"),
+    (HEAT, "HEAT"),
+    (FLOW, "FLOW"),
+    (DRIFT, "DRIFT"),
+];
 const HARMONY: [(usize, &str); 3] = [(OCTAVE, "OCTAVE"), (SPREAD, "SPREAD"), (COLOR, "COLOR")];
-const NOTES: [(usize, &str); 5] = [(VELOCITY, "VELOCITY"), (DYNAMICS, "DYNAMICS"), (LENGTH, "LENGTH"), (QUANT, "QUANT"), (CHANNEL, "CHANNEL")];
+const NOTES: [(usize, &str); 5] = [
+    (VELOCITY, "VELOCITY"),
+    (DYNAMICS, "DYNAMICS"),
+    (LENGTH, "LENGTH"),
+    (QUANT, "QUANT"),
+    (CHANNEL, "CHANNEL"),
+];
 
 const TIPS: [(usize, &str); 20] = [
-    (MOLECULES, "How many molecules: notes of the handpan or the chord, spread from the bottom up"),
+    (
+        MOLECULES,
+        "How many molecules: notes of the handpan or the chord, spread from the bottom up",
+    ),
     (ATOMS, "How many atoms are let into the tank while it plays"),
-    (MASS, "The atoms' weight: heavier atoms strike harder (louder, longer notes)"),
-    (ATTRACT, "How strongly the molecules pull the atoms: low, they drift by; high, they orbit and fall in"),
-    (RANGE, "How far the pull reaches: short, only atoms passing close are caught"),
-    (CHARGE, "After a strike the atom is pushed off that molecule for a while, then falls back: bouncing rhythms.\nAt 0 atoms cling to a molecule and rattle it with quick, soft notes"),
-    (BOUNCE, "How much speed a strike gives back (past 85% strikes add energy: wild)"),
-    (VISCOSITY, "How thick the liquid is: it slows the atoms and damps the rings (shorter notes)"),
-    (HEAT, "Brownian motion: random kicks that keep the atoms moving"),
-    (FLOW, "The liquid's currents, swirling the atoms (and gently the molecules)"),
-    (DRIFT, "How much the molecules wander and gather into clusters"),
-    (ROOT, "The root: the handpan's ding or the chord's root.\nA key on the MIDI input moves it too; a click here lets go of the notes from the keys"),
+    (
+        MASS,
+        "The atoms' weight: heavier atoms strike harder (louder, longer notes)",
+    ),
+    (
+        ATTRACT,
+        "How strongly the molecules pull the atoms: low, they drift by; high, they orbit and fall in",
+    ),
+    (
+        RANGE,
+        "How far the pull reaches: short, only atoms passing close are caught",
+    ),
+    (
+        CHARGE,
+        "After a strike the atom is pushed off that molecule for a while, then falls back: bouncing rhythms.\nAt 0 atoms cling to a molecule and rattle it with quick, soft notes",
+    ),
+    (
+        BOUNCE,
+        "How much speed a strike gives back (past 85% strikes add energy: wild)",
+    ),
+    (
+        VISCOSITY,
+        "How thick the liquid is: it slows the atoms and damps the rings (shorter notes)",
+    ),
+    (
+        HEAT,
+        "Brownian motion: random kicks that keep the atoms moving",
+    ),
+    (
+        FLOW,
+        "The liquid's currents, swirling the atoms (and gently the molecules)",
+    ),
+    (
+        DRIFT,
+        "How much the molecules wander and gather into clusters",
+    ),
+    (
+        ROOT,
+        "The root: the handpan's ding or the chord's root.\nA key on the MIDI input moves it too; a click here lets go of the notes from the keys",
+    ),
     (OCTAVE, "The octave of the lowest molecule (the ding)"),
-    (SPREAD, "How many octaves a chord's molecules spread over (a handpan keeps its own layout)"),
-    (COLOR, "Colour tones (9ths, 11ths, 13ths) added to a chord (a handpan has its own notes)"),
+    (
+        SPREAD,
+        "How many octaves a chord's molecules spread over (a handpan keeps its own layout)",
+    ),
+    (
+        COLOR,
+        "Colour tones (9ths, 11ths, 13ths) added to a chord (a handpan has its own notes)",
+    ),
     (VELOCITY, "Velocity of the hardest strikes"),
-    (DYNAMICS, "How much the strike's force shapes the velocity (0: all at VELOCITY)"),
-    (LENGTH, "How long the hardest strike rings, so how long its note lasts (thick liquid shortens it, big molecules ring longer)"),
-    (QUANT, "FREE: notes when the atoms strike; else held back to the next step of the board's grid"),
+    (
+        DYNAMICS,
+        "How much the strike's force shapes the velocity (0: all at VELOCITY)",
+    ),
+    (
+        LENGTH,
+        "How long the hardest strike rings, so how long its note lasts (thick liquid shortens it, big molecules ring longer)",
+    ),
+    (
+        QUANT,
+        "FREE: notes when the atoms strike; else held back to the next step of the board's grid",
+    ),
     (CHANNEL, "MIDI channel of the notes and the CC lanes"),
 ];
 
@@ -131,13 +201,29 @@ fn chord(p: &ModuleParams) -> ChordSet {
     }
     let layout = p.viz[viz::LAYOUT].get();
     let layout = (layout >= 0.0).then_some(layout as u8);
-    ChordSet { root: p.viz[viz::ROOT].get() as u8 % 12, mask, colours: p.viz[viz::COLOURS].get() as u16, layout }
+    ChordSet {
+        root: p.viz[viz::ROOT].get() as u8 % 12,
+        mask,
+        colours: p.viz[viz::COLOURS].get() as u16,
+        layout,
+    }
 }
 
 /// The node's two summary lines: the notes, the particles.
 pub fn readout(p: &ModuleParams) -> (String, String) {
-    let source = if p.viz[viz::SOURCE].get() > 0.5 { " · keys" } else { "" };
-    (format!("{}{source}", chord(p).name()), format!("{} molecules · {} atoms", co::int(p, MOLECULES, 2, 16), co::int(p, ATOMS, 1, 48)))
+    let source = if p.viz[viz::SOURCE].get() > 0.5 {
+        " · keys"
+    } else {
+        ""
+    };
+    (
+        format!("{}{source}", chord(p).name()),
+        format!(
+            "{} molecules · {} atoms",
+            co::int(p, MOLECULES, 2, 16),
+            co::int(p, ATOMS, 1, 48)
+        ),
+    )
 }
 
 /// A molecule as published.
@@ -169,7 +255,17 @@ fn molecules(p: &ModuleParams) -> ([Mol; MAX_MOLECULES], usize) {
     let n = (p.viz[viz::MOLECULES].get().max(0.0) as usize).min(MAX_MOLECULES);
     let mols = std::array::from_fn(|k| {
         let f = |i: usize| p.viz[viz::MOLECULE + k * viz::MOLECULE_LEN + i].get();
-        Mol { x: f(0), y: f(1), r: f(2), angle: f(3), ring: f(4).clamp(0.0, 1.0), note: f(5) as u8, role: (f(6) as u8).min(4), sounding: f(7) > 0.5, spin: f(8) }
+        Mol {
+            x: f(0),
+            y: f(1),
+            r: f(2),
+            angle: f(3),
+            ring: f(4).clamp(0.0, 1.0),
+            note: f(5) as u8,
+            role: (f(6) as u8).min(4),
+            sounding: f(7) > 0.5,
+            spin: f(8),
+        }
     });
     (mols, n)
 }
@@ -178,7 +274,14 @@ fn atoms(p: &ModuleParams) -> ([At; MAX_ATOMS], usize) {
     let n = (p.viz[viz::ATOMS].get().max(0.0) as usize).min(MAX_ATOMS);
     let atoms = std::array::from_fn(|k| {
         let f = |i: usize| p.viz[viz::ATOM + k * viz::ATOM_LEN + i].get();
-        At { x: f(0), y: f(1), vx: f(2), vy: f(3), charge: f(4).clamp(0.0, 1.0), age: f(5) }
+        At {
+            x: f(0),
+            y: f(1),
+            vx: f(2),
+            vy: f(3),
+            charge: f(4).clamp(0.0, 1.0),
+            age: f(5),
+        }
     });
     (atoms, n)
 }
@@ -186,7 +289,11 @@ fn atoms(p: &ModuleParams) -> ([At; MAX_ATOMS], usize) {
 /// An atom's colour: pale when slow, pink when fast, amber when charged.
 fn atom_color(a: &At) -> Color32 {
     let speed = (a.vx * a.vx + a.vy * a.vy).sqrt();
-    mix(mix(COLD, HOT, (speed / 1.8).clamp(0.0, 1.0)), CHARGED, a.charge * 0.85)
+    mix(
+        mix(COLD, HOT, (speed / 1.8).clamp(0.0, 1.0)),
+        CHARGED,
+        a.charge * 0.85,
+    )
 }
 
 #[derive(Clone)]
@@ -268,7 +375,9 @@ impl View {
             self.rng = 0x2545_F491;
             self.flash = [(f64::NEG_INFINITY, 0.0); MAX_MOLECULES];
             self.shown = std::array::from_fn(|k| {
-                let c = mols.get(k).map_or(ROLE_COLORS[0], |m| ROLE_COLORS[m.role as usize]);
+                let c = mols
+                    .get(k)
+                    .map_or(ROLE_COLORS[0], |m| ROLE_COLORS[m.role as usize]);
                 (mols.get(k).map_or(0, |m| m.note), c, c, f64::NEG_INFINITY)
             });
             self.chord = (set.mask, set.colours, set.root, set.layout);
@@ -293,7 +402,9 @@ impl View {
                 continue;
             }
             let k = (field(2) as usize).min(MAX_MOLECULES - 1);
-            let Some(m) = mols.get(k).copied() else { continue };
+            let Some(m) = mols.get(k).copied() else {
+                continue;
+            };
             let color = ROLE_COLORS[m.role as usize];
             match field(1) as u8 {
                 STRIKE => self.strike(m, pos2(field(3), field(4)), field(5), color, now),
@@ -303,7 +414,13 @@ impl View {
                     self.notes.push_back(now);
                     // One name floats up at a time from each molecule.
                     self.labels.retain(|l| l.molecule != k);
-                    self.labels.push(Label { molecule: k, text: note_label(field(6) as i32), t0: now, color, level });
+                    self.labels.push(Label {
+                        molecule: k,
+                        text: note_label(field(6) as i32),
+                        t0: now,
+                        color,
+                        level,
+                    });
                 }
                 _ => {}
             }
@@ -314,7 +431,11 @@ impl View {
         for (k, a) in ats.iter().enumerate() {
             let trail = &mut self.trails[k];
             let here = pos2(a.x, a.y);
-            if trail.back().is_some_and(|(q, _)| (*q - here).length() > 0.35) || a.age < 0.02 {
+            if trail
+                .back()
+                .is_some_and(|(q, _)| (*q - here).length() > 0.35)
+                || a.age < 0.02
+            {
                 trail.clear();
             }
             trail.push_back((here, now));
@@ -325,7 +446,11 @@ impl View {
         for k in ats.len()..self.atom_count.min(MAX_ATOMS) {
             let trail: Vec<(Pos2, f64)> = self.trails[k].drain(..).collect();
             if !trail.is_empty() {
-                self.ghosts.push(Ghost { trail, at: now, color: COLD });
+                self.ghosts.push(Ghost {
+                    trail,
+                    at: now,
+                    color: COLD,
+                });
             }
         }
         for trail in &mut self.trails[ats.len()..] {
@@ -341,7 +466,13 @@ impl View {
                 let was = self.molecule_color(k, now);
                 self.shown[k] = (m.note, was, color, now);
                 if m.r > 0.01 {
-                    self.waves.push(Wave { at: pos2(m.x, m.y), t0: now, size: m.r * 2.2, strength: 0.8, color });
+                    self.waves.push(Wave {
+                        at: pos2(m.x, m.y),
+                        t0: now,
+                        size: m.r * 2.2,
+                        strength: 0.8,
+                        color,
+                    });
                 }
             } else if to != color {
                 self.shown[k] = (note, self.molecule_color(k, now), color, now);
@@ -380,14 +511,26 @@ impl View {
     fn strike(&mut self, m: Mol, at: Pos2, force: f32, color: Color32, now: f64) {
         let force = force.clamp(0.0, 1.0);
         let light = mix(color, Color32::WHITE, 0.55);
-        self.waves.push(Wave { at, t0: now, size: 0.03 + 0.07 * force, strength: 0.4 + 0.6 * force, color: light });
+        self.waves.push(Wave {
+            at,
+            t0: now,
+            size: 0.03 + 0.07 * force,
+            strength: 0.4 + 0.6 * force,
+            color: light,
+        });
         let normal = (at - pos2(m.x, m.y)).normalized();
         let count = 3 + (force * 5.0) as usize;
         for i in 0..count {
             let spread = (i as f32 + 0.5) / count as f32 - 0.5;
             let angle = normal.angle() + spread * 2.2 + (self.random() - 0.5) * 0.3;
             let speed = 0.35 + 0.6 * force;
-            self.ticks.push(Tick { pos: at, vel: Vec2::angled(angle) * speed, t0: now, life: 0.28, color: light });
+            self.ticks.push(Tick {
+                pos: at,
+                vel: Vec2::angled(angle) * speed,
+                t0: now,
+                life: 0.28,
+                color: light,
+            });
         }
     }
 
@@ -399,7 +542,11 @@ impl View {
     }
 
     fn busy(&self, now: f64) -> bool {
-        !self.ticks.is_empty() || !self.waves.is_empty() || !self.labels.is_empty() || !self.ghosts.is_empty() || now - self.chord_at < SWEEP
+        !self.ticks.is_empty()
+            || !self.waves.is_empty()
+            || !self.labels.is_empty()
+            || !self.ghosts.is_empty()
+            || now - self.chord_at < SWEEP
     }
 }
 
@@ -421,7 +568,10 @@ struct Tank {
 
 impl Tank {
     fn at(&self, x: f32, y: f32) -> Pos2 {
-        pos2(self.rect.left() + x * self.scale, self.rect.top() + y * self.scale)
+        pos2(
+            self.rect.left() + x * self.scale,
+            self.rect.top() + y * self.scale,
+        )
     }
 
     fn pos(&self, q: Pos2) -> Pos2 {
@@ -429,12 +579,21 @@ impl Tank {
     }
 
     fn back(&self, s: Pos2) -> Pos2 {
-        pos2((s.x - self.rect.left()) / self.scale, (s.y - self.rect.top()) / self.scale)
+        pos2(
+            (s.x - self.rect.left()) / self.scale,
+            (s.y - self.rect.top()) / self.scale,
+        )
     }
 }
 
 /// `(midi_in, midi_out)`: the MIDI input and output are patched.
-pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, (midi_in, midi_out): (bool, bool)) {
+pub fn draw(
+    v: &NodeView,
+    id: NodeId,
+    accent: Color32,
+    m: &ModuleNode,
+    (midi_in, midi_out): (bool, bool),
+) {
     let p = &m.params;
     let key = Id::unique(("colloid-view", id));
     let mut view: View = v.ui.data_mut(|d| d.remove_temp(key)).unwrap_or_default();
@@ -445,11 +604,38 @@ pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, (midi_in,
     let (ats, n_atoms) = atoms(p);
     view.update(p, now, dt, &mols[..n_mols], &ats[..n_atoms]);
     let live = p.viz[viz::LIVE].get() > 0.5;
-    let s = Panel { v, id, p, accent, now, live };
+    let s = Panel {
+        v,
+        id,
+        p,
+        accent,
+        now,
+        live,
+    };
 
-    let col = |on: bool| if on { theme::TEXT_DIM } else { theme::TEXT_FAINT };
-    v.text(PAD, 42.0, Align2::LEFT_CENTER, "MIDI", v.font(9.0), col(midi_in));
-    v.text(W - PAD, 42.0, Align2::RIGHT_CENTER, "MIDI", v.font(9.0), col(midi_out));
+    let col = |on: bool| {
+        if on {
+            theme::TEXT_DIM
+        } else {
+            theme::TEXT_FAINT
+        }
+    };
+    v.text(
+        PAD,
+        42.0,
+        Align2::LEFT_CENTER,
+        "MIDI",
+        v.font(9.0),
+        col(midi_in),
+    );
+    v.text(
+        W - PAD,
+        42.0,
+        Align2::RIGHT_CENTER,
+        "MIDI",
+        v.font(9.0),
+        col(midi_out),
+    );
     s.header(&view);
     s.roots();
     s.tank(&mut view, &mols[..n_mols], &ats[..n_atoms]);
@@ -457,7 +643,8 @@ pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, (midi_in,
     s.knobs();
     s.lanes();
     if live || view.busy(now) {
-        v.ui.ctx().request_repaint_after(std::time::Duration::from_millis(16));
+        v.ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(16));
     }
     v.ui.data_mut(|d| d.insert_temp(key, view));
 }
@@ -482,30 +669,80 @@ impl Panel<'_, '_> {
         let shape = co::shape(p);
         let keyed = p.viz[viz::SOURCE].get() > 1.5;
         let family = (shape >= FIRST_CHORD) as usize;
-        const FAMILIES: [(&str, &str); 2] = [("HANDPAN", "Handpan and Hang layouts: a ding and its tone fields, every note in tune with every other"), ("CHORD", "Chords, with colour tones (COLOR)")];
-        let picked = segmented(v, self.uid("family"), v.r(46.0, 34.0, 150.0, 50.0), 2, family, self.accent, |k, r, col| {
-            v.painter.text(r.center(), Align2::CENTER_CENTER, FAMILIES[k].0, v.font(7.0), col);
-            FAMILIES[k].1
-        });
+        const FAMILIES: [(&str, &str); 2] = [
+            (
+                "HANDPAN",
+                "Handpan and Hang layouts: a ding and its tone fields, every note in tune with every other",
+            ),
+            ("CHORD", "Chords, with colour tones (COLOR)"),
+        ];
+        let picked = segmented(
+            v,
+            self.uid("family"),
+            v.r(46.0, 34.0, 150.0, 50.0),
+            2,
+            family,
+            self.accent,
+            |k, r, col| {
+                v.painter.text(
+                    r.center(),
+                    Align2::CENTER_CENTER,
+                    FAMILIES[k].0,
+                    v.font(7.0),
+                    col,
+                );
+                FAMILIES[k].1
+            },
+        );
         if let Some(k) = picked
             && k != family
         {
             p.set_mode(if k == 0 { 0 } else { FIRST_CHORD });
         }
-        let (first, count) = if family == 0 { (0, HANDPANS.len()) } else { (FIRST_CHORD, CHORDS.len()) };
-        let picked = segmented(v, self.uid(("shape", family)), v.r(156.0, 34.0, 522.0, 50.0), count, shape - first, self.accent, |k, r, col| {
-            let col = if keyed { alpha(col, 0.5) } else { col };
-            let (label, long) = shape_name(first + k);
-            v.painter.text(r.center(), Align2::CENTER_CENTER, label, v.font(if family == 0 { 6.5 } else { 7.0 }), col);
-            long
-        });
+        let (first, count) = if family == 0 {
+            (0, HANDPANS.len())
+        } else {
+            (FIRST_CHORD, CHORDS.len())
+        };
+        let picked = segmented(
+            v,
+            self.uid(("shape", family)),
+            v.r(156.0, 34.0, 522.0, 50.0),
+            count,
+            shape - first,
+            self.accent,
+            |k, r, col| {
+                let col = if keyed { alpha(col, 0.5) } else { col };
+                let (label, long) = shape_name(first + k);
+                v.painter.text(
+                    r.center(),
+                    Align2::CENTER_CENTER,
+                    label,
+                    v.font(if family == 0 { 6.5 } else { 7.0 }),
+                    col,
+                );
+                long
+            },
+        );
         if let Some(k) = picked {
             p.set_mode(first + k);
         }
-        let reseed = widgets::toggle(v.ui, v.painter, self.uid("reseed"), v.r(530.0, 34.0, 588.0, 50.0), "RESEED", false, self.accent, z)
-            .on_hover_text("A new start: the molecules scattered anew, new atoms, other colour tones");
+        let reseed = widgets::toggle(
+            v.ui,
+            v.painter,
+            self.uid("reseed"),
+            v.r(530.0, 34.0, 588.0, 50.0),
+            "RESEED",
+            false,
+            self.accent,
+            z,
+        )
+        .on_hover_text("A new start: the molecules scattered anew, new atoms, other colour tones");
         if reseed.clicked() {
-            co::reseed(p, (self.now * 1000.0) as u32 ^ self.id.wrapping_mul(0x9E37_79B9));
+            co::reseed(
+                p,
+                (self.now * 1000.0) as u32 ^ self.id.wrapping_mul(0x9E37_79B9),
+            );
         }
         let play = widgets::toggle(v.ui, v.painter, self.uid("play"), v.r(594.0, 34.0, 636.0, 50.0), "PLAY", p.toggled(), self.accent, z)
             .on_hover_text("Let the atoms in while the transport plays (off: they leave, the molecules keep floating)");
@@ -520,7 +757,18 @@ impl Panel<'_, '_> {
         } else {
             format!("{rate:.1} n/s")
         };
-        v.text(644.0, 42.0, Align2::LEFT_CENTER, text, v.font(7.5), if self.live { theme::TEXT_DIM } else { theme::TEXT_FAINT });
+        v.text(
+            644.0,
+            42.0,
+            Align2::LEFT_CENTER,
+            text,
+            v.font(7.5),
+            if self.live {
+                theme::TEXT_DIM
+            } else {
+                theme::TEXT_FAINT
+            },
+        );
     }
 
     /// The root as a row of keys, C to B: click one (it also lets go of
@@ -530,17 +778,35 @@ impl Panel<'_, '_> {
         let (v, p, z) = (self.v, self.p, self.z());
         let [y0, y1] = KEYS_Y;
         let mid = (y0 + y1) * 0.5;
-        v.text(PAD, mid, Align2::LEFT_CENTER, "ROOT", theme::strong(8.0 * z), theme::TEXT_DIM);
+        v.text(
+            PAD,
+            mid,
+            Align2::LEFT_CENTER,
+            "ROOT",
+            theme::strong(8.0 * z),
+            theme::TEXT_DIM,
+        );
         let (x0, x1) = (48.0, 522.0);
         let kw = (x1 - x0) / 12.0;
         let picked = co::int(p, ROOT, 0, 11) as usize;
         let keyed = p.viz[viz::SOURCE].get() > 0.5;
         let playing = chord(p).root as usize;
-        let tip = TIPS.iter().find(|(k, _)| *k == ROOT).map_or("", |(_, t)| *t);
+        let tip = TIPS
+            .iter()
+            .find(|(k, _)| *k == ROOT)
+            .map_or("", |(_, t)| *t);
         for (k, name) in NOTE_NAMES.iter().enumerate() {
-            let rect = v.r(x0 + kw * k as f32 + 1.0, y0, x0 + kw * (k + 1) as f32 - 1.0, y1);
+            let rect = v.r(
+                x0 + kw * k as f32 + 1.0,
+                y0,
+                x0 + kw * (k + 1) as f32 - 1.0,
+                y1,
+            );
             let sharp = matches!(k, 1 | 3 | 6 | 8 | 10);
-            let resp = v.ui.interact(rect, self.uid(("root", k)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).on_hover_text(tip);
+            let resp =
+                v.ui.interact(rect, self.uid(("root", k)), Sense::click())
+                    .on_hover_cursor(CursorIcon::PointingHand)
+                    .on_hover_text(tip);
             let selected = k == picked;
             let fill = if selected {
                 self.accent
@@ -559,9 +825,21 @@ impl Panel<'_, '_> {
             } else {
                 theme::TEXT
             };
-            label(v.painter, rect.center(), Align2::CENTER_CENTER, name, v.font(7.5), ink);
+            label(
+                v.painter,
+                rect.center(),
+                Align2::CENTER_CENTER,
+                name,
+                v.font(7.5),
+                ink,
+            );
             if keyed && k == playing {
-                v.painter.rect_stroke(rect.expand(1.0 * z), 3.5 * z, Stroke::new(1.5 * z, theme::TEXT), StrokeKind::Outside);
+                v.painter.rect_stroke(
+                    rect.expand(1.0 * z),
+                    3.5 * z,
+                    Stroke::new(1.5 * z, theme::TEXT),
+                    StrokeKind::Outside,
+                );
             }
             if resp.clicked() {
                 p.set(ROOT, k as f32);
@@ -571,15 +849,35 @@ impl Panel<'_, '_> {
             }
         }
         v.hit(v.r(x0, y0, x1, y1), ParamRef::Module(ROOT));
-        let note = if keyed { format!("keys: {}", NOTE_NAMES[playing]) } else { format!("{}{}", NOTE_NAMES[picked], co::int(p, OCTAVE, 1, 6)) };
-        v.text(530.0, mid, Align2::LEFT_CENTER, note, v.font(7.5), if keyed { theme::TEXT } else { theme::TEXT_FAINT });
+        let note = if keyed {
+            format!("keys: {}", NOTE_NAMES[playing])
+        } else {
+            format!("{}{}", NOTE_NAMES[picked], co::int(p, OCTAVE, 1, 6))
+        };
+        v.text(
+            530.0,
+            mid,
+            Align2::LEFT_CENTER,
+            note,
+            v.font(7.5),
+            if keyed {
+                theme::TEXT
+            } else {
+                theme::TEXT_FAINT
+            },
+        );
     }
 
     fn tank(&self, view: &mut View, mols: &[Mol], ats: &[At]) {
         let (v, z) = (self.v, self.z());
         let rect = v.r(PAD, TOP, W - PAD, BOTTOM);
-        let t = Tank { rect, scale: rect.height() };
-        let painter = v.painter.with_clip_rect(rect.intersect(v.painter.clip_rect()));
+        let t = Tank {
+            rect,
+            scale: rect.height(),
+        };
+        let painter = v
+            .painter
+            .with_clip_rect(rect.intersect(v.painter.clip_rect()));
         let now = self.now;
 
         self.backdrop(&painter, t);
@@ -594,14 +892,18 @@ impl Panel<'_, '_> {
         self.atoms(&painter, t, ats);
         self.sweep(&painter, t, view);
         self.overlay(&painter, t, mols, ats.len());
-        painter.rect_stroke(rect, 4.0 * z, Stroke::new(1.0 * z, alpha(theme::NODE_BORDER, 0.9)), StrokeKind::Inside);
+        painter.rect_stroke(
+            rect,
+            4.0 * z,
+            Stroke::new(1.0 * z, alpha(theme::NODE_BORDER, 0.9)),
+            StrokeKind::Inside,
+        );
 
         // Stirring: a click pushes outwards, a drag drags the liquid along.
-        let resp = v
-            .ui
-            .interact(rect, self.uid("tank"), Sense::click_and_drag())
-            .on_hover_cursor(CursorIcon::Crosshair)
-            .on_hover_text("Click to push the liquid outwards, drag to stir it");
+        let resp =
+            v.ui.interact(rect, self.uid("tank"), Sense::click_and_drag())
+                .on_hover_cursor(CursorIcon::Crosshair)
+                .on_hover_text("Click to push the liquid outwards, drag to stir it");
         if let Some(q) = resp.interact_pointer_pos() {
             let at = t.back(q);
             let dt = v.ui.input(|i| i.stable_dt).max(1e-3);
@@ -622,15 +924,30 @@ impl Panel<'_, '_> {
                 let push = dx == 0.0 && dy == 0.0;
                 if push || now - view.stirred > 0.08 {
                     view.stirred = now;
-                    view.waves.push(Wave { at, t0: now, size: if push { 0.28 } else { 0.1 }, strength: 0.7, color: COLD });
+                    view.waves.push(Wave {
+                        at,
+                        t0: now,
+                        size: if push { 0.28 } else { 0.1 },
+                        strength: 0.7,
+                        color: COLD,
+                    });
                 }
             }
         }
         // Letting go of the keys' chord.
         if self.p.viz[viz::SOURCE].get() > 0.5 {
             let r = v.r(PAD + 8.0, TOP + 40.0, PAD + 70.0, TOP + 54.0);
-            let resp = widgets::toggle(v.ui, v.painter, self.uid("unlatch"), r, "× KEYS", false, self.accent, z)
-                .on_hover_text("Let go of the notes from the keys: back to the panel's ROOT and shape");
+            let resp = widgets::toggle(
+                v.ui,
+                v.painter,
+                self.uid("unlatch"),
+                r,
+                "× KEYS",
+                false,
+                self.accent,
+                z,
+            )
+            .on_hover_text("Let go of the notes from the keys: back to the panel's ROOT and shape");
             if resp.clicked() {
                 self.p.viz[viz::UNLATCH].set(self.p.viz[viz::UNLATCH].get() + 1.0);
             }
@@ -645,11 +962,21 @@ impl Panel<'_, '_> {
         for b in 0..BANDS {
             let (y0, y1) = (b as f32 / BANDS as f32, (b + 1) as f32 / BANDS as f32);
             let shade = mix(SHALLOW, DEEP, (b as f32 / (BANDS - 1) as f32).powf(0.8));
-            painter.rect_filled(Rect::from_min_max(t.at(0.0, y0), t.at(ASPECT, y1 + 0.002)), 0.0, shade);
+            painter.rect_filled(
+                Rect::from_min_max(t.at(0.0, y0), t.at(ASPECT, y1 + 0.002)),
+                0.0,
+                shade,
+            );
         }
         let y = |x: f32| 0.014 + 0.006 * (x * 7.0 + now * 1.1).sin();
-        let pts: Vec<Pos2> = (0..=60).map(|i| i as f32 / 60.0 * ASPECT).map(|x| t.at(x, y(x))).collect();
-        painter.add(Shape::line(pts, Stroke::new(1.2 * z, alpha(Color32::from_rgb(170, 210, 255), 0.4))));
+        let pts: Vec<Pos2> = (0..=60)
+            .map(|i| i as f32 / 60.0 * ASPECT)
+            .map(|x| t.at(x, y(x)))
+            .collect();
+        painter.add(Shape::line(
+            pts,
+            Stroke::new(1.2 * z, alpha(Color32::from_rgb(170, 210, 255), 0.4)),
+        ));
     }
 
     /// A matrix of dots, drawn towards the molecules as far as they pull,
@@ -680,7 +1007,13 @@ impl Panel<'_, '_> {
         for row in 1..15 {
             for col in 1..cols {
                 let (q, s) = warp(col as f32 * ASPECT / cols as f32, row as f32 * STEP);
-                disc(&mut mesh, q, (0.9 + 1.5 * s) * z, alpha(ink, 0.16 + 0.55 * s), 6);
+                disc(
+                    &mut mesh,
+                    q,
+                    (0.9 + 1.5 * s) * z,
+                    alpha(ink, 0.16 + 0.55 * s),
+                    6,
+                );
             }
         }
         painter.add(Shape::mesh(mesh));
@@ -696,7 +1029,14 @@ impl Panel<'_, '_> {
             let color = view.molecule_color(k, self.now);
             let r = m.r * t.scale * (2.1 + 1.5 * reach);
             let turn = if k % 2 == 0 { 0.15 } else { -0.15 };
-            dashed_circle(painter, t.at(m.x, m.y), r, 18, now * turn + k as f32, Stroke::new(1.0 * z, alpha(color, strength)));
+            dashed_circle(
+                painter,
+                t.at(m.x, m.y),
+                r,
+                18,
+                now * turn + k as f32,
+                Stroke::new(1.0 * z, alpha(color, strength)),
+            );
         }
     }
 
@@ -715,8 +1055,20 @@ impl Panel<'_, '_> {
                 let close = 1.0 - d / near;
                 let dir = (pb - pa) / d;
                 let (sa, sb) = (t.pos(pa + dir * a.r * 1.1), t.pos(pb - dir * b.r * 1.1));
-                let color = mix(view.molecule_color(i, self.now), view.molecule_color(j, self.now), 0.5);
-                dashed_line(painter, sa, sb, 4.0 * z, 4.0 * z, now * 14.0 * z, Stroke::new((0.8 + 1.0 * close) * z, alpha(color, 0.25 + 0.5 * close)));
+                let color = mix(
+                    view.molecule_color(i, self.now),
+                    view.molecule_color(j, self.now),
+                    0.5,
+                );
+                dashed_line(
+                    painter,
+                    sa,
+                    sb,
+                    4.0 * z,
+                    4.0 * z,
+                    now * 14.0 * z,
+                    Stroke::new((0.8 + 1.0 * close) * z, alpha(color, 0.25 + 0.5 * close)),
+                );
             }
         }
     }
@@ -734,7 +1086,9 @@ impl Panel<'_, '_> {
         let ra = (co::settings(self.p).atom_r * t.scale).max(1.8 * z);
         let gap = 6.0 * z;
         let mut mesh = Mesh::default();
-        let mut wake = |trail: &mut dyn DoubleEndedIterator<Item = &(Pos2, f64)>, color: Color32, fade: f32| {
+        let mut wake = |trail: &mut dyn DoubleEndedIterator<Item = &(Pos2, f64)>,
+                        color: Color32,
+                        fade: f32| {
             let mut prev: Option<Pos2> = None;
             let mut walked = 0.0;
             let mut next = gap * 0.6;
@@ -747,7 +1101,13 @@ impl Panel<'_, '_> {
                     while next <= walked + len {
                         let f = (next - walked) / len.max(1e-6);
                         let left = (1.0 - age).clamp(0.0, 1.0);
-                        disc(&mut mesh, p0 + seg * f, ra * 0.8 * left, alpha(color, 0.85 * left * fade), 8);
+                        disc(
+                            &mut mesh,
+                            p0 + seg * f,
+                            ra * 0.8 * left,
+                            alpha(color, 0.85 * left * fade),
+                            8,
+                        );
                         next += gap;
                     }
                     walked += len;
@@ -784,7 +1144,11 @@ impl Panel<'_, '_> {
         if ring > 0.03 {
             for i in 0..2 {
                 let phase = (now * 1.5 + i as f32 / 2.0 + k as f32 * 0.37).fract();
-                painter.circle_stroke(c, r * (1.1 + 1.2 * phase), Stroke::new(1.1 * z, alpha(color, ring * (1.0 - phase) * 0.7)));
+                painter.circle_stroke(
+                    c,
+                    r * (1.1 + 1.2 * phase),
+                    Stroke::new(1.1 * z, alpha(color, ring * (1.0 - phase) * 0.7)),
+                );
             }
         }
         // Its nuclei: (count, distance, radius, core) by role.
@@ -802,9 +1166,14 @@ impl Panel<'_, '_> {
         };
         let place = |i: usize| -> (Pos2, f32) {
             let a = m.angle + i as f32 * TAU / count as f32;
-            (c + vec2(a.cos(), a.sin() * tilt.cos()) * dist * r + shake(i + 1), a.sin() * tilt.sin())
+            (
+                c + vec2(a.cos(), a.sin() * tilt.cos()) * dist * r + shake(i + 1),
+                a.sin() * tilt.sin(),
+            )
         };
-        let mut nuclei: Vec<(Pos2, f32, f32)> = (0..count).map(|i| (place(i).0, size * r, place(i).1)).collect();
+        let mut nuclei: Vec<(Pos2, f32, f32)> = (0..count)
+            .map(|i| (place(i).0, size * r, place(i).1))
+            .collect();
         if m.role == 0 {
             // A tetrahedron: one nucleus up front, the others round it.
             nuclei[0] = (c + vec2(0.0, -0.08 * r) + shake(9), size * r * 1.1, 1.0);
@@ -832,7 +1201,11 @@ impl Panel<'_, '_> {
                 nucleus(nuclei[i].0, nuclei[i].1, nuclei[i].2);
             }
             nucleus(core_at, core_r, 0.0);
-            painter.circle_stroke(core_at, core_r * 0.7, Stroke::new(width * 0.5, alpha(line, 0.35)));
+            painter.circle_stroke(
+                core_at,
+                core_r * 0.7,
+                Stroke::new(width * 0.5, alpha(line, 0.35)),
+            );
             for &i in order.iter().filter(|&&i| nuclei[i].2 >= 0.0) {
                 bond(core_at, nuclei[i].0, nuclei[i].2);
                 nucleus(nuclei[i].0, nuclei[i].1, nuclei[i].2);
@@ -840,11 +1213,17 @@ impl Panel<'_, '_> {
         } else {
             // A benzene ring: bonds round it, every other one double.
             for i in 0..count {
-                let ((a, da), (b, db)) = ((nuclei[i].0, nuclei[i].2), (nuclei[(i + 1) % count].0, nuclei[(i + 1) % count].2));
+                let ((a, da), (b, db)) = (
+                    (nuclei[i].0, nuclei[i].2),
+                    (nuclei[(i + 1) % count].0, nuclei[(i + 1) % count].2),
+                );
                 bond(a, b, (da + db) * 0.5);
                 if i % 2 == 0 {
                     let inward = ((c - a) + (c - b)).normalized() * r * 0.17;
-                    painter.line_segment([a + inward, b + inward], Stroke::new(width * 0.5, alpha(line, 0.6)));
+                    painter.line_segment(
+                        [a + inward, b + inward],
+                        Stroke::new(width * 0.5, alpha(line, 0.6)),
+                    );
                 }
             }
             for &(q, s, depth) in &nuclei {
@@ -858,11 +1237,19 @@ impl Panel<'_, '_> {
                 let (ax, ay) = (1.5 * r, 0.42 * r);
                 let orbit = |a: f32| -> Pos2 {
                     let (x, y) = (a.cos() * ax, a.sin() * ay);
-                    c + vec2(x * turn.cos() - y * turn.sin(), x * turn.sin() + y * turn.cos())
+                    c + vec2(
+                        x * turn.cos() - y * turn.sin(),
+                        x * turn.sin() + y * turn.cos(),
+                    )
                 };
                 let pts: Vec<Pos2> = (0..=40).map(|i| orbit(i as f32 / 40.0 * TAU)).collect();
-                painter.add(Shape::line(pts, Stroke::new(0.7 * z, alpha(color, 0.2 + 0.3 * ring))));
-                let phase = now * (1.4 + 5.5 * ring + 0.8 * m.spin.abs().min(4.0)) + k as f32 + e as f32 * PI;
+                painter.add(Shape::line(
+                    pts,
+                    Stroke::new(0.7 * z, alpha(color, 0.2 + 0.3 * ring)),
+                ));
+                let phase = now * (1.4 + 5.5 * ring + 0.8 * m.spin.abs().min(4.0))
+                    + k as f32
+                    + e as f32 * PI;
                 let at = orbit(phase);
                 painter.circle_filled(at, 2.2 * z, hollow);
                 painter.circle_stroke(at, 2.2 * z, Stroke::new(1.0 * z, line));
@@ -872,10 +1259,27 @@ impl Panel<'_, '_> {
         let name = note_label(m.note as i32);
         let inside = if core > 0.0 { core_r } else { r * 0.5 };
         if inside >= 10.5 * z {
-            label(painter, if core > 0.0 { core_at } else { c }, Align2::CENTER_CENTER, &name, theme::strong(7.0 * z), line);
+            label(
+                painter,
+                if core > 0.0 { core_at } else { c },
+                Align2::CENTER_CENTER,
+                &name,
+                theme::strong(7.0 * z),
+                line,
+            );
         } else {
-            let ink = alpha(mix(color, Color32::WHITE, 0.3), if m.sounding { 0.95 } else { 0.5 });
-            label(painter, c + vec2(0.0, r + 7.0 * z), Align2::CENTER_CENTER, &name, theme::mono(6.5 * z), ink);
+            let ink = alpha(
+                mix(color, Color32::WHITE, 0.3),
+                if m.sounding { 0.95 } else { 0.5 },
+            );
+            label(
+                painter,
+                c + vec2(0.0, r + 7.0 * z),
+                Align2::CENTER_CENTER,
+                &name,
+                theme::mono(6.5 * z),
+                ink,
+            );
         }
     }
 
@@ -886,7 +1290,14 @@ impl Panel<'_, '_> {
             let age = ((self.now - w.t0) / WAVE) as f32;
             let ease = 1.0 - (1.0 - age).powi(3);
             let rad = (0.008 + w.size * ease) * t.scale;
-            painter.circle_stroke(t.pos(w.at), rad, Stroke::new((2.0 * (1.0 - age) + 0.5) * z, alpha(w.color, (1.0 - age) * w.strength)));
+            painter.circle_stroke(
+                t.pos(w.at),
+                rad,
+                Stroke::new(
+                    (2.0 * (1.0 - age) + 0.5) * z,
+                    alpha(w.color, (1.0 - age) * w.strength),
+                ),
+            );
         }
         for tick in &view.ticks {
             let age = ((self.now - tick.t0) / tick.life as f64) as f32;
@@ -896,7 +1307,9 @@ impl Panel<'_, '_> {
             painter.line_segment([tail, head], Stroke::new(1.4 * z, alpha(tick.color, fade)));
         }
         for l in &view.labels {
-            let Some(m) = mols.get(l.molecule) else { continue };
+            let Some(m) = mols.get(l.molecule) else {
+                continue;
+            };
             let age = ((self.now - l.t0) / LABEL) as f32;
             let rise = (1.0 - (1.0 - age).powi(2)) * 0.08;
             let fade = (1.0 - age).clamp(0.0, 1.0).powf(0.6);
@@ -908,8 +1321,17 @@ impl Panel<'_, '_> {
             let galley = painter.layout_no_wrap(l.text.clone(), font, l.color);
             let tag = Rect::from_center_size(at, galley.size() + vec2(8.0, 3.0) * z);
             painter.rect_filled(tag, tag.height() * 0.5, alpha(INK, 0.8 * fade));
-            painter.rect_stroke(tag, tag.height() * 0.5, Stroke::new(1.2 * z, alpha(l.color, fade)), StrokeKind::Inside);
-            painter.galley(tag.center() - galley.size() * 0.5, galley, alpha(l.color, fade));
+            painter.rect_stroke(
+                tag,
+                tag.height() * 0.5,
+                Stroke::new(1.2 * z, alpha(l.color, fade)),
+                StrokeKind::Inside,
+            );
+            painter.galley(
+                tag.center() - galley.size() * 0.5,
+                galley,
+                alpha(l.color, fade),
+            );
         }
     }
 
@@ -922,13 +1344,21 @@ impl Panel<'_, '_> {
             let c = t.at(a.x, a.y);
             let color = atom_color(a);
             if a.charge > 0.05 {
-                painter.circle_stroke(c, ra * 2.2, Stroke::new(1.0 * z, alpha(CHARGED, 0.8 * a.charge)));
+                painter.circle_stroke(
+                    c,
+                    ra * 2.2,
+                    Stroke::new(1.0 * z, alpha(CHARGED, 0.8 * a.charge)),
+                );
             }
             painter.circle_filled(c, ra, color);
             painter.circle_stroke(c, ra, Stroke::new(0.8 * z, alpha(INK, 0.6)));
             if a.age < 0.5 {
                 let f = a.age / 0.5;
-                painter.circle_stroke(c, ra * (2.0 + 9.0 * f), Stroke::new(1.2 * z, alpha(Color32::WHITE, 0.8 * (1.0 - f))));
+                painter.circle_stroke(
+                    c,
+                    ra * (2.0 + 9.0 * f),
+                    Stroke::new(1.2 * z, alpha(Color32::WHITE, 0.8 * (1.0 - f))),
+                );
             }
         }
     }
@@ -941,8 +1371,16 @@ impl Panel<'_, '_> {
         }
         let z = self.z();
         let x = age * ASPECT;
-        painter.rect_filled(Rect::from_min_max(t.at(x - 0.12, 0.0), t.at(x, 1.0)), 0.0, alpha(Color32::WHITE, 0.05 * (1.0 - age)));
-        painter.vline(t.at(x, 0.0).x, t.rect.y_range(), Stroke::new(1.5 * z, alpha(Color32::WHITE, 0.7 * (1.0 - age))));
+        painter.rect_filled(
+            Rect::from_min_max(t.at(x - 0.12, 0.0), t.at(x, 1.0)),
+            0.0,
+            alpha(Color32::WHITE, 0.05 * (1.0 - age)),
+        );
+        painter.vline(
+            t.at(x, 0.0).x,
+            t.rect.y_range(),
+            Stroke::new(1.5 * z, alpha(Color32::WHITE, 0.7 * (1.0 - age))),
+        );
         let name = chord(self.p).name();
         let fade = (age * 6.0).min(1.0) * (1.0 - age).powf(1.3);
         let font = theme::strong(22.0 * z);
@@ -950,10 +1388,20 @@ impl Panel<'_, '_> {
             return;
         }
         let galley = painter.layout_no_wrap(name, font, Color32::WHITE);
-        let tag = Rect::from_center_size(t.at(ASPECT * 0.5, 0.5), galley.size() + vec2(18.0, 6.0) * z);
+        let tag =
+            Rect::from_center_size(t.at(ASPECT * 0.5, 0.5), galley.size() + vec2(18.0, 6.0) * z);
         painter.rect_filled(tag, 6.0 * z, alpha(INK, 0.8 * fade));
-        painter.rect_stroke(tag, 6.0 * z, Stroke::new(1.5 * z, alpha(Color32::WHITE, 0.9 * fade)), StrokeKind::Inside);
-        painter.galley(tag.center() - galley.size() * 0.5, galley, alpha(Color32::WHITE, fade));
+        painter.rect_stroke(
+            tag,
+            6.0 * z,
+            Stroke::new(1.5 * z, alpha(Color32::WHITE, 0.9 * fade)),
+            StrokeKind::Inside,
+        );
+        painter.galley(
+            tag.center() - galley.size() * 0.5,
+            galley,
+            alpha(Color32::WHITE, fade),
+        );
     }
 
     /// The notes and what plays, over the tank.
@@ -965,18 +1413,54 @@ impl Panel<'_, '_> {
         let what = match source {
             1 => "root from the keys".to_owned(),
             2 => "chord from the keys".to_owned(),
-            _ => shape_name(co::shape(self.p)).1.split(" (").next().unwrap_or("").to_owned(),
+            _ => shape_name(co::shape(self.p))
+                .1
+                .split(" (")
+                .next()
+                .unwrap_or("")
+                .to_owned(),
         };
         let shadow = alpha(Color32::BLACK, 0.7);
         for d in [vec2(1.0, 1.0), vec2(-1.0, 1.0), vec2(0.0, 1.5)] {
-            label(painter, at + d * z, Align2::LEFT_TOP, set.name(), theme::strong(13.0 * z), shadow);
-            label(painter, at + vec2(0.0, 18.0 * z) + d * z, Align2::LEFT_TOP, &what, theme::font(7.5 * z), shadow);
+            label(
+                painter,
+                at + d * z,
+                Align2::LEFT_TOP,
+                set.name(),
+                theme::strong(13.0 * z),
+                shadow,
+            );
+            label(
+                painter,
+                at + vec2(0.0, 18.0 * z) + d * z,
+                Align2::LEFT_TOP,
+                &what,
+                theme::font(7.5 * z),
+                shadow,
+            );
         }
-        label(painter, at, Align2::LEFT_TOP, set.name(), theme::strong(13.0 * z), alpha(theme::TEXT, 0.95));
-        label(painter, at + vec2(0.0, 18.0 * z), Align2::LEFT_TOP, &what, theme::font(7.5 * z), alpha(theme::TEXT_DIM, 0.9));
+        label(
+            painter,
+            at,
+            Align2::LEFT_TOP,
+            set.name(),
+            theme::strong(13.0 * z),
+            alpha(theme::TEXT, 0.95),
+        );
+        label(
+            painter,
+            at + vec2(0.0, 18.0 * z),
+            Align2::LEFT_TOP,
+            &what,
+            theme::font(7.5 * z),
+            alpha(theme::TEXT_DIM, 0.9),
+        );
         // The notes' pitch classes, a chip each, coloured by role.
         let mut x = t.rect.right() - 10.0 * z;
-        let tones: Vec<u8> = (0..12u8).map(|i| (set.root + i) % 12).filter(|&pc| set.contains(pc)).collect();
+        let tones: Vec<u8> = (0..12u8)
+            .map(|i| (set.root + i) % 12)
+            .filter(|&pc| set.contains(pc))
+            .collect();
         for &pc in tones.iter().rev() {
             let font = theme::mono(8.5 * z);
             if font.size < MIN_TEXT {
@@ -984,18 +1468,50 @@ impl Panel<'_, '_> {
             }
             let color = ROLE_COLORS[set.role(pc) as usize];
             let galley = painter.layout_no_wrap(NOTE_NAMES[pc as usize].to_owned(), font, color);
-            let chip = Rect::from_min_size(pos2(x - galley.size().x - 8.0 * z, at.y), galley.size() + vec2(8.0, 2.0) * z);
+            let chip = Rect::from_min_size(
+                pos2(x - galley.size().x - 8.0 * z, at.y),
+                galley.size() + vec2(8.0, 2.0) * z,
+            );
             painter.rect_filled(chip, 3.0 * z, alpha(INK, 0.7));
-            painter.rect_stroke(chip, 3.0 * z, Stroke::new(1.0 * z, color), StrokeKind::Inside);
+            painter.rect_stroke(
+                chip,
+                3.0 * z,
+                Stroke::new(1.0 * z, color),
+                StrokeKind::Inside,
+            );
             painter.galley(chip.center() - galley.size() * 0.5, galley, color);
             x = chip.left() - 4.0 * z;
         }
         let sounding = mols.iter().filter(|m| m.sounding).count();
-        let stats = format!("{} molecules · {atoms} atoms · {sounding} ringing", mols.len());
+        let stats = format!(
+            "{} molecules · {atoms} atoms · {sounding} ringing",
+            mols.len()
+        );
         let at = t.rect.right_top() + vec2(-10.0, 25.0) * z;
-        label(painter, at + vec2(1.0, 1.0) * z, Align2::RIGHT_TOP, &stats, theme::font(7.0 * z), shadow);
-        label(painter, at, Align2::RIGHT_TOP, stats, theme::font(7.0 * z), alpha(theme::TEXT_DIM, 0.8));
-        label(painter, t.rect.left_bottom() + vec2(10.0, -8.0) * z, Align2::LEFT_BOTTOM, "COLLOID", theme::strong(7.0 * z), alpha(theme::TEXT_FAINT, 0.6));
+        label(
+            painter,
+            at + vec2(1.0, 1.0) * z,
+            Align2::RIGHT_TOP,
+            &stats,
+            theme::font(7.0 * z),
+            shadow,
+        );
+        label(
+            painter,
+            at,
+            Align2::RIGHT_TOP,
+            stats,
+            theme::font(7.0 * z),
+            alpha(theme::TEXT_DIM, 0.8),
+        );
+        label(
+            painter,
+            t.rect.left_bottom() + vec2(10.0, -8.0) * z,
+            Align2::LEFT_BOTTOM,
+            "COLLOID",
+            theme::strong(7.0 * z),
+            alpha(theme::TEXT_FAINT, 0.6),
+        );
     }
 
     /// The notes: a cell per molecule, low to high, filling as it rings.
@@ -1009,20 +1525,48 @@ impl Panel<'_, '_> {
         let start = x0 + ((x1 - x0) - cw * order.len() as f32) * 0.5;
         for (i, &k) in order.iter().enumerate() {
             let m = &mols[k];
-            let rect = v.r(start + cw * i as f32 + 1.5, y0, start + cw * (i + 1) as f32 - 1.5, y1);
+            let rect = v.r(
+                start + cw * i as f32 + 1.5,
+                y0,
+                start + cw * (i + 1) as f32 - 1.5,
+                y1,
+            );
             let color = view.molecule_color(k, self.now);
             let flash = self.flash(view, k);
             v.painter.rect_filled(rect, 3.0 * z, theme::INSET);
             let level = m.ring.max(flash).clamp(0.0, 1.0);
             if level > 0.01 {
-                let fill = Rect::from_min_max(pos2(rect.left(), rect.bottom() - rect.height() * level), rect.max);
-                v.painter.rect_filled(fill, 3.0 * z, alpha(color, 0.3 + 0.4 * level));
+                let fill = Rect::from_min_max(
+                    pos2(rect.left(), rect.bottom() - rect.height() * level),
+                    rect.max,
+                );
+                v.painter
+                    .rect_filled(fill, 3.0 * z, alpha(color, 0.3 + 0.4 * level));
             }
-            v.painter.rect_filled(Rect::from_min_size(rect.min, vec2(rect.width(), 2.5 * z)), 1.0 * z, color);
-            let ink = if m.sounding { theme::TEXT } else { theme::TEXT_DIM };
-            label(v.painter, rect.center() + vec2(0.0, 1.0 * z), Align2::CENTER_CENTER, note_label(m.note as i32), v.mono(8.0), ink);
+            v.painter.rect_filled(
+                Rect::from_min_size(rect.min, vec2(rect.width(), 2.5 * z)),
+                1.0 * z,
+                color,
+            );
+            let ink = if m.sounding {
+                theme::TEXT
+            } else {
+                theme::TEXT_DIM
+            };
+            label(
+                v.painter,
+                rect.center() + vec2(0.0, 1.0 * z),
+                Align2::CENTER_CENTER,
+                note_label(m.note as i32),
+                v.mono(8.0),
+                ink,
+            );
             let resp = v.ui.interact(rect, self.uid(("cell", k)), Sense::hover());
-            resp.on_hover_text(format!("{} · {}", note_label(m.note as i32), ROLES[m.role as usize]));
+            resp.on_hover_text(format!(
+                "{} · {}",
+                note_label(m.note as i32),
+                ROLES[m.role as usize]
+            ));
         }
     }
 
@@ -1039,9 +1583,20 @@ impl Panel<'_, '_> {
 
     fn group_title(&self, title: &str, x0: f32, x1: f32, y: f32) {
         let (v, z) = (self.v, self.z());
-        let r = v.text(x0, y, Align2::LEFT_CENTER, title, theme::strong(8.5 * z), theme::TEXT_DIM);
+        let r = v.text(
+            x0,
+            y,
+            Align2::LEFT_CENTER,
+            title,
+            theme::strong(8.5 * z),
+            theme::TEXT_DIM,
+        );
         let from = (r.right() + 8.0 * z).max(v.p(x0 + 50.0, 0.0).x);
-        v.painter.hline(from..=v.p(x1, 0.0).x, v.p(0.0, y).y, Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.3)));
+        v.painter.hline(
+            from..=v.p(x1, 0.0).x,
+            v.p(0.0, y).y,
+            Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.3)),
+        );
     }
 
     fn group(&self, title: &str, x0: f32, x1: f32, y: f32, knobs: &Knobs) {
@@ -1060,11 +1615,29 @@ impl Panel<'_, '_> {
         let spec = co::spec(i);
         let idle = matches!(i, SPREAD | COLOR) && self.handpan();
         let faint = |c: Color32| if idle { alpha(c, 0.45) } else { c };
-        v.text(cx, y, Align2::CENTER_CENTER, label, v.font(7.5), faint(theme::TEXT_FAINT));
+        v.text(
+            cx,
+            y,
+            Align2::CENTER_CENTER,
+            label,
+            v.font(7.5),
+            faint(theme::TEXT_FAINT),
+        );
         let top = y + 8.0;
         let mut norm = spec.to_norm(p.get(i));
         let color = if idle { theme::TEXT_FAINT } else { self.accent };
-        let resp = widgets::knob(v.ui, v.painter, self.uid(("knob", i)), v.p(cx, top + R), R * z, &mut norm, spec.to_norm(spec.default), spec.bipolar, color, z);
+        let resp = widgets::knob(
+            v.ui,
+            v.painter,
+            self.uid(("knob", i)),
+            v.p(cx, top + R),
+            R * z,
+            &mut norm,
+            spec.to_norm(spec.default),
+            spec.bipolar,
+            color,
+            z,
+        );
         let tip = TIPS.iter().find(|(k, _)| *k == i).map_or("", |(_, t)| *t);
         let resp = resp.on_hover_text(tip);
         v.hit(resp.rect, ParamRef::Module(i));
@@ -1077,7 +1650,14 @@ impl Panel<'_, '_> {
             }
         }
         let hot = resp.dragged() || resp.hovered();
-        v.text(cx, top + 2.0 * R + 8.0, Align2::CENTER_CENTER, format(p, i), v.mono(7.0), faint(if hot { theme::TEXT } else { theme::TEXT_DIM }));
+        v.text(
+            cx,
+            top + 2.0 * R + 8.0,
+            Align2::CENTER_CENTER,
+            format(p, i),
+            v.mono(7.0),
+            faint(if hot { theme::TEXT } else { theme::TEXT_DIM }),
+        );
     }
 
     /// The CC lanes: a card each, with its switch, controller, source,
@@ -1100,12 +1680,25 @@ impl Panel<'_, '_> {
         let number = at(cc::NUMBER).round().clamp(0.0, 127.0) as u8;
         let source = (at(cc::SOURCE).round().max(0.0) as usize).min(cc::SOURCES.len() - 1);
         let card = v.r(x0, y0, x1, y0 + 42.0);
-        v.painter.rect_filled(card, 4.0 * z, if on { theme::CONTROL } else { theme::INSET });
+        v.painter.rect_filled(
+            card,
+            4.0 * z,
+            if on { theme::CONTROL } else { theme::INSET },
+        );
         let ink = |c: Color32| if on { c } else { alpha(c, 0.55) };
 
         // The switch, and the controller (a menu).
-        let switch = widgets::toggle(v.ui, v.painter, self.uid(("cc-on", k)), v.r(x0 + 4.0, y0 + 4.0, x0 + 32.0, y0 + 19.0), if on { "ON" } else { "OFF" }, on, self.accent, z)
-            .on_hover_text("Send this lane's controller with the notes");
+        let switch = widgets::toggle(
+            v.ui,
+            v.painter,
+            self.uid(("cc-on", k)),
+            v.r(x0 + 4.0, y0 + 4.0, x0 + 32.0, y0 + 19.0),
+            if on { "ON" } else { "OFF" },
+            on,
+            self.accent,
+            z,
+        )
+        .on_hover_text("Send this lane's controller with the notes");
         if switch.clicked() {
             set(cc::ON, if on { 0.0 } else { 1.0 });
         }
@@ -1114,59 +1707,146 @@ impl Panel<'_, '_> {
             None => format!("CC {number} ▾"),
         };
         let menu_rect = v.r(x0 + 36.0, y0 + 4.0, x1 - 4.0, y0 + 19.0);
-        let menu = v.ui.interact(menu_rect, self.uid(("cc-number", k)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).on_hover_text("The controller this lane sends");
-        v.painter.rect_filled(menu_rect, 3.0 * z, if menu.hovered() { theme::CONTROL_HI } else { theme::NODE_BODY });
-        label(v.painter, menu_rect.left_center() + vec2(5.0 * z, 0.0), Align2::LEFT_CENTER, title, v.mono(7.5), ink(theme::TEXT));
-        egui::Popup::menu(&menu).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
-            ui.set_min_width(170.0);
-            ui.weak("Controller");
-            for (n, name) in cc::NAMED {
-                if ui.selectable_label(n == number, format!("{n:>3}  {name}")).clicked() {
-                    set(cc::NUMBER, n as f32);
-                    ui.close();
+        let menu =
+            v.ui.interact(menu_rect, self.uid(("cc-number", k)), Sense::click())
+                .on_hover_cursor(CursorIcon::PointingHand)
+                .on_hover_text("The controller this lane sends");
+        v.painter.rect_filled(
+            menu_rect,
+            3.0 * z,
+            if menu.hovered() {
+                theme::CONTROL_HI
+            } else {
+                theme::NODE_BODY
+            },
+        );
+        label(
+            v.painter,
+            menu_rect.left_center() + vec2(5.0 * z, 0.0),
+            Align2::LEFT_CENTER,
+            title,
+            v.mono(7.5),
+            ink(theme::TEXT),
+        );
+        egui::Popup::menu(&menu)
+            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+            .show(|ui| {
+                ui.set_min_width(170.0);
+                ui.weak("Controller");
+                for (n, name) in cc::NAMED {
+                    if ui
+                        .selectable_label(n == number, format!("{n:>3}  {name}"))
+                        .clicked()
+                    {
+                        set(cc::NUMBER, n as f32);
+                        ui.close();
+                    }
                 }
-            }
-            ui.separator();
-            ui.horizontal(|ui| {
-                ui.weak("Any");
-                let mut n = number as i32;
-                if ui.add(egui::DragValue::new(&mut n).range(0..=127)).changed() {
-                    set(cc::NUMBER, n as f32);
-                }
+                ui.separator();
+                ui.horizontal(|ui| {
+                    ui.weak("Any");
+                    let mut n = number as i32;
+                    if ui
+                        .add(egui::DragValue::new(&mut n).range(0..=127))
+                        .changed()
+                    {
+                        set(cc::NUMBER, n as f32);
+                    }
+                });
             });
-        });
 
         // The source (a menu), the value going out, its range.
         let src_rect = v.r(x0 + 4.0, y0 + 23.0, x0 + 70.0, y0 + 38.0);
-        let src = v.ui.interact(src_rect, self.uid(("cc-source", k)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).on_hover_text(cc::SOURCES[source].1);
-        v.painter.rect_filled(src_rect, 3.0 * z, if src.hovered() { theme::CONTROL_HI } else { theme::NODE_BODY });
-        label(v.painter, src_rect.center(), Align2::CENTER_CENTER, format!("{} ▾", cc::SOURCES[source].0), v.font(7.0), ink(self.accent));
-        egui::Popup::menu(&src).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
-            ui.set_min_width(260.0);
-            ui.weak("What drives it");
-            for (i, (name, what)) in cc::SOURCES.iter().enumerate() {
-                if ui.selectable_label(i == source, *name).on_hover_text(*what).clicked() {
-                    set(cc::SOURCE, i as f32);
-                    ui.close();
+        let src =
+            v.ui.interact(src_rect, self.uid(("cc-source", k)), Sense::click())
+                .on_hover_cursor(CursorIcon::PointingHand)
+                .on_hover_text(cc::SOURCES[source].1);
+        v.painter.rect_filled(
+            src_rect,
+            3.0 * z,
+            if src.hovered() {
+                theme::CONTROL_HI
+            } else {
+                theme::NODE_BODY
+            },
+        );
+        label(
+            v.painter,
+            src_rect.center(),
+            Align2::CENTER_CENTER,
+            format!("{} ▾", cc::SOURCES[source].0),
+            v.font(7.0),
+            ink(self.accent),
+        );
+        egui::Popup::menu(&src)
+            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+            .show(|ui| {
+                ui.set_min_width(260.0);
+                ui.weak("What drives it");
+                for (i, (name, what)) in cc::SOURCES.iter().enumerate() {
+                    if ui
+                        .selectable_label(i == source, *name)
+                        .on_hover_text(*what)
+                        .clicked()
+                    {
+                        set(cc::SOURCE, i as f32);
+                        ui.close();
+                    }
                 }
-            }
-        });
+            });
         let (low, high) = (at(cc::LOW), at(cc::HIGH));
         let meter = v.r(x0 + 76.0, y0 + 27.0, x1 - 62.0, y0 + 34.0);
         v.painter.rect_filled(meter, 2.0 * z, theme::INSET);
         let x_of = |value: f32| meter.left() + meter.width() * value / 127.0;
         let (a, b) = (x_of(low.min(high)), x_of(low.max(high)));
-        v.painter.rect_filled(Rect::from_x_y_ranges(a..=b, meter.y_range()), 2.0 * z, alpha(self.accent, if on { 0.25 } else { 0.1 }));
+        v.painter.rect_filled(
+            Rect::from_x_y_ranges(a..=b, meter.y_range()),
+            2.0 * z,
+            alpha(self.accent, if on { 0.25 } else { 0.1 }),
+        );
         let sent = p.viz[viz::LANES + k].get();
         if on && sent >= 0.0 {
             let x = x_of(sent);
-            v.painter.rect_filled(Rect::from_min_max(meter.min, pos2(x, meter.max.y)), 2.0 * z, self.accent);
-            v.painter.vline(x, meter.y_range().expand(2.0 * z), Stroke::new(1.5 * z, theme::TEXT));
+            v.painter.rect_filled(
+                Rect::from_min_max(meter.min, pos2(x, meter.max.y)),
+                2.0 * z,
+                self.accent,
+            );
+            v.painter.vline(
+                x,
+                meter.y_range().expand(2.0 * z),
+                Stroke::new(1.5 * z, theme::TEXT),
+            );
         }
-        let shown = if on && sent >= 0.0 { format!("{}", sent as i32) } else { "—".to_owned() };
-        label(v.painter, meter.center_top() - vec2(0.0, 1.0 * z), Align2::CENTER_BOTTOM, shown, v.mono(6.5), ink(theme::TEXT_DIM));
-        self.number_box(k, cc::LOW, v.r(x1 - 58.0, y0 + 23.0, x1 - 32.0, y0 + 38.0), "Value sent at the source's lowest (drag; double-click: 0)", 0.0, on);
-        self.number_box(k, cc::HIGH, v.r(x1 - 30.0, y0 + 23.0, x1 - 4.0, y0 + 38.0), "Value sent at the source's highest (drag; double-click: 127)", 127.0, on);
+        let shown = if on && sent >= 0.0 {
+            format!("{}", sent as i32)
+        } else {
+            "—".to_owned()
+        };
+        label(
+            v.painter,
+            meter.center_top() - vec2(0.0, 1.0 * z),
+            Align2::CENTER_BOTTOM,
+            shown,
+            v.mono(6.5),
+            ink(theme::TEXT_DIM),
+        );
+        self.number_box(
+            k,
+            cc::LOW,
+            v.r(x1 - 58.0, y0 + 23.0, x1 - 32.0, y0 + 38.0),
+            "Value sent at the source's lowest (drag; double-click: 0)",
+            0.0,
+            on,
+        );
+        self.number_box(
+            k,
+            cc::HIGH,
+            v.r(x1 - 30.0, y0 + 23.0, x1 - 4.0, y0 + 38.0),
+            "Value sent at the source's highest (drag; double-click: 127)",
+            127.0,
+            on,
+        );
     }
 
     /// A value 0…127 of a lane: drag up or right to raise it, a step every
@@ -1175,7 +1855,10 @@ impl Panel<'_, '_> {
         let (v, p, z) = (self.v, self.p, self.z());
         let slot = &p.data[cc::at(k, i)];
         let id = self.uid(("cc-box", k, i));
-        let resp = v.ui.interact(rect, id, Sense::click_and_drag()).on_hover_cursor(CursorIcon::ResizeVertical).on_hover_text(tip);
+        let resp =
+            v.ui.interact(rect, id, Sense::click_and_drag())
+                .on_hover_cursor(CursorIcon::ResizeVertical)
+                .on_hover_text(tip);
         if resp.dragged() {
             let d = resp.drag_delta();
             let steps = v.ui.data_mut(|m| {
@@ -1191,14 +1874,36 @@ impl Panel<'_, '_> {
             slot.set(reset);
         }
         let hot = resp.hovered() || resp.dragged();
-        v.painter.rect_filled(rect, 3.0 * z, if hot { theme::CONTROL_HI } else { theme::NODE_BODY });
+        v.painter.rect_filled(
+            rect,
+            3.0 * z,
+            if hot {
+                theme::CONTROL_HI
+            } else {
+                theme::NODE_BODY
+            },
+        );
         let ink = if on { theme::TEXT } else { theme::TEXT_FAINT };
-        label(v.painter, rect.center(), Align2::CENTER_CENTER, format!("{}", slot.get().round() as i32), v.mono(7.5), ink);
+        label(
+            v.painter,
+            rect.center(),
+            Align2::CENTER_CENTER,
+            format!("{}", slot.get().round() as i32),
+            v.mono(7.5),
+            ink,
+        );
     }
 }
 
 /// Text, unless it is too small to read (zoomed far out).
-fn label(painter: &Painter, at: Pos2, align: Align2, text: impl ToString, font: egui::FontId, color: Color32) -> Rect {
+fn label(
+    painter: &Painter,
+    at: Pos2,
+    align: Align2,
+    text: impl ToString,
+    font: egui::FontId,
+    color: Color32,
+) -> Rect {
     if font.size < MIN_TEXT {
         return Rect::from_center_size(at, Vec2::ZERO);
     }
@@ -1213,7 +1918,10 @@ fn disc(mesh: &mut Mesh, c: Pos2, r: f32, color: Color32, segments: u32) {
     let base = mesh.vertices.len() as u32;
     mesh.colored_vertex(c, color);
     for i in 0..segments {
-        mesh.colored_vertex(c + Vec2::angled(i as f32 / segments as f32 * TAU) * r, color);
+        mesh.colored_vertex(
+            c + Vec2::angled(i as f32 / segments as f32 * TAU) * r,
+            color,
+        );
     }
     for i in 0..segments {
         mesh.add_triangle(base, base + 1 + i, base + 1 + (i + 1) % segments);
@@ -1228,13 +1936,23 @@ fn dashed_circle(painter: &Painter, c: Pos2, r: f32, dashes: usize, turn: f32, s
     for i in 0..dashes {
         let a0 = turn + i as f32 / dashes as f32 * TAU;
         let a1 = a0 + TAU / dashes as f32 * 0.55;
-        let pts: Vec<Pos2> = (0..=3).map(|s| c + Vec2::angled(a0 + (a1 - a0) * s as f32 / 3.0) * r).collect();
+        let pts: Vec<Pos2> = (0..=3)
+            .map(|s| c + Vec2::angled(a0 + (a1 - a0) * s as f32 / 3.0) * r)
+            .collect();
         painter.add(Shape::line(pts, stroke));
     }
 }
 
 /// A dashed line from `a` to `b`, the dashes moving along by `offset`.
-fn dashed_line(painter: &Painter, a: Pos2, b: Pos2, dash: f32, gap: f32, offset: f32, stroke: Stroke) {
+fn dashed_line(
+    painter: &Painter,
+    a: Pos2,
+    b: Pos2,
+    dash: f32,
+    gap: f32,
+    offset: f32,
+    stroke: Stroke,
+) {
     let len = (b - a).length();
     if len < 1.0 {
         return;

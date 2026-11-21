@@ -23,7 +23,11 @@ pub const HARMONICS: [u32; 10] = [2, 3, 4, 5, 6, 8, 9, 10, 12, 16];
 
 /// How many of [`HARMONICS`] a HARM value allows (those up to it).
 pub fn allowed(harm: f32) -> usize {
-    HARMONICS.iter().filter(|&&h| h as f32 <= harm.round()).count().max(1)
+    HARMONICS
+        .iter()
+        .filter(|&&h| h as f32 <= harm.round())
+        .count()
+        .max(1)
 }
 
 /// What a glitch was (as the panel is told).
@@ -118,7 +122,16 @@ struct Head {
 
 impl Head {
     fn new() -> Self {
-        Self { buf: vec![[0.0; 2]; LOOP_MAX].into_boxed_slice(), len: 0, pos: 0, env: 0.0, hold: 0, rise: 0.0, fall: 0.0, level: 0.0 }
+        Self {
+            buf: vec![[0.0; 2]; LOOP_MAX].into_boxed_slice(),
+            len: 0,
+            pos: 0,
+            env: 0.0,
+            hold: 0,
+            rise: 0.0,
+            fall: 0.0,
+            level: 0.0,
+        }
     }
 
     /// The loop's next sample and how much it covers the sound.
@@ -199,14 +212,22 @@ impl Glitch {
             const SUBS: [usize; 5] = [2, 3, 4, 6, 8];
             let sub = SUBS[((rng.unit() * (1.0 + 4.0 * s.repeat)) as usize).min(SUBS.len() - 1)];
             // Very high REPEAT may run on into the next step.
-            let steps = if rng.unit() < (s.repeat - 0.6) * 2.5 { 2 } else { 1 };
+            let steps = if rng.unit() < (s.repeat - 0.6) * 2.5 {
+                2
+            } else {
+                1
+            };
             (sub * steps, sub)
         } else {
             (1, 1)
         };
         let climb = count > 1 && rng.unit() < 0.5;
         for r in 0..count {
-            let harmonic = if climb { (first + r).min(s.allowed - 1) } else { first };
+            let harmonic = if climb {
+                (first + r).min(s.allowed - 1)
+            } else {
+                first
+            };
             self.push(Pending {
                 beat: step.beat + len * r as f64 / sub as f64,
                 skip,
@@ -225,7 +246,10 @@ impl Glitch {
         let mut k = 0;
         while k < self.queued {
             if self.queue[k].beat < end {
-                out[count] = Fire { frame: frame_of(ctx, n, self.queue[k].beat), what: self.queue[k] };
+                out[count] = Fire {
+                    frame: frame_of(ctx, n, self.queue[k].beat),
+                    what: self.queue[k],
+                };
                 count += 1;
                 self.queued -= 1;
                 self.queue[k] = self.queue[self.queued];
@@ -244,7 +268,9 @@ impl Glitch {
         while hz > 7000.0 {
             hz *= 0.5;
         }
-        let slot = (0..SPARKS).min_by(|&a, &b| self.sparks[a].env.total_cmp(&self.sparks[b].env)).unwrap_or(0);
+        let slot = (0..SPARKS)
+            .min_by(|&a, &b| self.sparks[a].env.total_cmp(&self.sparks[b].env))
+            .unwrap_or(0);
         let (gl, gr) = pan_gains(rng.bipolar() * width);
         self.sparks[slot] = Spark {
             phase: 0.0,
@@ -263,8 +289,17 @@ impl Glitch {
 
     /// A skip at an octave of harmonic `harmonic` of `root_hz`, `warp`
     /// octaves higher still; returns the loop's pitch.
-    pub fn skip(&mut self, rng: &mut Rng, root_hz: f32, harmonic: usize, warp: u8, level: f32, hold: f32) -> f32 {
-        let period = self.sr / (root_hz.max(10.0) * HARMONICS[harmonic.min(HARMONICS.len() - 1)] as f32);
+    pub fn skip(
+        &mut self,
+        rng: &mut Rng,
+        root_hz: f32,
+        harmonic: usize,
+        warp: u8,
+        level: f32,
+        hold: f32,
+    ) -> f32 {
+        let period =
+            self.sr / (root_hz.max(10.0) * HARMONICS[harmonic.min(HARMONICS.len() - 1)] as f32);
         // A slice of 10–60 ms, halved per warp, rounded to an octave of the period.
         let target = (0.01 + 0.05 * rng.unit()) * self.sr * 0.5f32.powi(warp as i32);
         let mut octaves = (target / period).log2().round() as i32;

@@ -49,7 +49,11 @@ impl<P> NodeView<'_, P> {
 
     /// Records a control for MIDI mapping.
     pub fn hit(&self, rect: Rect, param: P) {
-        self.hits.borrow_mut().push(Hit { rect, node: self.node, param });
+        self.hits.borrow_mut().push(Hit {
+            rect,
+            node: self.node,
+            param,
+        });
     }
 
     /// The proportional font at a size in node units.
@@ -64,7 +68,15 @@ impl<P> NodeView<'_, P> {
 
     /// Text at a point in node units. Text too small to read when zoomed
     /// far out is skipped.
-    pub fn text(&self, x: f32, y: f32, align: Align2, text: impl ToString, font: FontId, color: Color32) -> Rect {
+    pub fn text(
+        &self,
+        x: f32,
+        y: f32,
+        align: Align2,
+        text: impl ToString,
+        font: FontId,
+        color: Color32,
+    ) -> Rect {
         if font.size < MIN_TEXT {
             return Rect::from_center_size(self.p(x, y), Vec2::ZERO);
         }

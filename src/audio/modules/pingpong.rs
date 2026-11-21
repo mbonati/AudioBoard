@@ -9,7 +9,9 @@ use std::f32::consts::TAU;
 use std::sync::Arc;
 
 use super::delay::{MAX_SYNC_TIME, delay_seconds, seconds_per_beat};
-use super::{DelayLine, ModuleDef, ModuleParams, approach, mix_gains, soft_limit, time_coeff, Quiet, silence};
+use super::{
+    DelayLine, ModuleDef, ModuleParams, Quiet, approach, mix_gains, silence, soft_limit, time_coeff,
+};
 use crate::audio::engine::{Buf, Inputs, ProcessCtx, Processor};
 use crate::audio::fastmath;
 use crate::audio::params::{ParamSpec, SYNC_DIVISIONS, Unit};
@@ -24,7 +26,13 @@ pub const MIX: usize = 6;
 
 const PARAMS: [ParamSpec; 7] = [
     ParamSpec::log("TIME", 0.01, super::delay::MAX_TIME, 0.3, Unit::Seconds),
-    ParamSpec::lin("DIV", 0.0, (SYNC_DIVISIONS.len() - 1) as f32, 7.0, Unit::Sync),
+    ParamSpec::lin(
+        "DIV",
+        0.0,
+        (SYNC_DIVISIONS.len() - 1) as f32,
+        7.0,
+        Unit::Sync,
+    ),
     ParamSpec::lin("FEEDBACK", 0.0, 1.0, 0.5, Unit::Percent),
     ParamSpec::lin("WIDTH", 0.0, 1.0, 1.0, Unit::Percent),
     ParamSpec::lin("TONE", 0.0, 1.0, 0.6, Unit::Percent),

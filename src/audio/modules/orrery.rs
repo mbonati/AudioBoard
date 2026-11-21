@@ -24,7 +24,9 @@
 use std::sync::Arc;
 
 use super::automa::hash01;
-use super::steps::{MAX_STEPS as MAX_BLOCK_STEPS, Step, StepClock, block_end, roll, steps_per_beat};
+use super::steps::{
+    MAX_STEPS as MAX_BLOCK_STEPS, Step, StepClock, block_end, roll, steps_per_beat,
+};
 use super::{ModuleDef, ModuleParams, Rng};
 use crate::audio::engine::{Buf, Inputs, MidiBuf, ProcessCtx, Processor};
 use crate::audio::midi::MidiState;
@@ -191,93 +193,157 @@ const OFF_RING: R = R(false, 16, 0, 0, 90, 0.4, 1.0, 0);
 
 const FACTORY: [Factory; SLOTS] = [
     // The groove it starts with; the inner rings muted, ready to bring in.
-    Factory("Groove", GRID, 3.0, 4.0, 0.0, 0.0, [
-        R(true, 16, 5, 0, 112, 0.5, 1.0, 0),
-        R(true, 16, 2, 4, 104, 0.5, 1.0, 0),
-        R(true, 16, 11, 0, 76, 0.25, 1.0, 4),
-        R(true, 16, 2, 2, 84, 0.4, 1.0, 0),
-        R(false, 12, 5, 0, 84, 0.3, 1.0, 0),
-        R(false, 7, 3, 0, 92, 0.5, 1.0, 0),
-        R(false, 9, 4, 1, 92, 0.4, 1.0, 0),
-        R(false, 5, 2, 0, 80, 0.3, 1.0, 0),
-    ]),
+    Factory(
+        "Groove",
+        GRID,
+        3.0,
+        4.0,
+        0.0,
+        0.0,
+        [
+            R(true, 16, 5, 0, 112, 0.5, 1.0, 0),
+            R(true, 16, 2, 4, 104, 0.5, 1.0, 0),
+            R(true, 16, 11, 0, 76, 0.25, 1.0, 4),
+            R(true, 16, 2, 2, 84, 0.4, 1.0, 0),
+            R(false, 12, 5, 0, 84, 0.3, 1.0, 0),
+            R(false, 7, 3, 0, 92, 0.5, 1.0, 0),
+            R(false, 9, 4, 1, 92, 0.4, 1.0, 0),
+            R(false, 5, 2, 0, 80, 0.3, 1.0, 0),
+        ],
+    ),
     // Kick on every beat, hats on the offbeats, clap on 2 and 4.
-    Factory("Four floor", GRID, 3.0, 4.0, 0.0, 0.0, [
-        R(true, 16, 4, 0, 116, 0.5, 1.0, 0),
-        OFF_RING,
-        R(true, 16, 4, 2, 84, 0.25, 1.0, 0),
-        R(true, 16, 16, 0, 52, 0.15, 0.6, 0),
-        OFF_RING,
-        OFF_RING,
-        R(true, 16, 2, 4, 100, 0.4, 1.0, 0),
-        OFF_RING,
-    ]),
+    Factory(
+        "Four floor",
+        GRID,
+        3.0,
+        4.0,
+        0.0,
+        0.0,
+        [
+            R(true, 16, 4, 0, 116, 0.5, 1.0, 0),
+            OFF_RING,
+            R(true, 16, 4, 2, 84, 0.25, 1.0, 0),
+            R(true, 16, 16, 0, 52, 0.15, 0.6, 0),
+            OFF_RING,
+            OFF_RING,
+            R(true, 16, 2, 4, 100, 0.4, 1.0, 0),
+            OFF_RING,
+        ],
+    ),
     // 3 over 8 in the kick, the cinquillo on the side stick.
-    Factory("Tresillo", GRID, 3.0, 4.0, 0.0, 0.0, [
-        R(true, 8, 3, 0, 112, 0.5, 1.0, 0),
-        R(true, 16, 2, 4, 100, 0.5, 1.0, 0),
-        R(true, 16, 8, 0, 72, 0.25, 1.0, 4),
-        OFF_RING,
-        R(true, 8, 5, 1, 84, 0.3, 1.0, 0),
-        OFF_RING,
-        OFF_RING,
-        R(true, 16, 3, 2, 70, 0.3, 1.0, 0),
-    ]),
+    Factory(
+        "Tresillo",
+        GRID,
+        3.0,
+        4.0,
+        0.0,
+        0.0,
+        [
+            R(true, 8, 3, 0, 112, 0.5, 1.0, 0),
+            R(true, 16, 2, 4, 100, 0.5, 1.0, 0),
+            R(true, 16, 8, 0, 72, 0.25, 1.0, 4),
+            OFF_RING,
+            R(true, 8, 5, 1, 84, 0.3, 1.0, 0),
+            OFF_RING,
+            OFF_RING,
+            R(true, 16, 3, 2, 70, 0.3, 1.0, 0),
+        ],
+    ),
     // The bossa clave on the side stick over sixteenths.
-    Factory("Bossa", GRID, 3.0, 4.0, 0.08, 0.0, [
-        R(true, 16, 4, 0, 100, 0.6, 1.0, 0),
-        OFF_RING,
-        R(true, 16, 16, 0, 64, 0.2, 1.0, 4),
-        OFF_RING,
-        R(true, 16, 5, 3, 92, 0.3, 1.0, 0),
-        R(true, 16, 2, 14, 80, 0.5, 0.5, 0),
-        OFF_RING,
-        OFF_RING,
-    ]),
+    Factory(
+        "Bossa",
+        GRID,
+        3.0,
+        4.0,
+        0.08,
+        0.0,
+        [
+            R(true, 16, 4, 0, 100, 0.6, 1.0, 0),
+            OFF_RING,
+            R(true, 16, 16, 0, 64, 0.2, 1.0, 4),
+            OFF_RING,
+            R(true, 16, 5, 3, 92, 0.3, 1.0, 0),
+            R(true, 16, 2, 14, 80, 0.5, 0.5, 0),
+            OFF_RING,
+            OFF_RING,
+        ],
+    ),
     // Triplet eighths: the hi-hat's 8 over 12 is the shuffle.
-    Factory("Shuffle", GRID, 2.0, 4.0, 0.0, 0.0, [
-        R(true, 12, 4, 0, 110, 0.5, 1.0, 0),
-        R(true, 12, 2, 3, 100, 0.5, 1.0, 0),
-        R(true, 12, 8, 0, 74, 0.3, 1.0, 3),
-        OFF_RING,
-        OFF_RING,
-        R(true, 24, 2, 21, 86, 0.4, 0.7, 0),
-        OFF_RING,
-        OFF_RING,
-    ]),
+    Factory(
+        "Shuffle",
+        GRID,
+        2.0,
+        4.0,
+        0.0,
+        0.0,
+        [
+            R(true, 12, 4, 0, 110, 0.5, 1.0, 0),
+            R(true, 12, 2, 3, 100, 0.5, 1.0, 0),
+            R(true, 12, 8, 0, 74, 0.3, 1.0, 3),
+            OFF_RING,
+            OFF_RING,
+            R(true, 24, 2, 21, 86, 0.4, 0.7, 0),
+            OFF_RING,
+            OFF_RING,
+        ],
+    ),
     // A broken beat with ghost notes and a touch of swing.
-    Factory("Breaks", GRID, 3.0, 4.0, 0.15, 0.0, [
-        R(true, 16, 3, 0, 116, 0.5, 1.0, 0),
-        R(true, 16, 2, 4, 108, 0.5, 1.0, 0),
-        R(true, 16, 16, 0, 70, 0.2, 0.85, 2),
-        R(true, 16, 1, 14, 80, 0.4, 1.0, 0),
-        R(true, 16, 3, 5, 60, 0.2, 0.6, 0),
-        OFF_RING,
-        OFF_RING,
-        OFF_RING,
-    ]),
+    Factory(
+        "Breaks",
+        GRID,
+        3.0,
+        4.0,
+        0.15,
+        0.0,
+        [
+            R(true, 16, 3, 0, 116, 0.5, 1.0, 0),
+            R(true, 16, 2, 4, 108, 0.5, 1.0, 0),
+            R(true, 16, 16, 0, 70, 0.2, 0.85, 2),
+            R(true, 16, 1, 14, 80, 0.4, 1.0, 0),
+            R(true, 16, 3, 5, 60, 0.2, 0.6, 0),
+            OFF_RING,
+            OFF_RING,
+            OFF_RING,
+        ],
+    ),
     // CYCLE: 4 against 3 against 5, 6 and 7 in one bar.
-    Factory("Poly 3:4:5", CYCLE_MODE, 3.0, 4.0, 0.0, 0.0, [
-        R(true, 4, 4, 0, 112, 0.5, 1.0, 0),
-        OFF_RING,
-        R(true, 5, 5, 0, 72, 0.3, 1.0, 0),
-        OFF_RING,
-        R(true, 3, 3, 0, 90, 0.3, 1.0, 0),
-        R(true, 7, 3, 0, 88, 0.5, 1.0, 0),
-        OFF_RING,
-        R(true, 6, 2, 1, 76, 0.3, 1.0, 0),
-    ]),
+    Factory(
+        "Poly 3:4:5",
+        CYCLE_MODE,
+        3.0,
+        4.0,
+        0.0,
+        0.0,
+        [
+            R(true, 4, 4, 0, 112, 0.5, 1.0, 0),
+            OFF_RING,
+            R(true, 5, 5, 0, 72, 0.3, 1.0, 0),
+            OFF_RING,
+            R(true, 3, 3, 0, 90, 0.3, 1.0, 0),
+            R(true, 7, 3, 0, 88, 0.5, 1.0, 0),
+            OFF_RING,
+            R(true, 6, 2, 1, 76, 0.3, 1.0, 0),
+        ],
+    ),
     // Rings of different lengths drifting apart, twisted.
-    Factory("Drift", GRID, 3.0, 4.0, 0.0, 0.25, [
-        R(true, 16, 4, 0, 108, 0.5, 1.0, 0),
-        R(true, 12, 3, 2, 96, 0.4, 1.0, 0),
-        R(true, 9, 5, 0, 70, 0.25, 0.9, 0),
-        R(true, 7, 2, 0, 80, 0.4, 1.0, 0),
-        R(true, 10, 3, 0, 80, 0.3, 1.0, 0),
-        R(true, 11, 2, 0, 90, 0.5, 1.0, 0),
-        R(true, 13, 2, 4, 90, 0.4, 0.8, 0),
-        R(true, 5, 1, 0, 70, 0.3, 1.0, 0),
-    ]),
+    Factory(
+        "Drift",
+        GRID,
+        3.0,
+        4.0,
+        0.0,
+        0.25,
+        [
+            R(true, 16, 4, 0, 108, 0.5, 1.0, 0),
+            R(true, 12, 3, 2, 96, 0.4, 1.0, 0),
+            R(true, 9, 5, 0, 70, 0.25, 0.9, 0),
+            R(true, 7, 2, 0, 80, 0.4, 1.0, 0),
+            R(true, 10, 3, 0, 80, 0.3, 1.0, 0),
+            R(true, 11, 2, 0, 90, 0.5, 1.0, 0),
+            R(true, 13, 2, 4, 90, 0.4, 0.8, 0),
+            R(true, 5, 1, 0, 70, 0.3, 1.0, 0),
+        ],
+    ),
 ];
 
 /// A ring's hits (bit i: step i plays) and accents, of a built-in ring.
@@ -306,7 +372,15 @@ const fn pack_name(name: &str) -> [f32; slot::NAME_VALUES] {
         let mut c = 0;
         while c < 3 {
             let i = v * 3 + c;
-            let b = if i < bytes.len() { if bytes[i] >= 0x20 && bytes[i] < 0x7F { bytes[i] } else { b'?' } } else { 0 };
+            let b = if i < bytes.len() {
+                if bytes[i] >= 0x20 && bytes[i] < 0x7F {
+                    bytes[i]
+                } else {
+                    b'?'
+                }
+            } else {
+                0
+            };
             word |= (b as u32) << (8 * c);
             c += 1;
         }
@@ -392,7 +466,11 @@ const fn defaults() -> [f32; data::LEN] {
         let mut i = 0;
         while i < MAX_STEPS {
             if hits >> i & 1 == 1 {
-                d[at + ring::PATTERN + i] = if accents >> i & 1 == 1 { ACCENTED as f32 } else { ON as f32 };
+                d[at + ring::PATTERN + i] = if accents >> i & 1 == 1 {
+                    ACCENTED as f32
+                } else {
+                    ON as f32
+                };
             }
             i += 1;
         }
@@ -598,7 +676,12 @@ pub fn dice(p: &ModuleParams, seed: u32, only: Option<usize>) {
         let density = 0.12 + 0.5 * (roll(1) + roll(2)) * 0.5 + 0.25 * roll(3).powi(3);
         let k = ((n as f32 * density).round() as usize).clamp(1, n);
         set(p, r, ring::PULSES, k as f32);
-        set(p, r, ring::ROTATE, (roll(4) * n as f32).floor().min(n as f32 - 1.0));
+        set(
+            p,
+            r,
+            ring::ROTATE,
+            (roll(4) * n as f32).floor().min(n as f32 - 1.0),
+        );
         lay(p, r);
     }
 }
@@ -624,7 +707,12 @@ pub fn capture(p: &ModuleParams) -> Pattern {
     s[slot::TWIST] = p.get(TWIST);
     for r in 0..RINGS {
         let at = slot::RINGS + r * slot::RING_LEN;
-        for (to, from) in [(slot::ON, ring::ON), (slot::VELOCITY, ring::VELOCITY), (slot::GATE, ring::GATE), (slot::CHANCE, ring::CHANCE)] {
+        for (to, from) in [
+            (slot::ON, ring::ON),
+            (slot::VELOCITY, ring::VELOCITY),
+            (slot::GATE, ring::GATE),
+            (slot::CHANCE, ring::CHANCE),
+        ] {
             s[at + to] = get(p, r, from);
         }
         s[at + slot::STEPS] = steps(p, r) as f32;
@@ -652,7 +740,9 @@ pub fn capture(p: &ModuleParams) -> Pattern {
 /// Step `i` of ring `r` in a pattern.
 pub fn pattern_step(s: &Pattern, r: usize, i: usize) -> u8 {
     let at = slot::RINGS + r.min(RINGS - 1) * slot::RING_LEN;
-    let bits = |k: usize| (s[at + k].max(0.0) as u32 & 0xFFFF) | (s[at + k + 1].max(0.0) as u32 & 0xFFFF) << 16;
+    let bits = |k: usize| {
+        (s[at + k].max(0.0) as u32 & 0xFFFF) | (s[at + k + 1].max(0.0) as u32 & 0xFFFF) << 16
+    };
     if i >= MAX_STEPS || bits(slot::HITS) >> i & 1 == 0 {
         OFF
     } else if bits(slot::ACCENTS) >> i & 1 == 1 {
@@ -669,20 +759,66 @@ pub fn pattern_ring(s: &Pattern, r: usize, i: usize) -> f32 {
 
 /// Sets the rings and the clock to a pattern (the notes and channels stay).
 pub fn apply(p: &ModuleParams, s: &Pattern) {
-    p.set_mode(if s[slot::MODE] > 0.5 { CYCLE_MODE } else { GRID });
-    for (i, k) in [(RATE, slot::RATE), (CYCLE, slot::CYCLE), (SWING, slot::SWING), (ACCENT, slot::ACCENT), (TWIST, slot::TWIST)] {
+    p.set_mode(if s[slot::MODE] > 0.5 {
+        CYCLE_MODE
+    } else {
+        GRID
+    });
+    for (i, k) in [
+        (RATE, slot::RATE),
+        (CYCLE, slot::CYCLE),
+        (SWING, slot::SWING),
+        (ACCENT, slot::ACCENT),
+        (TWIST, slot::TWIST),
+    ] {
         let spec = spec(i);
         p.set(i, s[k].clamp(spec.min, spec.max));
     }
     for r in 0..RINGS {
         let n = (pattern_ring(s, r, slot::STEPS).round() as usize).clamp(1, MAX_STEPS);
-        set(p, r, ring::ON, if pattern_ring(s, r, slot::ON) > 0.5 { 1.0 } else { 0.0 });
+        set(
+            p,
+            r,
+            ring::ON,
+            if pattern_ring(s, r, slot::ON) > 0.5 {
+                1.0
+            } else {
+                0.0
+            },
+        );
         set(p, r, ring::STEPS, n as f32);
-        set(p, r, ring::PULSES, pattern_ring(s, r, slot::PULSES).round().clamp(0.0, n as f32));
-        set(p, r, ring::ROTATE, pattern_ring(s, r, slot::ROTATE).rem_euclid(n as f32));
-        set(p, r, ring::VELOCITY, pattern_ring(s, r, slot::VELOCITY).round().clamp(1.0, 127.0));
-        set(p, r, ring::GATE, pattern_ring(s, r, slot::GATE).clamp(0.05, 1.0));
-        set(p, r, ring::CHANCE, pattern_ring(s, r, slot::CHANCE).clamp(0.0, 1.0));
+        set(
+            p,
+            r,
+            ring::PULSES,
+            pattern_ring(s, r, slot::PULSES)
+                .round()
+                .clamp(0.0, n as f32),
+        );
+        set(
+            p,
+            r,
+            ring::ROTATE,
+            pattern_ring(s, r, slot::ROTATE).rem_euclid(n as f32),
+        );
+        set(
+            p,
+            r,
+            ring::VELOCITY,
+            pattern_ring(s, r, slot::VELOCITY).round().clamp(1.0, 127.0),
+        );
+        set(
+            p,
+            r,
+            ring::GATE,
+            pattern_ring(s, r, slot::GATE).clamp(0.05, 1.0),
+        );
+        set(
+            p,
+            r,
+            ring::CHANCE,
+            pattern_ring(s, r, slot::CHANCE).clamp(0.0, 1.0),
+        );
         for i in 0..MAX_STEPS {
             set_step(p, r, i, pattern_step(s, r, i));
         }
@@ -762,7 +898,9 @@ pub fn take(p: &ModuleParams, k: usize) {
 pub fn edited(p: &ModuleParams) -> bool {
     let Some(k) = active(p) else { return false };
     let (now, kept) = (capture(p), slot(p, k));
-    (0..slot::LEN).filter(|i| !(slot::NAME..slot::NAME + slot::NAME_VALUES).contains(i)).any(|i| (now[i] - kept[i]).abs() > 1e-4)
+    (0..slot::LEN)
+        .filter(|i| !(slot::NAME..slot::NAME + slot::NAME_VALUES).contains(i))
+        .any(|i| (now[i] - kept[i]).abs() > 1e-4)
 }
 
 pub fn launch(p: &ModuleParams) -> usize {
@@ -786,7 +924,17 @@ pub fn name_of(s: &Pattern) -> String {
 
 /// Names a pattern (cut to [`slot::NAME_CHARS`] characters).
 pub fn set_name(s: &mut Pattern, name: &str) {
-    let name: String = name.chars().take(slot::NAME_CHARS).map(|c| if c.is_ascii() && !c.is_ascii_control() { c } else { '?' }).collect();
+    let name: String = name
+        .chars()
+        .take(slot::NAME_CHARS)
+        .map(|c| {
+            if c.is_ascii() && !c.is_ascii_control() {
+                c
+            } else {
+                '?'
+            }
+        })
+        .collect();
     s[slot::NAME..slot::NAME + slot::NAME_VALUES].copy_from_slice(&pack_name(&name));
 }
 
@@ -836,7 +984,9 @@ pub fn clock_label(p: &ModuleParams) -> String {
     if p.mode() == CYCLE_MODE {
         beats_label(cycle_beats(p) as u32)
     } else {
-        DIVISIONS[(p.get(RATE).round().max(0.0) as usize).min(DIVISIONS.len() - 1)].0.to_owned()
+        DIVISIONS[(p.get(RATE).round().max(0.0) as usize).min(DIVISIONS.len() - 1)]
+            .0
+            .to_owned()
     }
 }
 
@@ -852,15 +1002,57 @@ pub fn beats_label(beats: u32) -> String {
 /// The General MIDI drum on `note` (channel 10), if there is one.
 pub fn drum_name(note: u8) -> Option<&'static str> {
     const DRUMS: [&str; 47] = [
-        "Acoustic Bass Drum", "Bass Drum", "Side Stick", "Acoustic Snare", "Hand Clap", "Electric Snare", "Low Floor Tom",
-        "Closed Hi-Hat", "High Floor Tom", "Pedal Hi-Hat", "Low Tom", "Open Hi-Hat", "Low-Mid Tom", "Hi-Mid Tom",
-        "Crash Cymbal 1", "High Tom", "Ride Cymbal 1", "Chinese Cymbal", "Ride Bell", "Tambourine", "Splash Cymbal",
-        "Cowbell", "Crash Cymbal 2", "Vibraslap", "Ride Cymbal 2", "Hi Bongo", "Low Bongo", "Mute Hi Conga",
-        "Open Hi Conga", "Low Conga", "High Timbale", "Low Timbale", "High Agogo", "Low Agogo", "Cabasa", "Maracas",
-        "Short Whistle", "Long Whistle", "Short Guiro", "Long Guiro", "Claves", "Hi Wood Block", "Low Wood Block",
-        "Mute Cuica", "Open Cuica", "Mute Triangle", "Open Triangle",
+        "Acoustic Bass Drum",
+        "Bass Drum",
+        "Side Stick",
+        "Acoustic Snare",
+        "Hand Clap",
+        "Electric Snare",
+        "Low Floor Tom",
+        "Closed Hi-Hat",
+        "High Floor Tom",
+        "Pedal Hi-Hat",
+        "Low Tom",
+        "Open Hi-Hat",
+        "Low-Mid Tom",
+        "Hi-Mid Tom",
+        "Crash Cymbal 1",
+        "High Tom",
+        "Ride Cymbal 1",
+        "Chinese Cymbal",
+        "Ride Bell",
+        "Tambourine",
+        "Splash Cymbal",
+        "Cowbell",
+        "Crash Cymbal 2",
+        "Vibraslap",
+        "Ride Cymbal 2",
+        "Hi Bongo",
+        "Low Bongo",
+        "Mute Hi Conga",
+        "Open Hi Conga",
+        "Low Conga",
+        "High Timbale",
+        "Low Timbale",
+        "High Agogo",
+        "Low Agogo",
+        "Cabasa",
+        "Maracas",
+        "Short Whistle",
+        "Long Whistle",
+        "Short Guiro",
+        "Long Guiro",
+        "Claves",
+        "Hi Wood Block",
+        "Low Wood Block",
+        "Mute Cuica",
+        "Open Cuica",
+        "Mute Triangle",
+        "Open Triangle",
     ];
-    (35..=81).contains(&note).then(|| DRUMS[(note - 35) as usize])
+    (35..=81)
+        .contains(&note)
+        .then(|| DRUMS[(note - 35) as usize])
 }
 
 // ---------------------------------------------------------------------------
@@ -921,7 +1113,12 @@ impl Orrery {
     fn push(&mut self, frame: usize, data: [u8; 3]) {
         if self.count < EVENT_CAP {
             let on = data[0] & 0xF0 == 0x90;
-            self.events[self.count] = Event { frame, on, order: self.count as u16, data };
+            self.events[self.count] = Event {
+                frame,
+                on,
+                order: self.count as u16,
+                data,
+            };
             self.count += 1;
         }
     }
@@ -974,7 +1171,8 @@ impl Orrery {
             }
         } else {
             let mut cursor = self.cursor;
-            self.midi.read_stream(&mut cursor, |msg| Self::command(p, msg));
+            self.midi
+                .read_stream(&mut cursor, |msg| Self::command(p, msg));
             self.cursor = cursor;
         }
     }
@@ -1036,8 +1234,15 @@ impl Processor for Orrery {
             let (whole, part) = (turned.floor(), turned - turned.floor());
             // A part of a step turned delays every hit by as much: the steps
             // are found on a clock that runs that much behind.
-            let shifted = ProcessCtx { beat: ctx.beat - part * len, ..*ctx };
-            let mut found = [Step { frame: 0, beat: 0.0, index: 0 }; MAX_BLOCK_STEPS];
+            let shifted = ProcessCtx {
+                beat: ctx.beat - part * len,
+                ..*ctx
+            };
+            let mut found = [Step {
+                frame: 0,
+                beat: 0.0,
+                index: 0,
+            }; MAX_BLOCK_STEPS];
             let k = self.clocks[r].steps(&shifted, n, 1.0 / len, swing, &mut found);
             for s in &found[..k] {
                 let beat = s.beat + part * len;
@@ -1049,11 +1254,26 @@ impl Processor for Orrery {
                     continue;
                 }
                 let base = velocity(&p, r) as f32;
-                let vel = if value == ACCENTED { base + (127.0 - base) * accent } else { base };
+                let vel = if value == ACCENTED {
+                    base + (127.0 - base) * accent
+                } else {
+                    base
+                };
                 let (channel, note) = (channel(&p, r), note(&p, r));
                 self.release(r, s.frame);
-                self.push(s.frame, [0x90 | (channel - 1), note, vel.round().clamp(1.0, 127.0) as u8]);
-                self.held[r] = Some(Held { channel, note, end: beat + (gate(&p, r) as f64 * len).max(shortest) });
+                self.push(
+                    s.frame,
+                    [
+                        0x90 | (channel - 1),
+                        note,
+                        vel.round().clamp(1.0, 127.0) as u8,
+                    ],
+                );
+                self.held[r] = Some(Held {
+                    channel,
+                    note,
+                    end: beat + (gate(&p, r) as f64 * len).max(shortest),
+                });
                 self.hits[r] = self.hits[r].wrapping_add(1);
                 p.viz[viz::HITS + r].set((self.hits[r] % (1 << 20)) as f32);
                 p.viz[viz::HIT_STEP + r].set(i as f32);

@@ -86,7 +86,9 @@ impl Warmth {
             ring[self.pos] = v;
         }
         let at = |ring: &[f32; RING], d: usize| ring[(self.pos + RING - d) % RING];
-        let plain = |w: &Self, ch: usize| w.shape(0.5 * (at(&w.ring[ch], LATENCY) + at(&w.ring[ch], LATENCY + 1)));
+        let plain = |w: &Self, ch: usize| {
+            w.shape(0.5 * (at(&w.ring[ch], LATENCY) + at(&w.ring[ch], LATENCY + 1)))
+        };
 
         if self.hq && self.warm == 0 {
             // Starting: from silence, so no stale history comes out.
@@ -105,7 +107,9 @@ impl Warmth {
             if self.blend >= 1.0 {
                 over
             } else {
-                std::array::from_fn(|ch| plain(self, ch) + (over[ch] - plain(self, ch)) * self.blend)
+                std::array::from_fn(|ch| {
+                    plain(self, ch) + (over[ch] - plain(self, ch)) * self.blend
+                })
             }
         } else {
             self.warm = 0;
@@ -140,9 +144,18 @@ impl Chorus {
     pub fn new(sample_rate: f32) -> Self {
         let ms = sample_rate / 1000.0;
         let len = ((TAPS_MS[2] + 6.0) * ms) as usize + 8;
-        let mut c = Self { lines: [DelayLine::new(len), DelayLine::new(len)], phase: 0.0, ms, lp: [0.0; 2], delay: [[0.0; 2]; 3], step: [[0.0; 2]; 3], mix: 0.0 };
+        let mut c = Self {
+            lines: [DelayLine::new(len), DelayLine::new(len)],
+            phase: 0.0,
+            ms,
+            lp: [0.0; 2],
+            delay: [[0.0; 2]; 3],
+            step: [[0.0; 2]; 3],
+            mix: 0.0,
+        };
         c.begin(0.0, 0.0, 0.0, 1);
-        c.delay = std::array::from_fn(|t| [c.delay[t][0] + c.step[t][0], c.delay[t][1] + c.step[t][1]]);
+        c.delay =
+            std::array::from_fn(|t| [c.delay[t][0] + c.step[t][0], c.delay[t][1] + c.step[t][1]]);
         c
     }
 
@@ -257,12 +270,18 @@ impl Space {
         Self {
             sr: sample_rate,
             ms,
-            diffusers: std::array::from_fn(|ch| std::array::from_fn(|k| DelayLine::new((DIFFUSERS[k].0 * ms * 1.6 + 8.0) as usize + ch))),
+            diffusers: std::array::from_fn(|ch| {
+                std::array::from_fn(|k| {
+                    DelayLine::new((DIFFUSERS[k].0 * ms * 1.6 + 8.0) as usize + ch)
+                })
+            }),
             diffuser_len: std::array::from_fn(|ch| {
                 let stretch = if ch == 0 { 1.45 } else { 1.55 };
                 std::array::from_fn(|k| ((DIFFUSERS[k].0 * ms * stretch).round() as usize).max(1))
             }),
-            lines: std::array::from_fn(|k| DelayLine::new((LINE_MS[k] * SCALE * ms + margin) as usize + 8)),
+            lines: std::array::from_fn(|k| {
+                DelayLine::new((LINE_MS[k] * SCALE * ms + margin) as usize + 8)
+            }),
             damp: [0.0; LINES],
             lfo: std::array::from_fn(|k| {
                 let a = k as f32 * 1.3;
@@ -281,7 +300,14 @@ impl Space {
     /// SPACE 0…1 (size of the tail and how much of it), TONE 0…1 (how
     /// dark the tail gets), AIR 0…1, the two breath resonances (Hz), and
     /// how far the sound has swelled in (the breath goes with it).
-    pub fn settings(&mut self, space: f32, tone: f32, air: f32, breath_hz: [f32; 2], run: f32) -> SpaceSettings {
+    pub fn settings(
+        &mut self,
+        space: f32,
+        tone: f32,
+        air: f32,
+        breath_hz: [f32; 2],
+        run: f32,
+    ) -> SpaceSettings {
         let decay = 2.5 + 10.0 * space * space;
         let gains = std::array::from_fn(|k| {
             let secs = LINE_MS[k] * SCALE / 1000.0;
@@ -318,7 +344,10 @@ impl Space {
         let breath = if s.breath > 0.0 {
             let n = self.rng.bipolar();
             let m = self.rng.bipolar();
-            [self.breath[0].process(n) * s.breath, self.breath[1].process(m) * s.breath]
+            [
+                self.breath[0].process(n) * s.breath,
+                self.breath[1].process(m) * s.breath,
+            ]
         } else {
             [0.0; 2]
         };
@@ -342,7 +371,10 @@ impl Space {
         for (k, (line, vk)) in self.lines.iter_mut().zip(v).enumerate() {
             line.push(soft_ceiling(vk + d[k % 2] * 0.5));
         }
-        let tail = [(taps[0] - taps[2] + taps[4] - taps[6]) * 0.5, (taps[1] - taps[3] + taps[5] - taps[7]) * 0.5];
+        let tail = [
+            (taps[0] - taps[2] + taps[4] - taps[6]) * 0.5,
+            (taps[1] - taps[3] + taps[5] - taps[7]) * 0.5,
+        ];
         // AIR: the tail's highs lifted.
         let mut out = [0.0f32; 2];
         let mut level = 0.0f32;

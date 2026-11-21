@@ -56,7 +56,9 @@ impl Capture {
     pub fn new() -> Self {
         Self {
             channels: AtomicUsize::new(0),
-            ring: (0..RING * MAX_CHANNELS).map(|_| AtomicU32::new(0)).collect(),
+            ring: (0..RING * MAX_CHANNELS)
+                .map(|_| AtomicU32::new(0))
+                .collect(),
             write: AtomicUsize::new(0),
             read: AtomicUsize::new(0),
             chunk: AtomicUsize::new(0),
@@ -183,7 +185,9 @@ impl Capture {
             let k = at + i;
             (*l, *r) = if k < valid && left < channels {
                 let base = ((start + k) % RING) * MAX_CHANNELS;
-                let sample = |c: usize| f32::from_bits(self.ring[base + c.min(channels - 1)].load(Ordering::Relaxed));
+                let sample = |c: usize| {
+                    f32::from_bits(self.ring[base + c.min(channels - 1)].load(Ordering::Relaxed))
+                };
                 (sample(left), sample(right))
             } else {
                 (0.0, 0.0)

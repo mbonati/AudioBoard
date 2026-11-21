@@ -88,10 +88,15 @@ impl Echo {
             self.time = self.target;
             self.pong = if pong { 1.0 } else { 0.0 };
         }
-        (self.drive, self.tone, self.width, self.level) = (shape.drive, shape.tone, shape.width, shape.level);
+        (self.drive, self.tone, self.width, self.level) =
+            (shape.drive, shape.tone, shape.width, shape.level);
         // From the plain band to TONE as PONG comes in.
         let x = self.pong;
-        let center = if x == 0.0 { CENTER } else { CENTER * (self.tone / CENTER).powf(x) };
+        let center = if x == 0.0 {
+            CENTER
+        } else {
+            CENTER * (self.tone / CENTER).powf(x)
+        };
         if center != self.center {
             self.center = center;
             for b in &mut self.band {
@@ -127,7 +132,11 @@ impl Echo {
     #[inline]
     pub fn process(&mut self, l: f32, r: f32) -> (f32, f32) {
         if self.pong != if self.pong_on { 1.0 } else { 0.0 } {
-            let step = if self.pong_on { self.pong_step } else { -self.pong_step };
+            let step = if self.pong_on {
+                self.pong_step
+            } else {
+                -self.pong_step
+            };
             self.pong = (self.pong + step).clamp(0.0, 1.0);
         }
         self.time += (self.target - self.time) * self.lag;

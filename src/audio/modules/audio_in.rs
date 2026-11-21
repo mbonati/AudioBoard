@@ -53,7 +53,11 @@ pub static DEF: ModuleDef = ModuleDef {
 /// The channels (0-based) INPUT and the mode pick: (left, right).
 pub fn channels(p: &ModuleParams) -> (usize, usize) {
     let first = (p.get(INPUT).round().max(1.0) as usize - 1).min(MAX_CHANNELS - 1);
-    let second = if p.mode() == MONO { first } else { (first + 1).min(MAX_CHANNELS - 1) };
+    let second = if p.mode() == MONO {
+        first
+    } else {
+        (first + 1).min(MAX_CHANNELS - 1)
+    };
     (first, second)
 }
 

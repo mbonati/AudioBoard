@@ -7,8 +7,8 @@ use std::collections::{HashMap, HashSet};
 use egui::{Pos2, Rect, Vec2, pos2, vec2};
 
 use super::groups;
-use super::widgets::cable_shape;
 use super::nodes::HEADER_H;
+use super::widgets::cable_shape;
 use crate::audio::engine::NodeId;
 use crate::graph::{Graph, Group, PortRef};
 
@@ -97,12 +97,25 @@ pub fn arrange(sizes: &[Vec2], current: &[Pos2], links: &[Link]) -> Vec<Pos2> {
             let t = (c - start) as f32 / (end - start) as f32;
             sizes.push(vec2(0.0, WAYPOINT_H));
             column.push(c);
-            y.push(y[l.from] + l.from_dy + (y[l.to] + l.to_dy - y[l.from] - l.from_dy) * t - WAYPOINT_H * 0.5);
-            wired.push(Link { from: prev.0, to: w, from_dy: prev.1, to_dy: WAYPOINT_H * 0.5 });
+            y.push(
+                y[l.from] + l.from_dy + (y[l.to] + l.to_dy - y[l.from] - l.from_dy) * t
+                    - WAYPOINT_H * 0.5,
+            );
+            wired.push(Link {
+                from: prev.0,
+                to: w,
+                from_dy: prev.1,
+                to_dy: WAYPOINT_H * 0.5,
+            });
             prev = (w, WAYPOINT_H * 0.5);
             waypoints.push(w);
         }
-        wired.push(Link { from: prev.0, to: l.to, from_dy: prev.1, to_dy: l.to_dy });
+        wired.push(Link {
+            from: prev.0,
+            to: l.to,
+            from_dy: prev.1,
+            to_dy: l.to_dy,
+        });
         if !waypoints.is_empty() {
             long.push((*l, waypoints));
         }
@@ -128,14 +141,22 @@ pub fn arrange(sizes: &[Vec2], current: &[Pos2], links: &[Link]) -> Vec<Pos2> {
     // with its neighbours' ports; the last sweep favours the inputs.
     for pass in 0..5 {
         let forward = pass % 2 == 0;
-        let cols: Vec<usize> = if forward { (0..columns).collect() } else { (0..columns).rev().collect() };
+        let cols: Vec<usize> = if forward {
+            (0..columns).collect()
+        } else {
+            (0..columns).rev().collect()
+        };
         for c in cols {
             let wanted: Vec<(usize, f32, f32)> = layers[c]
                 .iter()
                 .map(|&v| {
                     let from_inputs = mean(preds(v).map(|l| y[l.from] + l.from_dy - l.to_dy));
                     let from_outputs = mean(succs(v).map(|l| y[l.to] + l.to_dy - l.from_dy));
-                    let w = if forward { from_inputs.or(from_outputs) } else { from_outputs.or(from_inputs) };
+                    let w = if forward {
+                        from_inputs.or(from_outputs)
+                    } else {
+                        from_outputs.or(from_inputs)
+                    };
                     (v, w.unwrap_or(y[v]), 1.0)
                 })
                 .collect();
@@ -158,15 +179,23 @@ pub fn arrange(sizes: &[Vec2], current: &[Pos2], links: &[Link]) -> Vec<Pos2> {
             let samples: Vec<Pos2> = (0..=48).map(|i| curve.sample(i as f32 / 48.0)).collect();
             for &w in waypoints {
                 let (x0, x1) = (xs[column[w]], xs[column[w]] + widths[column[w]]);
-                let ys = samples.iter().filter(|p| p.x >= x0 && p.x <= x1).map(|p| p.y);
-                let (lo, hi) = ys.fold((f32::INFINITY, f32::NEG_INFINITY), |(lo, hi), y| (lo.min(y), hi.max(y)));
+                let ys = samples
+                    .iter()
+                    .filter(|p| p.x >= x0 && p.x <= x1)
+                    .map(|p| p.y);
+                let (lo, hi) = ys.fold((f32::INFINITY, f32::NEG_INFINITY), |(lo, hi), y| {
+                    (lo.min(y), hi.max(y))
+                });
                 if lo <= hi {
                     sizes[w].y = hi - lo + WAYPOINT_H;
                     held.insert(w, lo - WAYPOINT_H * 0.5);
                 }
             }
         }
-        for layer in layers.iter().filter(|layer| layer.iter().any(|v| held.contains_key(v))) {
+        for layer in layers
+            .iter()
+            .filter(|layer| layer.iter().any(|v| held.contains_key(v)))
+        {
             let wanted = layer
                 .iter()
                 .map(|&v| match held.get(&v) {
@@ -183,9 +212,14 @@ pub fn arrange(sizes: &[Vec2], current: &[Pos2], links: &[Link]) -> Vec<Pos2> {
     for c in (0..columns).rev() {
         let wanted: Vec<(usize, f32, f32)> = layers[c]
             .iter()
-            .map(|&v| match (preds(v).next(), mean(succs(v).map(|l| y[l.to] + l.to_dy - l.from_dy))) {
-                (None, Some(w)) => (v, w, 1.0),
-                _ => (v, y[v], 1000.0),
+            .map(|&v| {
+                match (
+                    preds(v).next(),
+                    mean(succs(v).map(|l| y[l.to] + l.to_dy - l.from_dy)),
+                ) {
+                    (None, Some(w)) => (v, w, 1.0),
+                    _ => (v, y[v], 1000.0),
+                }
             })
             .collect();
         place(&mut y, wanted, &sizes);
@@ -250,7 +284,11 @@ pub fn plan(graph: &Graph, only: Option<&HashSet<NodeId>>) -> Vec<(NodeId, Pos2)
     }
 
     // Then free nodes and modules as blocks.
-    let grouped: HashSet<NodeId> = graph.groups.iter().flat_map(|g| g.members.iter().copied()).collect();
+    let grouped: HashSet<NodeId> = graph
+        .groups
+        .iter()
+        .flat_map(|g| g.members.iter().copied())
+        .collect();
     let mut blocks: Vec<Block> = modules.iter().map(|g| Block::Module(g)).collect();
     blocks.extend(
         graph
@@ -292,20 +330,28 @@ fn node_rect(graph: &Graph, pos: &HashMap<NodeId, Pos2>, id: NodeId) -> Option<R
 }
 
 /// A block's rect, and where each of its visible ports is (world space).
-fn block_geometry(
-    graph: &Graph,
-    pos: &HashMap<NodeId, Pos2>,
-    block: &Block,
-) -> Option<Geometry> {
+fn block_geometry(graph: &Graph, pos: &HashMap<NodeId, Pos2>, block: &Block) -> Option<Geometry> {
     let port_at = |pr: PortRef, output: bool| {
         let n = graph.node(pr.node)?;
-        let local = if output { n.output_pos(pr.port) } else { n.input_pos(pr.port) } - n.pos;
+        let local = if output {
+            n.output_pos(pr.port)
+        } else {
+            n.input_pos(pr.port)
+        } - n.pos;
         Some(pos[&pr.node] + local)
     };
     let node_ports = |id: NodeId| -> Vec<(PortRef, bool, Pos2)> {
-        let Some(n) = graph.node(id) else { return Vec::new() };
-        let ins = n.input_ports().into_iter().map(|port| (PortRef { node: id, port }, false));
-        let outs = n.output_ports().into_iter().map(|port| (PortRef { node: id, port }, true));
+        let Some(n) = graph.node(id) else {
+            return Vec::new();
+        };
+        let ins = n
+            .input_ports()
+            .into_iter()
+            .map(|port| (PortRef { node: id, port }, false));
+        let outs = n
+            .output_ports()
+            .into_iter()
+            .map(|port| (PortRef { node: id, port }, true));
         ins.chain(outs)
             .filter_map(|(pr, out)| Some((pr, out, port_at(pr, out)?)))
             .collect()
@@ -332,7 +378,11 @@ fn block_geometry(
                 .iter()
                 .enumerate()
                 .map(|(k, pr)| (*pr, false, card.min + groups::card_port(k, false)))
-                .chain(outs.iter().enumerate().map(|(k, pr)| (*pr, true, card.min + groups::card_port(k, true))))
+                .chain(
+                    outs.iter()
+                        .enumerate()
+                        .map(|(k, pr)| (*pr, true, card.min + groups::card_port(k, true))),
+                )
                 .collect();
             Some((card, ports))
         }
@@ -341,8 +391,10 @@ fn block_geometry(
 
 /// Lays out `blocks`, moving their nodes in `pos`.
 fn arrange_blocks(graph: &Graph, blocks: &[Block], pos: &mut HashMap<NodeId, Pos2>) {
-    let geometry: Vec<Geometry> =
-        blocks.iter().map(|b| block_geometry(graph, pos, b).unwrap_or((Rect::ZERO, Vec::new()))).collect();
+    let geometry: Vec<Geometry> = blocks
+        .iter()
+        .map(|b| block_geometry(graph, pos, b).unwrap_or((Rect::ZERO, Vec::new())))
+        .collect();
     let mut owner: HashMap<(PortRef, bool), (usize, f32)> = HashMap::new();
     for (i, (rect, ports)) in geometry.iter().enumerate() {
         for &(pr, output, at) in ports {
@@ -355,7 +407,12 @@ fn arrange_blocks(graph: &Graph, blocks: &[Block], pos: &mut HashMap<NodeId, Pos
         .filter_map(|c| {
             let &(from, from_dy) = owner.get(&(c.from, true))?;
             let &(to, to_dy) = owner.get(&(c.to, false))?;
-            Some(Link { from, to, from_dy, to_dy })
+            Some(Link {
+                from,
+                to,
+                from_dy,
+                to_dy,
+            })
         })
         .collect();
 

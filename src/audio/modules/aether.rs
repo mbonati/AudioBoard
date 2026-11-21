@@ -33,7 +33,9 @@ use self::fractal::{Lane, OCTAVES, PARTIALS, spectrum, spectrum_name};
 use self::glitch::{Fire, Glitch, HARMONICS, QUEUE, Settings};
 use self::space::{Chorus, Space, Warmth};
 use super::steps::{Held, MAX_STEPS, Step, StepClock, note_event, steps_per_beat};
-use super::{ModuleDef, ModuleParams, Quiet, Rng, approach, pan_gains, silence, soft_limit, time_coeff};
+use super::{
+    ModuleDef, ModuleParams, Quiet, Rng, approach, pan_gains, silence, soft_limit, time_coeff,
+};
 use crate::audio::engine::{BLOCK, Buf, Inputs, ProcessCtx, Processor};
 use crate::audio::fastmath;
 use crate::audio::midi::{MidiState, note_hz};
@@ -91,14 +93,38 @@ pub const VOICES: usize = 5;
 
 /// The chord shapes (the mode): name, what it is, semitones per voice.
 pub const CHORDS: [(&str, &str, [i32; VOICES]); 8] = [
-    ("5TH", "Fifths and octaves: the plainest drone", [0, 7, 12, 19, 24]),
-    ("SUS", "Suspended: open, never resolving", [0, 7, 14, 17, 24]),
+    (
+        "5TH",
+        "Fifths and octaves: the plainest drone",
+        [0, 7, 12, 19, 24],
+    ),
+    (
+        "SUS",
+        "Suspended: open, never resolving",
+        [0, 7, 14, 17, 24],
+    ),
     ("MAJ9", "Major ninth: warm and bright", [0, 7, 14, 16, 23]),
     ("MIN9", "Minor ninth: warm and dark", [0, 7, 14, 15, 22]),
-    ("MIN11", "Minor eleventh: modal, unhurried", [0, 7, 10, 15, 17]),
-    ("4THS", "Stacked fourths: hollow, floating", [0, 5, 10, 15, 20]),
-    ("LYD", "Lydian: major seventh and raised eleventh, weightless", [0, 7, 14, 18, 23]),
-    ("FREE", "No chord, no scale: the keys as you play them, a voice each (a plain pad).\nWith no keys, ROOT alone in unison", [0; VOICES]),
+    (
+        "MIN11",
+        "Minor eleventh: modal, unhurried",
+        [0, 7, 10, 15, 17],
+    ),
+    (
+        "4THS",
+        "Stacked fourths: hollow, floating",
+        [0, 5, 10, 15, 20],
+    ),
+    (
+        "LYD",
+        "Lydian: major seventh and raised eleventh, weightless",
+        [0, 7, 14, 18, 23],
+    ),
+    (
+        "FREE",
+        "No chord, no scale: the keys as you play them, a voice each (a plain pad).\nWith no keys, ROOT alone in unison",
+        [0; VOICES],
+    ),
 ];
 /// The shape that imposes nothing.
 pub const FREE: usize = 7;
@@ -286,7 +312,11 @@ pub fn format(p: &ModuleParams, i: usize) -> String {
         },
         EVOLVE => {
             let s = evolve_seconds(v);
-            if s < 60.0 { format!("{s:.0} s") } else { format!("{:.1} min", s / 60.0) }
+            if s < 60.0 {
+                format!("{s:.0} s")
+            } else {
+                format!("{:.1} min", s / 60.0)
+            }
         }
         HARM => format!("×{}", HARMONICS[glitch::allowed(v) - 1]),
         DECAY if v < 1.0 => format!("{:.0} ms", v * 1000.0),
@@ -312,7 +342,8 @@ const TIMBRE_RANGES: [(usize, f32, f32); 12] = [
     (AIR, 0.1, 0.6),
     (WIDTH, 0.5, 1.0),
 ];
-const GLITCH_RANGES: [(usize, f32, f32); 3] = [(REPEAT, 0.0, 0.7), (SKIP, 0.0, 0.6), (SPARK, 0.3, 0.8)];
+const GLITCH_RANGES: [(usize, f32, f32); 3] =
+    [(REPEAT, 0.0, 0.7), (SKIP, 0.0, 0.6), (SPARK, 0.3, 0.8)];
 
 /// RANDOMIZE: a new sound — the chord shape (FREE stays FREE), the timbre,
 /// the motion and its seed, the warm stages and the glitches. ROOT, LEVEL,
@@ -347,37 +378,119 @@ pub type Sound = (&'static str, usize, usize, &'static [(usize, f32)]);
 
 pub const FACTORY: [Sound; 7] = [
     ("Default", 0, 3, &[]),
-    ("Plain pad", FREE, 3, &[
-        (DETUNE, 14.0), (COLOR, 0.33), (TONE, 0.45), (MORPH, 0.3), (SHIMMER, 0.3), (ROUGH, 0.25),
-        (DRIVE, 0.3), (CHORUS, 0.65), (SPACE, 0.5), (AIR, 0.25), (GLITCH, 0.0),
-    ]),
-    ("Glass choir", 2, 1, &[
-        (COLOR, 1.0), (TONE, 0.6), (SHIMMER, 0.65), (AIR, 0.6), (SPACE, 0.75),
-        (GLITCH, 0.22), (HARM, 12.0), (REPEAT, 0.25), (SKIP, 0.05), (DECAY, 1.2), (SPARK, 0.55),
-    ]),
-    ("Deep drone", 0, 3, &[
-        (DETUNE, 8.0), (COLOR, 0.0), (TONE, 0.25), (MORPH, 0.45), (EVOLVE, 0.84), (ROUGH, 0.3),
-        (DRIVE, 0.6), (CHORUS, 0.35), (SPACE, 0.7), (AIR, 0.12), (GLITCH, 0.04),
-    ]),
-    ("Hollow fourths", 5, 3, &[
-        (COLOR, 0.66), (TONE, 0.5), (SHIMMER, 0.7), (ROUGH, 0.6), (CHORUS, 0.7), (WIDTH, 1.0),
-        (GLITCH, 0.15), (HARM, 9.0),
-    ]),
-    ("Shards", 4, 4, &[
-        (TONE, 0.5), (EVOLVE, 0.33), (ROUGH, 0.75),
-        (GLITCH, 0.45), (REPEAT, 0.7), (SKIP, 0.55), (DECAY, 0.15), (SPARK, 0.65),
-    ]),
-    ("Night air", 3, 3, &[
-        (COLOR, 0.4), (TONE, 0.35), (MORPH, 0.65), (SHIMMER, 0.5), (EVOLVE, 1.0),
-        (SPACE, 0.85), (AIR, 0.7), (WIDTH, 0.95), (GLITCH, 0.08), (SKIP, 0.0), (DECAY, 1.6),
-    ]),
+    (
+        "Plain pad",
+        FREE,
+        3,
+        &[
+            (DETUNE, 14.0),
+            (COLOR, 0.33),
+            (TONE, 0.45),
+            (MORPH, 0.3),
+            (SHIMMER, 0.3),
+            (ROUGH, 0.25),
+            (DRIVE, 0.3),
+            (CHORUS, 0.65),
+            (SPACE, 0.5),
+            (AIR, 0.25),
+            (GLITCH, 0.0),
+        ],
+    ),
+    (
+        "Glass choir",
+        2,
+        1,
+        &[
+            (COLOR, 1.0),
+            (TONE, 0.6),
+            (SHIMMER, 0.65),
+            (AIR, 0.6),
+            (SPACE, 0.75),
+            (GLITCH, 0.22),
+            (HARM, 12.0),
+            (REPEAT, 0.25),
+            (SKIP, 0.05),
+            (DECAY, 1.2),
+            (SPARK, 0.55),
+        ],
+    ),
+    (
+        "Deep drone",
+        0,
+        3,
+        &[
+            (DETUNE, 8.0),
+            (COLOR, 0.0),
+            (TONE, 0.25),
+            (MORPH, 0.45),
+            (EVOLVE, 0.84),
+            (ROUGH, 0.3),
+            (DRIVE, 0.6),
+            (CHORUS, 0.35),
+            (SPACE, 0.7),
+            (AIR, 0.12),
+            (GLITCH, 0.04),
+        ],
+    ),
+    (
+        "Hollow fourths",
+        5,
+        3,
+        &[
+            (COLOR, 0.66),
+            (TONE, 0.5),
+            (SHIMMER, 0.7),
+            (ROUGH, 0.6),
+            (CHORUS, 0.7),
+            (WIDTH, 1.0),
+            (GLITCH, 0.15),
+            (HARM, 9.0),
+        ],
+    ),
+    (
+        "Shards",
+        4,
+        4,
+        &[
+            (TONE, 0.5),
+            (EVOLVE, 0.33),
+            (ROUGH, 0.75),
+            (GLITCH, 0.45),
+            (REPEAT, 0.7),
+            (SKIP, 0.55),
+            (DECAY, 0.15),
+            (SPARK, 0.65),
+        ],
+    ),
+    (
+        "Night air",
+        3,
+        3,
+        &[
+            (COLOR, 0.4),
+            (TONE, 0.35),
+            (MORPH, 0.65),
+            (SHIMMER, 0.5),
+            (EVOLVE, 1.0),
+            (SPACE, 0.85),
+            (AIR, 0.7),
+            (WIDTH, 0.95),
+            (GLITCH, 0.08),
+            (SKIP, 0.0),
+            (DECAY, 1.6),
+        ],
+    ),
 ];
 
 /// Built-in sound `k`, from the defaults. It keeps ROOT, LEVEL, GLIDE and
 /// the keys' mode: they are the player's.
 pub fn load_factory(p: &ModuleParams, k: usize) {
     let (_, shape, div, knobs) = FACTORY[k.min(FACTORY.len() - 1)];
-    for (i, spec) in PARAMS.iter().enumerate().filter(|(i, _)| ![ROOT, LEVEL].contains(i)) {
+    for (i, spec) in PARAMS
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| ![ROOT, LEVEL].contains(i))
+    {
         p.set(i, spec.default);
     }
     for &(i, v) in knobs {
@@ -453,7 +566,11 @@ struct Bank {
 impl Bank {
     fn new(rng: &mut Rng) -> Self {
         let phase: [f32; PARTIALS] = std::array::from_fn(|_| rng.unit());
-        Self { c: phase.map(fastmath::cos_turns), s: phase.map(fastmath::sin_turns), ..Default::default() }
+        Self {
+            c: phase.map(fastmath::cos_turns),
+            s: phase.map(fastmath::sin_turns),
+            ..Default::default()
+        }
     }
 
     /// Sets each lane's turn per sample (`inc`, in cycles) and the gains'
@@ -469,7 +586,11 @@ impl Bank {
             self.s[k] *= r;
             self.dl[k] = (self.tl[k] - self.gl[k]) * inv_n;
             self.dr[k] = (self.tr[k] - self.gr[k]) * inv_n;
-            loud = loud.max(self.gl[k]).max(self.gr[k]).max(self.tl[k]).max(self.tr[k]);
+            loud = loud
+                .max(self.gl[k])
+                .max(self.gr[k])
+                .max(self.tl[k])
+                .max(self.tr[k]);
         }
         self.live = loud > SILENT;
     }
@@ -552,7 +673,13 @@ struct Voices {
 
 impl Voices {
     fn new(chord: [f32; VOICES]) -> Self {
-        Self { note: chord, wanted: [true; VOICES], env: [1.0; VOICES], gain: VOICE_GAIN, jump: [false; VOICES] }
+        Self {
+            note: chord,
+            wanted: [true; VOICES],
+            env: [1.0; VOICES],
+            gain: VOICE_GAIN,
+            jump: [false; VOICES],
+        }
     }
 
     /// Every voice on its tone of `chord`.
@@ -568,7 +695,9 @@ impl Voices {
         let mut served = [false; VOICES];
         let mut keep = [false; VOICES];
         for (v, kept) in keep.iter_mut().enumerate() {
-            if let Some(j) = (0..notes.len()).find(|&j| self.wanted[v] && !served[j] && notes[j] == self.note[v]) {
+            if let Some(j) =
+                (0..notes.len()).find(|&j| self.wanted[v] && !served[j] && notes[j] == self.note[v])
+            {
                 served[j] = true;
                 *kept = true;
             }
@@ -576,21 +705,28 @@ impl Voices {
         self.wanted = keep;
         for (&note, _) in notes.iter().zip(served).filter(|(_, done)| !done) {
             let free = (0..VOICES).filter(|&v| !self.wanted[v]);
-            let Some(v) = free.min_by(|&a, &b| self.env[a].total_cmp(&self.env[b])) else { break };
+            let Some(v) = free.min_by(|&a, &b| self.env[a].total_cmp(&self.env[b])) else {
+                break;
+            };
             self.jump[v] = self.env[v] < 0.05;
             self.note[v] = note;
             self.wanted[v] = true;
         }
         // A note in unison shares its level among its voices.
         for v in (0..VOICES).filter(|&v| self.wanted[v]) {
-            let share = (0..VOICES).filter(|&u| self.wanted[u] && self.note[u] == self.note[v]).count();
+            let share = (0..VOICES)
+                .filter(|&u| self.wanted[u] && self.note[u] == self.note[v])
+                .count();
             self.gain[v] = FREE_GAIN / (share as f32).sqrt();
         }
     }
 
     /// Wanted voices fade in, the others out, over a block of `secs`.
     fn fade(&mut self, secs: f32) {
-        let (up, down) = (1.0 - (-secs / FADE_IN).exp(), 1.0 - (-secs / FADE_OUT).exp());
+        let (up, down) = (
+            1.0 - (-secs / FADE_IN).exp(),
+            1.0 - (-secs / FADE_OUT).exp(),
+        );
         for (env, &wanted) in self.env.iter_mut().zip(&self.wanted) {
             if wanted {
                 *env += (1.0 - *env) * up;
@@ -686,13 +822,19 @@ impl Aether {
             sr: sample_rate,
             banks: std::array::from_fn(|_| Bank::new(&mut rng)),
             rng,
-            keys: Keys { held: Held::new(), latched: [0; Held::CAP], latched_len: 0 },
+            keys: Keys {
+                held: Held::new(),
+                latched: [0; Held::CAP],
+                latched_len: 0,
+            },
             unlatch_seen: params.viz[viz::UNLATCH].get(),
             pitch_lanes: lanes(LANE_PITCH),
             level_lanes: lanes(LANE_LEVEL),
             pan_lanes: lanes(LANE_PAN),
             detune_lanes: lanes(LANE_DETUNE),
-            partial_lanes: std::array::from_fn(|v| std::array::from_fn(|k| Lane::new(LANE_PARTIAL + (v * 16 + k) as u32))),
+            partial_lanes: std::array::from_fn(|v| {
+                std::array::from_fn(|k| Lane::new(LANE_PARTIAL + (v * 16 + k) as u32))
+            }),
             color_lane: Lane::new(LANE_COLOR),
             bright_lane: Lane::new(LANE_BRIGHT),
             chorus_lane: Lane::new(LANE_CHORUS),
@@ -739,15 +881,26 @@ impl Aether {
         let p = &self.params;
         // On a voice that sounds (in FREE some may be fading out).
         let v = (what.voice as usize).min(VOICES - 1);
-        let v = (0..VOICES).map(|k| (v + k) % VOICES).find(|&u| self.voices.wanted[u]).unwrap_or(v);
+        let v = (0..VOICES)
+            .map(|k| (v + k) % VOICES)
+            .find(|&u| self.voices.wanted[u])
+            .unwrap_or(v);
         let h = (what.harmonic as usize).min(HARMONICS.len() - 1);
         let level = what.level * (0.3 + 0.7 * spark);
         let (hz, kind) = if what.skip {
             let root = note_hz(self.voices.span(&self.pitch).0);
-            (self.glitch.skip(&mut self.rng, root, h, what.warp, level, decay), glitch::SKIP)
+            (
+                self.glitch
+                    .skip(&mut self.rng, root, h, what.warp, level, decay),
+                glitch::SKIP,
+            )
         } else {
             let hz = note_hz(self.pitch[v]) * HARMONICS[h] as f32;
-            (self.glitch.ping(&mut self.rng, hz, level * 0.32, decay, width), glitch::PING)
+            (
+                self.glitch
+                    .ping(&mut self.rng, hz, level * 0.32, decay, width),
+                glitch::PING,
+            )
         };
         let count = p.viz[viz::FIRED].get() + 1.0;
         p.viz[viz::FIRED].set(count);
@@ -772,7 +925,8 @@ impl Processor for Aether {
             }
             self.midi_cursor = self.midi.stream_head();
         } else {
-            self.midi.read_stream(&mut self.midi_cursor, |msg| keys.handle(msg));
+            self.midi
+                .read_stream(&mut self.midi_cursor, |msg| keys.handle(msg));
         }
         let unlatch = p.viz[viz::UNLATCH].get();
         if unlatch != self.unlatch_seen {
@@ -808,7 +962,11 @@ impl Processor for Aether {
         let synced = p.toggled();
         let evolve = p.get(EVOLVE);
         let seconds_per_beat = 1.0 / (bps * sr as f64);
-        let period = if synced { evolve_bars(evolve) as f64 * 4.0 * seconds_per_beat } else { evolve_seconds(evolve) as f64 };
+        let period = if synced {
+            evolve_bars(evolve) as f64 * 4.0 * seconds_per_beat
+        } else {
+            evolve_seconds(evolve) as f64
+        };
         let pos = if synced {
             beat0 / (evolve_bars(evolve) as f64 * 4.0)
         } else {
@@ -822,8 +980,11 @@ impl Processor for Aether {
         let morph = p.get(MORPH);
         let shimmer = p.get(SHIMMER);
         let width = p.get(WIDTH);
-        let color = (p.get(COLOR) + morph * 0.55 * self.color_lane.value(seed, pos, gain, &slow)).clamp(0.0, 1.0);
-        let bright = (p.get(TONE) + morph * 0.28 * self.bright_lane.value(seed, pos * 1.5, gain, &slow)).clamp(0.0, 1.0);
+        let color = (p.get(COLOR) + morph * 0.55 * self.color_lane.value(seed, pos, gain, &slow))
+            .clamp(0.0, 1.0);
+        let bright = (p.get(TONE)
+            + morph * 0.28 * self.bright_lane.value(seed, pos * 1.5, gain, &slow))
+        .clamp(0.0, 1.0);
         let shape = spectrum(color);
         let tilt_exp = -(1.0 - bright) * 0.7;
         let tilt: [f32; PARTIALS] = std::array::from_fn(|k| ((k + 1) as f32).powf(tilt_exp));
@@ -834,9 +995,11 @@ impl Processor for Aether {
         let glides = glides(&p);
         let glide = 1.0 - (-block_secs / 0.18).exp();
         let smooth = 1.0 - (-block_secs / 0.04).exp();
-        let partial_weights: [[f32; OCTAVES]; PARTIALS] = std::array::from_fn(|k| weights(period as f32 / partial_speed(k) as f32));
+        let partial_weights: [[f32; OCTAVES]; PARTIALS] =
+            std::array::from_fn(|k| weights(period as f32 / partial_speed(k) as f32));
         for (v, home) in VOICE_PAN.into_iter().enumerate() {
-            let drift = self.pitch_lanes[v].value(seed, pos * 0.8, gain, &slow) * drift_cents / 100.0;
+            let drift =
+                self.pitch_lanes[v].value(seed, pos * 0.8, gain, &slow) * drift_cents / 100.0;
             let target = self.voices.note[v] + drift;
             if self.started && glides && !self.voices.jump[v] {
                 self.pitch[v] += (target - self.pitch[v]) * glide;
@@ -849,13 +1012,18 @@ impl Processor for Aether {
             let level = self.voices.gain[v] * self.voices.env[v] * (1.0 + 0.4 * breathe).max(0.0);
             let sway = self.pan_lanes[v].value(seed, pos * 0.9, gain, &slow);
             let center = (home * 0.7 + sway * 0.35) * width;
-            let spread = detune * (0.55 + 0.45 * self.detune_lanes[v].value(seed, pos * 1.1, gain, &slow));
+            let spread =
+                detune * (0.55 + 0.45 * self.detune_lanes[v].value(seed, pos * 1.1, gain, &slow));
 
             // The partials: the timbre, tilted, each rippling on its own.
             let mut amp = [0.0f32; PARTIALS];
             let mut ratio = [0.0f32; PARTIALS];
             if !self.started || (self.blocks + v).is_multiple_of(2) {
-                for (k, (m, lane)) in self.ripple[v].iter_mut().zip(&mut self.partial_lanes[v]).enumerate() {
+                for (k, (m, lane)) in self.ripple[v]
+                    .iter_mut()
+                    .zip(&mut self.partial_lanes[v])
+                    .enumerate()
+                {
                     *m = lane.value(seed, pos * partial_speed(k), gain, &partial_weights[k]);
                 }
             }
@@ -910,10 +1078,22 @@ impl Processor for Aether {
         let br: [f32; BLOCK] = std::array::from_fn(|i| lanes_r[i].iter().sum());
 
         // Glitches on the grid, while sounding.
-        let gctx = ProcessCtx { beat: beat0, playing: true, ..*ctx };
+        let gctx = ProcessCtx {
+            beat: beat0,
+            playing: true,
+            ..*ctx
+        };
         let per_beat = steps_per_beat(division(&p) as f32);
-        let mut found = [Step { frame: 0, beat: 0.0, index: 0 }; MAX_STEPS];
-        let count = if sounding { self.steps.steps(&gctx, n, per_beat, 0.0, &mut found) } else { 0 };
+        let mut found = [Step {
+            frame: 0,
+            beat: 0.0,
+            index: 0,
+        }; MAX_STEPS];
+        let count = if sounding {
+            self.steps.steps(&gctx, n, per_beat, 0.0, &mut found)
+        } else {
+            0
+        };
         let settings = Settings {
             chance: p.get(GLITCH),
             allowed: glitch::allowed(p.get(HARM)),
@@ -922,14 +1102,19 @@ impl Processor for Aether {
             voices: VOICES,
         };
         for step in &found[..count] {
-            self.glitch.step(&mut self.rng, step, 1.0 / per_beat, &settings);
+            self.glitch
+                .step(&mut self.rng, step, 1.0 / per_beat, &settings);
             p.viz[viz::STEP].set(step.index as f32);
         }
         if !sounding {
             p.viz[viz::STEP].set(-1.0);
         }
         let mut fires = [Fire::default(); QUEUE];
-        let due = if sounding { self.glitch.due(&gctx, n, &mut fires) } else { 0 };
+        let due = if sounding {
+            self.glitch.due(&gctx, n, &mut fires)
+        } else {
+            0
+        };
         let (spark, decay) = (p.get(SPARK), p.get(DECAY));
 
         // The warm stages' settings for this block.
@@ -938,21 +1123,28 @@ impl Processor for Aether {
         // Oversampled only with partials high enough to fold back.
         let (_, highest) = self.voices.span(&self.pitch);
         let top = note_hz(highest[0]) * PARTIALS as f32;
-        self.warmth.set_drive(p.get(DRIVE), fc > 5000.0 && top > 7000.0);
+        self.warmth
+            .set_drive(p.get(DRIVE), fc > 5000.0 && top > 7000.0);
         let chorus_mix = p.get(CHORUS);
-        let chorus_rate = 0.16 * (1.0 + 0.5 * self.chorus_lane.value(seed, pos * 2.0, gain, &slow)) / sr;
+        let chorus_rate =
+            0.16 * (1.0 + 0.5 * self.chorus_lane.value(seed, pos * 2.0, gain, &slow)) / sr;
         let air = p.get(AIR);
         // The breath sits on upper harmonics of the top voices, wandering
         // between them with the motion.
         let wander = self.air_lane.value(seed, pos * 0.7, gain, &slow);
         const BREATH: [f32; 4] = [4.0, 5.0, 6.0, 8.0];
         let pick = |x: f32| BREATH[(((x * 0.5 + 0.5) * 3.99) as usize).min(3)];
-        let breath_t = [note_hz(highest[0]) * pick(wander), note_hz(highest[1]) * pick(-wander)];
+        let breath_t = [
+            note_hz(highest[0]) * pick(wander),
+            note_hz(highest[1]) * pick(-wander),
+        ];
         let follow = if glides { glide } else { smooth };
         for (b, t) in self.breath_hz.iter_mut().zip(breath_t) {
             *b += (t.min(sr * 0.2) - *b) * follow;
         }
-        let space = self.space.settings(p.get(SPACE), bright, air, self.breath_hz, self.run);
+        let space = self
+            .space
+            .settings(p.get(SPACE), bright, air, self.breath_hz, self.run);
         self.chorus.begin(chorus_rate, chorus_mix, chorus_mix, n);
         let up = time_coeff(0.35, sr);
         let down = time_coeff(0.5, sr);
@@ -1000,4 +1192,3 @@ impl Processor for Aether {
         p.viz[viz::SOURCE].set(source as f32);
     }
 }
-

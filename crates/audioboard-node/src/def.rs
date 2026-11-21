@@ -85,7 +85,11 @@ impl Params {
     /// Every setting at its default.
     pub fn new(def: &NodeDef) -> Self {
         Self {
-            values: def.params.iter().map(|p| AtomicF32::new(p.default)).collect(),
+            values: def
+                .params
+                .iter()
+                .map(|p| AtomicF32::new(p.default))
+                .collect(),
             mode: AtomicU32::new(0),
             toggle: AtomicBool::new(def.toggle_default),
             meter: AtomicF32::new(0.0),
@@ -220,14 +224,18 @@ impl Descriptor {
     pub fn problem(&self) -> Option<String> {
         let d = &self.def;
         let viz = |i: usize| i < d.viz;
-        if self.id.trim().is_empty() || self.id.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        if self.id.trim().is_empty() || self.id.chars().any(|c| c.is_whitespace() || c.is_control())
+        {
             return Some(format!("the id {:?} is empty or has spaces", self.id));
         }
         if d.name.trim().is_empty() {
             return Some(format!("{}: no name", self.id));
         }
         if d.inputs.len() > MAX_PORTS || d.outputs.len() > MAX_PORTS {
-            return Some(format!("{}: more than {MAX_PORTS} inputs or outputs", self.id));
+            return Some(format!(
+                "{}: more than {MAX_PORTS} inputs or outputs",
+                self.id
+            ));
         }
         if d.params.len() > MAX_PARAMS {
             return Some(format!("{}: more than {MAX_PARAMS} parameters", self.id));
@@ -236,17 +244,28 @@ impl Descriptor {
             return Some(format!("{}: {p}", self.id));
         }
         if d.modes.len() > MAX_MODES || d.data.len() > MAX_DATA || d.viz > MAX_VIZ {
-            return Some(format!("{}: too many modes, data or display values", self.id));
+            return Some(format!(
+                "{}: too many modes, data or display values",
+                self.id
+            ));
         }
-        if d.cv_depth.iter().any(|&(p, i)| p >= d.params.len() || i >= d.inputs.len()) {
-            return Some(format!("{}: a CV depth names a missing knob or input", self.id));
+        if d.cv_depth
+            .iter()
+            .any(|&(p, i)| p >= d.params.len() || i >= d.inputs.len())
+        {
+            return Some(format!(
+                "{}: a CV depth names a missing knob or input",
+                self.id
+            ));
         }
         if !(0.0..=400.0).contains(&d.display_h) || !(0.0..=400.0).contains(&d.controls_h) {
             return Some(format!("{}: display height out of range", self.id));
         }
         let shown = match self.panel.display {
             Display::None | Display::Level => true,
-            Display::Bars { from, count } | Display::Curve { from, count } => count > 0 && from + count <= d.viz,
+            Display::Bars { from, count } | Display::Curve { from, count } => {
+                count > 0 && from + count <= d.viz
+            }
             Display::Trace { index } => viz(index),
             Display::Dot { x, y } => viz(x) && viz(y),
         };
@@ -256,7 +275,10 @@ impl Descriptor {
             Readout::Viz { index, .. } => viz(index),
         };
         if !shown || !read {
-            return Some(format!("{}: the panel shows a display value or knob it doesn't have", self.id));
+            return Some(format!(
+                "{}: the panel shows a display value or knob it doesn't have",
+                self.id
+            ));
         }
         None
     }

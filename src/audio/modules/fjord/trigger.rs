@@ -90,7 +90,10 @@ pub struct Detector {
 
 impl Default for Detector {
     fn default() -> Self {
-        Detector { state: State::Idle, shadow: 0.0 }
+        Detector {
+            state: State::Idle,
+            shadow: 0.0,
+        }
     }
 }
 
@@ -103,23 +106,36 @@ impl Detector {
         match self.state {
             State::Idle => {
                 if level > s.threshold.max(self.shadow) {
-                    self.state = State::Scan { left: s.scan, peak: level };
+                    self.state = State::Scan {
+                        left: s.scan,
+                        peak: level,
+                    };
                 }
                 None
             }
             State::Scan { left, peak } => {
                 let peak = peak.max(level);
                 if left > 0 {
-                    self.state = State::Scan { left: left - 1, peak };
+                    self.state = State::Scan {
+                        left: left - 1,
+                        peak,
+                    };
                     return None;
                 }
                 self.state = State::Mask { left: s.mask };
                 self.shadow = peak;
                 let strength = peak / s.full;
-                Some(Hit { velocity: curve(strength, s.curve).max(1.0 / 127.0), strength })
+                Some(Hit {
+                    velocity: curve(strength, s.curve).max(1.0 / 127.0),
+                    strength,
+                })
             }
             State::Mask { left } => {
-                self.state = if left > 0 { State::Mask { left: left - 1 } } else { State::Idle };
+                self.state = if left > 0 {
+                    State::Mask { left: left - 1 }
+                } else {
+                    State::Idle
+                };
                 None
             }
         }

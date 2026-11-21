@@ -32,7 +32,10 @@ pub const COUNT: usize = 15;
 /// Whether the instrument rings with an oscillator (WAVE shapes it) or is
 /// made of noise (WAVE turns the noise metallic).
 pub const fn tonal(kind: usize) -> bool {
-    !matches!(kind, HIHAT | CYMBAL1 | CYMBAL2 | TAMBOURINE | GUIRO | QUIJADA)
+    !matches!(
+        kind,
+        HIHAT | CYMBAL1 | CYMBAL2 | TAMBOURINE | GUIRO | QUIJADA
+    )
 }
 
 /// A voice's sound settings, read once per block: TUNE, ATTACK, DECAY,
@@ -212,7 +215,10 @@ pub struct Voice {
 
 impl Voice {
     pub fn new(kind: usize) -> Self {
-        Self { kind, ..Self::default() }
+        Self {
+            kind,
+            ..Self::default()
+        }
     }
 
     /// Strikes the instrument. `gate` (seconds) is how long the guiro
@@ -232,7 +238,11 @@ impl Voice {
         self.retune = 0;
         // tanh(g·x) / tanh(g) is x itself for a small g, so DRIVE fades in.
         let g = 10.0 * s.drive.clamp(0.0, 1.0);
-        (self.drive, self.drive_norm) = if g > 0.0 { (g, 1.0 / g.tanh()) } else { (0.0, 1.0) };
+        (self.drive, self.drive_norm) = if g > 0.0 {
+            (g, 1.0 / g.tanh())
+        } else {
+            (0.0, 1.0)
+        };
         let (mut bp, mut hp) = ((0.0, 0.7), 0.0);
         match self.kind {
             BASE | BONGO_S | BONGO_L | CLAVES => self.tone.start(tune, attack, decay, sr),
@@ -360,7 +370,9 @@ impl Voice {
                 self.click *= 0.97;
                 self.tone.tick(wave, pitch) * 0.5 + high * 0.9 + tick * rng.bipolar() * 0.8
             }
-            CONGA => self.tone.tick(wave, pitch) * 0.8 + self.tone2.tick(wave, pitch) * 0.6 * self.level2,
+            CONGA => {
+                self.tone.tick(wave, pitch) * 0.8 + self.tone2.tick(wave, pitch) * 0.6 * self.level2
+            }
             COWBELL => {
                 let s = self.tone.tick(wave, pitch) + self.tone2.tick(wave, pitch) * self.level2;
                 self.bp.tick(s).1 * 0.9
@@ -418,14 +430,20 @@ impl Voice {
         };
         // Silent again: stop until the next hit.
         let done = match self.kind {
-            BASE | BONGO_S | BONGO_L | CLAVES | CONGA | COWBELL => self.tone.env.done() && self.tone2.env.done(),
+            BASE | BONGO_S | BONGO_L | CLAVES | CONGA | COWBELL => {
+                self.tone.env.done() && self.tone2.env.done()
+            }
             GUIRO => false,
             _ => self.noise.done() && self.tone.env.done(),
         };
         if done {
             self.active = false;
         }
-        let y = if self.drive > 0.0 { fastmath::tanh(y * self.drive) * self.drive_norm } else { y };
+        let y = if self.drive > 0.0 {
+            fastmath::tanh(y * self.drive) * self.drive_norm
+        } else {
+            y
+        };
         y * v
     }
 

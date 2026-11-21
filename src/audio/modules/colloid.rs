@@ -114,14 +114,26 @@ pub mod cc {
     pub const SWIRL: usize = 6;
     pub const CHARGE: usize = 7;
     pub const SOURCES: [(&str, &str); 8] = [
-        ("PEDAL", "A sustain pedal: down while the atoms play, lifted for a moment at each new chord so the old one doesn't blur into it"),
-        ("KEYS", "The same controller from the MIDI input, passed through (your sustain pedal, mod wheel…)"),
+        (
+            "PEDAL",
+            "A sustain pedal: down while the atoms play, lifted for a moment at each new chord so the old one doesn't blur into it",
+        ),
+        (
+            "KEYS",
+            "The same controller from the MIDI input, passed through (your sustain pedal, mod wheel…)",
+        ),
         ("ENERGY", "How hard the molecules ring"),
         ("DENSITY", "How many notes play (up to 16 a second)"),
         ("SPEED", "How fast the atoms go"),
         ("STRIKE", "Each note's force, falling away after it"),
-        ("SWIRL", "Which way and how fast the atoms circle the tank (the middle: not at all)"),
-        ("CHARGE", "How charged the atoms are (they charge as they strike)"),
+        (
+            "SWIRL",
+            "Which way and how fast the atoms circle the tank (the middle: not at all)",
+        ),
+        (
+            "CHARGE",
+            "How charged the atoms are (they charge as they strike)",
+        ),
     ];
 
     /// Controllers with a common use, for the menu.
@@ -142,7 +154,10 @@ pub mod cc {
     ];
 
     pub fn name(number: u8) -> Option<&'static str> {
-        NAMED.iter().find(|(n, _)| *n == number).map(|(_, name)| *name)
+        NAMED
+            .iter()
+            .find(|(n, _)| *n == number)
+            .map(|(_, name)| *name)
     }
 
     /// Where lane `k`'s value `i` is in `data`.
@@ -218,8 +233,9 @@ pub static DEF: ModuleDef = ModuleDef {
     params: &PARAMS,
     cv_depth: &[],
     modes: &[
-        "KURD", "CELTIC", "AMARA", "INTEGRAL", "HIJAZ", "PYGMY", "AKEBONO", "SABYE", "AEGEAN", "MAJ", "MIN", "SUS2", "SUS4", "MAJ7", "MIN7", "DOM7", "MAJ9",
-        "MIN9", "6/9", "QUART", "PENTA",
+        "KURD", "CELTIC", "AMARA", "INTEGRAL", "HIJAZ", "PYGMY", "AKEBONO", "SABYE", "AEGEAN",
+        "MAJ", "MIN", "SUS2", "SUS4", "MAJ7", "MIN7", "DOM7", "MAJ9", "MIN9", "6/9", "QUART",
+        "PENTA",
     ],
     toggle: Some("PLAY"),
     toggle_default: true,
@@ -301,7 +317,10 @@ fn colours(root: u8, mask: u16, offered: &[u8], color: f32, seed: u32) -> u16 {
     for (k, &i) in offered.iter().enumerate() {
         let pc = (root + i) % 12;
         let below = (pc + 11) % 12;
-        if mask >> pc & 1 == 0 && mask >> below & 1 == 0 && hash01(seed, k as u64, 0xC0_1010) < color {
+        if mask >> pc & 1 == 0
+            && mask >> below & 1 == 0
+            && hash01(seed, k as u64, 0xC0_1010) < color
+        {
             bits |= 1 << pc;
         }
     }
@@ -329,10 +348,22 @@ fn measures(tank: &Tank) -> [f32; cc::SOURCES.len()] {
     let mols = &tank.molecules[..tank.molecule_count];
     let atoms = &tank.atoms[..tank.atom_count];
     let n = atoms.len().max(1) as f32;
-    let energy = (mols.iter().map(|m| m.ring).sum::<f32>() / (0.3 * mols.len().max(1) as f32)).min(1.0);
-    let speed = (atoms.iter().map(|a| (a.vx * a.vx + a.vy * a.vy).sqrt()).sum::<f32>() / n / 1.6).min(1.0);
+    let energy =
+        (mols.iter().map(|m| m.ring).sum::<f32>() / (0.3 * mols.len().max(1) as f32)).min(1.0);
+    let speed = (atoms
+        .iter()
+        .map(|a| (a.vx * a.vx + a.vy * a.vy).sqrt())
+        .sum::<f32>()
+        / n
+        / 1.6)
+        .min(1.0);
     let (cx, cy) = (physics::ASPECT * 0.5, 0.5);
-    let swirl = atoms.iter().map(|a| (a.x - cx) * a.vy - (a.y - cy) * a.vx).sum::<f32>() / n / 0.5;
+    let swirl = atoms
+        .iter()
+        .map(|a| (a.x - cx) * a.vy - (a.y - cy) * a.vx)
+        .sum::<f32>()
+        / n
+        / 0.5;
     let charge = atoms.iter().map(|a| a.charge).sum::<f32>() / n;
     let mut out = [0.0; cc::SOURCES.len()];
     out[cc::ENERGY] = energy;
@@ -454,7 +485,12 @@ impl Colloid {
                 (root, mask_of(root, tones), offered)
             }
         };
-        ChordSet { root, mask, colours: colours(root, mask, offered, color, self.seed), layout: None }
+        ChordSet {
+            root,
+            mask,
+            colours: colours(root, mask, offered, color, self.seed),
+            layout: None,
+        }
     }
 
     fn source(&self) -> u8 {
@@ -500,10 +536,20 @@ impl Colloid {
             self.voices[k].pending = None;
         }
         let mut order: [usize; MAX_MOLECULES] = std::array::from_fn(|k| k);
-        let rank = |k: usize| if k < old { self.tank.molecules[k].note as usize } else { 256 + k };
+        let rank = |k: usize| {
+            if k < old {
+                self.tank.molecules[k].note as usize
+            } else {
+                256 + k
+            }
+        };
         order[..len].sort_by_key(|&k| rank(k));
         let highest = notes[..len].last().copied().unwrap_or(0) as i32;
-        let top = if set.layout.is_some() { highest } else { highest.max(top) };
+        let top = if set.layout.is_some() {
+            highest
+        } else {
+            highest.max(top)
+        };
         let span = (top - low).max(1) as f32;
         for (rank, &k) in order[..len].iter().enumerate() {
             let note = notes[rank];
@@ -531,7 +577,10 @@ impl Colloid {
             None if msg[0] & 0xF0 == 0xB0 => {
                 for (k, lane) in self.lanes.iter_mut().enumerate() {
                     let at = |i: usize| p.data[cc::at(k, i)].get();
-                    if at(cc::ON) > 0.5 && at(cc::SOURCE).round() as usize == cc::KEYS && at(cc::NUMBER).round() as u8 == msg[1] {
+                    if at(cc::ON) > 0.5
+                        && at(cc::SOURCE).round() as usize == cc::KEYS
+                        && at(cc::NUMBER).round() as u8 == msg[1]
+                    {
                         lane.keys = Some(msg[2]);
                     }
                 }
@@ -544,7 +593,9 @@ impl Colloid {
     /// The keys played together become the chord (one pitch class: its root).
     fn take_chord(&mut self) {
         let keys = self.gesture.notes();
-        let Some(&lowest) = keys.iter().min() else { return };
+        let Some(&lowest) = keys.iter().min() else {
+            return;
+        };
         let mask = keys.iter().fold(0u16, |m, &n| m | 1 << (n % 12));
         if mask.count_ones() == 1 {
             self.key_root = Some(lowest % 12);
@@ -556,11 +607,23 @@ impl Colloid {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn event(&mut self, p: &ModuleParams, kind: u8, molecule: usize, x: f32, y: f32, value: f32, extra: f32) {
+    fn event(
+        &mut self,
+        p: &ModuleParams,
+        kind: u8,
+        molecule: usize,
+        x: f32,
+        y: f32,
+        value: f32,
+        extra: f32,
+    ) {
         let at = viz::EVENTS + (self.events as usize % viz::EVENT_CAP) * viz::EVENT_LEN;
         self.events += 1;
         p.viz[at].set(-1.0);
-        for (k, v) in [kind as f32, molecule as f32, x, y, value, extra].into_iter().enumerate() {
+        for (k, v) in [kind as f32, molecule as f32, x, y, value, extra]
+            .into_iter()
+            .enumerate()
+        {
             p.viz[at + 1 + k].set(v);
         }
         p.viz[at].set(self.events as f32);
@@ -574,7 +637,10 @@ impl Colloid {
         self.end(k, frame);
         // The same note on another molecule (it was retuned) gives way.
         for other in 0..MAX_MOLECULES {
-            if self.voices[other].note.is_some_and(|(n, c)| n == m.note && c == channel) {
+            if self.voices[other]
+                .note
+                .is_some_and(|(n, c)| n == m.note && c == channel)
+            {
                 self.end(other, frame);
             }
         }
@@ -592,7 +658,15 @@ impl Colloid {
     }
 
     fn strike(&mut self, p: &ModuleParams, ctx: &ProcessCtx, strike: &Strike) {
-        self.event(p, STRIKE, strike.molecule, strike.x, strike.y, strike.force, strike.atom as f32);
+        self.event(
+            p,
+            STRIKE,
+            strike.molecule,
+            strike.x,
+            strike.y,
+            strike.force,
+            strike.atom as f32,
+        );
         if !self.live {
             return;
         }
@@ -626,7 +700,9 @@ impl Colloid {
         measure[cc::DENSITY] = (self.density / 16.0).clamp(0.0, 1.0);
         measure[cc::STRIKE] = self.strike.clamp(0.0, 1.0);
         // A new chord lifts the pedal for a moment.
-        let changed = self.pedalled.is_some_and(|c| (c.root, c.mask, c.layout) != (set.root, set.mask, set.layout));
+        let changed = self
+            .pedalled
+            .is_some_and(|c| (c.root, c.mask, c.layout) != (set.root, set.mask, set.layout));
         self.pedalled = Some(*set);
         let channel = channel(p);
         for k in 0..cc::LANES {
@@ -634,7 +710,10 @@ impl Colloid {
             let on = at(cc::ON) > 0.5;
             let number = at(cc::NUMBER).round().clamp(0.0, 127.0) as u8;
             let source = (at(cc::SOURCE).round().max(0.0) as usize).min(cc::SOURCES.len() - 1);
-            let (low, high) = (at(cc::LOW).clamp(0.0, 127.0), at(cc::HIGH).clamp(0.0, 127.0));
+            let (low, high) = (
+                at(cc::LOW).clamp(0.0, 127.0),
+                at(cc::HIGH).clamp(0.0, 127.0),
+            );
             let value = |v: f32| (low + (high - low) * v.clamp(0.0, 1.0)).round() as u8;
             let lane = &mut self.lanes[k];
             lane.since += dt;
@@ -701,14 +780,34 @@ impl Colloid {
         p.viz[viz::NOTES].set(self.notes as f32);
         for (k, m) in t.molecules[..t.molecule_count].iter().enumerate() {
             let at = viz::MOLECULE + k * viz::MOLECULE_LEN;
-            let sounding = if self.voices[k].note.is_some() { 1.0 } else { 0.0 };
-            for (i, v) in [m.x, m.y, m.r, m.angle, m.ring, m.note as f32, m.role as f32, sounding, m.spin].into_iter().enumerate() {
+            let sounding = if self.voices[k].note.is_some() {
+                1.0
+            } else {
+                0.0
+            };
+            for (i, v) in [
+                m.x,
+                m.y,
+                m.r,
+                m.angle,
+                m.ring,
+                m.note as f32,
+                m.role as f32,
+                sounding,
+                m.spin,
+            ]
+            .into_iter()
+            .enumerate()
+            {
                 p.viz[at + i].set(v);
             }
         }
         for (k, a) in t.atoms[..t.atom_count].iter().enumerate() {
             let at = viz::ATOM + k * viz::ATOM_LEN;
-            for (i, v) in [a.x, a.y, a.vx, a.vy, a.charge, a.age].into_iter().enumerate() {
+            for (i, v) in [a.x, a.y, a.vx, a.vy, a.charge, a.age]
+                .into_iter()
+                .enumerate()
+            {
                 p.viz[at + i].set(v);
             }
         }
@@ -797,7 +896,11 @@ impl Processor for Colloid {
             voice.cool = (voice.cool - dt).max(0.0);
             if voice.note.is_some() {
                 voice.held += dt;
-                let ring = if k < self.tank.molecule_count { self.tank.molecules[k].ring } else { 0.0 };
+                let ring = if k < self.tank.molecule_count {
+                    self.tank.molecules[k].ring
+                } else {
+                    0.0
+                };
                 if ring < SILENT && voice.held >= MIN_HELD && voice.pending.is_none() {
                     self.end(k, 0);
                 }

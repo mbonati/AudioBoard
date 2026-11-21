@@ -15,7 +15,10 @@
 //! position plus Continue when it starts elsewhere. Ticks leave when their
 //! beat is heard, one audio buffer after it is rendered.
 
-use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64, Ordering::Acquire, Ordering::Relaxed, Ordering::Release};
+use std::sync::atomic::{
+    AtomicBool, AtomicI64, AtomicU32, AtomicU64, Ordering::Acquire, Ordering::Relaxed,
+    Ordering::Release,
+};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
@@ -59,7 +62,8 @@ impl ClockState {
     /// Ticks keep coming: none for eight ticks (and at least 0.3 s) means
     /// the clock has gone.
     pub fn alive(&self, now: u64) -> bool {
-        self.last_tick_ns != 0 && (now.saturating_sub(self.last_tick_ns) as f64) < (8.0 * self.period_ns).max(3e8)
+        self.last_tick_ns != 0
+            && (now.saturating_sub(self.last_tick_ns) as f64) < (8.0 * self.period_ns).max(3e8)
     }
 
     /// The transport is moving: running, ticking, and past its first tick.
@@ -289,11 +293,24 @@ impl ClockFollower {
     fn fit(&self, now: u64) -> (f64, u64) {
         let n = self.count;
         if n < 3 {
-            let period = if n == 2 { now.saturating_sub(self.oldest()) as f64 } else { self.state.period_ns };
-            return (if period > 0.0 { period } else { self.state.period_ns }, now);
+            let period = if n == 2 {
+                now.saturating_sub(self.oldest()) as f64
+            } else {
+                self.state.period_ns
+            };
+            return (
+                if period > 0.0 {
+                    period
+                } else {
+                    self.state.period_ns
+                },
+                now,
+            );
         }
         let first = self.oldest();
-        let at = |k: usize| self.times[(self.head + WINDOW - n + k) % WINDOW].saturating_sub(first) as f64;
+        let at = |k: usize| {
+            self.times[(self.head + WINDOW - n + k) % WINDOW].saturating_sub(first) as f64
+        };
         let mean_x = (n - 1) as f64 / 2.0;
         let mean_y = (0..n).map(at).sum::<f64>() / n as f64;
         let (mut num, mut den) = (0.0, 0.0);
@@ -302,7 +319,11 @@ impl ClockFollower {
             num += dx * (at(k) - mean_y);
             den += dx * dx;
         }
-        let period = if den > 0.0 && num > 0.0 { num / den } else { self.state.period_ns };
+        let period = if den > 0.0 && num > 0.0 {
+            num / den
+        } else {
+            self.state.period_ns
+        };
         let newest = first as f64 + mean_y + period * (n as f64 - 1.0 - mean_x);
         (period, (newest.max(1.0) as u64).min(now))
     }
@@ -323,14 +344,18 @@ impl ClockFollower {
 
     /// One message at time `now`; true if it was clock or transport.
     pub fn message(&mut self, msg: &[u8], now: u64) -> bool {
-        let Some(&status) = msg.first() else { return false };
+        let Some(&status) = msg.first() else {
+            return false;
+        };
         let data = |i: usize| msg.get(i).copied().unwrap_or(0) as i64 & 0x7F;
         let s = &mut self.state;
         match status {
             0xF8 => {
                 match self.newest() {
                     // A gap (the clock stopped and came back): start over.
-                    Some(last) if now.saturating_sub(last) > 500_000_000 => self.restart_window(&[now]),
+                    Some(last) if now.saturating_sub(last) > 500_000_000 => {
+                        self.restart_window(&[now])
+                    }
                     Some(last) => {
                         // Jitter makes one interval long and the next short;
                         // a new tempo makes several in a row off the same way.
@@ -344,7 +369,8 @@ impl ClockFollower {
                         self.slower = slower;
                         if self.odd >= 3 {
                             // A new tempo: from the last three intervals.
-                            let keep = [3, 2].map(|back| self.times[(self.head + WINDOW - back) % WINDOW]);
+                            let keep =
+                                [3, 2].map(|back| self.times[(self.head + WINDOW - back) % WINDOW]);
                             self.restart_window(&[keep[0], keep[1], last]);
                             self.odd = 0;
                         }
@@ -402,14 +428,25 @@ pub struct Follow {
 impl Follow {
     pub fn new(shared: &SyncShared) -> Self {
         let c = shared.clock();
-        Self { starts: c.starts, moves: c.moves, was_playing: false }
+        Self {
+            starts: c.starts,
+            moves: c.moves,
+            was_playing: false,
+        }
     }
 
     /// For a callback of `frames` at `sample_rate`, from the board's beat
     /// `beat`: (beat to start from, beats per sample, playing, rewound).
     /// The beat is the clock's when the buffer will be heard, one buffer
     /// from `now`.
-    pub fn step(&mut self, clock: &ClockState, now: u64, beat: f64, frames: usize, sample_rate: f32) -> (f64, f64, bool, bool) {
+    pub fn step(
+        &mut self,
+        clock: &ClockState,
+        now: u64,
+        beat: f64,
+        frames: usize,
+        sample_rate: f32,
+    ) -> (f64, f64, bool, bool) {
         let sr = sample_rate as f64;
         let rewound = clock.starts != self.starts;
         self.starts = clock.starts;
@@ -468,8 +505,13 @@ impl ClockOut {
 
 /// MIDI outputs on the system.
 pub fn output_names() -> Vec<String> {
-    let Ok(out) = midir::MidiOutput::new("AudioBoard") else { return Vec::new() };
-    out.ports().iter().filter_map(|p| out.port_name(p).ok()).collect()
+    let Ok(out) = midir::MidiOutput::new("AudioBoard") else {
+        return Vec::new();
+    };
+    out.ports()
+        .iter()
+        .filter_map(|p| out.port_name(p).ok())
+        .collect()
 }
 
 /// Asks the scheduler for prompt wake-ups: ticks are due every few ms.
@@ -487,7 +529,11 @@ fn timing_thread() {
     }
 }
 
-fn clock_out_thread(rx: Receiver<Vec<String>>, shared: Arc<super::params::EngineShared>, status: Arc<std::sync::Mutex<(Vec<String>, Option<String>)>>) {
+fn clock_out_thread(
+    rx: Receiver<Vec<String>>,
+    shared: Arc<super::params::EngineShared>,
+    status: Arc<std::sync::Mutex<(Vec<String>, Option<String>)>>,
+) {
     timing_thread();
     let sync = &shared.sync;
     let mut wanted: Vec<String> = Vec::new();
@@ -533,10 +579,20 @@ fn clock_out_thread(rx: Receiver<Vec<String>>, shared: Arc<super::params::Engine
         if checked.elapsed() > Duration::from_secs(2) {
             checked = Instant::now();
             let mut error = None;
-            let missing: Vec<String> = wanted.iter().filter(|n| conns.iter().all(|(c, _)| c != *n)).cloned().collect();
+            let missing: Vec<String> = wanted
+                .iter()
+                .filter(|n| conns.iter().all(|(c, _)| c != *n))
+                .cloned()
+                .collect();
             for name in &missing {
-                let Ok(out) = midir::MidiOutput::new("AudioBoard") else { continue };
-                let Some(port) = out.ports().into_iter().find(|p| out.port_name(p).ok().as_deref() == Some(name.as_str())) else {
+                let Ok(out) = midir::MidiOutput::new("AudioBoard") else {
+                    continue;
+                };
+                let Some(port) = out
+                    .ports()
+                    .into_iter()
+                    .find(|p| out.port_name(p).ok().as_deref() == Some(name.as_str()))
+                else {
                     continue;
                 };
                 match out.connect(&port, "AudioBoard clock") {
@@ -580,7 +636,11 @@ fn clock_out_thread(rx: Receiver<Vec<String>>, shared: Arc<super::params::Engine
                 last_free = now;
             }
         }
-        let due = if playing { tl.time_of(next_tick as f64 / PPQ) } else { last_free as f64 + tick_ns };
+        let due = if playing {
+            tl.time_of(next_tick as f64 / PPQ)
+        } else {
+            last_free as f64 + tick_ns
+        };
         if due <= now as f64 + 200_000.0 {
             send(&[0xF8]);
             sync.sent.fetch_add(1, Relaxed);
@@ -591,7 +651,11 @@ fn clock_out_thread(rx: Receiver<Vec<String>>, shared: Arc<super::params::Engine
                     next_tick = (tl.heard_beat(now) * PPQ).ceil() as i64;
                 }
             } else {
-                last_free = if now as f64 - due > 4.0 * tick_ns { now } else { due as u64 };
+                last_free = if now as f64 - due > 4.0 * tick_ns {
+                    now
+                } else {
+                    due as u64
+                };
             }
             continue;
         }
@@ -680,7 +744,11 @@ mod tests {
         for k in 0..((4e9 / buffer_ns) as u64) {
             let now = t0 + 5 * MS + (k as f64 * buffer_ns) as u64;
             while t0 + 5 * MS + (next_tick as f64 * period) as u64 <= now {
-                f.handle(&[0xF8], t0 + 5 * MS + (next_tick as f64 * period) as u64, &shared);
+                f.handle(
+                    &[0xF8],
+                    t0 + 5 * MS + (next_tick as f64 * period) as u64,
+                    &shared,
+                );
                 next_tick += 1;
             }
             let (b, per_sample, p, rewound) = follow.step(&shared.clock(), now, beat, frames, sr);
@@ -717,19 +785,30 @@ mod tests {
         let (audio, mut engine) = crate::audio::offline(shared.clone(), 48_000);
 
         // A virtual device sending clock, and one receiving the board's.
-        let mut source = midir::MidiOutput::new("AB test").unwrap().create_virtual("AB Sync Source").unwrap();
+        let mut source = midir::MidiOutput::new("AB test")
+            .unwrap()
+            .create_virtual("AB Sync Source")
+            .unwrap();
         let heard = Arc::new(std::sync::Mutex::new(Vec::<(u8, u64)>::new()));
         let sink_log = heard.clone();
         let _sink = midir::MidiInput::new("AB test")
             .unwrap()
-            .create_virtual("AB Clock Sink", move |_, msg, _| sink_log.lock().unwrap().push((msg[0], now_ns())), ())
+            .create_virtual(
+                "AB Clock Sink",
+                move |_, msg, _| sink_log.lock().unwrap().push((msg[0], now_ns())),
+                (),
+            )
             .unwrap();
         std::thread::sleep(Duration::from_millis(300));
 
         let mut inputs = crate::audio::midi::MidiInputs::new();
         inputs.rescan(&audio.midi, &shared, || {});
         inputs.set_sync_source(Some("AB Sync Source".into()), &shared.sync);
-        assert!(shared.sync.source.load(Relaxed) != 0, "the virtual source is connected: {:?}", inputs.names().collect::<Vec<_>>());
+        assert!(
+            shared.sync.source.load(Relaxed) != 0,
+            "the virtual source is connected: {:?}",
+            inputs.names().collect::<Vec<_>>()
+        );
         let out = ClockOut::start(shared.clone());
         out.set_outputs(vec!["AB Clock Sink".into()]);
 
@@ -767,21 +846,36 @@ mod tests {
         let _source = sender.join().unwrap();
         let clock = shared.sync.clock();
         eprintln!("clock heard: {:.2} BPM, {} ticks", clock.bpm(), clock.ticks);
-        assert!((clock.bpm() - 128.0).abs() < 0.5, "tempo {:.2}", clock.bpm());
+        assert!(
+            (clock.bpm() - 128.0).abs() < 0.5,
+            "tempo {:.2}",
+            clock.bpm()
+        );
         let (last, running) = beats_seen[beats_seen.len() - 10];
-        assert!(running && last.playing, "the transport plays with the clock");
+        assert!(
+            running && last.playing,
+            "the transport plays with the clock"
+        );
         // Over the last second, on average at the clock's tempo.
         let recent = &beats_seen[beats_seen.len() - 90..];
         let mean = recent.iter().map(|(t, _)| t.bpm).sum::<f64>() / recent.len() as f64;
         eprintln!("engine tempo over the last second: {mean:.2} BPM");
-        assert!((mean - 128.0).abs() < 1.5, "the engine runs at the clock's tempo: {mean:.2}");
+        assert!(
+            (mean - 128.0).abs() < 1.5,
+            "the engine runs at the clock's tempo: {mean:.2}"
+        );
         // The engine's beat is on the clock's, within a few milliseconds.
         let ms = |beats: f64| beats.abs() * 60e3 / 128.0;
         let recent = &phase[phase.len() - 90..];
         let worst = recent.iter().fold(0.0f64, |m, e| m.max(ms(*e)));
         let mean = recent.iter().map(|e| ms(*e)).sum::<f64>() / recent.len() as f64;
-        eprintln!("engine beat vs the clock's over the last second: mean {mean:.2} ms, worst {worst:.2} ms");
-        assert!(worst < 8.0, "the beat follows the clock (worst {worst:.2} ms)");
+        eprintln!(
+            "engine beat vs the clock's over the last second: mean {mean:.2} ms, worst {worst:.2} ms"
+        );
+        assert!(
+            worst < 8.0,
+            "the beat follows the clock (worst {worst:.2} ms)"
+        );
         std::thread::sleep(Duration::from_millis(200));
         // Stop: the transport stops.
         let mut buf = vec![0.0f32; 512 * 2];
@@ -792,9 +886,19 @@ mod tests {
         // The sink heard the board's clock: Start, then ticks at about 128 BPM.
         let log = heard.lock().unwrap().clone();
         let starts = log.iter().filter(|(s, _)| *s == 0xFA).count();
-        let ticks: Vec<u64> = log.iter().filter(|(s, _)| *s == 0xF8).map(|(_, t)| *t).collect();
+        let ticks: Vec<u64> = log
+            .iter()
+            .filter(|(s, _)| *s == 0xF8)
+            .map(|(_, t)| *t)
+            .collect();
         let count = |status: u8| log.iter().filter(|(s, _)| *s == status).count();
-        eprintln!("sink: {} Start, {} Continue, {} ticks, {} Stop", starts, count(0xFB), ticks.len(), count(0xFC));
+        eprintln!(
+            "sink: {} Start, {} Continue, {} ticks, {} Stop",
+            starts,
+            count(0xFB),
+            ticks.len(),
+            count(0xFC)
+        );
         assert_eq!(starts, 1, "one Start sent");
         assert_eq!(count(0xFC), 1, "one Stop sent");
         assert!(ticks.len() > 100, "ticks sent: {}", ticks.len());
@@ -807,7 +911,13 @@ mod tests {
     #[test]
     fn timeline_round_trips() {
         let shared = SyncShared::new();
-        let t = Timeline { beat: 3.5, bpm: 128.0, playing: true, at_ns: 99, latency_ns: 5 };
+        let t = Timeline {
+            beat: 3.5,
+            bpm: 128.0,
+            playing: true,
+            at_ns: 99,
+            latency_ns: 5,
+        };
         shared.publish(t);
         assert_eq!(shared.timeline(), t);
         // Half a beat after it is heard.

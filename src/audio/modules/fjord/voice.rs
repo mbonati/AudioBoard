@@ -104,7 +104,11 @@ pub enum Shape {
     Squares,
     /// A sine phase-modulated by a sine at `ratio`, by `index`, the index
     /// fading `fade` times faster than the decay.
-    Fm { ratio: f32, index: f32, fade: f32 },
+    Fm {
+        ratio: f32,
+        index: f32,
+        fade: f32,
+    },
     /// The sines, then driven into a soft clip.
     Clip(f32),
 }
@@ -123,67 +127,170 @@ const SINE: &[(f32, f32, f32)] = &[(1.0, 1.0, 0.0)];
 
 /// An 1–3 analog, b 1–9 drum-like (membrane modes), c 1–5 percussive.
 pub const WAVES: [Wave; 17] = [
-    Wave { name: "An1", long: "sine", shape: Shape::Sines, partials: SINE },
-    Wave { name: "An2", long: "triangle", shape: Shape::Triangle, partials: SINE },
-    Wave { name: "An3", long: "sawtooth", shape: Shape::Saw, partials: SINE },
-    Wave { name: "b1", long: "kick: a rounded, driven sine", shape: Shape::Clip(1.8), partials: &[(1.0, 1.0, 0.0), (1.594, 0.12, 2.0)] },
+    Wave {
+        name: "An1",
+        long: "sine",
+        shape: Shape::Sines,
+        partials: SINE,
+    },
+    Wave {
+        name: "An2",
+        long: "triangle",
+        shape: Shape::Triangle,
+        partials: SINE,
+    },
+    Wave {
+        name: "An3",
+        long: "sawtooth",
+        shape: Shape::Saw,
+        partials: SINE,
+    },
+    Wave {
+        name: "b1",
+        long: "kick: a rounded, driven sine",
+        shape: Shape::Clip(1.8),
+        partials: &[(1.0, 1.0, 0.0), (1.594, 0.12, 2.0)],
+    },
     Wave {
         name: "b2",
         long: "tom: four membrane modes",
         shape: Shape::Sines,
-        partials: &[(1.0, 1.0, 0.0), (1.594, 0.45, 1.5), (2.136, 0.28, 2.5), (2.296, 0.18, 3.0)],
+        partials: &[
+            (1.0, 1.0, 0.0),
+            (1.594, 0.45, 1.5),
+            (2.136, 0.28, 2.5),
+            (2.296, 0.18, 3.0),
+        ],
     },
     Wave {
         name: "b3",
         long: "snare shell: six membrane modes",
         shape: Shape::Sines,
-        partials: &[(1.0, 1.0, 0.0), (1.594, 0.7, 1.0), (2.136, 0.55, 1.6), (2.653, 0.42, 2.2), (2.918, 0.35, 2.6), (3.156, 0.28, 3.0)],
+        partials: &[
+            (1.0, 1.0, 0.0),
+            (1.594, 0.7, 1.0),
+            (2.136, 0.55, 1.6),
+            (2.653, 0.42, 2.2),
+            (2.918, 0.35, 2.6),
+            (3.156, 0.28, 3.0),
+        ],
     },
     Wave {
         name: "b4",
         long: "timpani: tuned modes, a clear pitch",
         shape: Shape::Sines,
-        partials: &[(1.0, 1.0, 0.0), (1.504, 0.65, 0.4), (1.742, 0.25, 1.2), (2.0, 0.45, 0.8), (2.245, 0.2, 1.6), (2.494, 0.25, 1.4)],
+        partials: &[
+            (1.0, 1.0, 0.0),
+            (1.504, 0.65, 0.4),
+            (1.742, 0.25, 1.2),
+            (2.0, 0.45, 0.8),
+            (2.245, 0.2, 1.6),
+            (2.494, 0.25, 1.4),
+        ],
     },
     Wave {
         name: "b5",
         long: "tabla: harmonic overtones",
         shape: Shape::Sines,
-        partials: &[(1.0, 1.0, 0.0), (2.0, 0.55, 0.5), (3.0, 0.38, 0.9), (4.0, 0.24, 1.3), (5.0, 0.14, 1.8)],
+        partials: &[
+            (1.0, 1.0, 0.0),
+            (2.0, 0.55, 0.5),
+            (3.0, 0.38, 0.9),
+            (4.0, 0.24, 1.3),
+            (5.0, 0.14, 1.8),
+        ],
     },
     Wave {
         name: "b6",
         long: "conga: a round body and a quick slap",
         shape: Shape::Sines,
-        partials: &[(1.0, 1.0, 0.0), (1.5, 0.6, 0.8), (2.0, 0.3, 1.5), (3.2, 0.35, 6.0), (4.1, 0.3, 8.0)],
+        partials: &[
+            (1.0, 1.0, 0.0),
+            (1.5, 0.6, 0.8),
+            (2.0, 0.3, 1.5),
+            (3.2, 0.35, 6.0),
+            (4.1, 0.3, 8.0),
+        ],
     },
-    Wave { name: "b7", long: "electronic tom: FM, bright at the strike", shape: Shape::Fm { ratio: 1.41, index: 2.2, fade: 2.5 }, partials: SINE },
+    Wave {
+        name: "b7",
+        long: "electronic tom: FM, bright at the strike",
+        shape: Shape::Fm {
+            ratio: 1.41,
+            index: 2.2,
+            fade: 2.5,
+        },
+        partials: SINE,
+    },
     Wave {
         name: "b8",
         long: "steel drum: strong octave, melodic",
         shape: Shape::Sines,
-        partials: &[(1.0, 1.0, 0.0), (2.0, 0.8, 0.3), (3.0, 0.35, 0.9), (4.0, 0.15, 1.3)],
+        partials: &[
+            (1.0, 1.0, 0.0),
+            (2.0, 0.8, 0.3),
+            (3.0, 0.35, 0.9),
+            (4.0, 0.15, 1.3),
+        ],
     },
-    Wave { name: "b9", long: "log drum: hollow, wooden", shape: Shape::Sines, partials: &[(1.0, 1.0, 0.0), (2.9, 0.5, 1.5), (4.95, 0.25, 3.0)] },
+    Wave {
+        name: "b9",
+        long: "log drum: hollow, wooden",
+        shape: Shape::Sines,
+        partials: &[(1.0, 1.0, 0.0), (2.9, 0.5, 1.5), (4.95, 0.25, 3.0)],
+    },
     Wave {
         name: "c1",
         long: "bell: hum, prime, minor third, fifth, nominal",
         shape: Shape::Sines,
-        partials: &[(1.0, 1.0, 0.0), (2.0, 0.6, 0.2), (2.4, 0.5, 0.4), (3.0, 0.4, 0.6), (4.07, 0.3, 0.9), (5.43, 0.2, 1.2)],
+        partials: &[
+            (1.0, 1.0, 0.0),
+            (2.0, 0.6, 0.2),
+            (2.4, 0.5, 0.4),
+            (3.0, 0.4, 0.6),
+            (4.07, 0.3, 0.9),
+            (5.43, 0.2, 1.2),
+        ],
     },
-    Wave { name: "c2", long: "cowbell: two squares a fifth-and-a-bit apart", shape: Shape::Squares, partials: &[(1.0, 1.0, 0.0), (1.48, 0.8, 0.3)] },
+    Wave {
+        name: "c2",
+        long: "cowbell: two squares a fifth-and-a-bit apart",
+        shape: Shape::Squares,
+        partials: &[(1.0, 1.0, 0.0), (1.48, 0.8, 0.3)],
+    },
     Wave {
         name: "c3",
         long: "metal: six squares, like an analog hihat",
         shape: Shape::Squares,
-        partials: &[(1.0, 0.6, 0.0), (1.4827, 0.6, 0.0), (1.8003, 0.6, 0.0), (2.546, 0.6, 0.0), (2.6303, 0.6, 0.0), (3.8968, 0.6, 0.0)],
+        partials: &[
+            (1.0, 0.6, 0.0),
+            (1.4827, 0.6, 0.0),
+            (1.8003, 0.6, 0.0),
+            (2.546, 0.6, 0.0),
+            (2.6303, 0.6, 0.0),
+            (3.8968, 0.6, 0.0),
+        ],
     },
-    Wave { name: "c4", long: "gong: clangy FM", shape: Shape::Fm { ratio: 3.5, index: 4.0, fade: 0.6 }, partials: SINE },
+    Wave {
+        name: "c4",
+        long: "gong: clangy FM",
+        shape: Shape::Fm {
+            ratio: 3.5,
+            index: 4.0,
+            fade: 0.6,
+        },
+        partials: SINE,
+    },
     Wave {
         name: "c5",
         long: "bar: free-bar modes (glockenspiel, marimba)",
         shape: Shape::Sines,
-        partials: &[(1.0, 1.0, 0.0), (2.756, 0.45, 1.2), (5.404, 0.25, 2.4), (8.933, 0.12, 3.6)],
+        partials: &[
+            (1.0, 1.0, 0.0),
+            (2.756, 0.45, 1.2),
+            (5.404, 0.25, 2.4),
+            (8.933, 0.12, 3.6),
+        ],
     },
 ];
 
@@ -202,8 +309,12 @@ pub fn click_name(i: usize) -> String {
 }
 
 /// Centre of each noise click's band, and each tick's pitch.
-const CLICK_HZ: [f32; 9] = [200.0, 380.0, 700.0, 1150.0, 1800.0, 2800.0, 4300.0, 6500.0, 10_000.0];
-const TICK_HZ: [f32; 9] = [140.0, 210.0, 320.0, 480.0, 720.0, 1080.0, 1600.0, 2400.0, 3600.0];
+const CLICK_HZ: [f32; 9] = [
+    200.0, 380.0, 700.0, 1150.0, 1800.0, 2800.0, 4300.0, 6500.0, 10_000.0,
+];
+const TICK_HZ: [f32; 9] = [
+    140.0, 210.0, 320.0, 480.0, 720.0, 1080.0, 1600.0, 2400.0, 3600.0,
+];
 
 /// The noise filter's types (1…7) as resonance (Q).
 pub const NOISE_Q: [f32; 7] = [0.55, 0.8, 1.2, 2.0, 3.5, 6.5, 13.0];
@@ -239,7 +350,13 @@ fn fade(seconds: f32, sr: f32) -> f32 {
 
 impl Env {
     fn new(gate: i32, seconds: f32, sr: f32, rise: f32) -> Self {
-        let mut e = Env { shape: gate.clamp(0, 2) as u8, level: 1.0, rise: 0.0, d_rise: 1.0 / (rise * sr).max(1.0), ..Default::default() };
+        let mut e = Env {
+            shape: gate.clamp(0, 2) as u8,
+            level: 1.0,
+            rise: 0.0,
+            d_rise: 1.0 / (rise * sr).max(1.0),
+            ..Default::default()
+        };
         match e.shape {
             0 => e.mul = fall(seconds, sr),
             1 => e.dx = 1.0 / (seconds * sr).max(1.0),
@@ -312,7 +429,14 @@ struct Adsr {
 
 impl Adsr {
     fn new(a: f32, d: f32, sustain: f32, r: f32, sr: f32) -> Self {
-        Adsr { stage: 0, level: 0.0, rise: 1.0 / (a * sr).max(1.0), decay: fall(d, sr), sustain, release: fall(r, sr) }
+        Adsr {
+            stage: 0,
+            level: 0.0,
+            rise: 1.0 / (a * sr).max(1.0),
+            decay: fall(d, sr),
+            sustain,
+            release: fall(r, sr),
+        }
     }
 
     #[inline]
@@ -359,7 +483,11 @@ impl Adsr {
 pub fn adsr_seconds(a: f32, d: f32, sustain: f32, r: f32, gate: f32) -> f32 {
     let held = gate.max(a);
     let release = held + r * 1.34;
-    if sustain > 0.0 { release } else { (a + d * 1.34).min(release) }
+    if sustain > 0.0 {
+        release
+    } else {
+        (a + d * 1.34).min(release)
+    }
 }
 
 /// A state-variable filter (topology-preserving transform).
@@ -439,18 +567,34 @@ impl Tilt {
         let coeff = |hz: f32| (1.0 - (-std::f32::consts::TAU * hz / sr).exp()).min(1.0);
         if c < -0.01 {
             let hz = 18_000.0 * exp2(c * 0.62);
-            Tilt { mode: -1, k: coeff(hz), gain: (18_000.0 / hz).powf(0.35) }
+            Tilt {
+                mode: -1,
+                k: coeff(hz),
+                gain: (18_000.0 / hz).powf(0.35),
+            }
         } else if c > 0.01 {
-            Tilt { mode: 1, k: coeff(30.0 * exp2(c * 0.8)), gain: 1.0 }
+            Tilt {
+                mode: 1,
+                k: coeff(30.0 * exp2(c * 0.8)),
+                gain: 1.0,
+            }
         } else {
-            Tilt { mode: 0, k: 0.0, gain: 1.0 }
+            Tilt {
+                mode: 0,
+                k: 0.0,
+                gain: 1.0,
+            }
         }
     }
 }
 
 impl Live {
     pub fn of(s: &Sound) -> Self {
-        Live { pitch: s[knob::PITCH], tone_filter: s[knob::T_FILTER], noise_filter: s[knob::N_FILTER] }
+        Live {
+            pitch: s[knob::PITCH],
+            tone_filter: s[knob::T_FILTER],
+            noise_filter: s[knob::N_FILTER],
+        }
     }
 }
 
@@ -589,8 +733,20 @@ impl Voice {
         self.adsr = s[AMP_ENV] > 0.5;
         let decay = decay_seconds(if self.adsr { s[AMP_D] } else { s[T_DECAY] });
         self.tone_env = Env::new(int(s, T_GATE, 0, 2), decay, sr, 0.0002);
-        self.amp_adsr = Adsr::new(attack_seconds(s[AMP_A]), decay, sustain_gain(s[AMP_S]), decay_seconds(s[AMP_R]), sr);
-        self.filter_adsr = Adsr::new(attack_seconds(s[FLT_A]), decay_seconds(s[FLT_D]), s[FLT_S].clamp(0.0, 99.0) / 99.0, decay_seconds(s[FLT_R]), sr);
+        self.amp_adsr = Adsr::new(
+            attack_seconds(s[AMP_A]),
+            decay,
+            sustain_gain(s[AMP_S]),
+            decay_seconds(s[AMP_R]),
+            sr,
+        );
+        self.filter_adsr = Adsr::new(
+            attack_seconds(s[FLT_A]),
+            decay_seconds(s[FLT_D]),
+            s[FLT_S].clamp(0.0, 99.0) / 99.0,
+            decay_seconds(s[FLT_R]),
+            sr,
+        );
         self.filter_amount = s[FLT_AMT].clamp(-10.0, 10.0) * AMOUNT_OCTAVES * vel_scale;
         self.tone_svf = Svf::default();
         self.tone_on = s[TONE] > 0.0;
@@ -600,7 +756,11 @@ impl Voice {
         for (k, &(ratio, level, faster)) in wave.partials.iter().take(MAX_PARTIALS).enumerate() {
             self.ratios[k] = ratio;
             self.gains[k] = level;
-            self.fades[k] = if faster > 0.0 { fall(decay / faster, sr) } else { 1.0 };
+            self.fades[k] = if faster > 0.0 {
+                fall(decay / faster, sr)
+            } else {
+                1.0
+            };
             power += level * level;
             sum += level;
         }
@@ -657,7 +817,11 @@ impl Voice {
         self.chirp = 2.0;
         self.chirp_mul = fade(0.001, sr);
         self.attack_inc = (2.5 * hz).min(12_000.0) / sr;
-        self.attack_left = if self.family == 1 { (1.0 / self.attack_inc) as u32 } else { 0 };
+        self.attack_left = if self.family == 1 {
+            (1.0 / self.attack_inc) as u32
+        } else {
+            0
+        };
     }
 
     /// Lets go of the note: the ADSRs go to their release (the Nord Drum's
@@ -669,7 +833,12 @@ impl Voice {
     }
 
     fn tone_done(&self) -> bool {
-        !self.tone_on || if self.adsr { self.amp_adsr.done() } else { self.tone_env.done() }
+        !self.tone_on
+            || if self.adsr {
+                self.amp_adsr.done()
+            } else {
+                self.tone_env.done()
+            }
     }
 
     /// Tone, noise and click for one sample.
@@ -685,7 +854,11 @@ impl Voice {
         }
 
         if !self.tone_done() {
-            let env = if self.adsr { self.amp_adsr.tick() } else { self.tone_env.tick() };
+            let env = if self.adsr {
+                self.amp_adsr.tick()
+            } else {
+                self.tone_env.tick()
+            };
             // Pitch with the bend, as one exponent.
             let inc = 440.0 * exp2((live.pitch - 69.0 + self.bend) / 12.0) / sr;
             self.bend *= self.bend_mul;
@@ -719,7 +892,8 @@ impl Voice {
                         let dt = inc * self.ratios[k];
                         if dt < 0.48 {
                             let t = self.phases[k];
-                            let sq = if t < 0.5 { 1.0 } else { -1.0 } + blep(t, dt) - blep(wrap(t + 0.5), dt);
+                            let sq = if t < 0.5 { 1.0 } else { -1.0 } + blep(t, dt)
+                                - blep(wrap(t + 0.5), dt);
                             x += self.gains[k] * sq;
                             self.phases[k] = wrap(t + dt);
                         }
@@ -776,7 +950,9 @@ impl Voice {
             let env = self.click_env.tick();
             let y = match self.family {
                 0 | 1 => {
-                    let (_, band) = self.click_svf.tick(self.rng.bipolar(), self.click_g, self.click_k);
+                    let (_, band) =
+                        self.click_svf
+                            .tick(self.rng.bipolar(), self.click_g, self.click_k);
                     let mut y = band * self.click_k * self.click_gain;
                     if self.attack_left > 0 {
                         self.attack_left -= 1;
@@ -787,7 +963,9 @@ impl Voice {
                 }
                 _ => {
                     let y = sin_turns(self.click_phase) + 0.25 * sin_turns(2.0 * self.click_phase);
-                    self.click_phase = wrap(self.click_phase + (self.click_hz * (1.0 + self.chirp) / sr).min(0.48));
+                    self.click_phase = wrap(
+                        self.click_phase + (self.click_hz * (1.0 + self.chirp) / sr).min(0.48),
+                    );
                     self.chirp *= self.chirp_mul;
                     y
                 }
@@ -795,7 +973,9 @@ impl Voice {
             out[2] = y * env;
         }
 
-        self.active = !self.tone_done() || (self.noise_on && !self.noise_env.done()) || (self.click_on && !self.click_env.done());
+        self.active = !self.tone_done()
+            || (self.noise_on && !self.noise_env.done())
+            || (self.click_on && !self.click_env.done());
         out
     }
 }
@@ -807,7 +987,13 @@ pub fn hit_seconds(s: &Sound, gate: f32) -> f32 {
     let mut t: f32 = 0.0;
     if s[TONE] > 0.0 {
         t = t.max(if s[AMP_ENV] > 0.5 {
-            adsr_seconds(attack_seconds(s[AMP_A]), decay_seconds(s[AMP_D]), sustain_gain(s[AMP_S]), decay_seconds(s[AMP_R]), gate)
+            adsr_seconds(
+                attack_seconds(s[AMP_A]),
+                decay_seconds(s[AMP_D]),
+                sustain_gain(s[AMP_S]),
+                decay_seconds(s[AMP_R]),
+                gate,
+            )
         } else {
             env_seconds(int(s, T_GATE, 0, 2), decay_seconds(s[T_DECAY]))
         });
@@ -846,7 +1032,13 @@ pub const ALL_PARTS: Parts = [true; 3];
 /// The mixer's gains for tone, noise and click, with the channel level.
 fn mix_targets(s: &Sound, parts: Parts) -> [f32; 3] {
     let level = level_gain(s[knob::LEVEL]);
-    std::array::from_fn(|i| if parts[i] { mix_gain(s[knob::TONE + i]) * level } else { 0.0 })
+    std::array::from_fn(|i| {
+        if parts[i] {
+            mix_gain(s[knob::TONE + i]) * level
+        } else {
+            0.0
+        }
+    })
 }
 
 /// Retriggered, the old strike fades out this fast instead of stopping
@@ -941,7 +1133,9 @@ impl Channel {
         }
         if self.tail_gain > 0.0 {
             let [t, n, c] = self.tail.tick(&self.live, &self.tilt);
-            y += (t * self.mix[0] + n * self.mix[1] + c * self.mix[2]) * self.tail_amp * self.tail_gain;
+            y += (t * self.mix[0] + n * self.mix[1] + c * self.mix[2])
+                * self.tail_amp
+                * self.tail_gain;
             self.tail_gain -= self.tail_step;
             if self.tail_gain <= 0.0 {
                 self.tail_gain = 0.0;

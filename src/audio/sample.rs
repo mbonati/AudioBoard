@@ -46,11 +46,28 @@ impl Sample {
     pub fn new(name: &str, rate: f32, left: Vec<f32>, right: Vec<f32>) -> Self {
         let max = (MAX_SECONDS * rate) as usize;
         let trimmed = left.len() > max;
-        let round = |v: Vec<f32>| -> Vec<f32> { v.into_iter().take(max).map(|x| f32::from(to_i16(x)) / 32768.0).collect() };
+        let round = |v: Vec<f32>| -> Vec<f32> {
+            v.into_iter()
+                .take(max)
+                .map(|x| f32::from(to_i16(x)) / 32768.0)
+                .collect()
+        };
         let left = round(left);
-        let right = if right.is_empty() { Vec::new() } else { round(right) };
+        let right = if right.is_empty() {
+            Vec::new()
+        } else {
+            round(right)
+        };
         let overview = overview(&left, &right);
-        Sample { name: name.to_owned(), rate: rate.max(1.0), left, right, overview, trimmed, saved: OnceLock::new() }
+        Sample {
+            name: name.to_owned(),
+            rate: rate.max(1.0),
+            left,
+            right,
+            overview,
+            trimmed,
+            saved: OnceLock::new(),
+        }
     }
 
     pub fn frames(&self) -> usize {
@@ -67,13 +84,20 @@ impl Sample {
 
     /// The right channel (the left one for a mono sound).
     pub fn right(&self) -> &[f32] {
-        if self.right.is_empty() { &self.left } else { &self.right }
+        if self.right.is_empty() {
+            &self.left
+        } else {
+            &self.right
+        }
     }
 
     /// Reads a file, WAV or AIFF.
     pub fn load(path: &Path) -> Result<Sample, String> {
         let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
-        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         decode(&bytes, &name)
     }
 
@@ -89,7 +113,12 @@ impl Sample {
                         pcm.extend_from_slice(&to_i16(r).to_le_bytes());
                     }
                 }
-                Saved { name: self.name.clone(), rate: self.rate.round() as u32, channels: channels as u8, pcm: Blob(base64_encode(&pcm).into()) }
+                Saved {
+                    name: self.name.clone(),
+                    rate: self.rate.round() as u32,
+                    channels: channels as u8,
+                    pcm: Blob(base64_encode(&pcm).into()),
+                }
             })
             .clone()
     }
@@ -99,9 +128,14 @@ impl Sample {
         let bytes = base64_decode(&s.pcm.0)?;
         let channels = (s.channels as usize).clamp(1, 2);
         let frames = bytes.len() / (2 * channels);
-        let at = |i: usize| f32::from(i16::from_le_bytes([bytes[2 * i], bytes[2 * i + 1]])) / 32768.0;
+        let at =
+            |i: usize| f32::from(i16::from_le_bytes([bytes[2 * i], bytes[2 * i + 1]])) / 32768.0;
         let left: Vec<f32> = (0..frames).map(|f| at(f * channels)).collect();
-        let right: Vec<f32> = if channels == 2 { (0..frames).map(|f| at(f * 2 + 1)).collect() } else { Vec::new() };
+        let right: Vec<f32> = if channels == 2 {
+            (0..frames).map(|f| at(f * 2 + 1)).collect()
+        } else {
+            Vec::new()
+        };
         let sample = Sample::new(&s.name, s.rate.max(1) as f32, left, right);
         // Encoding it again would give the same text: keep the one read.
         let _ = sample.saved.set(s.clone());
@@ -110,7 +144,9 @@ impl Sample {
 }
 
 fn to_i16(x: f32) -> i16 {
-    (x.clamp(-1.0, 1.0) * 32768.0).round().clamp(-32768.0, 32767.0) as i16
+    (x.clamp(-1.0, 1.0) * 32768.0)
+        .round()
+        .clamp(-32768.0, 32767.0) as i16
 }
 
 fn overview(left: &[f32], right: &[f32]) -> Vec<[f32; 2]> {
@@ -121,7 +157,10 @@ fn overview(left: &[f32], right: &[f32]) -> Vec<[f32; 2]> {
     let right = if right.is_empty() { left } else { right };
     (0..OVERVIEW)
         .map(|c| {
-            let (a, b) = (c * n / OVERVIEW, ((c + 1) * n / OVERVIEW).max(c * n / OVERVIEW + 1).min(n));
+            let (a, b) = (
+                c * n / OVERVIEW,
+                ((c + 1) * n / OVERVIEW).max(c * n / OVERVIEW + 1).min(n),
+            );
             let mut lo = f32::MAX;
             let mut hi = f32::MIN;
             for i in a..b {
@@ -171,10 +210,18 @@ const BASE64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz
 fn base64_encode(data: &[u8]) -> String {
     let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     for chunk in data.chunks(3) {
-        let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
+        let b = [
+            chunk[0],
+            *chunk.get(1).unwrap_or(&0),
+            *chunk.get(2).unwrap_or(&0),
+        ];
         let n = (b[0] as u32) << 16 | (b[1] as u32) << 8 | b[2] as u32;
         for k in 0..4 {
-            out.push(if k <= chunk.len() { BASE64[(n >> (18 - 6 * k) & 63) as usize] as char } else { '=' });
+            out.push(if k <= chunk.len() {
+                BASE64[(n >> (18 - 6 * k) & 63) as usize] as char
+            } else {
+                '='
+            });
         }
     }
     out
@@ -188,7 +235,10 @@ fn base64_decode(text: &str) -> Option<Vec<u8>> {
     }
     let mut out = Vec::with_capacity(text.len() / 4 * 3);
     let (mut acc, mut bits) = (0u32, 0);
-    for c in text.bytes().filter(|c| !c.is_ascii_whitespace() && *c != b'=') {
+    for c in text
+        .bytes()
+        .filter(|c| !c.is_ascii_whitespace() && *c != b'=')
+    {
         let v = table[c as usize];
         if v == 255 {
             return None;
@@ -221,12 +271,23 @@ pub fn decode(bytes: &[u8], name: &str) -> Result<Sample, String> {
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Encoding {
     /// Signed integers (unsigned for 8-bit WAV), little- or big-endian.
-    Int { bits: u16, little: bool, unsigned8: bool },
-    Float { bits: u16, little: bool },
+    Int {
+        bits: u16,
+        little: bool,
+        unsigned8: bool,
+    },
+    Float {
+        bits: u16,
+        little: bool,
+    },
 }
 
 /// Planar channels (at most two) from interleaved frames.
-fn deinterleave(data: &[u8], channels: usize, enc: Encoding) -> Result<(Vec<f32>, Vec<f32>), String> {
+fn deinterleave(
+    data: &[u8],
+    channels: usize,
+    enc: Encoding,
+) -> Result<(Vec<f32>, Vec<f32>), String> {
     let width = match enc {
         Encoding::Int { bits, .. } => (bits as usize).div_ceil(8),
         Encoding::Float { bits, .. } => bits as usize / 8,
@@ -239,9 +300,15 @@ fn deinterleave(data: &[u8], channels: usize, enc: Encoding) -> Result<(Vec<f32>
     let read = |at: usize| -> f32 {
         let b = &data[at..at + width];
         match enc {
-            Encoding::Int { little, unsigned8, .. } => {
+            Encoding::Int {
+                little, unsigned8, ..
+            } => {
                 if width == 1 {
-                    return if unsigned8 { (b[0] as f32 - 128.0) / 128.0 } else { b[0] as i8 as f32 / 128.0 };
+                    return if unsigned8 {
+                        (b[0] as f32 - 128.0) / 128.0
+                    } else {
+                        b[0] as i8 as f32 / 128.0
+                    };
                 }
                 let mut v: i64 = 0;
                 for k in 0..width {
@@ -257,17 +324,37 @@ fn deinterleave(data: &[u8], channels: usize, enc: Encoding) -> Result<(Vec<f32>
             Encoding::Float { bits, little } => {
                 if bits == 32 {
                     let a = [b[0], b[1], b[2], b[3]];
-                    if little { f32::from_le_bytes(a) } else { f32::from_be_bytes(a) }
+                    if little {
+                        f32::from_le_bytes(a)
+                    } else {
+                        f32::from_be_bytes(a)
+                    }
                 } else {
                     let a = [b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]];
-                    (if little { f64::from_le_bytes(a) } else { f64::from_be_bytes(a) }) as f32
+                    (if little {
+                        f64::from_le_bytes(a)
+                    } else {
+                        f64::from_be_bytes(a)
+                    }) as f32
                 }
             }
         }
     };
-    let clean = |x: f32| if x.is_finite() { x.clamp(-1.0, 1.0) } else { 0.0 };
+    let clean = |x: f32| {
+        if x.is_finite() {
+            x.clamp(-1.0, 1.0)
+        } else {
+            0.0
+        }
+    };
     let left: Vec<f32> = (0..frames).map(|f| clean(read(f * frame))).collect();
-    let right: Vec<f32> = if channels >= 2 { (0..frames).map(|f| clean(read(f * frame + width))).collect() } else { Vec::new() };
+    let right: Vec<f32> = if channels >= 2 {
+        (0..frames)
+            .map(|f| clean(read(f * frame + width)))
+            .collect()
+    } else {
+        Vec::new()
+    };
     Ok((left, right))
 }
 
@@ -299,7 +386,11 @@ fn decode_wav(b: &[u8], name: &str) -> Result<Sample, String> {
         let len = u32_le(b, at + 4).unwrap_or(0) as usize;
         let body = at + 8;
         // RF64 and streamed files may say 0xFFFFFFFF: the data runs on.
-        let end = if len == u32::MAX as usize { b.len() } else { (body + len).min(b.len()) };
+        let end = if len == u32::MAX as usize {
+            b.len()
+        } else {
+            (body + len).min(b.len())
+        };
         match id {
             b"fmt " => {
                 let tag = u16_le(b, body).ok_or("short fmt chunk")?;
@@ -307,7 +398,11 @@ fn decode_wav(b: &[u8], name: &str) -> Result<Sample, String> {
                 let rate = u32_le(b, body + 4).ok_or("short fmt chunk")?;
                 let bits = u16_le(b, body + 14).ok_or("short fmt chunk")?;
                 // WAVE_FORMAT_EXTENSIBLE: the real tag opens the sub-format.
-                let tag = if tag == 0xFFFE { u16_le(b, body + 24).unwrap_or(1) } else { tag };
+                let tag = if tag == 0xFFFE {
+                    u16_le(b, body + 24).unwrap_or(1)
+                } else {
+                    tag
+                };
                 format = Some((tag, channels, rate, bits));
             }
             b"data" => data = Some(&b[body..end]),
@@ -321,8 +416,16 @@ fn decode_wav(b: &[u8], name: &str) -> Result<Sample, String> {
     let (tag, channels, rate, bits) = format.ok_or("no fmt chunk")?;
     let data = data.ok_or("no audio data")?;
     let enc = match (tag, bits) {
-        (1, 8) => Encoding::Int { bits, little: true, unsigned8: true },
-        (1, 9..=32) => Encoding::Int { bits, little: true, unsigned8: false },
+        (1, 8) => Encoding::Int {
+            bits,
+            little: true,
+            unsigned8: true,
+        },
+        (1, 9..=32) => Encoding::Int {
+            bits,
+            little: true,
+            unsigned8: false,
+        },
         (3, 32 | 64) => Encoding::Float { bits, little: true },
         _ => return Err(format!("unsupported WAV format (tag {tag}, {bits} bits)")),
     };
@@ -360,7 +463,13 @@ fn decode_aiff(b: &[u8], name: &str) -> Result<Sample, String> {
                 let channels = u16_be(b, body).ok_or("short COMM chunk")?;
                 let bits = u16_be(b, body + 6).ok_or("short COMM chunk")?;
                 let rate = extended(b.get(body + 8..body + 18).ok_or("short COMM chunk")?);
-                let kind: [u8; 4] = if aifc { b.get(body + 18..body + 22).and_then(|k| k.try_into().ok()).unwrap_or(*b"NONE") } else { *b"NONE" };
+                let kind: [u8; 4] = if aifc {
+                    b.get(body + 18..body + 22)
+                        .and_then(|k| k.try_into().ok())
+                        .unwrap_or(*b"NONE")
+                } else {
+                    *b"NONE"
+                };
                 comm = Some((channels, bits, rate, kind));
             }
             b"SSND" => {
@@ -375,11 +484,30 @@ fn decode_aiff(b: &[u8], name: &str) -> Result<Sample, String> {
     let (channels, bits, rate, kind) = comm.ok_or("no COMM chunk")?;
     let data = data.ok_or("no audio data")?;
     let enc = match &kind {
-        b"NONE" | b"twos" => Encoding::Int { bits, little: false, unsigned8: false },
-        b"sowt" => Encoding::Int { bits, little: true, unsigned8: false },
-        b"fl32" | b"FL32" => Encoding::Float { bits: 32, little: false },
-        b"fl64" | b"FL64" => Encoding::Float { bits: 64, little: false },
-        other => return Err(format!("unsupported AIFF-C compression ({})", String::from_utf8_lossy(other))),
+        b"NONE" | b"twos" => Encoding::Int {
+            bits,
+            little: false,
+            unsigned8: false,
+        },
+        b"sowt" => Encoding::Int {
+            bits,
+            little: true,
+            unsigned8: false,
+        },
+        b"fl32" | b"FL32" => Encoding::Float {
+            bits: 32,
+            little: false,
+        },
+        b"fl64" | b"FL64" => Encoding::Float {
+            bits: 64,
+            little: false,
+        },
+        other => {
+            return Err(format!(
+                "unsupported AIFF-C compression ({})",
+                String::from_utf8_lossy(other)
+            ));
+        }
     };
     let (left, right) = deinterleave(data, channels as usize, enc)?;
     if left.is_empty() {
@@ -437,11 +565,15 @@ impl SampleSlot {
         if version == *seen {
             return false;
         }
-        let Ok(mut retired) = self.retired.try_lock() else { return false };
+        let Ok(mut retired) = self.retired.try_lock() else {
+            return false;
+        };
         if retired.is_some() {
             return false;
         }
-        let Ok(current) = self.current.try_lock() else { return false };
+        let Ok(current) = self.current.try_lock() else {
+            return false;
+        };
         let new = current.clone();
         drop(current);
         *retired = std::mem::replace(holding, new);

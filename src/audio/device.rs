@@ -105,7 +105,10 @@ pub fn id_of(device: &Device) -> Option<String> {
 }
 
 pub fn name_of(device: &Device) -> String {
-    device.description().map(|d| d.name().to_owned()).unwrap_or_else(|_| "Audio device".into())
+    device
+        .description()
+        .map(|d| d.name().to_owned())
+        .unwrap_or_else(|_| "Audio device".into())
 }
 
 /// Lists the devices of the configured audio system (slow-ish: call when
@@ -113,7 +116,10 @@ pub fn name_of(device: &Device) -> String {
 pub fn list(config: &AudioConfig) -> DeviceList {
     let host = host(config.host.as_deref());
     let mut list = DeviceList {
-        hosts: cpal::available_hosts().iter().map(|h| h.name().to_owned()).collect(),
+        hosts: cpal::available_hosts()
+            .iter()
+            .map(|h| h.name().to_owned())
+            .collect(),
         host: host.id().name().to_owned(),
         default_output: host.default_output_device().as_ref().and_then(id_of),
         default_input: host.default_input_device().as_ref().and_then(id_of),
@@ -134,7 +140,12 @@ pub fn list(config: &AudioConfig) -> DeviceList {
 
 /// One side of a device (None: it has no such side).
 fn describe(device: &Device, input: bool) -> Option<DeviceInfo> {
-    let default = if input { device.default_input_config() } else { device.default_output_config() }.ok()?;
+    let default = if input {
+        device.default_input_config()
+    } else {
+        device.default_output_config()
+    }
+    .ok()?;
     let ranges: Vec<_> = if input {
         device.supported_input_configs().ok()?.collect()
     } else {
@@ -144,7 +155,12 @@ fn describe(device: &Device, input: bool) -> Option<DeviceInfo> {
     let channels = default.channels();
     let rates = RATES
         .into_iter()
-        .filter(|&rate| ranges.iter().any(|r| r.channels() == channels && (r.min_sample_rate()..=r.max_sample_rate()).contains(&rate)))
+        .filter(|&rate| {
+            ranges.iter().any(|r| {
+                r.channels() == channels
+                    && (r.min_sample_rate()..=r.max_sample_rate()).contains(&rate)
+            })
+        })
         .collect();
     Some(DeviceInfo {
         id: id_of(device)?,
@@ -162,6 +178,12 @@ fn describe(device: &Device, input: bool) -> Option<DeviceInfo> {
 pub fn pairs(channels: u16) -> Vec<(u16, String)> {
     (0..channels.max(1))
         .step_by(2)
-        .map(|c| if c + 1 < channels { (c, format!("{}–{}", c + 1, c + 2)) } else { (c, format!("{}", c + 1)) })
+        .map(|c| {
+            if c + 1 < channels {
+                (c, format!("{}–{}", c + 1, c + 2))
+            } else {
+                (c, format!("{}", c + 1))
+            }
+        })
         .collect()
 }

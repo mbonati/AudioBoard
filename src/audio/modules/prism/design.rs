@@ -49,7 +49,10 @@ pub const BRICKWALL: usize = 9;
 
 /// The shape has a gain (bell, shelves, tilts).
 pub fn has_gain(shape: usize) -> bool {
-    matches!(shape, BELL | LOW_SHELF | HIGH_SHELF | TILT_SHELF | FLAT_TILT)
+    matches!(
+        shape,
+        BELL | LOW_SHELF | HIGH_SHELF | TILT_SHELF | FLAT_TILT
+    )
 }
 
 /// The shape can be dynamic (and spectral): those with a gain.
@@ -88,11 +91,19 @@ pub fn fix_slope(shape: usize, i: usize) -> usize {
     if slope_ok(shape, i) {
         return i;
     }
-    let target = if i == BRICKWALL { 200 } else { SLOPES[i.min(BRICKWALL - 1)] as i32 };
+    let target = if i == BRICKWALL {
+        200
+    } else {
+        SLOPES[i.min(BRICKWALL - 1)] as i32
+    };
     (0..=BRICKWALL)
         .filter(|&j| slope_ok(shape, j))
         .min_by_key(|&j| {
-            let s = if j == BRICKWALL { 200 } else { SLOPES[j] as i32 };
+            let s = if j == BRICKWALL {
+                200
+            } else {
+                SLOPES[j] as i32
+            };
             ((s - target).abs(), j)
         })
         .unwrap_or(1)
@@ -100,7 +111,10 @@ pub fn fix_slope(shape: usize, i: usize) -> usize {
 
 /// The next allowed slope after `i` (wrapping), for Alt+Shift-click.
 pub fn next_slope(shape: usize, i: usize) -> usize {
-    (1..=BRICKWALL + 1).map(|d| (i + d) % (BRICKWALL + 1)).find(|&j| slope_ok(shape, j)).unwrap_or(i)
+    (1..=BRICKWALL + 1)
+        .map(|d| (i + d) % (BRICKWALL + 1))
+        .find(|&j| slope_ok(shape, j))
+        .unwrap_or(i)
 }
 
 /// One section: (b0·s² + b1·s + b2) / (a0·s² + a1·s + a2), s normalised to
@@ -115,7 +129,11 @@ pub struct Sec {
 
 impl Sec {
     fn new(b: [f64; 3], a: [f64; 3]) -> Self {
-        Self { b, a, allpass: false }
+        Self {
+            b,
+            a,
+            allpass: false,
+        }
     }
 
     fn order(&self) -> usize {
@@ -149,7 +167,12 @@ pub struct Analog {
 
 impl Default for Analog {
     fn default() -> Self {
-        Self { secs: [Sec::default(); MAX_SECTIONS], n: 0, gain: 1.0, f0: 1000.0 }
+        Self {
+            secs: [Sec::default(); MAX_SECTIONS],
+            n: 0,
+            gain: 1.0,
+            f0: 1000.0,
+        }
     }
 }
 
@@ -181,7 +204,10 @@ impl C {
         C::new(self.re - o.re, self.im - o.im)
     }
     fn mul(self, o: C) -> C {
-        C::new(self.re * o.re - self.im * o.im, self.re * o.im + self.im * o.re)
+        C::new(
+            self.re * o.re - self.im * o.im,
+            self.re * o.im + self.im * o.re,
+        )
     }
     fn scale(self, k: f64) -> C {
         C::new(self.re * k, self.im * k)
@@ -244,8 +270,15 @@ impl Analog {
 
     /// The design for `s`. Allocation-free: fine on the audio thread.
     pub fn design(s: &Shape) -> Self {
-        let mut a = Analog { f0: s.freq, ..Default::default() };
-        let slope = if s.slope == BRICKWALL { 96 } else { SLOPES[s.slope.min(BRICKWALL - 1)] } as usize;
+        let mut a = Analog {
+            f0: s.freq,
+            ..Default::default()
+        };
+        let slope = if s.slope == BRICKWALL {
+            96
+        } else {
+            SLOPES[s.slope.min(BRICKWALL - 1)]
+        } as usize;
         let q = s.q.clamp(0.01, 100.0);
         match s.shape {
             LOW_CUT | HIGH_CUT if s.slope == BRICKWALL => a.brickwall(s.shape == LOW_CUT),
@@ -271,11 +304,19 @@ impl Analog {
         let n = n.clamp(1, 16);
         for k in 0..n / 2 {
             let qk = butterworth_q(n, k) * if k == 0 { q } else { 1.0 };
-            let num = if high_pass { [1.0, 0.0, 0.0] } else { [0.0, 0.0, 1.0] };
+            let num = if high_pass {
+                [1.0, 0.0, 0.0]
+            } else {
+                [0.0, 0.0, 1.0]
+            };
             self.push(Sec::new(num, [1.0, 1.0 / qk, 1.0]));
         }
         if n % 2 == 1 {
-            let num = if high_pass { [0.0, 1.0, 0.0] } else { [0.0, 0.0, 1.0] };
+            let num = if high_pass {
+                [0.0, 1.0, 0.0]
+            } else {
+                [0.0, 0.0, 1.0]
+            };
             self.push(Sec::new(num, [0.0, 1.0, 1.0]));
         }
     }
@@ -298,7 +339,11 @@ impl Analog {
             }
             let den = quad(pole);
             // Unity gain in the passband (DC for the low pass, ∞ for the high).
-            let num = if high_pass { [1.0, 0.0, wz * wz] } else { [den[2] / (wz * wz), 0.0, den[2]] };
+            let num = if high_pass {
+                [1.0, 0.0, wz * wz]
+            } else {
+                [den[2] / (wz * wz), 0.0, den[2]]
+            };
             self.push(Sec::new(num, den));
         }
     }
@@ -379,10 +424,16 @@ impl Analog {
         let n = n.clamp(1, 16);
         for k in 0..n / 2 {
             let qk = butterworth_q(n, k) * if k == 0 { q } else { 1.0 };
-            self.push(Sec { allpass: true, ..Sec::new([1.0, -1.0 / qk, 1.0], [1.0, 1.0 / qk, 1.0]) });
+            self.push(Sec {
+                allpass: true,
+                ..Sec::new([1.0, -1.0 / qk, 1.0], [1.0, 1.0 / qk, 1.0])
+            });
         }
         if n % 2 == 1 {
-            self.push(Sec { allpass: true, ..Sec::new([0.0, -1.0, 1.0], [0.0, 1.0, 1.0]) });
+            self.push(Sec {
+                allpass: true,
+                ..Sec::new([0.0, -1.0, 1.0], [0.0, 1.0, 1.0])
+            });
         }
     }
 
@@ -395,7 +446,10 @@ impl Analog {
         for i in 0..COUNT {
             let wc = 5.0 * 2f64.powf(i as f64 * spacing) / self.f0;
             // High shelf of step k, midpoint at wc: k·(s + wc/√k)/(s + wc·√k).
-            self.push(Sec::new([0.0, 1.0, wc / k.sqrt()], [0.0, 1.0, wc * k.sqrt()]));
+            self.push(Sec::new(
+                [0.0, 1.0, wc / k.sqrt()],
+                [0.0, 1.0, wc * k.sqrt()],
+            ));
             self.gain *= k;
         }
         self.gain /= self.mag(1.0);
@@ -418,13 +472,18 @@ impl Analog {
     /// The phase in radians at `f` Hz.
     pub fn phase(&self, f: f64) -> f64 {
         let w = f / self.f0;
-        self.secs[..self.n].iter().map(|s| s.phase(w)).sum::<f64>() + if self.gain < 0.0 { PI } else { 0.0 }
+        self.secs[..self.n].iter().map(|s| s.phase(w)).sum::<f64>()
+            + if self.gain < 0.0 { PI } else { 0.0 }
     }
 
     /// The digital sections at `sr` (minimum-phase stages).
     pub fn digital(&self, sr: f64) -> Digital {
         let w0 = 2.0 * PI * self.f0 / sr;
-        let mut d = Digital { n: self.n, gain: self.gain, ..Default::default() };
+        let mut d = Digital {
+            n: self.n,
+            gain: self.gain,
+            ..Default::default()
+        };
         for (out, s) in d.secs.iter_mut().zip(&self.secs[..self.n]) {
             *out = to_digital(s, w0);
         }
@@ -443,14 +502,26 @@ pub struct Biquad {
 }
 
 impl Biquad {
-    pub const IDENTITY: Biquad = Biquad { b0: 1.0, b1: 0.0, b2: 0.0, a1: 0.0, a2: 0.0 };
+    pub const IDENTITY: Biquad = Biquad {
+        b0: 1.0,
+        b1: 0.0,
+        b2: 0.0,
+        a1: 0.0,
+        a2: 0.0,
+    };
 
     /// |H(e^jω)|.
     #[cfg(test)]
     pub fn mag(&self, w: f64) -> f64 {
         let (c1, s1, c2, s2) = (w.cos(), w.sin(), (2.0 * w).cos(), (2.0 * w).sin());
-        let (nr, ni) = (self.b0 + self.b1 * c1 + self.b2 * c2, -(self.b1 * s1 + self.b2 * s2));
-        let (dr, di) = (1.0 + self.a1 * c1 + self.a2 * c2, -(self.a1 * s1 + self.a2 * s2));
+        let (nr, ni) = (
+            self.b0 + self.b1 * c1 + self.b2 * c2,
+            -(self.b1 * s1 + self.b2 * s2),
+        );
+        let (dr, di) = (
+            1.0 + self.a1 * c1 + self.a2 * c2,
+            -(self.a1 * s1 + self.a2 * s2),
+        );
         ((nr * nr + ni * ni) / (dr * dr + di * di).max(1e-300)).sqrt()
     }
 }
@@ -465,7 +536,11 @@ pub struct Digital {
 
 impl Default for Digital {
     fn default() -> Self {
-        Self { secs: [Biquad::IDENTITY; MAX_SECTIONS], n: 0, gain: 1.0 }
+        Self {
+            secs: [Biquad::IDENTITY; MAX_SECTIONS],
+            n: 0,
+            gain: 1.0,
+        }
     }
 }
 
@@ -473,7 +548,11 @@ impl Default for Digital {
 impl Digital {
     /// |H| at ω (radians per sample).
     pub fn mag(&self, w: f64) -> f64 {
-        self.secs[..self.n].iter().map(|s| s.mag(w)).product::<f64>() * self.gain.abs()
+        self.secs[..self.n]
+            .iter()
+            .map(|s| s.mag(w))
+            .product::<f64>()
+            * self.gain.abs()
     }
 }
 
@@ -487,7 +566,11 @@ fn to_digital(s: &Sec, w0: f64) -> Biquad {
     // Scale to rad/sample: the coefficient of s^k times w0^(order − k).
     let order = s.order();
     let scale = |c: [f64; 3]| -> [f64; 3] {
-        if order == 2 { [c[0], c[1] * w0, c[2] * w0 * w0] } else { [0.0, c[1], c[2] * w0] }
+        if order == 2 {
+            [c[0], c[1] * w0, c[2] * w0 * w0]
+        } else {
+            [0.0, c[1], c[2] * w0]
+        }
     };
     let (b, a) = (scale(s.b), scale(s.a));
     let target = |w: f64| Sec::new(b, a).mag2(w);
@@ -497,7 +580,13 @@ fn to_digital(s: &Sec, w0: f64) -> Biquad {
         let wn = a[2] / a[1];
         if s.allpass {
             let d1 = -(-wn).exp();
-            return Biquad { b0: d1, b1: 1.0, b2: 0.0, a1: d1, a2: 0.0 };
+            return Biquad {
+                b0: d1,
+                b1: 1.0,
+                b2: 0.0,
+                a1: d1,
+                a2: 0.0,
+            };
         }
         // A biquad with one pole: its second numerator term fits the
         // analog curve better than a first-order section could.
@@ -520,7 +609,13 @@ fn to_digital(s: &Sec, w0: f64) -> Biquad {
         (d1, d2, wn)
     };
     if s.allpass {
-        return Biquad { b0: d2, b1: d1, b2: 1.0, a1: d1, a2: d2 };
+        return Biquad {
+            b0: d2,
+            b1: d1,
+            b2: 1.0,
+            a1: d1,
+            a2: d2,
+        };
     }
 
     // Numerator: matches |H|² at DC, at Nyquist and at a third frequency
@@ -543,7 +638,11 @@ fn to_digital(s: &Sec, w0: f64) -> Biquad {
     let mut big_b1 = target(PI) * (1.0 - d1 + d2).powi(2);
     let (am, p0m, p1m) = a_sq(wm);
     let phi2 = 4.0 * p0m * p1m;
-    let mut big_b2 = if phi2 > 1e-12 { (target(wm) * am - big_b0 * p0m - big_b1 * p1m) / phi2 } else { 0.0 };
+    let mut big_b2 = if phi2 > 1e-12 {
+        (target(wm) * am - big_b0 * p0m - big_b1 * p1m) / phi2
+    } else {
+        0.0
+    };
     let notch = b[1].abs() < 1e-12 && b[0] > 0.0 && b[2] > 0.0;
     if !notch && wn > 0.25 * PI {
         // High up, refine the Nyquist and middle terms by least squares on
@@ -554,7 +653,11 @@ fn to_digital(s: &Sec, w0: f64) -> Biquad {
         let (mut s11, mut s12, mut s22, mut r1, mut r2) = (0.0, 0.0, 0.0, 0.0, 0.0);
         for i in 0..=25 {
             // The section's own frequency weighs most: a bell's peak stays put.
-            let (w, weight) = if i == 25 { (wm, 8.0) } else { (lo * (PI / lo).powf(i as f64 / 24.0), 1.0) };
+            let (w, weight) = if i == 25 {
+                (wm, 8.0)
+            } else {
+                (lo * (PI / lo).powf(i as f64 / 24.0), 1.0)
+            };
             let (aw, p0, p1) = a_sq(w);
             let t = target(w) * aw;
             let y = t - big_b0 * p0;
@@ -580,7 +683,13 @@ fn to_digital(s: &Sec, w0: f64) -> Biquad {
     let c0 = 0.5 * (w + disc.sqrt());
     let c2 = w - c0;
     let c1 = 0.5 * (r0 - r1);
-    Biquad { b0: c0, b1: c1, b2: c2, a1: d1, a2: d2 }
+    Biquad {
+        b0: c0,
+        b1: c1,
+        b2: c2,
+        a1: d1,
+        a2: d2,
+    }
 }
 
 /// Transposed direct form II, in f64: steady at low frequencies and high Q.
@@ -609,26 +718,46 @@ mod tests {
     use super::*;
 
     fn shape(shape: usize, slope: usize, freq: f64, gain: f64, q: f64) -> Analog {
-        Analog::design(&Shape { shape, slope, freq, gain, q })
+        Analog::design(&Shape {
+            shape,
+            slope,
+            freq,
+            gain,
+            q,
+        })
     }
 
     #[test]
     fn bells_peak_at_their_gain_with_any_slope() {
         for slope in [1, 3, 5, 6, 7, 8] {
             let a = shape(BELL, slope, 1000.0, 9.0, 1.0);
-            assert!((a.db(1000.0) - 9.0).abs() < 1e-6, "slope {slope}: {}", a.db(1000.0));
+            assert!(
+                (a.db(1000.0) - 9.0).abs() < 1e-6,
+                "slope {slope}: {}",
+                a.db(1000.0)
+            );
             let d = a.digital(48_000.0);
             let peak = 20.0 * d.mag(2.0 * PI * 1000.0 / 48_000.0).log10();
-            assert!((peak - 9.0).abs() < 0.05, "slope {slope} digital peak: {peak}");
+            assert!(
+                (peak - 9.0).abs() < 0.05,
+                "slope {slope} digital peak: {peak}"
+            );
             assert!(a.db(30.0).abs() < 0.2, "slope {slope} far below");
             assert!(a.db(30_000.0).abs() < 0.2, "slope {slope} far above");
             // Q is the width at half the gain: the edges sit at 4.5 dB.
             let beta = 1.0f64;
             let hi = 1000.0 * (beta / 2.0 + (beta * beta / 4.0 + 1.0).sqrt());
-            assert!((a.db(hi) - 4.5).abs() < 0.05, "slope {slope} half-gain edge: {}", a.db(hi));
+            assert!(
+                (a.db(hi) - 4.5).abs() < 0.05,
+                "slope {slope} half-gain edge: {}",
+                a.db(hi)
+            );
         }
         // Steeper slopes give a flatter top and steeper skirts.
-        let (soft, steep) = (shape(BELL, 1, 1000.0, 12.0, 1.0), shape(BELL, 8, 1000.0, 12.0, 1.0));
+        let (soft, steep) = (
+            shape(BELL, 1, 1000.0, 12.0, 1.0),
+            shape(BELL, 8, 1000.0, 12.0, 1.0),
+        );
         assert!(steep.db(1300.0) > soft.db(1300.0));
         assert!(steep.db(3000.0) < soft.db(3000.0));
     }
@@ -637,7 +766,11 @@ mod tests {
     fn cuts_have_their_slope_and_resonance() {
         for (i, &s) in SLOPES[..BRICKWALL].iter().enumerate() {
             let a = shape(LOW_CUT, i, 1000.0, 0.0, 1.0);
-            assert!((a.db(1000.0) + 3.01).abs() < 0.05, "{s} dB/oct corner: {}", a.db(1000.0));
+            assert!(
+                (a.db(1000.0) + 3.01).abs() < 0.05,
+                "{s} dB/oct corner: {}",
+                a.db(1000.0)
+            );
             // An octave of the asymptote, short of the 300 dB floor.
             let far = if s <= 24 { 16.0 } else { 2.0 };
             let drop = a.db(1000.0 / far) - a.db(500.0 / far);
@@ -664,7 +797,10 @@ mod tests {
     fn shelves_tilts_notch_band_pass_and_all_pass() {
         for i in 0..BRICKWALL {
             let ls = shape(LOW_SHELF, i, 300.0, -8.0, 1.0);
-            assert!((ls.db(300.0) + 4.0).abs() < 1e-6, "midpoint at half the gain");
+            assert!(
+                (ls.db(300.0) + 4.0).abs() < 1e-6,
+                "midpoint at half the gain"
+            );
             assert!((ls.db(10.0) + 8.0).abs() < 0.3);
             assert!(ls.db(20_000.0).abs() < 0.05);
             let hs = shape(HIGH_SHELF, i, 3000.0, 6.0, 1.0);
@@ -689,7 +825,11 @@ mod tests {
         let per_octave = 10.0 / 1000f64.log2();
         for f in [40.0, 100.0, 1000.0, 5000.0, 12_000.0] {
             let want = per_octave * (f / 632.0f64).log2();
-            assert!((flat.db(f) - want).abs() < 0.25, "flat tilt at {f}: {} vs {want}", flat.db(f));
+            assert!(
+                (flat.db(f) - want).abs() < 0.25,
+                "flat tilt at {f}: {} vs {want}",
+                flat.db(f)
+            );
         }
     }
 
@@ -736,7 +876,10 @@ mod tests {
                         }
                     }
                 }
-                assert!(worst < 0.5 && top < 1.0, "shape {sh} slope {slope} at {f} Hz, sr {sr}: {worst:.2} dB off at {at:.0} Hz, {top:.2} near Nyquist");
+                assert!(
+                    worst < 0.5 && top < 1.0,
+                    "shape {sh} slope {slope} at {f} Hz, sr {sr}: {worst:.2} dB off at {at:.0} Hz, {top:.2} near Nyquist"
+                );
             }
         }
     }

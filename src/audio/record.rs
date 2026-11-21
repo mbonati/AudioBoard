@@ -73,7 +73,9 @@ impl Tap {
         let w = self.write.load(Ordering::Acquire);
         let mut r = self.read.load(Ordering::Relaxed);
         while r < w {
-            out.push(f32::from_bits(self.buf[r % TAP_LEN].load(Ordering::Relaxed)));
+            out.push(f32::from_bits(
+                self.buf[r % TAP_LEN].load(Ordering::Relaxed),
+            ));
             r += 1;
         }
         self.read.store(r, Ordering::Release);
@@ -124,7 +126,13 @@ pub struct Recorder {
 
 impl Recorder {
     pub fn new(shared: Arc<EngineShared>) -> Self {
-        Self { shared, sample_rate: 48_000, running: None, take: None, count: 0 }
+        Self {
+            shared,
+            sample_rate: 48_000,
+            running: None,
+            take: None,
+            count: 0,
+        }
     }
 
     pub fn recording(&self) -> bool {
@@ -158,7 +166,8 @@ impl Recorder {
         let file = File::create(&path).map_err(|e| e.to_string())?;
         let tap = &self.shared.tap;
         // Start from an empty ring.
-        tap.read.store(tap.write.load(Ordering::Acquire), Ordering::Release);
+        tap.read
+            .store(tap.write.load(Ordering::Acquire), Ordering::Release);
         tap.dropped.store(0, Ordering::Relaxed);
         tap.on.store(true, Ordering::Release);
 
@@ -200,7 +209,11 @@ impl Recorder {
                 })
             })
             .map_err(|e| e.to_string())?;
-        self.running = Some(Running { thread, stop, frames });
+        self.running = Some(Running {
+            thread,
+            stop,
+            frames,
+        });
         Ok(())
     }
 
@@ -209,7 +222,12 @@ impl Recorder {
         let running = self.running.take().ok_or("not recording")?;
         self.shared.tap.on.store(false, Ordering::Release);
         running.stop.store(true, Ordering::Release);
-        let take = Arc::new(running.thread.join().map_err(|_| "the recorder stopped unexpectedly".to_owned())??);
+        let take = Arc::new(
+            running
+                .thread
+                .join()
+                .map_err(|_| "the recorder stopped unexpectedly".to_owned())??,
+        );
         self.take = Some(take.clone());
         Ok(take)
     }

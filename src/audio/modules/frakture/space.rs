@@ -33,10 +33,14 @@ impl Space {
         let margin = MOD_DEPTH * sample_rate + 8.0;
         Self {
             smooth: time_coeff(0.01, sample_rate),
-            lines: std::array::from_fn(|i| DelayLine::new((LINE_MS[i] * SCALE * ms + margin) as usize)),
+            lines: std::array::from_fn(|i| {
+                DelayLine::new((LINE_MS[i] * SCALE * ms + margin) as usize)
+            }),
             lengths: std::array::from_fn(|i| LINE_MS[i] * SCALE * ms),
             diffusers: std::array::from_fn(|ch| {
-                std::array::from_fn(|k| DelayLine::new((DIFFUSERS[k].0 * ms * 1.07 + 4.0) as usize + ch))
+                std::array::from_fn(|k| {
+                    DelayLine::new((DIFFUSERS[k].0 * ms * 1.07 + 4.0) as usize + ch)
+                })
             }),
             diffuser_len: std::array::from_fn(|ch| {
                 let stretch = if ch == 0 { 1.0 } else { 1.07 };
@@ -67,7 +71,8 @@ impl Space {
             *c *= r;
             *s *= r;
         }
-        let gains: [f32; LINES] = std::array::from_fn(|k| 10f32.powf(-3.0 * self.lengths[k] / self.sr / length.max(0.1)));
+        let gains: [f32; LINES] =
+            std::array::from_fn(|k| 10f32.powf(-3.0 * self.lengths[k] / self.sr / length.max(0.1)));
         let wet_trim = (2.5 / length.max(2.5)).powf(0.3);
         for i in 0..n {
             approach(&mut self.mix, mix, self.smooth);

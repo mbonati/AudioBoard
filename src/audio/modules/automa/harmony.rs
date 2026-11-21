@@ -41,13 +41,20 @@ pub const PRESETS: [(&str, &[u8]); 12] = [
 ];
 
 /// How long each chord lasts: (label, beats).
-pub const CHANGES: [(&str, f64); 4] = [("1/2 BAR", 2.0), ("1 BAR", 4.0), ("2 BARS", 8.0), ("4 BARS", 16.0)];
+pub const CHANGES: [(&str, f64); 4] = [
+    ("1/2 BAR", 2.0),
+    ("1 BAR", 4.0),
+    ("2 BARS", 8.0),
+    ("4 BARS", 16.0),
+];
 
 /// Chords a progression holds at most.
 pub const SLOTS: usize = 8;
 
 const NUMERALS: [&str; 7] = ["I", "II", "III", "IV", "V", "VI", "VII"];
-const FLAT_NAMES: [&str; 12] = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
+const FLAT_NAMES: [&str; 12] = [
+    "C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B",
+];
 
 /// What a scale tone is over a chord.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -97,13 +104,21 @@ impl Harmony {
     /// Names a pitch class the way this key spells it.
     pub fn name(&self, pc: u8) -> &'static str {
         let parent = (self.key + PARENT[self.scale.min(PARENT.len() - 1)]) % 12;
-        if matches!(parent, 1 | 3 | 5 | 8 | 10) { FLAT_NAMES[pc as usize % 12] } else { NOTE_NAMES[pc as usize % 12] }
+        if matches!(parent, 1 | 3 | 5 | 8 | 10) {
+            FLAT_NAMES[pc as usize % 12]
+        } else {
+            NOTE_NAMES[pc as usize % 12]
+        }
     }
 
     /// "C major", "F# dorian", "A harmonic minor"…
     pub fn label(&self) -> String {
         let scale = SCALES[self.scale.min(SCALES.len() - 1)].1;
-        format!("{} {}", self.name(self.key), scale.split(" (").next().unwrap_or(scale).to_lowercase())
+        format!(
+            "{} {}",
+            self.name(self.key),
+            scale.split(" (").next().unwrap_or(scale).to_lowercase()
+        )
     }
 }
 
@@ -219,7 +234,14 @@ pub fn allowed(role: Role, strength: usize, tension: f32) -> bool {
 
 /// The nearest degree to `d` within `lo..=hi` that may sound on this step;
 /// going down first, the way a dissonance resolves.
-pub fn snap(h: &Harmony, chord: &Chord, d: i32, (lo, hi): (i32, i32), strength: usize, tension: f32) -> i32 {
+pub fn snap(
+    h: &Harmony,
+    chord: &Chord,
+    d: i32,
+    (lo, hi): (i32, i32),
+    strength: usize,
+    tension: f32,
+) -> i32 {
     let ok = |d: i32| (lo..=hi).contains(&d) && allowed(chord.role(h.pc(d)), strength, tension);
     let d = d.clamp(lo, hi);
     if ok(d) {
@@ -280,7 +302,12 @@ impl Progression {
         let family = family(written);
         let others = family.len() - 1;
         let k = (hash01(self.seed, at, 0x5B5) * others as f32) as usize % others;
-        family.iter().copied().filter(|&d| d != written).nth(k).unwrap_or(written)
+        family
+            .iter()
+            .copied()
+            .filter(|&d| d != written)
+            .nth(k)
+            .unwrap_or(written)
     }
 
     /// The degree playing at `beat`.
@@ -294,7 +321,11 @@ impl Progression {
 mod tests {
     use super::*;
 
-    const C_MAJOR: Harmony = Harmony { key: 0, scale: 0, sevenths: false };
+    const C_MAJOR: Harmony = Harmony {
+        key: 0,
+        scale: 0,
+        sevenths: false,
+    };
 
     #[test]
     fn chords_are_named_and_numbered() {
@@ -302,15 +333,30 @@ mod tests {
         assert_eq!(names, ["C", "Dm", "Em", "F", "G", "Am", "B°"]);
         let numerals: Vec<String> = (0..7).map(|d| C_MAJOR.chord(d).numeral()).collect();
         assert_eq!(numerals, ["I", "ii", "iii", "IV", "V", "vi", "vii°"]);
-        let sevenths = Harmony { sevenths: true, ..C_MAJOR };
+        let sevenths = Harmony {
+            sevenths: true,
+            ..C_MAJOR
+        };
         let names: Vec<String> = (0..7).map(|d| sevenths.chord(d).name(&sevenths)).collect();
         assert_eq!(names, ["Cmaj7", "Dm7", "Em7", "Fmaj7", "G7", "Am7", "Bø7"]);
         // A harmonic minor's dominant is major; flat keys are spelt with flats.
-        let a_harm = Harmony { key: 9, scale: 6, sevenths: false };
+        let a_harm = Harmony {
+            key: 9,
+            scale: 6,
+            sevenths: false,
+        };
         assert_eq!(a_harm.chord(4).name(&a_harm), "E");
-        let f_major = Harmony { key: 5, scale: 0, sevenths: false };
+        let f_major = Harmony {
+            key: 5,
+            scale: 0,
+            sevenths: false,
+        };
         assert_eq!(f_major.chord(3).name(&f_major), "Bb");
-        let d_minor = Harmony { key: 2, scale: 1, sevenths: false };
+        let d_minor = Harmony {
+            key: 2,
+            scale: 1,
+            sevenths: false,
+        };
         assert_eq!(d_minor.chord(5).name(&d_minor), "Bb");
         assert_eq!(d_minor.label(), "D natural minor");
     }
@@ -321,7 +367,10 @@ mod tests {
         let roles: Vec<Role> = (0..7).map(|d| c.role(C_MAJOR.pc(d))).collect();
         use Role::*;
         // C D E F G A B over C: F clashes with E; D, A and B are colour.
-        assert_eq!(roles, [Chord, Tension, Chord, Avoid, Chord, Tension, Tension]);
+        assert_eq!(
+            roles,
+            [Chord, Tension, Chord, Avoid, Chord, Tension, Tension]
+        );
         // Over G, C is the avoid note.
         assert_eq!(C_MAJOR.chord(4).role(0), Avoid);
     }
@@ -340,12 +389,21 @@ mod tests {
 
     #[test]
     fn progressions_wander_within_their_function() {
-        let p = Progression { degrees: [0, 4, 5, 3, 0, 0, 0, 0], len: 4, beats: 4.0, wander: true, seed: 7 };
+        let p = Progression {
+            degrees: [0, 4, 5, 3, 0, 0, 0, 0],
+            len: 4,
+            beats: 4.0,
+            wander: true,
+            seed: 7,
+        };
         assert_eq!(p.slot_at(0.0), (0, 0));
         assert_eq!(p.slot_at(5.0), (1, 0));
         assert_eq!(p.slot_at(17.0), (0, 1));
         // The first time round as written.
-        assert_eq!((0..4).map(|s| p.degree(s, 0)).collect::<Vec<_>>(), [0, 4, 5, 3]);
+        assert_eq!(
+            (0..4).map(|s| p.degree(s, 0)).collect::<Vec<_>>(),
+            [0, 4, 5, 3]
+        );
         let mut changed = false;
         for cycle in 1..40 {
             for slot in 0..4 {

@@ -187,7 +187,9 @@ pub const MIRRORS: [&str; 5] = ["Off", "Mirror", "Quad", "×3", "×6"];
 pub const LFO_SHAPES: [&str; 5] = ["Sine", "Triangle", "Saw", "Square", "Random"];
 /// Synced LFO periods, in beats, and their names.
 pub const SYNC_BEATS: [f32; 8] = [0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0];
-pub const SYNC_NAMES: [&str; 8] = ["1/16", "1/8", "1/4", "1/2", "1 bar", "2 bars", "4 bars", "8 bars"];
+pub const SYNC_NAMES: [&str; 8] = [
+    "1/16", "1/8", "1/4", "1/2", "1 bar", "2 bars", "4 bars", "8 bars",
+];
 pub const ENV_TRIGGERS: [&str; 3] = ["MIDI notes", "Onsets", "Both"];
 
 /// Every extra setting at its default.
@@ -337,10 +339,24 @@ pub struct Iris {
 }
 
 impl Iris {
-    pub fn new(params: Arc<ModuleParams>, shared: Arc<EngineShared>, midi: Arc<MidiState>, sample_rate: f32) -> Self {
+    pub fn new(
+        params: Arc<ModuleParams>,
+        shared: Arc<EngineShared>,
+        midi: Arc<MidiState>,
+        sample_rate: f32,
+    ) -> Self {
         params.viz[viz::SR].set(sample_rate);
         let midi_cursor = midi.stream_head();
-        Self { params, shared, midi, midi_cursor, written: 0, seen: None, notes: 0, held: [false; 128] }
+        Self {
+            params,
+            shared,
+            midi,
+            midi_cursor,
+            written: 0,
+            seen: None,
+            notes: 0,
+            held: [false; 128],
+        }
     }
 
     /// Notes and controllers, for the panel's MIDI sources.
@@ -425,7 +441,13 @@ impl Processor for Iris {
         } else {
             // The main mix of the passes before this one: the scope is
             // written once a pass, after every node has run.
-            let Self { params, shared, written, seen, .. } = self;
+            let Self {
+                params,
+                shared,
+                written,
+                seen,
+                ..
+            } = self;
             let scope = &shared.scope;
             let end = scope.written();
             let from = match *seen {

@@ -55,11 +55,21 @@ impl Node for Pulse {
             viz: MAX_STEPS,
             ..NodeDef::EMPTY
         },
-        panel: Panel { display: Display::Bars { from: 0, count: MAX_STEPS }, readout: Readout::Param(NOTE) },
+        panel: Panel {
+            display: Display::Bars {
+                from: 0,
+                count: MAX_STEPS,
+            },
+            readout: Readout::Param(NOTE),
+        },
     };
 
     fn new(init: &Init) -> Self {
-        Pulse { params: init.params, step: -1, held: None }
+        Pulse {
+            params: init.params,
+            step: -1,
+            held: None,
+        }
     }
 
     fn process(&mut self, ctx: &ProcessCtx, io: &mut Io<'_>) {
@@ -91,7 +101,8 @@ impl Node for Pulse {
                 let step = (beat / step_beats).floor() as i64;
                 if step != self.step {
                     self.step = step;
-                    let at = (step.rem_euclid(steps as i64) as usize + steps - rotate % steps) % steps;
+                    let at =
+                        (step.rem_euclid(steps as i64) as usize + steps - rotate % steps) % steps;
                     if hit(at, steps, hits) {
                         if let Some((held, _)) = self.held.take() {
                             io.send_midi(i, [0x80, held, 0]);
@@ -104,7 +115,11 @@ impl Node for Pulse {
         }
 
         // The pattern: rests low, hits higher, the current step full.
-        let now = if self.step >= 0 { self.step.rem_euclid(steps as i64) as usize } else { usize::MAX };
+        let now = if self.step >= 0 {
+            self.step.rem_euclid(steps as i64) as usize
+        } else {
+            usize::MAX
+        };
         for k in 0..MAX_STEPS {
             let at = (k + steps - rotate % steps) % steps;
             let v = if k >= steps {

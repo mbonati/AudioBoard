@@ -2,7 +2,10 @@
 //! the tempo or clicked to type it, a beat light, and a TAP button. While
 //! the transport follows a MIDI clock, the clock's tempo instead.
 
-use egui::{Align2, Color32, CursorIcon, FontId, Id, Rect, Response, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
+use egui::{
+    Align2, Color32, CursorIcon, FontId, Id, Rect, Response, Sense, Stroke, StrokeKind, Ui, pos2,
+    vec2,
+};
 
 use super::theme;
 use crate::audio::params::{DEFAULT_TEMPO, TEMPO_RANGE};
@@ -21,7 +24,11 @@ pub struct TapTempo {
 impl TapTempo {
     /// Records a tap at `now` (seconds); the tempo once there are two.
     pub fn tap(&mut self, now: f64) -> Option<f32> {
-        if self.taps.last().is_some_and(|&last| now - last > TAP_RESET || now <= last) {
+        if self
+            .taps
+            .last()
+            .is_some_and(|&last| now - last > TAP_RESET || now <= last)
+        {
             self.taps.clear();
         }
         self.taps.push(now);
@@ -58,7 +65,11 @@ pub fn parse_tempo(text: &str) -> Option<f32> {
 }
 
 fn format_tempo(bpm: f32) -> String {
-    if bpm.fract() == 0.0 { format!("{bpm:.0}") } else { format!("{bpm:.1}") }
+    if bpm.fract() == 0.0 {
+        format!("{bpm:.0}")
+    } else {
+        format!("{bpm:.1}")
+    }
 }
 
 #[derive(Default)]
@@ -100,11 +111,22 @@ impl TempoControl {
     /// none coming) in the field, read-only, and SYNC where TAP was, both
     /// outlined in the accent. Returns whether either was clicked (the app
     /// opens Settings → Sync).
-    pub fn show_external(&mut self, ui: &mut Ui, bpm: Option<f32>, beat: Option<f32>, source: &str, now: f64) -> bool {
+    pub fn show_external(
+        &mut self,
+        ui: &mut Ui,
+        bpm: Option<f32>,
+        beat: Option<f32>,
+        source: &str,
+        now: f64,
+    ) -> bool {
         // Smoothed for reading; a jump is shown at once.
         if let Some(b) = bpm {
             let shown = self.external_bpm.get_or_insert(b);
-            *shown = if (*shown - b).abs() > 3.0 { b } else { *shown + (b - *shown) * 0.08 };
+            *shown = if (*shown - b).abs() > 3.0 {
+                b
+            } else {
+                *shown + (b - *shown) * 0.08
+            };
         } else {
             self.external_bpm = None;
         }
@@ -116,22 +138,69 @@ impl TempoControl {
         ui.add_space(4.0);
         let (rect, resp) = ui.allocate_exact_size(vec2(92.0, 24.0), Sense::CLICK);
         let p = ui.painter();
-        let border = if bpm.is_some() { theme::ACCENT } else { theme::NODE_BORDER };
+        let border = if bpm.is_some() {
+            theme::ACCENT
+        } else {
+            theme::NODE_BORDER
+        };
         for (r, hot) in [(tag, tag_resp.hovered()), (rect, resp.hovered())] {
-            p.rect(r, 12.0, if hot { theme::CONTROL } else { Color32::TRANSPARENT }, Stroke::new(1.0, border), StrokeKind::Inside);
+            p.rect(
+                r,
+                12.0,
+                if hot {
+                    theme::CONTROL
+                } else {
+                    Color32::TRANSPARENT
+                },
+                Stroke::new(1.0, border),
+                StrokeKind::Inside,
+            );
         }
-        p.text(tag.center(), Align2::CENTER_CENTER, "SYNC", FontId::proportional(9.5), if bpm.is_some() { theme::ACCENT } else { theme::TEXT_DIM });
+        p.text(
+            tag.center(),
+            Align2::CENTER_CENTER,
+            "SYNC",
+            FontId::proportional(9.5),
+            if bpm.is_some() {
+                theme::ACCENT
+            } else {
+                theme::TEXT_DIM
+            },
+        );
         let flash = beat.map_or(0.0, |b| (1.0 - b.fract() * 4.0).max(0.0));
-        p.circle_filled(pos2(rect.left() + 13.0, rect.center().y), 3.0, theme::mix(theme::TEXT_FAINT, theme::ACCENT, flash));
-        let text = self.external_bpm.map_or_else(|| "– –".to_owned(), |b| format_tempo((b * 10.0).round() / 10.0));
-        p.text(pos2(rect.left() + 23.0, rect.center().y), Align2::LEFT_CENTER, text, FontId::monospace(11.5), theme::TEXT);
-        p.text(pos2(rect.right() - 11.0, rect.center().y + 0.5), Align2::RIGHT_CENTER, "BPM", FontId::proportional(9.5), theme::TEXT_FAINT);
+        p.circle_filled(
+            pos2(rect.left() + 13.0, rect.center().y),
+            3.0,
+            theme::mix(theme::TEXT_FAINT, theme::ACCENT, flash),
+        );
+        let text = self.external_bpm.map_or_else(
+            || "– –".to_owned(),
+            |b| format_tempo((b * 10.0).round() / 10.0),
+        );
+        p.text(
+            pos2(rect.left() + 23.0, rect.center().y),
+            Align2::LEFT_CENTER,
+            text,
+            FontId::monospace(11.5),
+            theme::TEXT,
+        );
+        p.text(
+            pos2(rect.right() - 11.0, rect.center().y + 0.5),
+            Align2::RIGHT_CENTER,
+            "BPM",
+            FontId::proportional(9.5),
+            theme::TEXT_FAINT,
+        );
         if bpm.is_some() || now.fract() < 0.5 {
-            ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(100));
         }
         let clicked = tag_resp.clicked() || resp.clicked();
-        tag_resp.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(&tip);
-        resp.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(&tip);
+        tag_resp
+            .on_hover_cursor(CursorIcon::PointingHand)
+            .on_hover_text(&tip);
+        resp.on_hover_cursor(CursorIcon::PointingHand)
+            .on_hover_text(&tip);
         clicked
     }
 
@@ -143,14 +212,20 @@ impl TempoControl {
             1 => "Keep tapping…".to_owned(),
             n => format!("{n} taps"),
         };
-        let resp = resp.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(hint);
+        let resp = resp
+            .on_hover_cursor(CursorIcon::PointingHand)
+            .on_hover_text(hint);
         // A short flash on each tap.
         let flash = (1.0 - (now - self.tapped_at) / 0.25).clamp(0.0, 1.0) as f32;
         if flash > 0.0 {
             ui.ctx().request_repaint();
         }
         let p = ui.painter();
-        let fill = if resp.hovered() { theme::CONTROL } else { theme::PANEL };
+        let fill = if resp.hovered() {
+            theme::CONTROL
+        } else {
+            theme::PANEL
+        };
         p.rect(
             rect,
             12.0,
@@ -158,8 +233,18 @@ impl TempoControl {
             Stroke::new(1.0, theme::mix(theme::NODE_BORDER, theme::ACCENT, flash)),
             StrokeKind::Inside,
         );
-        let color = if count > 0 { theme::TEXT } else { theme::TEXT_DIM };
-        p.text(rect.center(), Align2::CENTER_CENTER, "TAP", FontId::proportional(10.0), color);
+        let color = if count > 0 {
+            theme::TEXT
+        } else {
+            theme::TEXT_DIM
+        };
+        p.text(
+            rect.center(),
+            Align2::CENTER_CENTER,
+            "TAP",
+            FontId::proportional(10.0),
+            color,
+        );
         resp
     }
 
@@ -169,17 +254,19 @@ impl TempoControl {
         let resp = if typing {
             resp
         } else {
-            resp.on_hover_cursor(CursorIcon::ResizeVertical).on_hover_text(
-                "Tempo for sequencers, arpeggiators and synced plugins\n\
+            resp.on_hover_cursor(CursorIcon::ResizeVertical)
+                .on_hover_text(
+                    "Tempo for sequencers, arpeggiators and synced plugins\n\
                  Drag to change (Shift: fine) · click to type · Alt+click: 90",
-            )
+                )
         };
         if !typing {
             if resp.dragged() {
                 let fine = ui.input(|i| i.modifiers.shift);
                 let d = resp.drag_delta();
                 let (slowest, fastest) = TEMPO_RANGE;
-                *tempo = (*tempo + (d.x - d.y) * if fine { 0.05 } else { 0.4 }).clamp(slowest, fastest);
+                *tempo =
+                    (*tempo + (d.x - d.y) * if fine { 0.05 } else { 0.4 }).clamp(slowest, fastest);
             } else {
                 *tempo = round_tempo(*tempo);
             }
@@ -198,13 +285,28 @@ impl TempoControl {
         p.rect(
             rect,
             12.0,
-            if hot { theme::CONTROL } else { Color32::TRANSPARENT },
-            Stroke::new(1.0, if typing { theme::ACCENT } else { theme::NODE_BORDER }),
+            if hot {
+                theme::CONTROL
+            } else {
+                Color32::TRANSPARENT
+            },
+            Stroke::new(
+                1.0,
+                if typing {
+                    theme::ACCENT
+                } else {
+                    theme::NODE_BORDER
+                },
+            ),
             StrokeKind::Inside,
         );
         // Bright on the beat, fading over it.
         let flash = beat.map_or(0.0, |b| (1.0 - b.fract() * 4.0).max(0.0));
-        p.circle_filled(pos2(rect.left() + 13.0, rect.center().y), 3.0, theme::mix(theme::TEXT_FAINT, theme::ACCENT, flash));
+        p.circle_filled(
+            pos2(rect.left() + 13.0, rect.center().y),
+            3.0,
+            theme::mix(theme::TEXT_FAINT, theme::ACCENT, flash),
+        );
         let x = rect.left() + 23.0;
         p.text(
             pos2(rect.right() - 11.0, rect.center().y + 0.5),
@@ -215,17 +317,28 @@ impl TempoControl {
         );
         if typing {
             // One text row, centred like the number it replaces.
-            let row = Rect::from_x_y_ranges(x - 2.0..=rect.right() - 34.0, rect.center().y - 7.0..=rect.center().y + 9.0);
+            let row = Rect::from_x_y_ranges(
+                x - 2.0..=rect.right() - 34.0,
+                rect.center().y - 7.0..=rect.center().y + 9.0,
+            );
             self.text_entry(ui, row, tempo);
         } else {
-            p.text(pos2(x, rect.center().y), Align2::LEFT_CENTER, format_tempo(*tempo), FontId::monospace(11.5), theme::TEXT);
+            p.text(
+                pos2(x, rect.center().y),
+                Align2::LEFT_CENTER,
+                format_tempo(*tempo),
+                FontId::monospace(11.5),
+                theme::TEXT,
+            );
         }
         resp
     }
 
     /// Typing a tempo: Enter or a click elsewhere sets it, Esc cancels.
     fn text_entry(&mut self, ui: &mut Ui, rect: Rect, tempo: &mut f32) {
-        let Some(text) = self.editing.as_mut() else { return };
+        let Some(text) = self.editing.as_mut() else {
+            return;
+        };
         let id = Id::unique("tempo_entry");
         let edit = egui::TextEdit::singleline(text)
             .id(id)
@@ -239,8 +352,11 @@ impl TempoControl {
         if self.select {
             resp.request_focus();
             if resp.has_focus() {
-                let mut state = egui::text_edit::TextEditState::load(ui.ctx(), id).unwrap_or_default();
-                state.cursor.set_char_range(Some(egui::text_selection::CCursorRange::select_all_str(text)));
+                let mut state =
+                    egui::text_edit::TextEditState::load(ui.ctx(), id).unwrap_or_default();
+                state.cursor.set_char_range(Some(
+                    egui::text_selection::CCursorRange::select_all_str(text),
+                ));
                 state.store(ui.ctx(), id);
                 self.select = false;
             }
@@ -312,16 +428,31 @@ mod tests {
     }
 
     fn press(pos: egui::Pos2, pressed: bool, modifiers: egui::Modifiers) -> egui::Event {
-        egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers }
+        egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers,
+        }
     }
 
     fn key(key: egui::Key) -> egui::Event {
-        egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::NONE }
+        egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        }
     }
 
     #[test]
     fn the_field_is_dragged_typed_and_tapped() {
-        let mut bar = Bar { ctx: egui::Context::default(), control: TempoControl::default(), time: 0.0 };
+        let mut bar = Bar {
+            ctx: egui::Context::default(),
+            control: TempoControl::default(),
+            time: 0.0,
+        };
         let mut tempo = 90.0;
         bar.frame(&mut tempo, vec![]);
         // Right to left: TAP (40) at the right edge, a gap, then the field (84).
@@ -331,18 +462,33 @@ mod tests {
 
         // The pointer on it keeps the window from moving.
         assert!(bar.frame(&mut tempo, vec![egui::Event::PointerMoved(field)]));
-        assert!(!bar.frame(&mut tempo, vec![egui::Event::PointerMoved(egui::pos2(20.0, 18.0))]));
+        assert!(!bar.frame(
+            &mut tempo,
+            vec![egui::Event::PointerMoved(egui::pos2(20.0, 18.0))]
+        ));
 
         // Dragging up raises it.
-        bar.frame(&mut tempo, vec![egui::Event::PointerMoved(field), press(field, true, none)]);
+        bar.frame(
+            &mut tempo,
+            vec![egui::Event::PointerMoved(field), press(field, true, none)],
+        );
         for k in 1..=5 {
-            bar.frame(&mut tempo, vec![egui::Event::PointerMoved(field - vec2(0.0, 5.0 * k as f32))]);
+            bar.frame(
+                &mut tempo,
+                vec![egui::Event::PointerMoved(field - vec2(0.0, 5.0 * k as f32))],
+            );
         }
-        bar.frame(&mut tempo, vec![press(field - vec2(0.0, 25.0), false, none)]);
+        bar.frame(
+            &mut tempo,
+            vec![press(field - vec2(0.0, 25.0), false, none)],
+        );
         assert!((95.0..=100.0).contains(&tempo), "{tempo}");
 
         // A click opens typing: Enter sets it.
-        bar.frame(&mut tempo, vec![egui::Event::PointerMoved(field), press(field, true, none)]);
+        bar.frame(
+            &mut tempo,
+            vec![egui::Event::PointerMoved(field), press(field, true, none)],
+        );
         bar.frame(&mut tempo, vec![press(field, false, none)]);
         bar.frame(&mut tempo, vec![]);
         bar.frame(&mut tempo, vec![egui::Event::Text("128.5".into())]);
@@ -361,14 +507,24 @@ mod tests {
 
         // Alt+click resets.
         let alt = egui::Modifiers { alt: true, ..none };
-        bar.frame(&mut tempo, vec![egui::Event::ModifiersChanged(alt), egui::Event::PointerMoved(field), press(field, true, alt)]);
+        bar.frame(
+            &mut tempo,
+            vec![
+                egui::Event::ModifiersChanged(alt),
+                egui::Event::PointerMoved(field),
+                press(field, true, alt),
+            ],
+        );
         bar.frame(&mut tempo, vec![press(field, false, alt)]);
         bar.frame(&mut tempo, vec![egui::Event::ModifiersChanged(none)]);
         assert_eq!(tempo, DEFAULT_TEMPO);
 
         // Tapping every half second: 120 BPM.
         for _ in 0..3 {
-            bar.frame(&mut tempo, vec![egui::Event::PointerMoved(tap), press(tap, true, none)]);
+            bar.frame(
+                &mut tempo,
+                vec![egui::Event::PointerMoved(tap), press(tap, true, none)],
+            );
             bar.frame(&mut tempo, vec![press(tap, false, none)]);
             for _ in 0..8 {
                 bar.frame(&mut tempo, vec![]);

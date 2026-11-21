@@ -85,7 +85,12 @@ fn yes() -> bool {
 
 impl Default for Background {
     fn default() -> Self {
-        Self { preset: default_preset(), image: None, dim: default_dim(), grid: true }
+        Self {
+            preset: default_preset(),
+            image: None,
+            dim: default_dim(),
+            grid: true,
+        }
     }
 }
 
@@ -126,7 +131,9 @@ mod base64_bytes {
 
     pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Arc<Vec<u8>>, D::Error> {
         let text = String::deserialize(d)?;
-        crate::project::base64_decode(&text).map(Arc::new).ok_or_else(|| serde::de::Error::custom("bad base64 image"))
+        crate::project::base64_decode(&text)
+            .map(Arc::new)
+            .ok_or_else(|| serde::de::Error::custom("bad base64 image"))
     }
 }
 
@@ -159,7 +166,14 @@ impl Board {
     pub fn add(&mut self, art: Art, pos: [f32; 2], width: f32) -> u32 {
         let id = self.stickers.iter().map(|s| s.id).max().unwrap_or(0) + 1;
         let width = width.clamp(WIDTH_RANGE.0, WIDTH_RANGE.1);
-        self.stickers.push(Sticker { id, art, pos, width, rotation: 0.0, locked: false });
+        self.stickers.push(Sticker {
+            id,
+            art,
+            pos,
+            width,
+            rotation: 0.0,
+            locked: false,
+        });
         id
     }
 
@@ -193,9 +207,18 @@ impl Board {
     /// Drops images nothing shows any more.
     pub fn prune(&mut self) {
         let used = |id: &String| {
-            self.background.image.as_ref() == Some(id) || self.stickers.iter().any(|s| s.art == Art::Image(id.clone()))
+            self.background.image.as_ref() == Some(id)
+                || self
+                    .stickers
+                    .iter()
+                    .any(|s| s.art == Art::Image(id.clone()))
         };
-        let keep: BTreeMap<String, Blob> = self.images.iter().filter(|(id, _)| used(id)).map(|(k, v)| (k.clone(), v.clone())).collect();
+        let keep: BTreeMap<String, Blob> = self
+            .images
+            .iter()
+            .filter(|(id, _)| used(id))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
         self.images = keep;
     }
 
@@ -204,14 +227,22 @@ impl Board {
     pub fn aspect(&self, art: &Art, builtin_aspect: impl Fn(&str) -> f32) -> f32 {
         match art {
             Art::Builtin(name) => builtin_aspect(name),
-            Art::Image(id) => self.images.get(id).map_or(1.0, |b| b.h.max(1) as f32 / b.w.max(1) as f32),
+            Art::Image(id) => self
+                .images
+                .get(id)
+                .map_or(1.0, |b| b.h.max(1) as f32 / b.w.max(1) as f32),
         }
     }
 
     /// Takes an image file's bytes (PNG, JPEG, WebP shrunk to `max_px` on
     /// their longest side; SVG as it is); returns its id. The same image
     /// twice is kept once.
-    pub fn import_image(&mut self, bytes: &[u8], max_px: u32, photo: bool) -> Result<String, String> {
+    pub fn import_image(
+        &mut self,
+        bytes: &[u8],
+        max_px: u32,
+        photo: bool,
+    ) -> Result<String, String> {
         let blob = encode_image(bytes, max_px, photo)?;
         let id = format!("img{:016x}", fnv1a(&blob.data));
         self.images.entry(id.clone()).or_insert(blob);
@@ -232,9 +263,15 @@ pub fn encode_image(bytes: &[u8], max_px: u32, photo: bool) -> Result<Blob, Stri
         }
         let tree = svg_tree(bytes)?;
         let size = tree.size();
-        return Ok(Blob { data: Arc::new(bytes.to_vec()), w: size.width().ceil() as u32, h: size.height().ceil() as u32, svg: true });
+        return Ok(Blob {
+            data: Arc::new(bytes.to_vec()),
+            w: size.width().ceil() as u32,
+            h: size.height().ceil() as u32,
+            svg: true,
+        });
     }
-    let img = image::load_from_memory(bytes).map_err(|e| format!("not an image this app can read ({e})"))?;
+    let img = image::load_from_memory(bytes)
+        .map_err(|e| format!("not an image this app can read ({e})"))?;
     let img = if img.width().max(img.height()) > max_px {
         img.resize(max_px, max_px, image::imageops::FilterType::Lanczos3)
     } else {
@@ -248,9 +285,16 @@ pub fn encode_image(bytes: &[u8], max_px: u32, photo: bool) -> Result<Blob, Stri
         let mut enc = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 86);
         enc.encode_image(&rgb).map_err(|e| e.to_string())?;
     } else {
-        DynamicImage::ImageRgba8(img.to_rgba8()).write_to(&mut out, ImageFormat::Png).map_err(|e| e.to_string())?;
+        DynamicImage::ImageRgba8(img.to_rgba8())
+            .write_to(&mut out, ImageFormat::Png)
+            .map_err(|e| e.to_string())?;
     }
-    Ok(Blob { data: Arc::new(out.into_inner()), w, h, svg: false })
+    Ok(Blob {
+        data: Arc::new(out.into_inner()),
+        w,
+        h,
+        svg: false,
+    })
 }
 
 /// An SVG document (possibly gzipped, as .svgz), by its first bytes.
@@ -260,7 +304,11 @@ fn looks_like_svg(bytes: &[u8]) -> bool {
     }
     let head = String::from_utf8_lossy(&bytes[..bytes.len().min(1024)]).to_ascii_lowercase();
     let head = head.trim_start_matches('\u{feff}').trim_start();
-    head.starts_with("<svg") || ((head.starts_with("<?xml") || head.starts_with("<!--") || head.starts_with("<!doctype")) && head.contains("<svg"))
+    head.starts_with("<svg")
+        || ((head.starts_with("<?xml")
+            || head.starts_with("<!--")
+            || head.starts_with("<!doctype"))
+            && head.contains("<svg"))
 }
 
 /// How SVGs are read. The system's fonts (for SVG text) are loaded once,
@@ -282,7 +330,8 @@ fn svg_tree(bytes: &[u8]) -> Result<resvg::usvg::Tree, String> {
     // Gzipped (.svgz) files are looked into once unpacked by usvg; they are
     // given fonts in case.
     let text = bytes.starts_with(&[0x1F, 0x8B]) || bytes.windows(5).any(|w| w == b"<text");
-    resvg::usvg::Tree::from_data(bytes, svg_options(text)).map_err(|e| format!("not an SVG this app can read ({e})"))
+    resvg::usvg::Tree::from_data(bytes, svg_options(text))
+        .map_err(|e| format!("not an SVG this app can read ({e})"))
 }
 
 /// RGBA pixels of an image (width, height, premultiplied alpha?, pixels).
@@ -293,24 +342,35 @@ pub fn decode_rgba(blob: &Blob, px: u32) -> Result<(u32, u32, bool, Vec<u8>), St
         let tree = svg_tree(&blob.data)?;
         let size = tree.size();
         let scale = px.max(1) as f32 / size.width().max(size.height()).max(1e-3);
-        let (w, h) = ((size.width() * scale).ceil().max(1.0) as u32, (size.height() * scale).ceil().max(1.0) as u32);
+        let (w, h) = (
+            (size.width() * scale).ceil().max(1.0) as u32,
+            (size.height() * scale).ceil().max(1.0) as u32,
+        );
         let mut pixmap = resvg::tiny_skia::Pixmap::new(w, h).ok_or("SVG too large to draw")?;
-        resvg::render(&tree, resvg::tiny_skia::Transform::from_scale(scale, scale), &mut pixmap.as_mut());
+        resvg::render(
+            &tree,
+            resvg::tiny_skia::Transform::from_scale(scale, scale),
+            &mut pixmap.as_mut(),
+        );
         return Ok((w, h, true, pixmap.take()));
     }
-    let img = image::load_from_memory(&blob.data).map_err(|e| e.to_string())?.to_rgba8();
+    let img = image::load_from_memory(&blob.data)
+        .map_err(|e| e.to_string())?
+        .to_rgba8();
     Ok((img.width(), img.height(), false, img.into_raw()))
 }
 
 /// File extensions taken as images.
 pub fn is_image_path(path: &std::path::Path) -> bool {
-    path.extension()
-        .and_then(|x| x.to_str())
-        .is_some_and(|x| ["png", "jpg", "jpeg", "webp", "svg", "svgz"].contains(&x.to_ascii_lowercase().as_str()))
+    path.extension().and_then(|x| x.to_str()).is_some_and(|x| {
+        ["png", "jpg", "jpeg", "webp", "svg", "svgz"].contains(&x.to_ascii_lowercase().as_str())
+    })
 }
 
 fn fnv1a(bytes: &[u8]) -> u64 {
-    bytes.iter().fold(0xcbf2_9ce4_8422_2325u64, |h, &b| (h ^ b as u64).wrapping_mul(0x0000_0100_0000_01b3))
+    bytes.iter().fold(0xcbf2_9ce4_8422_2325u64, |h, &b| {
+        (h ^ b as u64).wrapping_mul(0x0000_0100_0000_01b3)
+    })
 }
 
 #[cfg(test)]
@@ -321,7 +381,9 @@ mod tests {
     fn png(w: u32, h: u32, alpha: u8) -> Vec<u8> {
         let img = image::RgbaImage::from_pixel(w, h, image::Rgba([220, 40, 40, alpha]));
         let mut out = std::io::Cursor::new(Vec::new());
-        image::DynamicImage::ImageRgba8(img).write_to(&mut out, image::ImageFormat::Png).unwrap();
+        image::DynamicImage::ImageRgba8(img)
+            .write_to(&mut out, image::ImageFormat::Png)
+            .unwrap();
         out.into_inner()
     }
 
@@ -331,9 +393,20 @@ mod tests {
         let big = png(3000, 1500, 128);
         let id = b.import_image(&big, STICKER_MAX_PX, false).unwrap();
         let blob = &b.images[&id];
-        assert_eq!((blob.w, blob.h), (1024, 512), "shrunk to 1024 on its longest side");
-        assert!(blob.data.starts_with(b"\x89PNG"), "kept as PNG for its transparency");
-        assert_eq!(b.import_image(&big, STICKER_MAX_PX, false).unwrap(), id, "the same image is kept once");
+        assert_eq!(
+            (blob.w, blob.h),
+            (1024, 512),
+            "shrunk to 1024 on its longest side"
+        );
+        assert!(
+            blob.data.starts_with(b"\x89PNG"),
+            "kept as PNG for its transparency"
+        );
+        assert_eq!(
+            b.import_image(&big, STICKER_MAX_PX, false).unwrap(),
+            id,
+            "the same image is kept once"
+        );
         let s = b.add(Art::Image(id.clone()), [0.0, 0.0], 200.0);
         let copy = b.duplicate(s).unwrap();
         assert_eq!(b.aspect(&Art::Image(id.clone()), |_| 1.0), 0.5);
@@ -364,12 +437,18 @@ mod tests {
         assert_eq!((w, h), (800, 400));
         assert!(premultiplied);
         let at = |x: u32, y: u32| &px[((y * w + x) * 4) as usize..][..4];
-        assert!(at(200, 200)[3] == 255 && at(200, 200)[0] > 200, "inside the circle: opaque pink");
+        assert!(
+            at(200, 200)[3] == 255 && at(200, 200)[0] > 200,
+            "inside the circle: opaque pink"
+        );
         assert_eq!(at(700, 200)[3], 0, "outside it: transparent");
         let json = serde_json::to_string(&b).unwrap();
         let back: Board = serde_json::from_str(&json).unwrap();
         assert_eq!(back, b);
-        assert!(b.import_image(b"<svg><g></svg", 100, false).is_err(), "broken SVG refused");
+        assert!(
+            b.import_image(b"<svg><g></svg", 100, false).is_err(),
+            "broken SVG refused"
+        );
     }
 
     /// The board travels with the project: saved, and back after opening;
@@ -377,11 +456,18 @@ mod tests {
     #[test]
     fn boards_are_saved_with_the_project() {
         use std::sync::Arc as StdArc;
-        let (a, _engine) = crate::audio::offline(StdArc::new(crate::audio::params::EngineShared::new()), 48_000);
+        let (a, _engine) = crate::audio::offline(
+            StdArc::new(crate::audio::params::EngineShared::new()),
+            48_000,
+        );
         let mut g = crate::graph::Graph::default();
-        let id = g.board.import_image(&png(64, 64, 100), STICKER_MAX_PX, false).unwrap();
+        let id = g
+            .board
+            .import_image(&png(64, 64, 100), STICKER_MAX_PX, false)
+            .unwrap();
         g.board.add(Art::Image(id), [50.0, 60.0], 140.0);
-        g.board.add(Art::Builtin("cassette".into()), [300.0, 60.0], 150.0);
+        g.board
+            .add(Art::Builtin("cassette".into()), [300.0, 60.0], 150.0);
         g.board.background.preset = "moss".into();
         let saved = crate::project::snapshot(&g);
         let json = serde_json::to_string(&saved).unwrap();
@@ -401,13 +487,20 @@ mod tests {
     #[test]
     fn boards_round_trip_through_json() {
         let mut b = Board::default();
-        let id = b.import_image(&png(40, 20, 255), STICKER_MAX_PX, false).unwrap();
+        let id = b
+            .import_image(&png(40, 20, 255), STICKER_MAX_PX, false)
+            .unwrap();
         b.add(Art::Image(id), [10.0, 20.0], 120.0);
         let wave = b.add(Art::Builtin("wave".into()), [300.0, 40.0], 150.0);
         b.sticker_mut(wave).unwrap().rotation = -12.0;
         b.restack(wave, false);
         assert_eq!(b.stickers[0].id, wave, "sent to the back");
-        b.background = Background { preset: "blueprint".into(), image: None, dim: 0.4, grid: false };
+        b.background = Background {
+            preset: "blueprint".into(),
+            image: None,
+            dim: 0.4,
+            grid: false,
+        };
         let json = serde_json::to_string(&b).unwrap();
         assert!(json.contains("\"kind\":\"builtin\"") && json.contains("blueprint"));
         let back: Board = serde_json::from_str(&json).unwrap();

@@ -21,18 +21,19 @@ pub mod looper;
 pub mod magma;
 pub mod midi_cc;
 pub mod midi_in;
-pub mod midicer;
-pub mod pingpong;
-pub mod pops;
-pub mod prism;
 pub mod midi_note;
+pub mod midicer;
 pub mod nullpunkt;
 pub mod orrery;
 pub mod oversample;
+pub mod pingpong;
+pub mod pops;
+pub mod prism;
 pub mod random;
 pub mod resonator;
 pub mod reverb;
 pub mod sequencer;
+pub mod sibyl;
 pub mod splitter;
 pub mod steps;
 pub mod tape;
@@ -48,7 +49,8 @@ use super::engine::Processor;
 pub use audioboard_node::NodeDef as ModuleDef;
 /// The DSP helpers every node shares live in the node SDK.
 pub use audioboard_node::dsp::{
-    DelayLine, Quiet, Rng, Wander, approach, mix_gains, pan_gains, silence, soft_ceiling, soft_limit, time_coeff,
+    DelayLine, Quiet, Rng, Wander, approach, mix_gains, pan_gains, silence, soft_ceiling,
+    soft_limit, time_coeff,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -85,12 +87,13 @@ pub enum ModuleKind {
     Orrery,
     Looper,
     Iris,
+    Sibyl,
     /// A node from a node plugin (see `audio::node_plugin`).
     Ext(super::node_plugin::ExtId),
 }
 
 impl ModuleKind {
-    pub const ALL: [ModuleKind; 32] = [
+    pub const ALL: [ModuleKind; 33] = [
         ModuleKind::Drone,
         ModuleKind::Aether,
         ModuleKind::Larsen,
@@ -123,6 +126,7 @@ impl ModuleKind {
         ModuleKind::Orrery,
         ModuleKind::Looper,
         ModuleKind::Iris,
+        ModuleKind::Sibyl,
     ];
 
     pub fn def(self) -> &'static ModuleDef {
@@ -159,6 +163,7 @@ impl ModuleKind {
             ModuleKind::Orrery => &orrery::DEF,
             ModuleKind::Looper => &looper::DEF,
             ModuleKind::Iris => &iris::DEF,
+            ModuleKind::Sibyl => &sibyl::DEF,
             ModuleKind::Ext(e) => super::node_plugin::ext(e).def,
         }
     }
@@ -175,7 +180,11 @@ impl ModuleKind {
     /// The module saved as `key` (see [`Self::key`]), if it is built in or
     /// its plugin is loaded.
     pub fn from_key(key: &str) -> Option<ModuleKind> {
-        Self::ALL.iter().copied().find(|k| k.def().name == key).or_else(|| super::node_plugin::find(key).map(ModuleKind::Ext))
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|k| k.def().name == key)
+            .or_else(|| super::node_plugin::find(key).map(ModuleKind::Ext))
     }
 
     /// Builds the audio-thread processor. Called on the UI thread, so
@@ -193,7 +202,11 @@ impl ModuleKind {
             ModuleKind::Fjord => Box::new(fjord::Fjord::new(params, sample_rate)),
             ModuleKind::Splitter => Box::new(splitter::Splitter::new(params, sample_rate)),
             ModuleKind::Nullpunkt => Box::new(nullpunkt::Nullpunkt::new(params, sample_rate)),
-            ModuleKind::AudioIn => Box::new(audio_in::AudioIn::new(params, audio.shared.clone(), sample_rate)),
+            ModuleKind::AudioIn => Box::new(audio_in::AudioIn::new(
+                params,
+                audio.shared.clone(),
+                sample_rate,
+            )),
             ModuleKind::Granular => Box::new(granular::Granular::new(params, sample_rate)),
             ModuleKind::Frakture => Box::new(frakture::Frakture::new(params, sample_rate)),
             ModuleKind::Resonator => Box::new(resonator::Resonator::new(params, sample_rate)),
@@ -212,10 +225,18 @@ impl ModuleKind {
             ModuleKind::MidiIn => Box::new(midi_in::MidiIn::new(params, midi)),
             ModuleKind::Midicer => Box::new(midicer::Midicer::new(params, midi)),
             ModuleKind::Automa => Box::new(automa::Automa::new(params)),
-            ModuleKind::Colloid => Box::new(colloid::Colloid::new(params, midi.clone(), sample_rate)),
+            ModuleKind::Colloid => {
+                Box::new(colloid::Colloid::new(params, midi.clone(), sample_rate))
+            }
             ModuleKind::Orrery => Box::new(orrery::Orrery::new(params, midi.clone())),
             ModuleKind::Looper => Box::new(looper::Looper::new(params, midi, sample_rate)),
-            ModuleKind::Iris => Box::new(iris::Iris::new(params, audio.shared.clone(), midi.clone(), sample_rate)),
+            ModuleKind::Iris => Box::new(iris::Iris::new(
+                params,
+                audio.shared.clone(),
+                midi.clone(),
+                sample_rate,
+            )),
+            ModuleKind::Sibyl => Box::new(sibyl::Sibyl::new(params, midi.clone(), sample_rate)),
             ModuleKind::Ext(e) => super::node_plugin::processor(e, params, sample_rate),
         }
     }
@@ -234,7 +255,11 @@ pub struct ModuleParams {
 
 impl ModuleParams {
     pub fn new(kind: ModuleKind) -> Self {
-        Self { kind, params: audioboard_node::Params::new(kind.def()), sample: Default::default() }
+        Self {
+            kind,
+            params: audioboard_node::Params::new(kind.def()),
+            sample: Default::default(),
+        }
     }
 
     /// A fresh copy of the settings (not the meters), sharing the sample.
