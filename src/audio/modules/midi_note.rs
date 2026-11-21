@@ -120,7 +120,11 @@ impl Processor for MidiNote {
         // Times are to ~95% of the way (three time constants).
         let attack = time_coeff(p.get(ATTACK) / 3.0, self.sr);
         let release = time_coeff(p.get(RELEASE) / 3.0, self.sr);
-        let (target, k) = if key.gate { (1.0, attack) } else { (0.0, release) };
+        let (target, k) = if key.gate {
+            (1.0, attack)
+        } else {
+            (0.0, release)
+        };
 
         let mut peak = 0.0f32;
         let [env_out, vel_out] = outputs else {
@@ -136,7 +140,11 @@ impl Processor for MidiNote {
             peak = peak.max(self.env);
         }
         p.viz[ENV].set(self.env);
-        p.viz[NOTE].set(if key.seq == 0 { -1.0 } else { played_note(p, key.note) });
+        p.viz[NOTE].set(if key.seq == 0 {
+            -1.0
+        } else {
+            played_note(p, key.note)
+        });
         p.viz[CABLE].set(if inputs.midi_connected { 1.0 } else { 0.0 });
         p.viz[SEQ].set((self.played % (1 << 24)) as f32);
         p.meter.fetch_max(peak);

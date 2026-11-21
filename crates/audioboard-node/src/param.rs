@@ -196,13 +196,26 @@ pub const NOTE_VALUES: [(&str, f64, bool, bool); 9] = [
 
 /// "C4" for MIDI note 60.
 pub fn note_label(note: i32) -> String {
-    format!("{}{}", NOTE_NAMES[note.rem_euclid(12) as usize], note.div_euclid(12) - 1)
+    format!(
+        "{}{}",
+        NOTE_NAMES[note.rem_euclid(12) as usize],
+        note.div_euclid(12) - 1
+    )
 }
 
 /// Note lengths for sequencers: (label, steps per beat).
-pub const DIVISIONS: [(&str, f64); 6] = [("1/4", 1.0), ("1/8", 2.0), ("1/8T", 3.0), ("1/16", 4.0), ("1/16T", 6.0), ("1/32", 8.0)];
+pub const DIVISIONS: [(&str, f64); 6] = [
+    ("1/4", 1.0),
+    ("1/8", 2.0),
+    ("1/8T", 3.0),
+    ("1/16", 4.0),
+    ("1/16T", 6.0),
+    ("1/32", 8.0),
+];
 
-pub const NOTE_NAMES: [&str; 12] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+pub const NOTE_NAMES: [&str; 12] = [
+    "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
+];
 
 /// Static description of a knob-controlled parameter.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -238,7 +251,10 @@ impl ParamSpec {
 
     /// Knob arc grows from the centre.
     pub const fn bipolar(self) -> Self {
-        Self { bipolar: true, ..self }
+        Self {
+            bipolar: true,
+            ..self
+        }
     }
 
     pub fn to_norm(self, v: f32) -> f32 {
@@ -265,11 +281,20 @@ impl ParamSpec {
         if self.name.trim().is_empty() {
             Some("a parameter has no name".to_owned())
         } else if !finite || self.min >= self.max {
-            Some(format!("{}: the range {}…{} is empty or not finite", self.name, self.min, self.max))
+            Some(format!(
+                "{}: the range {}…{} is empty or not finite",
+                self.name, self.min, self.max
+            ))
         } else if self.taper == Taper::Log && self.min <= 0.0 {
-            Some(format!("{}: a log taper needs a range above zero", self.name))
+            Some(format!(
+                "{}: a log taper needs a range above zero",
+                self.name
+            ))
         } else if self.default < self.min || self.default > self.max {
-            Some(format!("{}: the default {} is out of range", self.name, self.default))
+            Some(format!(
+                "{}: the default {} is out of range",
+                self.name, self.default
+            ))
         } else {
             None
         }
@@ -292,7 +317,9 @@ impl ParamSpec {
             (Unit::Integer, _) => format!("{:.0}", v.round()),
             (Unit::Channel, _) if v.round() < 1.0 => "Omni".to_owned(),
             (Unit::Channel, _) => format!("Ch {:.0}", v.round()),
-            (Unit::Division, _) => DIVISIONS[(v.round() as usize).min(DIVISIONS.len() - 1)].0.to_owned(),
+            (Unit::Division, _) => DIVISIONS[(v.round() as usize).min(DIVISIONS.len() - 1)]
+                .0
+                .to_owned(),
             (Unit::NoteName, _) => NOTE_NAMES[(v.round() as usize) % 12].to_owned(),
             (Unit::Note, _) => note_label(v.round() as i32),
             (Unit::Sync, _) => sync_division(v).0.to_owned(),
@@ -301,7 +328,10 @@ impl ParamSpec {
             (Unit::Q, _) => format!("{v:.2}"),
             (Unit::Plain, true) => format!("{v:+.2}"),
             (Unit::Plain, false) => format!("{v:.2}"),
-            (Unit::NoteValue, _) => NOTE_VALUES[(v.round().max(0.0) as usize).min(NOTE_VALUES.len() - 1)].0.to_owned(),
+            (Unit::NoteValue, _) => NOTE_VALUES
+                [(v.round().max(0.0) as usize).min(NOTE_VALUES.len() - 1)]
+            .0
+            .to_owned(),
         }
     }
 }
@@ -367,12 +397,36 @@ mod tests {
 
     #[test]
     fn specs_are_checked() {
-        assert!(ParamSpec::lin("MIX", 0.0, 1.0, 0.5, Unit::Percent).problem().is_none());
-        assert!(ParamSpec::lin("", 0.0, 1.0, 0.5, Unit::Percent).problem().is_some());
-        assert!(ParamSpec::lin("X", 1.0, 1.0, 1.0, Unit::Plain).problem().is_some());
-        assert!(ParamSpec::log("F", 0.0, 10.0, 1.0, Unit::Hz).problem().is_some());
-        assert!(ParamSpec::lin("X", 0.0, 1.0, 2.0, Unit::Plain).problem().is_some());
-        assert!(ParamSpec::lin("X", 0.0, f32::NAN, 0.0, Unit::Plain).problem().is_some());
+        assert!(
+            ParamSpec::lin("MIX", 0.0, 1.0, 0.5, Unit::Percent)
+                .problem()
+                .is_none()
+        );
+        assert!(
+            ParamSpec::lin("", 0.0, 1.0, 0.5, Unit::Percent)
+                .problem()
+                .is_some()
+        );
+        assert!(
+            ParamSpec::lin("X", 1.0, 1.0, 1.0, Unit::Plain)
+                .problem()
+                .is_some()
+        );
+        assert!(
+            ParamSpec::log("F", 0.0, 10.0, 1.0, Unit::Hz)
+                .problem()
+                .is_some()
+        );
+        assert!(
+            ParamSpec::lin("X", 0.0, 1.0, 2.0, Unit::Plain)
+                .problem()
+                .is_some()
+        );
+        assert!(
+            ParamSpec::lin("X", 0.0, f32::NAN, 0.0, Unit::Plain)
+                .problem()
+                .is_some()
+        );
     }
 
     #[test]
@@ -380,7 +434,15 @@ mod tests {
         let spec = ParamSpec::log("FREQ", 20.0, 20_000.0, 440.0, Unit::Hz);
         assert_eq!(spec.format(440.0), "440 Hz");
         assert!((spec.denorm(spec.to_norm(1234.0)) - 1234.0).abs() < 0.1);
-        assert_eq!(ParamSpec::lin("N", 0.0, 127.0, 60.0, Unit::Note).format(60.0), "C4");
-        assert_eq!(ParamSpec::lin("X", -1.0, 1.0, 0.0, Unit::Plain).bipolar().format(0.25), "+0.25");
+        assert_eq!(
+            ParamSpec::lin("N", 0.0, 127.0, 60.0, Unit::Note).format(60.0),
+            "C4"
+        );
+        assert_eq!(
+            ParamSpec::lin("X", -1.0, 1.0, 0.0, Unit::Plain)
+                .bipolar()
+                .format(0.25),
+            "+0.25"
+        );
     }
 }

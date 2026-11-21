@@ -190,11 +190,13 @@
 │   ├── <b>input.rs</b>      <i>lock-free ring from the input device, with a cushion</i>
 │   └── <b>mod.rs</b>        <i>opening the streams (cpal)</i>
 ├── <b>graph.rs</b>          <i>UI-side patch model, Kahn ordering</i>
+├── <b>tracks.rs</b>         <i>the track view's reading of the patch, its edits as cable changes</i>
 ├── <b>board.rs</b>          <i>stickers, their images (PNG/JPEG encoded, SVG as text), background</i>
 ├── <b>project.rs</b>        <i>projects and the module library (JSON)</i>
 ├── <b>presets.rs</b>        <i>named presets, one file per kind</i>
 ├── <b class="d">ui/</b>
 │   ├── <b>canvas.rs</b>     <i>pan and zoom, selection, cables, context menus</i>
+│   ├── <b>tracks.rs</b>     <i>the track view: headers, lanes of devices, drags and drops</i>
 │   ├── <b>groups.rs</b>     <i>modules: frame and card</i>
 │   ├── <b>layout.rs</b>     <i>auto layout by signal flow</i>
 │   ├── <b>palette.rs</b>    <i>nodes and library modules</i>

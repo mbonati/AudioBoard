@@ -145,11 +145,26 @@ const fn build_params() -> [ParamSpec; COUNT] {
     out[LEVEL] = ParamSpec::lin("LEVEL", 0.0, 1.0, 0.8, Unit::Decibel);
     out[PULSE] = ParamSpec::lin("PULSE", 0.0, 13.0, 5.0, Unit::Sync);
     let strips = [
-        strip!("PAD", 0.8, 0.0, 2.5, 5.0, 0.9, 3200.0, 0.3, 0.05, 90.0, 0.15, 0.03, 0.05, 0.3, 0.06, 0.45),
-        strip!("BASS", 0.55, 0.0, 2.0, 3.5, 0.15, 520.0, 0.2, 0.04, 21.0, 0.0, 0.03, 0.1, 0.0, 0.0, 0.08),
-        strip!("NOISE", 0.2, 0.0, 3.0, 5.0, 1.0, 6000.0, 0.45, 0.07, 240.0, 0.35, 0.04, 0.0, 0.0, 0.0, 0.4),
-        strip!("AMBIENCE", 0.4, 0.0, 4.0, 6.0, 1.0, 7000.0, 0.35, 0.03, 130.0, 0.25, 0.05, 0.0, 0.2, 0.1, 0.6),
-        strip!("SHIMMER", 0.4, 0.0, 0.01, 2.2, 1.0, 14_000.0, 0.0, 0.1, 600.0, 0.0, 0.1, 0.0, 0.25, 0.5, 0.75),
+        strip!(
+            "PAD", 0.8, 0.0, 2.5, 5.0, 0.9, 3200.0, 0.3, 0.05, 90.0, 0.15, 0.03, 0.05, 0.3, 0.06,
+            0.45
+        ),
+        strip!(
+            "BASS", 0.55, 0.0, 2.0, 3.5, 0.15, 520.0, 0.2, 0.04, 21.0, 0.0, 0.03, 0.1, 0.0, 0.0,
+            0.08
+        ),
+        strip!(
+            "NOISE", 0.2, 0.0, 3.0, 5.0, 1.0, 6000.0, 0.45, 0.07, 240.0, 0.35, 0.04, 0.0, 0.0, 0.0,
+            0.4
+        ),
+        strip!(
+            "AMBIENCE", 0.4, 0.0, 4.0, 6.0, 1.0, 7000.0, 0.35, 0.03, 130.0, 0.25, 0.05, 0.0, 0.2,
+            0.1, 0.6
+        ),
+        strip!(
+            "SHIMMER", 0.4, 0.0, 0.01, 2.2, 1.0, 14_000.0, 0.0, 0.1, 600.0, 0.0, 0.1, 0.0, 0.25,
+            0.5, 0.75
+        ),
     ];
     let mut l = 0;
     while l < LAYERS {
@@ -275,12 +290,20 @@ pub static DEF: ModuleDef = ModuleDef {
 
 /// How many sounds a layer can pick from.
 pub fn sound_count(layer: usize) -> usize {
-    if layer == SHIMMER { PING_TIMBRES.len() } else { recipes(layer).len() }
+    if layer == SHIMMER {
+        PING_TIMBRES.len()
+    } else {
+        recipes(layer).len()
+    }
 }
 
 pub fn sound_name(layer: usize, sound: usize) -> &'static str {
     let last = sound_count(layer) - 1;
-    if layer == SHIMMER { PING_TIMBRES[sound.min(last)].name } else { recipes(layer)[sound.min(last)].name }
+    if layer == SHIMMER {
+        PING_TIMBRES[sound.min(last)].name
+    } else {
+        recipes(layer)[sound.min(last)].name
+    }
 }
 
 /// The sound a layer has picked.
@@ -355,15 +378,23 @@ pub fn filter_kind(p: &ModuleParams, d: usize) -> usize {
 pub fn format(p: &ModuleParams, i: usize) -> String {
     let v = p.get(i);
     match i {
-        MOOD => MOODS[(v.round().max(0.0) as usize).min(MOODS.len() - 1)].name.to_owned(),
+        MOOD => MOODS[(v.round().max(0.0) as usize).min(MOODS.len() - 1)]
+            .name
+            .to_owned(),
         COMPLEXITY => format!("{} notes", v.round() as i32),
         VARIATION => format!("{} of 7", v.round() as i32),
         DURATION => DURATIONS[duration_index(p)].0.to_owned(),
         CHORDS => format!("{}", v.round() as i32),
-        MIXTYPE => MIX_TYPES[(v.round().max(0.0) as usize).min(MIX_TYPES.len() - 1)].0.to_owned(),
+        MIXTYPE => MIX_TYPES[(v.round().max(0.0) as usize).min(MIX_TYPES.len() - 1)]
+            .0
+            .to_owned(),
         ECHO | PULSE => sync_division(v).0.to_owned(),
-        _ if i >= FIRST && (i - FIRST) % STRIDE == k::HOLD && v >= ENDLESS * 0.999 => "sustain".to_owned(),
-        _ if i >= FIRST && (i - FIRST) % STRIDE == k::OCTAVE => format!("{:+} oct", v.round() as i32),
+        _ if i >= FIRST && (i - FIRST) % STRIDE == k::HOLD && v >= ENDLESS * 0.999 => {
+            "sustain".to_owned()
+        }
+        _ if i >= FIRST && (i - FIRST) % STRIDE == k::OCTAVE => {
+            format!("{:+} oct", v.round() as i32)
+        }
         _ => PARAMS[i].format(v),
     }
 }
@@ -371,7 +402,11 @@ pub fn format(p: &ModuleParams, i: usize) -> String {
 /// How long a layer's notes hold before they let go by themselves.
 pub fn hold_time(p: &ModuleParams, layer: usize) -> f32 {
     let v = p.get(knob(layer, k::HOLD));
-    if v >= ENDLESS * 0.999 { f32::INFINITY } else { v }
+    if v >= ENDLESS * 0.999 {
+        f32::INFINITY
+    } else {
+        v
+    }
 }
 
 /// A built-in scene: the settings that make a place to start from.
@@ -398,67 +433,750 @@ pub struct Scene {
 
 macro_rules! scene {
     ($name:literal, $mood:expr, $mode:expr, $v:expr, $c:expr, $d:expr, $n:expr, $mix:expr, $space:expr, $sounds:expr, $levels:expr, $pings:expr, $seed:expr) => {
-        scene!($name, $mood, $mode, $v, $c, $d, $n, $mix, $space, $sounds, $levels, $pings, $seed, false, &[])
+        scene!(
+            $name,
+            $mood,
+            $mode,
+            $v,
+            $c,
+            $d,
+            $n,
+            $mix,
+            $space,
+            $sounds,
+            $levels,
+            $pings,
+            $seed,
+            false,
+            &[]
+        )
     };
     ($name:literal, $mood:expr, $mode:expr, $v:expr, $c:expr, $d:expr, $n:expr, $mix:expr, $space:expr, $sounds:expr, $levels:expr, $pings:expr, $seed:expr, $ostinato:expr, $knobs:expr) => {
-        Scene { name: $name, mood: $mood, mode: $mode, variation: $v, complexity: $c, duration: $d, chords: $n, mix: $mix, space: $space, sounds: $sounds, levels: $levels, pings: $pings, seed: $seed, ostinato: $ostinato, knobs: $knobs }
+        Scene {
+            name: $name,
+            mood: $mood,
+            mode: $mode,
+            variation: $v,
+            complexity: $c,
+            duration: $d,
+            chords: $n,
+            mix: $mix,
+            space: $space,
+            sounds: $sounds,
+            levels: $levels,
+            pings: $pings,
+            seed: $seed,
+            ostinato: $ostinato,
+            knobs: $knobs,
+        }
     };
 }
 
 pub static FACTORY: [Scene; 28] = [
-    scene!("Default", 4, LOOP, 5.0, 3.0, 4.0, 4.0, 0.0, 0.7, ["Slow Silk", "Round Triangle", "Soft Wind", "Cathedral Air", "Glass Tear"], [0.8, 0.55, 0.2, 0.4, 0.4], 0.35, 1.0),
-    scene!("First Light", 3, EVOLVE, 6.0, 4.0, 4.0, 4.0, 1.0, 0.8, ["First Light", "Velvet Low", "Forest Hush", "Harmonic Mist", "Star Field"], [0.8, 0.45, 0.16, 0.4, 0.45], 0.5, 11.0),
-    scene!("Cathedral", 5, LOOP, 4.0, 4.0, 6.0, 4.0, 0.0, 0.95, ["Ah Choir", "Cathedral Pedal", "Pink Air", "Ghost Choir", "Harmonic"], [0.8, 0.5, 0.04, 0.4, 0.25], 0.15, 7.0),
-    scene!("Deep Ocean", 8, EVOLVE, 3.0, 2.0, 6.0, 4.0, 1.0, 0.85, ["Deep Ocean", "Sea Floor", "Far Shore", "Deep Sea", "Soft Rain"], [0.75, 0.6, 0.3, 0.55, 0.2], 0.12, 23.0),
-    scene!("Cold War", 10, LOOP, 5.0, 3.0, 4.0, 4.0, 2.0, 0.6, ["Hollow Wind", "Dark Saw", "Radio Static", "Radio Ghosts", "Tine"], [0.75, 0.55, 0.1, 0.4, 0.25], 0.2, 31.0),
-    scene!("Desert Crossing", 12, EVOLVE, 4.0, 3.0, 4.0, 4.0, 0.0, 0.7, ["Soft Reed", "Warm Triangle", "Desert Gusts", "Heat Haze", "Kalimba"], [0.7, 0.5, 0.25, 0.3, 0.35], 0.3, 5.0),
-    scene!("Nebula", 14, EVOLVE, 7.0, 4.0, 5.0, 4.0, 1.0, 1.0, ["Nebula", "Noise Sub", "Cosmic Dust", "Solar Wind", "Thin Ice"], [0.8, 0.4, 0.2, 0.4, 0.4], 0.6, 41.0),
-    scene!("Last Train", 4, LOOP, 4.0, 4.0, 3.0, 4.0, 2.0, 0.55, ["Tape Memory", "Tape Bass", "Subway", "Underpass", "Music Box"], [0.8, 0.55, 0.2, 0.3, 0.3], 0.25, 17.0),
-    scene!("Frozen Lake", 7, LOOP, 5.0, 3.0, 5.0, 6.0, 0.0, 0.9, ["Bowed Glass", "Frost Sub", "Arctic Wind", "Frozen Lake", "Crystal"], [0.75, 0.45, 0.22, 0.45, 0.4], 0.4, 29.0),
-    scene!("Elegy", 4, LOOP, 5.0, 4.0, 4.0, 8.0, 0.0, 0.75, ["Amber Strings", "Deep Cello", "Pink Air", "Phantom Strings", "Celesta"], [0.85, 0.55, 0.06, 0.3, 0.25], 0.18, 3.0),
-    scene!("Monolith", 9, EVOLVE, 3.0, 2.0, 7.0, 4.0, 3.0, 0.8, ["Iron Drone", "Grit Drone", "Tunnel Rumble", "Machine Hall", "Spark"], [0.7, 0.6, 0.3, 0.45, 0.15], 0.1, 13.0),
-    scene!("Neon Rain", 5, LOOP, 5.0, 4.0, 2.0, 4.0, 1.0, 0.65, ["Analog Horizon", "Pulse Bass", "Rain on Glass", "Space Station", "Bell Dust"], [0.8, 0.5, 0.2, 0.25, 0.3], 0.4, 37.0),
-    scene!("Temple Hours", 13, EVOLVE, 4.0, 3.0, 6.0, 4.0, 0.0, 0.85, ["Distant Monks", "Monk Low", "Slow Breath", "Temple Bells", "Harmonic"], [0.75, 0.55, 0.12, 0.5, 0.2], 0.12, 19.0),
-    scene!("Iron Sky", 11, LOOP, 5.0, 3.0, 3.0, 4.0, 3.0, 0.65, ["Rust Choir", "Rust Drone", "Machine Air", "Slow Machines", "Thin Ice"], [0.75, 0.55, 0.22, 0.45, 0.2], 0.18, 43.0),
-    scene!("Slow Tide", 0, EVOLVE, 5.0, 3.0, 6.0, 4.0, 1.0, 0.85, ["Tidal Sweep", "Tidal Sub", "Ocean Surf", "Last Light", "Glass Tear"], [0.75, 0.5, 0.3, 0.35, 0.3], 0.2, 47.0),
-    scene!("Aurora", 1, EVOLVE, 6.0, 4.0, 5.0, 4.0, 1.0, 0.95, ["Aurora", "Soft Sub", "Whisper", "Overtone Cloud", "Star Field"], [0.8, 0.45, 0.1, 0.35, 0.45], 0.7, 53.0),
-    scene!("Ghost Station", 6, LOOP, 4.0, 3.0, 5.0, 4.0, 2.0, 0.75, ["Ghost Organ", "Organ Pedal", "Dead Channel", "Old Station", "Tine"], [0.75, 0.5, 0.08, 0.5, 0.2], 0.15, 59.0),
-    scene!("Lost Archive", 15, LOOP, 5.0, 4.0, 4.0, 4.0, 2.0, 0.6, ["Lost Signal", "Worn Tape", "Worn Vinyl", "Radio Ghosts", "Music Box"], [0.75, 0.5, 0.25, 0.35, 0.25], 0.25, 61.0),
-    scene!("Golden Hour", 2, LOOP, 4.0, 4.0, 3.0, 4.0, 1.0, 0.7, ["Saw Ensemble", "Amber Low", "Campfire", "Wind Chimes", "Celesta"], [0.8, 0.5, 0.18, 0.3, 0.3], 0.35, 67.0),
-    scene!("Event Horizon", 9, EVOLVE, 2.0, 2.0, 8.0, 4.0, 3.0, 1.0, ["Bowed Metal", "Thunderhead", "Distant Storm", "Event Horizon", "Spark"], [0.75, 0.6, 0.3, 0.55, 0.12], 0.08, 71.0),
+    scene!(
+        "Default",
+        4,
+        LOOP,
+        5.0,
+        3.0,
+        4.0,
+        4.0,
+        0.0,
+        0.7,
+        [
+            "Slow Silk",
+            "Round Triangle",
+            "Soft Wind",
+            "Cathedral Air",
+            "Glass Tear"
+        ],
+        [0.8, 0.55, 0.2, 0.4, 0.4],
+        0.35,
+        1.0
+    ),
+    scene!(
+        "First Light",
+        3,
+        EVOLVE,
+        6.0,
+        4.0,
+        4.0,
+        4.0,
+        1.0,
+        0.8,
+        [
+            "First Light",
+            "Velvet Low",
+            "Forest Hush",
+            "Harmonic Mist",
+            "Star Field"
+        ],
+        [0.8, 0.45, 0.16, 0.4, 0.45],
+        0.5,
+        11.0
+    ),
+    scene!(
+        "Cathedral",
+        5,
+        LOOP,
+        4.0,
+        4.0,
+        6.0,
+        4.0,
+        0.0,
+        0.95,
+        [
+            "Ah Choir",
+            "Cathedral Pedal",
+            "Pink Air",
+            "Ghost Choir",
+            "Harmonic"
+        ],
+        [0.8, 0.5, 0.04, 0.4, 0.25],
+        0.15,
+        7.0
+    ),
+    scene!(
+        "Deep Ocean",
+        8,
+        EVOLVE,
+        3.0,
+        2.0,
+        6.0,
+        4.0,
+        1.0,
+        0.85,
+        [
+            "Deep Ocean",
+            "Sea Floor",
+            "Far Shore",
+            "Deep Sea",
+            "Soft Rain"
+        ],
+        [0.75, 0.6, 0.3, 0.55, 0.2],
+        0.12,
+        23.0
+    ),
+    scene!(
+        "Cold War",
+        10,
+        LOOP,
+        5.0,
+        3.0,
+        4.0,
+        4.0,
+        2.0,
+        0.6,
+        [
+            "Hollow Wind",
+            "Dark Saw",
+            "Radio Static",
+            "Radio Ghosts",
+            "Tine"
+        ],
+        [0.75, 0.55, 0.1, 0.4, 0.25],
+        0.2,
+        31.0
+    ),
+    scene!(
+        "Desert Crossing",
+        12,
+        EVOLVE,
+        4.0,
+        3.0,
+        4.0,
+        4.0,
+        0.0,
+        0.7,
+        [
+            "Soft Reed",
+            "Warm Triangle",
+            "Desert Gusts",
+            "Heat Haze",
+            "Kalimba"
+        ],
+        [0.7, 0.5, 0.25, 0.3, 0.35],
+        0.3,
+        5.0
+    ),
+    scene!(
+        "Nebula",
+        14,
+        EVOLVE,
+        7.0,
+        4.0,
+        5.0,
+        4.0,
+        1.0,
+        1.0,
+        [
+            "Nebula",
+            "Noise Sub",
+            "Cosmic Dust",
+            "Solar Wind",
+            "Thin Ice"
+        ],
+        [0.8, 0.4, 0.2, 0.4, 0.4],
+        0.6,
+        41.0
+    ),
+    scene!(
+        "Last Train",
+        4,
+        LOOP,
+        4.0,
+        4.0,
+        3.0,
+        4.0,
+        2.0,
+        0.55,
+        [
+            "Tape Memory",
+            "Tape Bass",
+            "Subway",
+            "Underpass",
+            "Music Box"
+        ],
+        [0.8, 0.55, 0.2, 0.3, 0.3],
+        0.25,
+        17.0
+    ),
+    scene!(
+        "Frozen Lake",
+        7,
+        LOOP,
+        5.0,
+        3.0,
+        5.0,
+        6.0,
+        0.0,
+        0.9,
+        [
+            "Bowed Glass",
+            "Frost Sub",
+            "Arctic Wind",
+            "Frozen Lake",
+            "Crystal"
+        ],
+        [0.75, 0.45, 0.22, 0.45, 0.4],
+        0.4,
+        29.0
+    ),
+    scene!(
+        "Elegy",
+        4,
+        LOOP,
+        5.0,
+        4.0,
+        4.0,
+        8.0,
+        0.0,
+        0.75,
+        [
+            "Amber Strings",
+            "Deep Cello",
+            "Pink Air",
+            "Phantom Strings",
+            "Celesta"
+        ],
+        [0.85, 0.55, 0.06, 0.3, 0.25],
+        0.18,
+        3.0
+    ),
+    scene!(
+        "Monolith",
+        9,
+        EVOLVE,
+        3.0,
+        2.0,
+        7.0,
+        4.0,
+        3.0,
+        0.8,
+        [
+            "Iron Drone",
+            "Grit Drone",
+            "Tunnel Rumble",
+            "Machine Hall",
+            "Spark"
+        ],
+        [0.7, 0.6, 0.3, 0.45, 0.15],
+        0.1,
+        13.0
+    ),
+    scene!(
+        "Neon Rain",
+        5,
+        LOOP,
+        5.0,
+        4.0,
+        2.0,
+        4.0,
+        1.0,
+        0.65,
+        [
+            "Analog Horizon",
+            "Pulse Bass",
+            "Rain on Glass",
+            "Space Station",
+            "Bell Dust"
+        ],
+        [0.8, 0.5, 0.2, 0.25, 0.3],
+        0.4,
+        37.0
+    ),
+    scene!(
+        "Temple Hours",
+        13,
+        EVOLVE,
+        4.0,
+        3.0,
+        6.0,
+        4.0,
+        0.0,
+        0.85,
+        [
+            "Distant Monks",
+            "Monk Low",
+            "Slow Breath",
+            "Temple Bells",
+            "Harmonic"
+        ],
+        [0.75, 0.55, 0.12, 0.5, 0.2],
+        0.12,
+        19.0
+    ),
+    scene!(
+        "Iron Sky",
+        11,
+        LOOP,
+        5.0,
+        3.0,
+        3.0,
+        4.0,
+        3.0,
+        0.65,
+        [
+            "Rust Choir",
+            "Rust Drone",
+            "Machine Air",
+            "Slow Machines",
+            "Thin Ice"
+        ],
+        [0.75, 0.55, 0.22, 0.45, 0.2],
+        0.18,
+        43.0
+    ),
+    scene!(
+        "Slow Tide",
+        0,
+        EVOLVE,
+        5.0,
+        3.0,
+        6.0,
+        4.0,
+        1.0,
+        0.85,
+        [
+            "Tidal Sweep",
+            "Tidal Sub",
+            "Ocean Surf",
+            "Last Light",
+            "Glass Tear"
+        ],
+        [0.75, 0.5, 0.3, 0.35, 0.3],
+        0.2,
+        47.0
+    ),
+    scene!(
+        "Aurora",
+        1,
+        EVOLVE,
+        6.0,
+        4.0,
+        5.0,
+        4.0,
+        1.0,
+        0.95,
+        [
+            "Aurora",
+            "Soft Sub",
+            "Whisper",
+            "Overtone Cloud",
+            "Star Field"
+        ],
+        [0.8, 0.45, 0.1, 0.35, 0.45],
+        0.7,
+        53.0
+    ),
+    scene!(
+        "Ghost Station",
+        6,
+        LOOP,
+        4.0,
+        3.0,
+        5.0,
+        4.0,
+        2.0,
+        0.75,
+        [
+            "Ghost Organ",
+            "Organ Pedal",
+            "Dead Channel",
+            "Old Station",
+            "Tine"
+        ],
+        [0.75, 0.5, 0.08, 0.5, 0.2],
+        0.15,
+        59.0
+    ),
+    scene!(
+        "Lost Archive",
+        15,
+        LOOP,
+        5.0,
+        4.0,
+        4.0,
+        4.0,
+        2.0,
+        0.6,
+        [
+            "Lost Signal",
+            "Worn Tape",
+            "Worn Vinyl",
+            "Radio Ghosts",
+            "Music Box"
+        ],
+        [0.75, 0.5, 0.25, 0.35, 0.25],
+        0.25,
+        61.0
+    ),
+    scene!(
+        "Golden Hour",
+        2,
+        LOOP,
+        4.0,
+        4.0,
+        3.0,
+        4.0,
+        1.0,
+        0.7,
+        [
+            "Saw Ensemble",
+            "Amber Low",
+            "Campfire",
+            "Wind Chimes",
+            "Celesta"
+        ],
+        [0.8, 0.5, 0.18, 0.3, 0.3],
+        0.35,
+        67.0
+    ),
+    scene!(
+        "Event Horizon",
+        9,
+        EVOLVE,
+        2.0,
+        2.0,
+        8.0,
+        4.0,
+        3.0,
+        1.0,
+        [
+            "Bowed Metal",
+            "Thunderhead",
+            "Distant Storm",
+            "Event Horizon",
+            "Spark"
+        ],
+        [0.75, 0.6, 0.3, 0.55, 0.12],
+        0.08,
+        71.0
+    ),
     // For the big screen: walls of brass, then the organ. In the manner of
     // large-scale film scoring; these scenes hold no one's themes.
-    scene!("Folded City", 4, LOOP, 4.0, 2.0, 2.0, 4.0, 3.0, 0.8, ["Low Brass Wall", "Braam Floor", "Tunnel Rumble", "Falling City", "Spark"], [1.0, 0.8, 0.08, 0.22, 0.0], 0.05, SEED_EPIC, false, &[
-        (knob(PAD, k::ATTACK), 0.14), (knob(PAD, k::HOLD), 1.3), (knob(PAD, k::RELEASE), 1.6), (knob(PAD, k::BLOOM), 0.65), (knob(PAD, k::DRIVE), 0.35), (knob(PAD, k::CHORUS), 0.12), (knob(PAD, k::REVERB), 0.35), (knob(PAD, k::FREQ1), 3400.0), (knob(PAD, k::MOVE1), 0.05), (knob(PAD, k::OCTAVE), -1.0),
-        (knob(BASS, k::ATTACK), 0.08), (knob(BASS, k::HOLD), 1.3), (knob(BASS, k::RELEASE), 1.5), (knob(BASS, k::BLOOM), 0.35), (knob(BASS, k::DRIVE), 0.4), (knob(BASS, k::FREQ1), 1400.0),
-    ]),
-    scene!("Limbo", 4, LOOP, 4.0, 3.0, 4.0, 4.0, 2.0, 0.85, ["Slowed Strings", "Pressure Sub", "Old Tape", "Time Ripple", "Felt Piano"], [0.85, 0.5, 0.12, 0.35, 0.3], 0.12, SEED_EPIC, false, &[
-        (knob(PAD, k::ATTACK), 4.0), (knob(PAD, k::RELEASE), 7.0), (knob(PAD, k::OCTAVE), -1.0), (knob(SHIMMER, k::OCTAVE), -1.0), (knob(SHIMMER, k::RELEASE), 3.5),
-    ]),
-    scene!("Dream Stack", 4, LOOP, 4.0, 3.0, 2.0, 4.0, 0.0, 0.7, ["Tense Strings", "Contra Tuba", "Pink Air", "Deep Space Hush", "Pizzicato"], [0.8, 0.65, 0.05, 0.3, 0.7], 0.3, SEED_EPIC, true, &[
-        (PULSE, 5.0), (knob(PAD, k::ATTACK), 1.2), (knob(PAD, k::RELEASE), 2.5), (knob(BASS, k::ATTACK), 0.5), (knob(BASS, k::DRIVE), 0.25), (knob(BASS, k::FREQ1), 900.0),
-        (knob(SHIMMER, k::OCTAVE), -2.0), (knob(SHIMMER, k::RELEASE), 2.0), (knob(SHIMMER, k::ECHO), 0.1), (knob(SHIMMER, k::REVERB), 0.3), (knob(SHIMMER, k::CHORUS), 0.0),
-    ]),
-    scene!("Last Thought", 4, LOOP, 4.0, 3.0, 2.0, 4.0, 1.0, 0.85, ["Amber Strings", "Velvet Low", "Pink Air", "Time Ripple", "Felt Piano"], [0.6, 0.45, 0.04, 0.25, 0.85], 0.3, SEED_EPIC, true, &[
-        (PULSE, 8.0), (knob(PAD, k::ATTACK), 3.0), (knob(PAD, k::RELEASE), 6.0), (knob(SHIMMER, k::OCTAVE), -1.0), (knob(SHIMMER, k::RELEASE), 3.0), (knob(SHIMMER, k::ECHO), 0.15), (knob(SHIMMER, k::REVERB), 0.45), (knob(SHIMMER, k::CHORUS), 0.0),
-    ]),
-    scene!("Gravity Organ", 4, LOOP, 4.0, 4.0, 4.0, 4.0, 0.0, 1.0, ["Temple Organ", "Pedal 32", "Pink Air", "Deep Space Hush", "Organ Pipe"], [0.9, 0.7, 0.03, 0.2, 0.55], 0.3, SEED_EPIC, true, &[
-        (PULSE, 5.0), (knob(PAD, k::ATTACK), 1.0), (knob(PAD, k::RELEASE), 5.0), (knob(PAD, k::REVERB), 0.75), (knob(PAD, k::CHORUS), 0.08), (knob(PAD, k::FREQ1), 9000.0), (knob(PAD, k::MOVE1), 0.08), (knob(PAD, k::FREQ2), 21.0), (knob(PAD, k::MOVE2), 0.0),
-        (knob(BASS, k::ATTACK), 0.6), (knob(BASS, k::RELEASE), 5.0), (knob(BASS, k::REVERB), 0.4), (knob(BASS, k::FREQ1), 1400.0),
-        (knob(SHIMMER, k::OCTAVE), -1.0), (knob(SHIMMER, k::ATTACK), 0.02), (knob(SHIMMER, k::RELEASE), 1.2), (knob(SHIMMER, k::REVERB), 0.8), (knob(SHIMMER, k::ECHO), 0.0), (knob(SHIMMER, k::CHORUS), 0.0),
-    ]),
-    scene!("Full Ascent", 4, LOOP, 4.0, 4.0, 2.0, 4.0, 0.0, 0.95, ["Full Organ", "Pedal 32", "Pink Air", "Falling City", "Clock Tick"], [0.9, 0.8, 0.03, 0.25, 0.8], 0.3, SEED_EPIC, true, &[
-        (PULSE, 8.0), (knob(PAD, k::ATTACK), 0.5), (knob(PAD, k::RELEASE), 4.0), (knob(PAD, k::REVERB), 0.7), (knob(PAD, k::CHORUS), 0.05), (knob(PAD, k::FREQ1), 14_000.0), (knob(PAD, k::MOVE1), 0.05), (knob(PAD, k::FREQ2), 21.0), (knob(PAD, k::MOVE2), 0.0),
-        (knob(BASS, k::ATTACK), 0.3), (knob(BASS, k::FREQ1), 1800.0), (knob(BASS, k::REVERB), 0.3),
-        (knob(SHIMMER, k::REVERB), 0.25), (knob(SHIMMER, k::ECHO), 0.0), (knob(SHIMMER, k::CHORUS), 0.0), (knob(SHIMMER, k::RELEASE), 1.0),
-    ]),
-    scene!("Dust Field", 5, EVOLVE, 4.0, 3.0, 4.0, 4.0, 1.0, 0.95, ["Distant Organ", "Velvet Low", "Soft Wind", "Dust Field", "Clock Tick"], [0.75, 0.45, 0.14, 0.35, 0.65], 0.3, 73.0, true, &[
-        (PULSE, 11.0), (knob(PAD, k::ATTACK), 3.0), (knob(PAD, k::RELEASE), 7.0), (knob(PAD, k::REVERB), 0.7), (knob(PAD, k::FREQ2), 21.0), (knob(PAD, k::MOVE2), 0.0),
-        (knob(SHIMMER, k::REVERB), 0.2), (knob(SHIMMER, k::ECHO), 0.25), (knob(SHIMMER, k::CHORUS), 0.0), (knob(SHIMMER, k::RELEASE), 1.0),
-    ]),
-    scene!("Tesseract", 14, EVOLVE, 5.0, 4.0, 5.0, 4.0, 1.0, 1.0, ["Organ Reeds", "Pedal 32", "Whisper", "Time Ripple", "Organ Pipe"], [0.85, 0.6, 0.06, 0.4, 0.5], 0.25, 79.0, false, &[
-        (knob(PAD, k::ATTACK), 2.5), (knob(PAD, k::RELEASE), 8.0), (knob(PAD, k::REVERB), 0.75), (knob(SHIMMER, k::OCTAVE), -1.0), (knob(SHIMMER, k::RELEASE), 3.0),
-    ]),
+    scene!(
+        "Folded City",
+        4,
+        LOOP,
+        4.0,
+        2.0,
+        2.0,
+        4.0,
+        3.0,
+        0.8,
+        [
+            "Low Brass Wall",
+            "Braam Floor",
+            "Tunnel Rumble",
+            "Falling City",
+            "Spark"
+        ],
+        [1.0, 0.8, 0.08, 0.22, 0.0],
+        0.05,
+        SEED_EPIC,
+        false,
+        &[
+            (knob(PAD, k::ATTACK), 0.14),
+            (knob(PAD, k::HOLD), 1.3),
+            (knob(PAD, k::RELEASE), 1.6),
+            (knob(PAD, k::BLOOM), 0.65),
+            (knob(PAD, k::DRIVE), 0.35),
+            (knob(PAD, k::CHORUS), 0.12),
+            (knob(PAD, k::REVERB), 0.35),
+            (knob(PAD, k::FREQ1), 3400.0),
+            (knob(PAD, k::MOVE1), 0.05),
+            (knob(PAD, k::OCTAVE), -1.0),
+            (knob(BASS, k::ATTACK), 0.08),
+            (knob(BASS, k::HOLD), 1.3),
+            (knob(BASS, k::RELEASE), 1.5),
+            (knob(BASS, k::BLOOM), 0.35),
+            (knob(BASS, k::DRIVE), 0.4),
+            (knob(BASS, k::FREQ1), 1400.0),
+        ]
+    ),
+    scene!(
+        "Limbo",
+        4,
+        LOOP,
+        4.0,
+        3.0,
+        4.0,
+        4.0,
+        2.0,
+        0.85,
+        [
+            "Slowed Strings",
+            "Pressure Sub",
+            "Old Tape",
+            "Time Ripple",
+            "Felt Piano"
+        ],
+        [0.85, 0.5, 0.12, 0.35, 0.3],
+        0.12,
+        SEED_EPIC,
+        false,
+        &[
+            (knob(PAD, k::ATTACK), 4.0),
+            (knob(PAD, k::RELEASE), 7.0),
+            (knob(PAD, k::OCTAVE), -1.0),
+            (knob(SHIMMER, k::OCTAVE), -1.0),
+            (knob(SHIMMER, k::RELEASE), 3.5),
+        ]
+    ),
+    scene!(
+        "Dream Stack",
+        4,
+        LOOP,
+        4.0,
+        3.0,
+        2.0,
+        4.0,
+        0.0,
+        0.7,
+        [
+            "Tense Strings",
+            "Contra Tuba",
+            "Pink Air",
+            "Deep Space Hush",
+            "Pizzicato"
+        ],
+        [0.8, 0.65, 0.05, 0.3, 0.7],
+        0.3,
+        SEED_EPIC,
+        true,
+        &[
+            (PULSE, 5.0),
+            (knob(PAD, k::ATTACK), 1.2),
+            (knob(PAD, k::RELEASE), 2.5),
+            (knob(BASS, k::ATTACK), 0.5),
+            (knob(BASS, k::DRIVE), 0.25),
+            (knob(BASS, k::FREQ1), 900.0),
+            (knob(SHIMMER, k::OCTAVE), -2.0),
+            (knob(SHIMMER, k::RELEASE), 2.0),
+            (knob(SHIMMER, k::ECHO), 0.1),
+            (knob(SHIMMER, k::REVERB), 0.3),
+            (knob(SHIMMER, k::CHORUS), 0.0),
+        ]
+    ),
+    scene!(
+        "Last Thought",
+        4,
+        LOOP,
+        4.0,
+        3.0,
+        2.0,
+        4.0,
+        1.0,
+        0.85,
+        [
+            "Amber Strings",
+            "Velvet Low",
+            "Pink Air",
+            "Time Ripple",
+            "Felt Piano"
+        ],
+        [0.6, 0.45, 0.04, 0.25, 0.85],
+        0.3,
+        SEED_EPIC,
+        true,
+        &[
+            (PULSE, 8.0),
+            (knob(PAD, k::ATTACK), 3.0),
+            (knob(PAD, k::RELEASE), 6.0),
+            (knob(SHIMMER, k::OCTAVE), -1.0),
+            (knob(SHIMMER, k::RELEASE), 3.0),
+            (knob(SHIMMER, k::ECHO), 0.15),
+            (knob(SHIMMER, k::REVERB), 0.45),
+            (knob(SHIMMER, k::CHORUS), 0.0),
+        ]
+    ),
+    scene!(
+        "Gravity Organ",
+        4,
+        LOOP,
+        4.0,
+        4.0,
+        4.0,
+        4.0,
+        0.0,
+        1.0,
+        [
+            "Temple Organ",
+            "Pedal 32",
+            "Pink Air",
+            "Deep Space Hush",
+            "Organ Pipe"
+        ],
+        [0.9, 0.7, 0.03, 0.2, 0.55],
+        0.3,
+        SEED_EPIC,
+        true,
+        &[
+            (PULSE, 5.0),
+            (knob(PAD, k::ATTACK), 1.0),
+            (knob(PAD, k::RELEASE), 5.0),
+            (knob(PAD, k::REVERB), 0.75),
+            (knob(PAD, k::CHORUS), 0.08),
+            (knob(PAD, k::FREQ1), 9000.0),
+            (knob(PAD, k::MOVE1), 0.08),
+            (knob(PAD, k::FREQ2), 21.0),
+            (knob(PAD, k::MOVE2), 0.0),
+            (knob(BASS, k::ATTACK), 0.6),
+            (knob(BASS, k::RELEASE), 5.0),
+            (knob(BASS, k::REVERB), 0.4),
+            (knob(BASS, k::FREQ1), 1400.0),
+            (knob(SHIMMER, k::OCTAVE), -1.0),
+            (knob(SHIMMER, k::ATTACK), 0.02),
+            (knob(SHIMMER, k::RELEASE), 1.2),
+            (knob(SHIMMER, k::REVERB), 0.8),
+            (knob(SHIMMER, k::ECHO), 0.0),
+            (knob(SHIMMER, k::CHORUS), 0.0),
+        ]
+    ),
+    scene!(
+        "Full Ascent",
+        4,
+        LOOP,
+        4.0,
+        4.0,
+        2.0,
+        4.0,
+        0.0,
+        0.95,
+        [
+            "Full Organ",
+            "Pedal 32",
+            "Pink Air",
+            "Falling City",
+            "Clock Tick"
+        ],
+        [0.9, 0.8, 0.03, 0.25, 0.8],
+        0.3,
+        SEED_EPIC,
+        true,
+        &[
+            (PULSE, 8.0),
+            (knob(PAD, k::ATTACK), 0.5),
+            (knob(PAD, k::RELEASE), 4.0),
+            (knob(PAD, k::REVERB), 0.7),
+            (knob(PAD, k::CHORUS), 0.05),
+            (knob(PAD, k::FREQ1), 14_000.0),
+            (knob(PAD, k::MOVE1), 0.05),
+            (knob(PAD, k::FREQ2), 21.0),
+            (knob(PAD, k::MOVE2), 0.0),
+            (knob(BASS, k::ATTACK), 0.3),
+            (knob(BASS, k::FREQ1), 1800.0),
+            (knob(BASS, k::REVERB), 0.3),
+            (knob(SHIMMER, k::REVERB), 0.25),
+            (knob(SHIMMER, k::ECHO), 0.0),
+            (knob(SHIMMER, k::CHORUS), 0.0),
+            (knob(SHIMMER, k::RELEASE), 1.0),
+        ]
+    ),
+    scene!(
+        "Dust Field",
+        5,
+        EVOLVE,
+        4.0,
+        3.0,
+        4.0,
+        4.0,
+        1.0,
+        0.95,
+        [
+            "Distant Organ",
+            "Velvet Low",
+            "Soft Wind",
+            "Dust Field",
+            "Clock Tick"
+        ],
+        [0.75, 0.45, 0.14, 0.35, 0.65],
+        0.3,
+        73.0,
+        true,
+        &[
+            (PULSE, 11.0),
+            (knob(PAD, k::ATTACK), 3.0),
+            (knob(PAD, k::RELEASE), 7.0),
+            (knob(PAD, k::REVERB), 0.7),
+            (knob(PAD, k::FREQ2), 21.0),
+            (knob(PAD, k::MOVE2), 0.0),
+            (knob(SHIMMER, k::REVERB), 0.2),
+            (knob(SHIMMER, k::ECHO), 0.25),
+            (knob(SHIMMER, k::CHORUS), 0.0),
+            (knob(SHIMMER, k::RELEASE), 1.0),
+        ]
+    ),
+    scene!(
+        "Tesseract",
+        14,
+        EVOLVE,
+        5.0,
+        4.0,
+        5.0,
+        4.0,
+        1.0,
+        1.0,
+        [
+            "Organ Reeds",
+            "Pedal 32",
+            "Whisper",
+            "Time Ripple",
+            "Organ Pipe"
+        ],
+        [0.85, 0.6, 0.06, 0.4, 0.5],
+        0.25,
+        79.0,
+        false,
+        &[
+            (knob(PAD, k::ATTACK), 2.5),
+            (knob(PAD, k::RELEASE), 8.0),
+            (knob(PAD, k::REVERB), 0.75),
+            (knob(SHIMMER, k::OCTAVE), -1.0),
+            (knob(SHIMMER, k::RELEASE), 3.0),
+        ]
+    ),
 ];
 
 /// A seed that writes i–VI–III–VII on a natural minor with four degrees: the
@@ -467,14 +1185,20 @@ const SEED_EPIC: f32 = 3813.0;
 
 /// Finds a sound by name (0 if the name is gone).
 pub fn find_sound(layer: usize, name: &str) -> usize {
-    (0..sound_count(layer)).find(|&s| sound_name(layer, s) == name).unwrap_or(0)
+    (0..sound_count(layer))
+        .find(|&s| sound_name(layer, s) == name)
+        .unwrap_or(0)
 }
 
 /// Built-in scene `n`, from the defaults. It keeps ROOT and LEVEL (the
 /// player's), and PLAY.
 pub fn load_factory(p: &ModuleParams, n: usize) {
     let s = &FACTORY[n.min(FACTORY.len() - 1)];
-    for (i, spec) in PARAMS.iter().enumerate().filter(|(i, _)| ![ROOT, LEVEL].contains(i)) {
+    for (i, spec) in PARAMS
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| ![ROOT, LEVEL].contains(i))
+    {
         p.set(i, spec.default);
     }
     p.set(MOOD, s.mood as f32);
@@ -604,15 +1328,26 @@ impl Vesper {
         let progression = harmony::progression(seed_now, count, &rules_now);
         let mut stream = harmony::stream(seed_now);
         let mut window = [progression[0]; MAX_CHORDS];
-        window[1] = harmony::next_step(&mut stream, &rules_now, &degrees.0[..degrees.1], window[0], None, None);
+        window[1] = harmony::next_step(
+            &mut stream,
+            &rules_now,
+            &degrees.0[..degrees.1],
+            window[0],
+            None,
+            None,
+        );
         Self {
             midi_cursor: midi.stream_head(),
             midi,
             sr,
             library: Library::start(params.clone(), sr),
-            samplers: (0..SAMPLED).map(|l| Sampler::new(0x5A40_1000 + 77 * l as u32)).collect(),
+            samplers: (0..SAMPLED)
+                .map(|l| Sampler::new(0x5A40_1000 + 77 * l as u32))
+                .collect(),
             pings: Pings::new(),
-            strips: (0..LAYERS).map(|l| Strip::new(0xF117_0000 + 991 * l as u32, sr)).collect(),
+            strips: (0..LAYERS)
+                .map(|l| Strip::new(0xF117_0000 + 991 * l as u32, sr))
+                .collect(),
             echo: Echo::new(sr),
             space: Space::new(sr),
             master: Master::new(sr),
@@ -620,7 +1355,12 @@ impl Vesper {
             level: params.get(LEVEL),
             started: false,
             quiet: Quiet::new((sr * (echo::LONGEST + 1.0)) as usize),
-            writing: Writing { rules: rules_now, seed: seed_now, count, evolve },
+            writing: Writing {
+                rules: rules_now,
+                seed: seed_now,
+                count,
+                evolve,
+            },
             degrees,
             progression,
             window,
@@ -653,7 +1393,14 @@ impl Vesper {
             self.filled -= 1;
         }
         let (prev, before) = (self.window[self.filled - 1], self.window[self.filled - 2]);
-        self.window[self.filled] = harmony::next_step(&mut self.stream, &rules, &self.degrees.0[..self.degrees.1], prev, Some(before.degree), None);
+        self.window[self.filled] = harmony::next_step(
+            &mut self.stream,
+            &rules,
+            &self.degrees.0[..self.degrees.1],
+            prev,
+            Some(before.degree),
+            None,
+        );
         self.filled += 1;
     }
 
@@ -662,7 +1409,14 @@ impl Vesper {
         let w = self.writing;
         self.stream = harmony::stream(w.seed);
         self.window[0] = self.progression[0];
-        self.window[1] = harmony::next_step(&mut self.stream, &w.rules, &self.degrees.0[..self.degrees.1], self.window[0], None, None);
+        self.window[1] = harmony::next_step(
+            &mut self.stream,
+            &w.rules,
+            &self.degrees.0[..self.degrees.1],
+            self.window[0],
+            None,
+            None,
+        );
         self.filled = 2;
     }
 
@@ -683,7 +1437,13 @@ impl Vesper {
         let step = self.current();
         let prev = self.notes;
         let mut notes = [0; MAX_TONES];
-        let len = harmony::voice(&rules, step, &prev[..self.note_count], PAD_CENTER, &mut notes);
+        let len = harmony::voice(
+            &rules,
+            step,
+            &prev[..self.note_count],
+            PAD_CENTER,
+            &mut notes,
+        );
         self.notes = notes;
         self.note_count = len;
         self.bass = harmony::fold(rules.chord_root(step), BASS_LOW);
@@ -715,7 +1475,8 @@ impl Vesper {
     /// The score has stopped: every note it holds ends.
     fn end_score(&mut self, frame: usize) {
         for k in 0..self.midi_chord_len {
-            self.out.push(frame, [0x80 | CHORD_CHANNEL, self.midi_chord[k], 0]);
+            self.out
+                .push(frame, [0x80 | CHORD_CHANNEL, self.midi_chord[k], 0]);
         }
         self.midi_chord_len = 0;
         if let Some(old) = self.midi_bass.take() {
@@ -733,7 +1494,12 @@ impl Vesper {
     /// Follows the rules and the bars. Returns whether the generator runs.
     fn run_score(&mut self, ctx: &ProcessCtx, n: usize) -> bool {
         let p = self.params.clone();
-        let writing = Writing { rules: rules(&p), seed: seed(&p), count: chords(&p), evolve: evolving(&p) };
+        let writing = Writing {
+            rules: rules(&p),
+            seed: seed(&p),
+            count: chords(&p),
+            evolve: evolving(&p),
+        };
         let changed = writing != self.writing;
         if changed {
             let (old, seed_moved) = (self.writing, writing.seed != self.writing.seed);
@@ -788,7 +1554,9 @@ impl Vesper {
                 p.viz[viz::CARD + k].set(s.pack());
             }
             p.viz[viz::CARDS].set(self.writing.count as f32);
-            let index = self.step.map_or(-1, |s| s.rem_euclid(self.writing.count as i64));
+            let index = self
+                .step
+                .map_or(-1, |s| s.rem_euclid(self.writing.count as i64));
             p.viz[viz::INDEX].set(index as f32);
         }
     }
@@ -833,7 +1601,12 @@ impl Vesper {
                 0.62
             };
             let pan = 0.35 * (step as f32 * 0.37).sin();
-            (note.clamp(0, 127), pan, level, if ctx.playing { frame_of(ctx, n, at) } else { 0 })
+            (
+                note.clamp(0, 127),
+                pan,
+                level,
+                if ctx.playing { frame_of(ctx, n, at) } else { 0 },
+            )
         } else {
             if self.rng.unit() >= p.get(RATE) * secs {
                 return;
@@ -841,10 +1614,19 @@ impl Vesper {
             let tone = tones[(self.rng.unit() * tones.len() as f32) as usize % tones.len()];
             let lift = if self.rng.unit() < timbre.lift { 12 } else { 0 };
             let pan = self.rng.bipolar() * 0.8;
-            ((harmony::fold(tone, SHIMMER_LOW) + lift + octave).clamp(0, 127), pan, 1.0, 0)
+            (
+                (harmony::fold(tone, SHIMMER_LOW) + lift + octave).clamp(0, 127),
+                pan,
+                1.0,
+                0,
+            )
         };
-        let (attack, release) = (p.get(knob(SHIMMER, k::ATTACK)), p.get(knob(SHIMMER, k::RELEASE)));
-        self.pings.strike(timbre, note as f32, attack, release, pan, level, self.sr);
+        let (attack, release) = (
+            p.get(knob(SHIMMER, k::ATTACK)),
+            p.get(knob(SHIMMER, k::RELEASE)),
+        );
+        self.pings
+            .strike(timbre, note as f32, attack, release, pan, level, self.sr);
         let count = p.viz[viz::FIRED].get() + 1.0;
         p.viz[viz::FIRED].set(count);
         let at = viz::EVENT + 3 * (count as usize % viz::EVENTS);
@@ -855,7 +1637,10 @@ impl Vesper {
         if p.toggled()
             && let Some(off) = self.ping_offs.iter_mut().find(|o| o.1 <= 0.0)
         {
-            self.out.push(frame, [0x90 | PING_CHANNEL, note as u8, (100.0 * level) as u8]);
+            self.out.push(
+                frame,
+                [0x90 | PING_CHANNEL, note as u8, (100.0 * level) as u8],
+            );
             *off = (note as u8, PING_NOTE);
         }
     }
@@ -897,7 +1682,11 @@ impl Vesper {
             Some(r) => {
                 self.samplers[BASS].set_notes(&[harmony::fold(r, BASS_LOW) as f32 + octave(BASS)]);
                 for l in [NOISE, AMBIENCE] {
-                    let note = if self.samplers[l].tonal() { harmony::fold(r, AMBIENCE_LOW) as f32 + octave(l) } else { self.samplers[l].home() + octave(l) };
+                    let note = if self.samplers[l].tonal() {
+                        harmony::fold(r, AMBIENCE_LOW) as f32 + octave(l)
+                    } else {
+                        self.samplers[l].home() + octave(l)
+                    };
                     self.samplers[l].set_notes(&[note]);
                 }
             }
@@ -1002,11 +1791,22 @@ impl Processor for Vesper {
         }
 
         // The layers.
-        let mut buses = Buses { dry: [[0.0; BLOCK]; 2], echo: [[0.0; BLOCK]; 2], verb: [[0.0; BLOCK]; 2] };
+        let mut buses = Buses {
+            dry: [[0.0; BLOCK]; 2],
+            echo: [[0.0; BLOCK]; 2],
+            verb: [[0.0; BLOCK]; 2],
+        };
         // The voices of a chord share a loudness (and tails keep the last one).
-        let voices = if running { self.note_count } else if keyed { self.keys.notes().len() } else { 0 };
+        let voices = if running {
+            self.note_count
+        } else if keyed {
+            self.keys.notes().len()
+        } else {
+            0
+        };
         if voices > 0 {
-            self.chord_norm += (1.0 / (voices as f32).sqrt() - self.chord_norm) * (1.0 - (-secs / 0.15).exp());
+            self.chord_norm +=
+                (1.0 / (voices as f32).sqrt() - self.chord_norm) * (1.0 - (-secs / 0.15).exp());
         }
         let chord_norm = self.chord_norm;
         for l in 0..LAYERS {
@@ -1025,7 +1825,11 @@ impl Processor for Vesper {
                     hold: hold_time(&p, l),
                     drift: if l == BASS { 0.012 } else { 0.05 },
                     sway: if l == BASS { 0.04 } else { 0.16 },
-                    spread: if l == PAD { 0.45 * knob_of(k::WIDTH) } else { 0.0 },
+                    spread: if l == PAD {
+                        0.45 * knob_of(k::WIDTH)
+                    } else {
+                        0.0
+                    },
                 };
                 self.samplers[l].render(&shape, &mut x, n, secs)
             };
@@ -1041,14 +1845,30 @@ impl Processor for Vesper {
                 _ => 1.0,
             };
             let settings = StripSettings {
-                first: Sweep { kind: filter_kind(&p, data::KIND1 + l), hz: knob_of(k::FREQ1), depth: knob_of(k::MOVE1), rate: knob_of(k::RATE1), width: knob_of(k::WIDTH) },
-                second: Sweep { kind: filter_kind(&p, data::KIND2 + l), hz: knob_of(k::FREQ2), depth: knob_of(k::MOVE2), rate: knob_of(k::RATE2), width: knob_of(k::WIDTH) },
+                first: Sweep {
+                    kind: filter_kind(&p, data::KIND1 + l),
+                    hz: knob_of(k::FREQ1),
+                    depth: knob_of(k::MOVE1),
+                    rate: knob_of(k::RATE1),
+                    width: knob_of(k::WIDTH),
+                },
+                second: Sweep {
+                    kind: filter_kind(&p, data::KIND2 + l),
+                    hz: knob_of(k::FREQ2),
+                    depth: knob_of(k::MOVE2),
+                    rate: knob_of(k::RATE2),
+                    width: knob_of(k::WIDTH),
+                },
                 bloom: knob_of(k::BLOOM),
                 bloom_time: knob_of(k::ATTACK),
                 drive: knob_of(k::DRIVE),
                 chorus: knob_of(k::CHORUS),
                 width: knob_of(k::WIDTH),
-                level: if flag(&p, data::MUTE + l) { 0.0 } else { knob_of(k::LEVEL) * trim },
+                level: if flag(&p, data::MUTE + l) {
+                    0.0
+                } else {
+                    knob_of(k::LEVEL) * trim
+                },
                 echo: knob_of(k::ECHO),
                 verb: knob_of(k::REVERB),
             };
@@ -1068,8 +1888,25 @@ impl Processor for Vesper {
         let echo_time = ((sync_division(p.get(ECHO)).1 * spb) as f32).min(echo::LONGEST);
         let first = !self.started;
         self.started = true;
-        self.echo.set(echo_time, p.get(REPEATS), true, EchoShape { drive: 0.0, tone: 1800.0, width: 0.9, level: 1.0 }, first);
-        let space = self.space.settings((p.get(SPACE) + shape.space).clamp(0.0, 1.0), 0.55, shape.air, [1000.0, 1500.0], 0.0);
+        self.echo.set(
+            echo_time,
+            p.get(REPEATS),
+            true,
+            EchoShape {
+                drive: 0.0,
+                tone: 1800.0,
+                width: 0.9,
+                level: 1.0,
+            },
+            first,
+        );
+        let space = self.space.settings(
+            (p.get(SPACE) + shape.space).clamp(0.0, 1.0),
+            0.55,
+            shape.air,
+            [1000.0, 1500.0],
+            0.0,
+        );
         let dry_share = space.dry();
 
         let attack = 1.0 - (-1.0 / (0.0004 * sr)).exp();
@@ -1092,8 +1929,15 @@ impl Processor for Vesper {
             let (l, r) = (l * self.level, r * self.level);
             let a = l.abs().max(r.abs());
             self.limit += (a - self.limit) * if a > self.limit { attack } else { release };
-            let g = if self.limit > 1.0 { 1.0 / self.limit } else { 1.0 };
-            let (l, r) = (soft_limit(l * g).clamp(-1.0, 1.0), soft_limit(r * g).clamp(-1.0, 1.0));
+            let g = if self.limit > 1.0 {
+                1.0 / self.limit
+            } else {
+                1.0
+            };
+            let (l, r) = (
+                soft_limit(l * g).clamp(-1.0, 1.0),
+                soft_limit(r * g).clamp(-1.0, 1.0),
+            );
             outputs[0][0][i] = l;
             outputs[0][1][i] = r;
             peak = peak.max(l.abs()).max(r.abs());

@@ -33,7 +33,14 @@ pub struct Timeline {
 impl Clock {
     pub fn new(sr: f32) -> Self {
         // 120 BPM until ticks say otherwise.
-        Self { ticks: -1, running: false, since: 0.0, period: sr as f64 / (2.0 * PPQ), started: false, alive: false }
+        Self {
+            ticks: -1,
+            running: false,
+            since: 0.0,
+            period: sr as f64 / (2.0 * PPQ),
+            started: false,
+            alive: false,
+        }
     }
 
     /// A clock or transport message `frame` samples into the coming block
@@ -44,7 +51,11 @@ impl Clock {
                 let interval = self.since + frame as f64;
                 if self.ticks >= 0 && interval > 0.0 {
                     // Smoothed, but quick to follow a new tempo.
-                    let k = if (interval / self.period - 1.0).abs() > 0.2 { 1.0 } else { 0.2 };
+                    let k = if (interval / self.period - 1.0).abs() > 0.2 {
+                        1.0
+                    } else {
+                        0.2
+                    };
                     self.period += (interval - self.period) * k;
                 }
                 if self.running {
@@ -74,9 +85,22 @@ impl Clock {
             self.alive = false;
         }
         // A tick later in this block: from the one before it.
-        let (base, since) = if self.since < 0.0 { (self.ticks - 1, self.since + self.period) } else { (self.ticks, self.since) };
-        let beat = if base >= 0 { (base as f64 + (since / self.period).clamp(0.0, 1.0)) / PPQ } else { 0.0 };
-        let t = Timeline { beat, beats_per_sample: 1.0 / (PPQ * self.period), running: self.running && self.alive, restart: self.started };
+        let (base, since) = if self.since < 0.0 {
+            (self.ticks - 1, self.since + self.period)
+        } else {
+            (self.ticks, self.since)
+        };
+        let beat = if base >= 0 {
+            (base as f64 + (since / self.period).clamp(0.0, 1.0)) / PPQ
+        } else {
+            0.0
+        };
+        let t = Timeline {
+            beat,
+            beats_per_sample: 1.0 / (PPQ * self.period),
+            running: self.running && self.alive,
+            restart: self.started,
+        };
         self.started = false;
         self.since += n as f64;
         t
@@ -84,6 +108,10 @@ impl Clock {
 
     /// The tempo the ticks keep (0 when none come).
     pub fn bpm(&self, sr: f32) -> f32 {
-        if self.alive { (60.0 * sr as f64 / (PPQ * self.period)) as f32 } else { 0.0 }
+        if self.alive {
+            (60.0 * sr as f64 / (PPQ * self.period)) as f32
+        } else {
+            0.0
+        }
     }
 }

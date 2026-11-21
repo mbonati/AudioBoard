@@ -27,11 +27,18 @@ pub const SHAPES: [(&str, &str); 8] = [
 ];
 
 /// Slopes in dB/octave (6 isn't offered by band pass and notch: they use 12).
-pub const SLOPES: [(&str, &str); 4] =
-    [("6", "6 dB/octave"), ("12", "12 dB/octave"), ("24", "24 dB/octave"), ("48", "48 dB/octave")];
+pub const SLOPES: [(&str, &str); 4] = [
+    ("6", "6 dB/octave"),
+    ("12", "12 dB/octave"),
+    ("24", "24 dB/octave"),
+    ("48", "48 dB/octave"),
+];
 
 pub const STYLES: [(&str, &str); 11] = [
-    ("Classic", "The original: warm drive, singing self-oscillation"),
+    (
+        "Classic",
+        "The original: warm drive, singing self-oscillation",
+    ),
     ("Smooth", "Like the cream in your coffee"),
     ("Raw", "Lots of overdrive, a character of its own"),
     ("Hard", "Moderate distortion with a clean whistle"),
@@ -71,7 +78,13 @@ struct Style {
 }
 
 const fn style(pre: Sat, drive: f32, feedback: Sat, osc: f32, low: bool) -> Style {
-    Style { pre, drive, feedback, osc, low }
+    Style {
+        pre,
+        drive,
+        feedback,
+        osc,
+        low,
+    }
 }
 
 const STYLE_TABLE: [Style; 11] = [
@@ -164,7 +177,12 @@ impl Coeffs {
     fn svf(g: f32, k: f32) -> Self {
         let a1 = 1.0 / (1.0 + g * (g + k));
         let a2 = g * a1;
-        Self { a1, a2, a3: g * a2, k }
+        Self {
+            a1,
+            a2,
+            a3: g * a2,
+            k,
+        }
     }
 }
 
@@ -247,7 +265,11 @@ impl Filter {
                 LOW_PASS | HIGH_PASS => {
                     let ks = butterworth(slope);
                     for (i, &kb) in ks.iter().enumerate() {
-                        let k = if i + 1 == ks.len() { resonant(kb, s.peak, style.osc) } else { kb };
+                        let k = if i + 1 == ks.len() {
+                            resonant(kb, s.peak, style.osc)
+                        } else {
+                            kb
+                        };
                         c[i] = Coeffs::svf(g, k);
                     }
                     ks.len()
@@ -383,7 +405,8 @@ fn quad(w: f32, a: f32, b: f32, c: f32) -> Complex {
 /// `peak`, warped as the digital filter is.
 pub fn response(s: &Setting, fc: f32, f: f32, sr: f32) -> Complex {
     let nyq = sr * 0.4999;
-    let w = fastmath::tan_turns(f.min(nyq) / (2.0 * sr)) / fastmath::tan_turns(fc.clamp(10.0, nyq) / (2.0 * sr));
+    let w = fastmath::tan_turns(f.min(nyq) / (2.0 * sr))
+        / fastmath::tan_turns(fc.clamp(10.0, nyq) / (2.0 * sr));
     let style = STYLE_TABLE[s.style.min(STYLE_TABLE.len() - 1)];
     let slope = s.slope.min(3);
     let one = (1.0, 0.0);
@@ -398,8 +421,16 @@ pub fn response(s: &Setting, fc: f32, f: f32, sr: f32) -> Complex {
             }
             let mut h = one;
             for (i, &kb) in ks.iter().enumerate() {
-                let k = if i + 1 == ks.len() { resonant(kb, s.peak, style.osc).max(0.02) } else { kb };
-                let num = if s.shape == LOW_PASS { one } else { (-w * w, 0.0) };
+                let k = if i + 1 == ks.len() {
+                    resonant(kb, s.peak, style.osc).max(0.02)
+                } else {
+                    kb
+                };
+                let num = if s.shape == LOW_PASS {
+                    one
+                } else {
+                    (-w * w, 0.0)
+                };
                 h = mul(h, svf(k, num));
             }
             h
@@ -414,7 +445,11 @@ pub fn response(s: &Setting, fc: f32, f: f32, sr: f32) -> Complex {
                 _ => 4,
             };
             let osc = if s.shape == BAND_PASS { style.osc } else { 0.0 };
-            let k = resonant(std::f32::consts::SQRT_2, s.peak, osc).max(if s.shape == BAND_PASS { 0.02 } else { 0.05 });
+            let k = resonant(std::f32::consts::SQRT_2, s.peak, osc).max(if s.shape == BAND_PASS {
+                0.02
+            } else {
+                0.05
+            });
             let num = match s.shape {
                 BAND_PASS => (0.0, k * w),
                 NOTCH => quad(w, 1.0, 0.0, 1.0),

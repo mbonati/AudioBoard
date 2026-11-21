@@ -24,8 +24,10 @@ use crate::project;
 // Test nodes, written against the SDK
 // ---------------------------------------------------------------------------
 
-const TONE_PARAMS: &[ParamSpec] =
-    &[ParamSpec::log("FREQ", 20.0, 2000.0, 330.0, Unit::Hz), ParamSpec::lin("LEVEL", 0.0, 1.0, 0.5, Unit::Percent)];
+const TONE_PARAMS: &[ParamSpec] = &[
+    ParamSpec::log("FREQ", 20.0, 2000.0, 330.0, Unit::Hz),
+    ParamSpec::lin("LEVEL", 0.0, 1.0, 0.5, Unit::Percent),
+];
 
 /// A sine; its display traces its phase.
 struct TestTone {
@@ -49,11 +51,18 @@ impl Node for TestTone {
             viz: 1,
             ..NodeDef::EMPTY
         },
-        panel: Panel { display: Display::Trace { index: 0 }, readout: Readout::Param(0) },
+        panel: Panel {
+            display: Display::Trace { index: 0 },
+            readout: Readout::Param(0),
+        },
     };
 
     fn new(init: &Init) -> Self {
-        TestTone { params: init.params, sample_rate: init.sample_rate, phase: 0.0 }
+        TestTone {
+            params: init.params,
+            sample_rate: init.sample_rate,
+            phase: 0.0,
+        }
     }
 
     fn process(&mut self, _ctx: &ProcessCtx, io: &mut Io<'_>) {
@@ -92,11 +101,16 @@ impl Node for TestGain {
             data: &[0.25, 0.5],
             ..NodeDef::EMPTY
         },
-        panel: Panel { display: Display::Level, readout: Readout::Param(0) },
+        panel: Panel {
+            display: Display::Level,
+            readout: Readout::Param(0),
+        },
     };
 
     fn new(init: &Init) -> Self {
-        TestGain { params: init.params }
+        TestGain {
+            params: init.params,
+        }
     }
 
     fn process(&mut self, _ctx: &ProcessCtx, io: &mut Io<'_>) {
@@ -118,8 +132,15 @@ impl Node for TestPanic {
     const DESCRIPTOR: Descriptor = Descriptor {
         id: "test.audioboard.panic",
         maker: "Test",
-        def: NodeDef { name: "Test Panic", outputs: &["OUT"], ..NodeDef::EMPTY },
-        panel: Panel { display: Display::None, readout: Readout::Name },
+        def: NodeDef {
+            name: "Test Panic",
+            outputs: &["OUT"],
+            ..NodeDef::EMPTY
+        },
+        panel: Panel {
+            display: Display::None,
+            readout: Readout::Name,
+        },
     };
 
     fn new(_init: &Init) -> Self {
@@ -138,7 +159,8 @@ audioboard_node::static_nodes! {
 /// The test nodes, registered once for every test in the process.
 fn test_nodes() -> [ExtId; 3] {
     static IDS: OnceLock<Vec<ExtId>> = OnceLock::new();
-    let ids = IDS.get_or_init(|| register_static(test_entry, "test-nodes").expect("test nodes register"));
+    let ids =
+        IDS.get_or_init(|| register_static(test_entry, "test-nodes").expect("test nodes register"));
     [ids[0], ids[1], ids[2]]
 }
 
@@ -168,7 +190,10 @@ fn render(engine: &mut Engine, frames: usize) -> (f32, bool) {
     for chunk in buf.chunks_mut(2 * 256) {
         engine.render(chunk, 2);
     }
-    (buf.iter().fold(0.0f32, |m, s| m.max(s.abs())), buf.iter().all(|s| s.is_finite()))
+    (
+        buf.iter().fold(0.0f32, |m, s| m.max(s.abs())),
+        buf.iter().all(|s| s.is_finite()),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -186,13 +211,27 @@ fn sdk_nodes_load_through_the_abi() {
     assert_eq!(t.panel.display, Display::Trace { index: 0 });
     assert_eq!(ext(gain).def.toggle, Some("INVERT"));
     assert_eq!(ext(gain).def.data, [0.25, 0.5]);
-    assert_eq!(ext(panic).def.prefix, "TEST PANIC", "an empty prefix is made from the name");
+    assert_eq!(
+        ext(panic).def.prefix,
+        "TEST PANIC",
+        "an empty prefix is made from the name"
+    );
     assert_eq!(find("test.audioboard.gain"), Some(gain));
-    assert_eq!(ModuleKind::from_key("test.audioboard.gain"), Some(ModuleKind::Ext(gain)));
+    assert_eq!(
+        ModuleKind::from_key("test.audioboard.gain"),
+        Some(ModuleKind::Ext(gain))
+    );
     assert_eq!(ModuleKind::Ext(gain).key(), "test.audioboard.gain");
-    assert!(by_maker().iter().any(|(m, list)| *m == "Test" && list.contains(&tone)));
+    assert!(
+        by_maker()
+            .iter()
+            .any(|(m, list)| *m == "Test" && list.contains(&tone))
+    );
     // Registering again changes nothing.
-    assert_eq!(register_static(test_entry, "test-nodes").unwrap(), vec![tone, gain, panic]);
+    assert_eq!(
+        register_static(test_entry, "test-nodes").unwrap(),
+        vec![tone, gain, panic]
+    );
 }
 
 #[test]
@@ -205,7 +244,10 @@ fn plugin_nodes_sound_in_a_patch_and_survive_a_project() {
     assert!(g.connect(port(t, 0), port(m, 0), &a));
     assert!(g.connect(port(m, 0), port(mix, 0), &a));
     let (peak, finite) = render(&mut e, 9600);
-    assert!(finite && peak > 0.2, "tone through gain reaches the output: {peak}");
+    assert!(
+        finite && peak > 0.2,
+        "tone through gain reaches the output: {peak}"
+    );
 
     // Settings: knob, mode, switch and saved data.
     params(&g, t).set(0, 440.0);
@@ -221,7 +263,10 @@ fn plugin_nodes_sound_in_a_patch_and_survive_a_project() {
 
     let snap = project::snapshot(&g);
     let json = serde_json::to_string(&snap).unwrap();
-    assert!(json.contains("\"module\":\"test.audioboard.tone\""), "saved by stable id: {json}");
+    assert!(
+        json.contains("\"module\":\"test.audioboard.tone\""),
+        "saved by stable id: {json}"
+    );
     assert!(json.contains("\"FREQ\":440.0"), "parameters by name");
 
     let (mut g2, a2, mut e2) = setup();
@@ -229,8 +274,15 @@ fn plugin_nodes_sound_in_a_patch_and_survive_a_project() {
     assert!(project::missing_modules(&back).is_empty());
     assert_eq!(project::restore(&mut g2, &back, &a2), 0);
     let ids: Vec<u32> = g2.nodes.iter().map(|n| n.id).collect();
-    let find_kind = |k: ModuleKind| *ids.iter().find(|id| params_kind(&g2, **id) == Some(k)).expect("restored node");
-    let (t2, m2) = (find_kind(ModuleKind::Ext(tone)), find_kind(ModuleKind::Ext(gain)));
+    let find_kind = |k: ModuleKind| {
+        *ids.iter()
+            .find(|id| params_kind(&g2, **id) == Some(k))
+            .expect("restored node")
+    };
+    let (t2, m2) = (
+        find_kind(ModuleKind::Ext(tone)),
+        find_kind(ModuleKind::Ext(gain)),
+    );
     assert_eq!(params(&g2, t2).get(0), 440.0);
     assert_eq!(params(&g2, t2).mode(), 1);
     assert!(params(&g2, m2).toggled());
@@ -253,11 +305,20 @@ fn a_missing_plugin_is_reported_not_fatal() {
     let [tone, ..] = test_nodes();
     let (mut g, a, _e) = setup();
     g.add_module(ModuleKind::Ext(tone), pos2(0.0, 0.0), &a);
-    let json = serde_json::to_string(&project::snapshot(&g)).unwrap().replace("test.audioboard.tone", "com.nobody.missing");
+    let json = serde_json::to_string(&project::snapshot(&g))
+        .unwrap()
+        .replace("test.audioboard.tone", "com.nobody.missing");
     let p: project::Project = serde_json::from_str(&json).unwrap();
-    assert_eq!(project::missing_modules(&p), vec!["com.nobody.missing".to_owned()]);
+    assert_eq!(
+        project::missing_modules(&p),
+        vec!["com.nobody.missing".to_owned()]
+    );
     let (mut g2, a2, _e2) = setup();
-    assert_eq!(project::restore(&mut g2, &p, &a2), 1, "the node is skipped and counted");
+    assert_eq!(
+        project::restore(&mut g2, &p, &a2),
+        1,
+        "the node is skipped and counted"
+    );
     assert!(g2.nodes.is_empty());
 }
 
@@ -271,7 +332,10 @@ fn a_panicking_plugin_node_goes_silent() {
     g.connect(port(bad, 0), port(mix, 0), &a);
     g.connect(port(good, 0), port(mix, 1), &a);
     let (peak, finite) = render(&mut e, 4800);
-    assert!(finite && peak > 0.1, "the rest of the patch plays on: {peak}");
+    assert!(
+        finite && peak > 0.1,
+        "the rest of the patch plays on: {peak}"
+    );
     assert_eq!(ext(panic).trouble(), Some("Stopped: the plugin crashed"));
     assert_eq!(ext(tone).trouble(), None);
 }
@@ -298,8 +362,16 @@ fn incompatible_plugins_are_refused_with_a_reason() {
         const DESCRIPTOR: Descriptor = Descriptor {
             id: "test.audioboard.broken",
             maker: "Test",
-            def: NodeDef { name: "Broken", outputs: &["OUT"], params: BAD, ..NodeDef::EMPTY },
-            panel: Panel { display: Display::None, readout: Readout::Name },
+            def: NodeDef {
+                name: "Broken",
+                outputs: &["OUT"],
+                params: BAD,
+                ..NodeDef::EMPTY
+            },
+            panel: Panel {
+                display: Display::None,
+                readout: Readout::Name,
+            },
         };
         fn new(_: &Init) -> Self {
             Broken
@@ -347,7 +419,11 @@ fn example_plugin_builds_loads_and_plays() {
         .status()
         .expect("cargo runs");
     assert!(status.success(), "the example plugin builds");
-    let file = format!("{}audioboard_example_nodes.{}", std::env::consts::DLL_PREFIX, std::env::consts::DLL_EXTENSION);
+    let file = format!(
+        "{}audioboard_example_nodes.{}",
+        std::env::consts::DLL_PREFIX,
+        std::env::consts::DLL_EXTENSION
+    );
     let built = target.join("debug").join(&file);
     assert!(built.exists(), "{} exists", built.display());
 
@@ -358,12 +434,20 @@ fn example_plugin_builds_loads_and_plays() {
     assert_eq!(scan.refused, Vec::<String>::new());
     assert_eq!(scan.loaded, vec![("Example nodes".to_owned(), 3)]);
     // Scanning again loads nothing new.
-    assert!(scan_dirs(std::slice::from_ref(&nodes_dir)).loaded.is_empty());
+    assert!(
+        scan_dirs(std::slice::from_ref(&nodes_dir))
+            .loaded
+            .is_empty()
+    );
 
     let haze = find("dev.audioboard.example.haze").expect("Haze loaded");
     let glass = find("dev.audioboard.example.glass").expect("Glass loaded");
     let pulse = find("dev.audioboard.example.pulse").expect("Pulse loaded");
-    assert!(by_maker().iter().any(|(m, l)| *m == "AudioBoard Examples" && l.len() == 3));
+    assert!(
+        by_maker()
+            .iter()
+            .any(|(m, l)| *m == "AudioBoard Examples" && l.len() == 3)
+    );
     assert!(libraries().iter().any(|l| l.0 == file && l.3 == 3));
 
     // An oscillator through Haze, and Pulse playing Glass, into a mixer.
@@ -375,12 +459,21 @@ fn example_plugin_builds_loads_and_plays() {
     let mix = g.add_mixer(pos2(700.0, 0.0), &a);
     assert!(g.connect(port(osc, 0), port(h, 0), &a));
     assert!(g.connect(port(h, 0), port(mix, 0), &a));
-    assert!(g.connect(port(p, MIDI_PORT), port(gl, MIDI_PORT), &a), "Pulse's MIDI into Glass");
+    assert!(
+        g.connect(port(p, MIDI_PORT), port(gl, MIDI_PORT), &a),
+        "Pulse's MIDI into Glass"
+    );
     assert!(g.connect(port(gl, 0), port(mix, 1), &a));
     let (peak, finite) = render(&mut e, 48_000);
     assert!(finite && peak > 0.1, "the patch plays: {peak}");
-    assert!(params(&g, gl).viz[32].get() == 36.0, "Glass heard Pulse's C2");
-    assert!(params(&g, h).viz[0].get().abs() <= 1.0, "Haze publishes its LFO");
+    assert!(
+        params(&g, gl).viz[32].get() == 36.0,
+        "Glass heard Pulse's C2"
+    );
+    assert!(
+        params(&g, h).viz[0].get().abs() <= 1.0,
+        "Haze publishes its LFO"
+    );
 
     // Glass alone, played by Pulse.
     let cable = *g.cables.iter().find(|c| c.from.node == h).unwrap();
@@ -396,7 +489,13 @@ fn example_plugin_builds_loads_and_plays() {
     let back: project::Project = serde_json::from_str(&json).unwrap();
     let (mut g2, a2, mut e2) = setup();
     assert_eq!(project::restore(&mut g2, &back, &a2), 0);
-    let restored = |k: ModuleKind| g2.nodes.iter().map(|n| n.id).find(|id| params_kind(&g2, *id) == Some(k)).unwrap();
+    let restored = |k: ModuleKind| {
+        g2.nodes
+            .iter()
+            .map(|n| n.id)
+            .find(|id| params_kind(&g2, *id) == Some(k))
+            .unwrap()
+    };
     assert_eq!(params(&g2, restored(ModuleKind::Ext(haze))).get(0), 2.5);
     assert_eq!(params(&g2, restored(ModuleKind::Ext(pulse))).mode(), 1);
     a2.shared.running.store(true, Ordering::Relaxed);

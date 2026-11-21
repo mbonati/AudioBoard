@@ -28,7 +28,12 @@ impl ModulePreset {
         let def = p.kind.def();
         Self {
             name: name.to_owned(),
-            params: def.params.iter().enumerate().map(|(i, s)| (s.name.to_owned(), p.get(i))).collect(),
+            params: def
+                .params
+                .iter()
+                .enumerate()
+                .map(|(i, s)| (s.name.to_owned(), p.get(i)))
+                .collect(),
             data: p.data.iter().map(|d| d.get()).collect(),
             mode: def.modes.get(p.mode()).map(|m| (*m).to_owned()),
             toggle: def.toggle.map(|_| p.toggled()),
@@ -47,7 +52,11 @@ impl ModulePreset {
         for (d, &v) in p.data.iter().zip(&self.data) {
             d.set(v);
         }
-        if let Some(k) = self.mode.as_ref().and_then(|m| def.modes.iter().position(|n| n == m)) {
+        if let Some(k) = self
+            .mode
+            .as_ref()
+            .and_then(|m| def.modes.iter().position(|n| n == m))
+        {
             p.set_mode(k);
         }
         if let Some(on) = self.toggle.filter(|_| def.toggle.is_some()) {
@@ -79,7 +88,10 @@ pub fn save(dir: &Path, kind: ModuleKind, presets: &[ModulePreset]) -> Result<()
 /// Presets kept in a file of their own (Orrery's patterns: `data` holds a
 /// pattern, not the whole module); none if it is missing or unreadable.
 pub fn load_file(path: &Path) -> Vec<ModulePreset> {
-    std::fs::read_to_string(path).ok().and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default()
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
 }
 
 pub fn save_file(path: &Path, presets: &[ModulePreset]) -> Result<(), String> {

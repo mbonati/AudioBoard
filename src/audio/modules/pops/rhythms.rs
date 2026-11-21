@@ -4,8 +4,8 @@
 //! diode matrix; these are new patterns in each style.
 
 use super::voices::{
-    BASE, BONGO_L, BONGO_S, CLAVES, COUNT, COWBELL, CONGA, CYMBAL1, CYMBAL2, GUIRO, HIHAT, QUIJADA, RIMSHOT, SNARE1,
-    SNARE2, TAMBOURINE,
+    BASE, BONGO_L, BONGO_S, CLAVES, CONGA, COUNT, COWBELL, CYMBAL1, CYMBAL2, GUIRO, HIHAT, QUIJADA,
+    RIMSHOT, SNARE1, SNARE2, TAMBOURINE,
 };
 
 /// Most steps a pattern can have.
@@ -56,12 +56,27 @@ const fn rhythm(name: &'static str, per_beat: usize, bar: usize, hits: &[(usize,
         rows[hits[i].0] = mask(hits[i].1, len);
         i += 1;
     }
-    Rhythm { name, per_beat, len, rows }
+    Rhythm {
+        name,
+        per_beat,
+        len,
+        rows,
+    }
 }
 
 /// Top row (black labels), then bottom row (red), as on the panel.
 pub const RHYTHMS: [Rhythm; 20] = [
-    rhythm("WALTZ", 4, 12, &[(BASE, "x... .... ...."), (SNARE2, ".... x... x..."), (HIHAT, "x.x. x.x. x.x."), (TAMBOURINE, ".... x... x...")]),
+    rhythm(
+        "WALTZ",
+        4,
+        12,
+        &[
+            (BASE, "x... .... ...."),
+            (SNARE2, ".... x... x..."),
+            (HIHAT, "x.x. x.x. x.x."),
+            (TAMBOURINE, ".... x... x..."),
+        ],
+    ),
     rhythm(
         "SAMBA",
         4,
@@ -106,10 +121,33 @@ pub const RHYTHMS: [Rhythm; 20] = [
         "TANGO",
         4,
         16,
-        &[(BASE, "x... x... x... x.x."), (SNARE2, ".... .... x.x. x..."), (HIHAT, "x.x. x.x. x.x. x.x."), (TAMBOURINE, ".... x... .... x...")],
+        &[
+            (BASE, "x... x... x... x.x."),
+            (SNARE2, ".... .... x.x. x..."),
+            (HIHAT, "x.x. x.x. x.x. x.x."),
+            (TAMBOURINE, ".... x... .... x..."),
+        ],
     ),
-    rhythm("BOSSANOVA", 4, 16, &[(BASE, "x..x x..x x..x x..x"), (RIMSHOT, "x..x ..x. ..x. .x.."), (HIHAT, "xxxx xxxx xxxx xxxx")]),
-    rhythm("ROCK 1", 4, 16, &[(BASE, "x... .... x... ...."), (SNARE1, ".... x... .... x..."), (HIHAT, "x.x. x.x. x.x. x.x.")]),
+    rhythm(
+        "BOSSANOVA",
+        4,
+        16,
+        &[
+            (BASE, "x..x x..x x..x x..x"),
+            (RIMSHOT, "x..x ..x. ..x. .x.."),
+            (HIHAT, "xxxx xxxx xxxx xxxx"),
+        ],
+    ),
+    rhythm(
+        "ROCK 1",
+        4,
+        16,
+        &[
+            (BASE, "x... .... x... ...."),
+            (SNARE1, ".... x... .... x..."),
+            (HIHAT, "x.x. x.x. x.x. x.x."),
+        ],
+    ),
     rhythm(
         "ROCK 3",
         4,
@@ -121,9 +159,38 @@ pub const RHYTHMS: [Rhythm; 20] = [
             (CYMBAL1, "x... .... .... .... .... .... .... ...."),
         ],
     ),
-    rhythm("MARCH 2/4", 4, 16, &[(BASE, "x... .... x... ...."), (SNARE1, "x.xx x.x. x.xx x.x."), (CYMBAL1, ".... x... .... x...")]),
-    rhythm("SWING", 3, 12, &[(BASE, "x.. ... x.. ..."), (CYMBAL2, "x.. x.x x.. x.x"), (HIHAT, "... x.. ... x.."), (SNARE2, "... ... ... ..x")]),
-    rhythm("JAZZ WALTZ", 3, 9, &[(BASE, "x.. ... ..."), (CYMBAL2, "x.. x.x x.."), (HIHAT, "... x.. x.."), (SNARE2, "... ... ..x")]),
+    rhythm(
+        "MARCH 2/4",
+        4,
+        16,
+        &[
+            (BASE, "x... .... x... ...."),
+            (SNARE1, "x.xx x.x. x.xx x.x."),
+            (CYMBAL1, ".... x... .... x..."),
+        ],
+    ),
+    rhythm(
+        "SWING",
+        3,
+        12,
+        &[
+            (BASE, "x.. ... x.. ..."),
+            (CYMBAL2, "x.. x.x x.. x.x"),
+            (HIHAT, "... x.. ... x.."),
+            (SNARE2, "... ... ... ..x"),
+        ],
+    ),
+    rhythm(
+        "JAZZ WALTZ",
+        3,
+        9,
+        &[
+            (BASE, "x.. ... ..."),
+            (CYMBAL2, "x.. x.x x.."),
+            (HIHAT, "... x.. x.."),
+            (SNARE2, "... ... ..x"),
+        ],
+    ),
     rhythm(
         "MERINGUE",
         4,
@@ -165,10 +232,33 @@ pub const RHYTHMS: [Rhythm; 20] = [
         "HABANERA",
         4,
         16,
-        &[(BASE, "x..x x... x..x x..."), (SNARE2, ".... x... .... x..."), (TAMBOURINE, "x.x. x.x. x.x. x.x."), (BONGO_L, "x... .... x... ....")],
+        &[
+            (BASE, "x..x x... x..x x..."),
+            (SNARE2, ".... x... .... x..."),
+            (TAMBOURINE, "x.x. x.x. x.x. x.x."),
+            (BONGO_L, "x... .... x... ...."),
+        ],
     ),
-    rhythm("SLOW ROCK", 3, 12, &[(BASE, "x.. ... x.x ..."), (SNARE1, "... x.. ... x.."), (HIHAT, "xxx xxx xxx xxx")]),
-    rhythm("ROCK 2", 4, 16, &[(BASE, "x... ..x. x... ...."), (SNARE1, ".... x... .... x..."), (HIHAT, "xxxx xxxx xxxx xxxx")]),
+    rhythm(
+        "SLOW ROCK",
+        3,
+        12,
+        &[
+            (BASE, "x.. ... x.x ..."),
+            (SNARE1, "... x.. ... x.."),
+            (HIHAT, "xxx xxx xxx xxx"),
+        ],
+    ),
+    rhythm(
+        "ROCK 2",
+        4,
+        16,
+        &[
+            (BASE, "x... ..x. x... ...."),
+            (SNARE1, ".... x... .... x..."),
+            (HIHAT, "xxxx xxxx xxxx xxxx"),
+        ],
+    ),
     rhythm(
         "ROCK 4",
         4,
@@ -180,7 +270,12 @@ pub const RHYTHMS: [Rhythm; 20] = [
             (CYMBAL1, "x... .... .... .... .... .... .... ...."),
         ],
     ),
-    rhythm("MARCH 6/8", 3, 6, &[(BASE, "x.. x.."), (SNARE1, "x.x xx."), (CYMBAL1, "... x..")]),
+    rhythm(
+        "MARCH 6/8",
+        3,
+        6,
+        &[(BASE, "x.. x.."), (SNARE1, "x.x xx."), (CYMBAL1, "... x..")],
+    ),
     rhythm(
         "LATIN SWING",
         3,

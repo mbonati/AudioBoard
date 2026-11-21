@@ -29,7 +29,13 @@ fn log_between(rng: &mut Rng, lo: f32, hi: f32) -> f32 {
 
 /// A throw for the settings of `slices`: each amount moves `amount` (0…1)
 /// of the way to a new one, each choice changes with that chance.
-pub fn throw_slices(p: &ModuleParams, sample: Option<&Sample>, seed: u32, amount: f32, slices: &[usize]) {
+pub fn throw_slices(
+    p: &ModuleParams,
+    sample: Option<&Sample>,
+    seed: u32,
+    amount: f32,
+    slices: &[usize],
+) {
     use slice::*;
     let a = amount.clamp(0.0, 1.0);
     let n = count(p);
@@ -65,7 +71,11 @@ pub fn throw_slices(p: &ModuleParams, sample: Option<&Sample>, seed: u32, amount
             0.0
         };
         choose(&mut rng, PLAY, play);
-        let attack = if r == Role::Tone || r == Role::Texture { log_between(&mut rng, 0.5, 30.0) } else { between(&mut rng, 0.0, 2.0) };
+        let attack = if r == Role::Tone || r == Role::Texture {
+            log_between(&mut rng, 0.5, 30.0)
+        } else {
+            between(&mut rng, 0.0, 2.0)
+        };
         nudge(ATTACK, attack);
         let (lo, hi) = match r {
             Role::Low => (80.0, 320.0),
@@ -82,20 +92,36 @@ pub fn throw_slices(p: &ModuleParams, sample: Option<&Sample>, seed: u32, amount
         nudge(PAN, v);
 
         // The ratchet.
-        let repeats: &[f32] = if matches!(r, Role::Hit | Role::Noise) { &[1.0, 1.0, 1.0, 1.0, 2.0, 3.0, 4.0, 8.0, 16.0] } else { &[1.0, 1.0, 1.0, 2.0, 3.0] };
+        let repeats: &[f32] = if matches!(r, Role::Hit | Role::Noise) {
+            &[1.0, 1.0, 1.0, 1.0, 2.0, 3.0, 4.0, 8.0, 16.0]
+        } else {
+            &[1.0, 1.0, 1.0, 2.0, 3.0]
+        };
         let v = pick(&mut rng, repeats);
         choose(&mut rng, REPEAT, v);
-        let v = (1 + (rng.unit() * (REPEAT_RATES.len() - 1) as f32) as usize).min(REPEAT_RATES.len() - 1) as f32;
+        let v = (1 + (rng.unit() * (REPEAT_RATES.len() - 1) as f32) as usize)
+            .min(REPEAT_RATES.len() - 1) as f32;
         choose(&mut rng, REP_RATE, v);
-        let v = pick(&mut rng, &[0.0, 0.0, 0.0, 0.0, 12.0, -12.0, 7.0, -5.0, 1.0, -1.0]);
+        let v = pick(
+            &mut rng,
+            &[0.0, 0.0, 0.0, 0.0, 12.0, -12.0, 7.0, -5.0, 1.0, -1.0],
+        );
         choose(&mut rng, RAMP, v);
         let v = between(&mut rng, 0.0, 60.0);
         nudge(FALL, v);
 
         // The crusher.
-        let v = if rng.unit() < 0.75 { 16.0 } else { pick(&mut rng, &[12.0, 8.0, 6.0, 4.0, 3.0]) };
+        let v = if rng.unit() < 0.75 {
+            16.0
+        } else {
+            pick(&mut rng, &[12.0, 8.0, 6.0, 4.0, 3.0])
+        };
         choose(&mut rng, BITS, v);
-        let v = if rng.unit() < 0.8 { 1.0 } else { pick(&mut rng, &[2.0, 3.0, 4.0, 8.0, 16.0]) };
+        let v = if rng.unit() < 0.8 {
+            1.0
+        } else {
+            pick(&mut rng, &[2.0, 3.0, 4.0, 8.0, 16.0])
+        };
         choose(&mut rng, DOWN, v);
 
         // Grains.
@@ -124,8 +150,12 @@ pub fn throw_slices(p: &ModuleParams, sample: Option<&Sample>, seed: u32, amount
         // A sample slice's region shifts and stretches now and then: a cut
         // in a new place.
         if from_sample && sample.is_some() && rng.unit() < a * 0.5 {
-            let (s0, s1) = (get(p, s, START).min(get(p, s, END)), get(p, s, START).max(get(p, s, END)));
-            let len = ((s1 - s0) * pick(&mut rng, &[0.25, 0.5, 0.5, 1.0, 1.0, 2.0])).clamp(0.0005, 1.0);
+            let (s0, s1) = (
+                get(p, s, START).min(get(p, s, END)),
+                get(p, s, START).max(get(p, s, END)),
+            );
+            let len =
+                ((s1 - s0) * pick(&mut rng, &[0.25, 0.5, 0.5, 1.0, 1.0, 2.0])).clamp(0.0005, 1.0);
             let start = (s0 + rng.bipolar() * len * 0.5).clamp(0.0, 1.0 - len);
             set(p, s, START, start);
             set(p, s, END, start + len);
@@ -144,9 +174,21 @@ pub fn throw_rhythm(p: &ModuleParams, sample: Option<&Sample>, seed: u32, amount
     for (s, &r) in roles.iter().enumerate() {
         let (k, steps, rot) = match r {
             Role::Low => (pick(&mut rng, &[2.0, 3.0, 4.0]), 16.0, 0.0),
-            Role::Hit => (pick(&mut rng, &[5.0, 6.0, 7.0, 9.0, 11.0]), 16.0, (rng.unit() * 16.0).floor()),
-            Role::Tone => (pick(&mut rng, &[1.0, 2.0, 3.0]), pick(&mut rng, &[7.0, 9.0, 11.0, 13.0, 16.0]), (rng.unit() * 7.0).floor()),
-            Role::Noise => (pick(&mut rng, &[2.0, 3.0, 4.0, 5.0, 6.0]), pick(&mut rng, &[12.0, 16.0]), pick(&mut rng, &[1.0, 3.0, 5.0, 7.0])),
+            Role::Hit => (
+                pick(&mut rng, &[5.0, 6.0, 7.0, 9.0, 11.0]),
+                16.0,
+                (rng.unit() * 16.0).floor(),
+            ),
+            Role::Tone => (
+                pick(&mut rng, &[1.0, 2.0, 3.0]),
+                pick(&mut rng, &[7.0, 9.0, 11.0, 13.0, 16.0]),
+                (rng.unit() * 7.0).floor(),
+            ),
+            Role::Noise => (
+                pick(&mut rng, &[2.0, 3.0, 4.0, 5.0, 6.0]),
+                pick(&mut rng, &[12.0, 16.0]),
+                pick(&mut rng, &[1.0, 3.0, 5.0, 7.0]),
+            ),
             Role::Texture => (1.0, pick(&mut rng, &[16.0, 32.0]), 0.0),
         };
         for (field, v) in [(HITS, k), (STEPS, steps), (ROTATE, rot)] {
@@ -212,7 +254,10 @@ pub struct Before {
 
 impl Before {
     pub fn take(p: &ModuleParams) -> Self {
-        Before { values: (data::STEPS..data::LEN).map(|i| p.data[i].get()).collect(), count: p.data[data::COUNT].get() }
+        Before {
+            values: (data::STEPS..data::LEN).map(|i| p.data[i].get()).collect(),
+            count: p.data[data::COUNT].get(),
+        }
     }
 
     pub fn restore(&self, p: &ModuleParams) {

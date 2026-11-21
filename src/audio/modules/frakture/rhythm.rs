@@ -49,8 +49,16 @@ impl Gate {
         let steps = s.steps as f64;
         for i in 0..n {
             let pos = (clock.at(i) / s.step_beats).rem_euclid(steps);
-            let target = if s.pattern[(pos as usize).min(s.steps - 1)] { 1.0 } else { 0.0 };
-            let k = if target > self.env { k_attack } else { k_release };
+            let target = if s.pattern[(pos as usize).min(s.steps - 1)] {
+                1.0
+            } else {
+                0.0
+            };
+            let k = if target > self.env {
+                k_attack
+            } else {
+                k_release
+            };
             self.env += (target - self.env) * k;
             let g = 1.0 - s.mix * (1.0 - self.env);
 
@@ -162,12 +170,18 @@ impl Repeat {
                     self.slice[k * 2 + 1] = in_r;
                     let bin = k * SLICE_BINS / self.len;
                     self.levels[bin] = self.levels[bin].max(in_l.abs().max(in_r.abs()));
-                    self.state = if k + 1 >= self.len { State::Repeating(0, 0) } else { State::Taking(k + 1) };
+                    self.state = if k + 1 >= self.len {
+                        State::Repeating(0, 0)
+                    } else {
+                        State::Taking(k + 1)
+                    };
                 }
                 State::Repeating(k, done) => {
                     // Short fades at each repeat's ends, against clicks.
                     let fade = (self.len / 4).clamp(1, 96) as f32;
-                    let g = ((k + 1) as f32 / fade).min((self.len - k) as f32 / fade).min(1.0);
+                    let g = ((k + 1) as f32 / fade)
+                        .min((self.len - k) as f32 / fade)
+                        .min(1.0);
                     yl = self.slice[k * 2] * g;
                     yr = self.slice[k * 2 + 1] * g;
                     repeating = true;
@@ -181,7 +195,11 @@ impl Repeat {
                 }
                 State::Idle => {}
             }
-            approach(&mut self.duck, if repeating { 1.0 - s.duck } else { 1.0 }, self.smooth);
+            approach(
+                &mut self.duck,
+                if repeating { 1.0 - s.duck } else { 1.0 },
+                self.smooth,
+            );
             approach(&mut self.volume, s.volume, self.smooth);
             x[0][i] = in_l * self.duck + self.band.process(0, yl) * self.volume;
             x[1][i] = in_r * self.duck + self.band.process(1, yr) * self.volume;

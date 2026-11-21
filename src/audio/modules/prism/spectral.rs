@@ -169,8 +169,12 @@ impl Stage {
             ms: false,
             spec: [SpecBand::default(); BANDS],
             weight: (0..BANDS).map(|_| zeros(GRID)).collect(),
-            level: (0..BANDS).map(|_| vec![-120.0f32; spec_bins].into_boxed_slice()).collect(),
-            avg: (0..BANDS).map(|_| vec![-60.0f32; spec_bins].into_boxed_slice()).collect(),
+            level: (0..BANDS)
+                .map(|_| vec![-120.0f32; spec_bins].into_boxed_slice())
+                .collect(),
+            avg: (0..BANDS)
+                .map(|_| vec![-60.0f32; spec_bins].into_boxed_slice())
+                .collect(),
             tmp: zeros(spec_bins),
             sdb: std::array::from_fn(|_| zeros(spec_bins)),
             acts: [0.0; BANDS],
@@ -270,8 +274,16 @@ impl Stage {
         let n = self.n;
         let bins = self.bins();
         let fft = Fft::units(n);
-        let bands = if self.spectral_on { self.spec.iter().filter(|b| b.active).count() } else { 0 };
-        self.total_units = n * (1 + self.use_sc as usize) + fft * (2 + self.use_sc as usize) + bands * 3 * bins + 4 * bins + n;
+        let bands = if self.spectral_on {
+            self.spec.iter().filter(|b| b.active).count()
+        } else {
+            0
+        };
+        self.total_units = n * (1 + self.use_sc as usize)
+            + fft * (2 + self.use_sc as usize)
+            + bands * 3 * bins
+            + 4 * bins
+            + n;
         if self.spectral_on {
             for d in self.sdb.iter_mut() {
                 d[..bins].fill(0.0);
@@ -313,9 +325,17 @@ impl Stage {
                     let units = Fft::units(n);
                     let take = budget.min(units - self.pos);
                     self.pos = match self.phase {
-                        Phase::FftSc => self.fft.step(&mut self.cr, &mut self.ci, n, false, self.pos, take),
-                        Phase::Ifft => self.fft.step(&mut self.zr, &mut self.zi, n, true, self.pos, take),
-                        _ => self.fft.step(&mut self.zr, &mut self.zi, n, false, self.pos, take),
+                        Phase::FftSc => {
+                            self.fft
+                                .step(&mut self.cr, &mut self.ci, n, false, self.pos, take)
+                        }
+                        Phase::Ifft => {
+                            self.fft
+                                .step(&mut self.zr, &mut self.zi, n, true, self.pos, take)
+                        }
+                        _ => self
+                            .fft
+                            .step(&mut self.zr, &mut self.zi, n, false, self.pos, take),
                     };
                     budget -= take;
                     if self.pos >= units {
@@ -411,7 +431,10 @@ impl Stage {
     fn unpack(re: &[f32], im: &[f32], n: usize, k: usize) -> ((f32, f32), (f32, f32)) {
         let m = (n - k) & (n - 1);
         let (a, b, c, d) = (re[k], im[k], re[m], im[m]);
-        (((a + c) * 0.5, (b - d) * 0.5), ((b + d) * 0.5, (c - a) * 0.5))
+        (
+            ((a + c) * 0.5, (b - d) * 0.5),
+            ((b + d) * 0.5, (c - a) * 0.5),
+        )
     }
 
     /// The trigger's raw level per bin, smoothed across frequency upwards.
@@ -443,7 +466,11 @@ impl Stage {
             }
             let span = (k as f32 * width_oct * std::f32::consts::LN_2).max(1.0);
             let a = 1.0 / span;
-            self.carry = if k == 0 { db } else { self.carry + (db - self.carry) * a };
+            self.carry = if k == 0 {
+                db
+            } else {
+                self.carry + (db - self.carry) * a
+            };
             self.tmp[k] = self.carry;
         }
     }
@@ -498,7 +525,13 @@ impl Stage {
         const DB2LOG: f32 = 0.166_096_4; // log2(10)/20
         for k in from..to {
             let pos = self.bin_pos[k];
-            let spec = |c: usize| if self.spectral_on { self.sdb[c][k] } else { 0.0 };
+            let spec = |c: usize| {
+                if self.spectral_on {
+                    self.sdb[c][k]
+                } else {
+                    0.0
+                }
+            };
             let gl = fastmath::exp2((at(&self.db[L], pos) + spec(L)) * DB2LOG);
             let gr = fastmath::exp2((at(&self.db[R], pos) + spec(R)) * DB2LOG);
             let ((mut lr, mut li), (mut rr, mut ri)) = Self::unpack(&self.zr, &self.zi, n, k);
@@ -515,7 +548,10 @@ impl Stage {
             }
             if self.spectral_on {
                 let c = ((pos / (GRID - 1) as f32) * (CURVE - 1) as f32).round() as usize;
-                let v = [L, R, M, S].iter().map(|&ch| self.sdb[ch][k]).fold(0.0f32, |a, b| if b.abs() > a.abs() { b } else { a });
+                let v = [L, R, M, S]
+                    .iter()
+                    .map(|&ch| self.sdb[ch][k])
+                    .fold(0.0f32, |a, b| if b.abs() > a.abs() { b } else { a });
                 if v.abs() > self.curve_acc[c].abs() {
                     self.curve_acc[c] = v;
                 }
@@ -543,7 +579,9 @@ mod tests {
         st.resize(1024);
         let lat = st.latency();
         let total = 8000;
-        let x: Vec<f32> = (0..total).map(|i| ((i as f32 * 0.013).sin() + (i as f32 * 0.21).cos() * 0.3) * 0.5).collect();
+        let x: Vec<f32> = (0..total)
+            .map(|i| ((i as f32 * 0.013).sin() + (i as f32 * 0.21).cos() * 0.3) * 0.5)
+            .collect();
         let mut out = vec![0.0f32; total];
         let mut out_r = vec![0.0f32; total];
         for chunk in 0..total / 64 {
@@ -554,7 +592,12 @@ mod tests {
             out_r[chunk * 64..chunk * 64 + 64].copy_from_slice(&r);
         }
         for i in lat + 2000..total - 64 {
-            assert!((out[i] - x[i - lat]).abs() < 1e-3, "sample {i}: {} vs {}", out[i], x[i - lat]);
+            assert!(
+                (out[i] - x[i - lat]).abs() < 1e-3,
+                "sample {i}: {} vs {}",
+                out[i],
+                x[i - lat]
+            );
             assert!((out_r[i] + x[i - lat]).abs() < 1e-3);
         }
     }

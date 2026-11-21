@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use super::steps::{block_end, MAX_STEPS, Step, StepClock, Voice, roll, steps_per_beat};
+use super::steps::{MAX_STEPS, Step, StepClock, Voice, block_end, roll, steps_per_beat};
 use super::{ModuleDef, ModuleParams, Rng};
 use crate::audio::engine::{Buf, Inputs, MidiBuf, ProcessCtx, Processor};
 use crate::audio::params::{ParamSpec, Unit};
@@ -142,7 +142,11 @@ impl Processor for Sequencer {
             return;
         }
         let per_beat = steps_per_beat(p.get(RATE));
-        let mut steps = [Step { frame: 0, beat: 0.0, index: 0 }; MAX_STEPS];
+        let mut steps = [Step {
+            frame: 0,
+            beat: 0.0,
+            index: 0,
+        }; MAX_STEPS];
         let count = self.clock.steps(ctx, n, per_beat, p.get(SWING), &mut steps);
         for step in &steps[..count] {
             self.voice.release_before(&mut self.out, ctx, n, step.beat);
@@ -151,10 +155,17 @@ impl Processor for Sequencer {
             if is_on(p, i) && roll(&mut self.rng, p.get(CHANCE)) {
                 let note = note_of(p, degree(p, i));
                 let length = p.get(GATE) as f64 / per_beat;
-                self.voice.play(&mut self.out, step, note, p.get(VELOCITY).round() as u8, length);
+                self.voice.play(
+                    &mut self.out,
+                    step,
+                    note,
+                    p.get(VELOCITY).round() as u8,
+                    length,
+                );
             }
         }
-        self.voice.release_before(&mut self.out, ctx, n, block_end(ctx, n));
+        self.voice
+            .release_before(&mut self.out, ctx, n, block_end(ctx, n));
         p.viz[NOTE].set(self.voice.note().map_or(-1.0, f32::from));
     }
 

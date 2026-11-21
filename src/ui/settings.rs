@@ -14,7 +14,10 @@
 
 use std::collections::HashMap;
 
-use egui::{Align2, Color32, ComboBox, CursorIcon, FontId, Pos2, Rect, Response, RichText, Sense, Shape, Stroke, StrokeKind, Ui, pos2, vec2};
+use egui::{
+    Align2, Color32, ComboBox, CursorIcon, FontId, Pos2, Rect, Response, RichText, Sense, Shape,
+    Stroke, StrokeKind, Ui, pos2, vec2,
+};
 
 use super::theme::{self, alpha};
 use crate::audio::AudioHandle;
@@ -65,7 +68,10 @@ fn yes() -> bool {
 
 impl Default for PluginSettings {
     fn default() -> Self {
-        Self { audio_units: true, apple_units: true }
+        Self {
+            audio_units: true,
+            apple_units: true,
+        }
     }
 }
 
@@ -157,7 +163,13 @@ pub struct SettingsWindow {
 
 impl SettingsWindow {
     /// Draws the window; returns what the user changed.
-    pub fn show(&mut self, ctx: &egui::Context, cx: &SettingsContext, now: f64, dt: f32) -> Vec<SettingsChange> {
+    pub fn show(
+        &mut self,
+        ctx: &egui::Context,
+        cx: &SettingsContext,
+        now: f64,
+        dt: f32,
+    ) -> Vec<SettingsChange> {
         let mut changes = Vec::new();
         if !self.open {
             self.list = None;
@@ -168,7 +180,9 @@ impl SettingsWindow {
             self.list = Some(device::list(&cx.audio.config));
             self.listed_at = now;
         }
-        if self.tab == Tab::Sync && (self.outputs.is_none() || now - self.outputs_at > RELIST_SECONDS) {
+        if self.tab == Tab::Sync
+            && (self.outputs.is_none() || now - self.outputs_at > RELIST_SECONDS)
+        {
             self.outputs = Some(crate::audio::sync::output_names());
             self.outputs_at = now;
         }
@@ -206,63 +220,118 @@ impl SettingsWindow {
                 v.widgets.hovered.bg_stroke = Stroke::new(1.0, theme::CONTROL_HI);
                 v.widgets.open.bg_stroke = Stroke::new(1.0, theme::ACCENT);
                 let full = Rect::from_min_size(ui.max_rect().min, SIZE);
-                if close_button(ui, Rect::from_center_size(pos2(full.right() - 18.0, full.top() + 18.0), vec2(20.0, 20.0))).clicked()
-                    || (!egui::Popup::is_any_open(ui.ctx()) && ui.input(|i| i.key_pressed(egui::Key::Escape)))
+                if close_button(
+                    ui,
+                    Rect::from_center_size(
+                        pos2(full.right() - 18.0, full.top() + 18.0),
+                        vec2(20.0, 20.0),
+                    ),
+                )
+                .clicked()
+                    || (!egui::Popup::is_any_open(ui.ctx())
+                        && ui.input(|i| i.key_pressed(egui::Key::Escape)))
                 {
                     open = false;
                 }
                 let side = Rect::from_min_size(full.min, vec2(SIDEBAR_W, SIZE.y));
-                ui.painter().rect_filled(side, egui::CornerRadius { sw: 8, ..Default::default() }, theme::PANEL);
-                ui.painter().vline(side.right(), side.y_range(), Stroke::new(1.0, theme::PANEL_BORDER));
-                ui.scope_builder(egui::UiBuilder::new().max_rect(side.shrink2(vec2(8.0, 10.0))), |ui| self.sidebar(ui));
-                let content = Rect::from_min_max(pos2(side.right() + 20.0, full.top() + 14.0), pos2(full.left() + SIZE.x - 20.0, full.top() + SIZE.y - 12.0));
+                ui.painter().rect_filled(
+                    side,
+                    egui::CornerRadius {
+                        sw: 8,
+                        ..Default::default()
+                    },
+                    theme::PANEL,
+                );
+                ui.painter().vline(
+                    side.right(),
+                    side.y_range(),
+                    Stroke::new(1.0, theme::PANEL_BORDER),
+                );
+                ui.scope_builder(
+                    egui::UiBuilder::new().max_rect(side.shrink2(vec2(8.0, 10.0))),
+                    |ui| self.sidebar(ui),
+                );
+                let content = Rect::from_min_max(
+                    pos2(side.right() + 20.0, full.top() + 14.0),
+                    pos2(full.left() + SIZE.x - 20.0, full.top() + SIZE.y - 12.0),
+                );
                 ui.scope_builder(egui::UiBuilder::new().max_rect(content), |ui| {
                     ui.set_width(content.width());
-                    ui.label(RichText::new(self.tab.title()).font(theme::strong(15.0)).color(theme::TEXT));
-                    ui.label(RichText::new(self.tab.subtitle()).size(11.0).color(theme::TEXT_FAINT));
+                    ui.label(
+                        RichText::new(self.tab.title())
+                            .font(theme::strong(15.0))
+                            .color(theme::TEXT),
+                    );
+                    ui.label(
+                        RichText::new(self.tab.subtitle())
+                            .size(11.0)
+                            .color(theme::TEXT_FAINT),
+                    );
                     ui.add_space(10.0);
-                    egui::ScrollArea::vertical().auto_shrink([false, false]).max_height(content.height() - 70.0).show(ui, |ui| {
-                        ui.set_width(content.width() - 8.0);
-                        match self.tab {
-                            Tab::Audio => {
-                                let list = self.list.clone().unwrap_or_default();
-                                let mut config = cx.audio.config.clone();
-                                output_card(ui, &list, cx.audio, &mut config);
-                                ui.add_space(12.0);
-                                input_card(ui, &list, cx.audio, &mut config, &self.levels);
-                                if config != cx.audio.config {
-                                    changes.push(SettingsChange::Audio(config));
+                    egui::ScrollArea::vertical()
+                        .auto_shrink([false, false])
+                        .max_height(content.height() - 70.0)
+                        .show(ui, |ui| {
+                            ui.set_width(content.width() - 8.0);
+                            match self.tab {
+                                Tab::Audio => {
+                                    let list = self.list.clone().unwrap_or_default();
+                                    let mut config = cx.audio.config.clone();
+                                    output_card(ui, &list, cx.audio, &mut config);
+                                    ui.add_space(12.0);
+                                    input_card(ui, &list, cx.audio, &mut config, &self.levels);
+                                    if config != cx.audio.config {
+                                        changes.push(SettingsChange::Audio(config));
+                                    }
                                 }
-                            }
-                            Tab::Midi => midi_card(ui, cx, &self.lights, now),
-                            Tab::Sync => {
-                                let outputs = self.outputs.clone().unwrap_or_default();
-                                if let Some(sync) = self.sync_cards(ui, cx, &outputs, &self.lights.clone(), now, dt) {
-                                    changes.push(SettingsChange::Sync(sync));
+                                Tab::Midi => midi_card(ui, cx, &self.lights, now),
+                                Tab::Sync => {
+                                    let outputs = self.outputs.clone().unwrap_or_default();
+                                    if let Some(sync) = self.sync_cards(
+                                        ui,
+                                        cx,
+                                        &outputs,
+                                        &self.lights.clone(),
+                                        now,
+                                        dt,
+                                    ) {
+                                        changes.push(SettingsChange::Sync(sync));
+                                    }
                                 }
+                                Tab::Plugins => plugins_card(ui, cx, &mut changes),
                             }
-                            Tab::Plugins => plugins_card(ui, cx, &mut changes),
-                        }
-                    });
+                        });
                     // The footer, on the window's bottom edge.
-                    let foot = Rect::from_min_max(pos2(content.left(), content.bottom() - 24.0), content.max);
+                    let foot = Rect::from_min_max(
+                        pos2(content.left(), content.bottom() - 24.0),
+                        content.max,
+                    );
                     ui.scope_builder(egui::UiBuilder::new().max_rect(foot), |ui| {
                         ui.horizontal_centered(|ui| {
-                            ui.label(RichText::new("Changes apply at once and are kept.").size(10.5).color(theme::TEXT_FAINT));
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| match self.tab {
-                                Tab::Audio => relist = pill_button(ui, "Refresh devices").clicked(),
-                                Tab::Plugins => {
-                                    if pill_button(ui, "Rescan plugins").clicked() {
-                                        changes.push(SettingsChange::RescanPlugins);
+                            ui.label(
+                                RichText::new("Changes apply at once and are kept.")
+                                    .size(10.5)
+                                    .color(theme::TEXT_FAINT),
+                            );
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| match self.tab {
+                                    Tab::Audio => {
+                                        relist = pill_button(ui, "Refresh devices").clicked()
                                     }
-                                }
-                                Tab::Sync => {
-                                    if pill_button(ui, "Refresh ports").clicked() {
-                                        self.outputs = None;
+                                    Tab::Plugins => {
+                                        if pill_button(ui, "Rescan plugins").clicked() {
+                                            changes.push(SettingsChange::RescanPlugins);
+                                        }
                                     }
-                                }
-                                Tab::Midi => {}
-                            });
+                                    Tab::Sync => {
+                                        if pill_button(ui, "Refresh ports").clicked() {
+                                            self.outputs = None;
+                                        }
+                                    }
+                                    Tab::Midi => {}
+                                },
+                            );
                         });
                     });
                 });
@@ -278,24 +347,54 @@ impl SettingsWindow {
         ui.add_space(2.0);
         ui.horizontal(|ui| {
             ui.add_space(8.0);
-            ui.label(RichText::new("SETTINGS").size(10.0).strong().color(theme::TEXT_FAINT));
+            ui.label(
+                RichText::new("SETTINGS")
+                    .size(10.0)
+                    .strong()
+                    .color(theme::TEXT_FAINT),
+            );
         });
         ui.add_space(8.0);
         for tab in Tab::ALL {
-            let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 30.0), Sense::CLICK);
+            let (rect, resp) =
+                ui.allocate_exact_size(vec2(ui.available_width(), 30.0), Sense::CLICK);
             let selected = self.tab == tab;
             let hot = resp.hovered();
             let p = ui.painter();
             if selected || hot {
-                p.rect_filled(rect, 5.0, if selected { theme::CONTROL } else { alpha(theme::CONTROL, 0.5) });
+                p.rect_filled(
+                    rect,
+                    5.0,
+                    if selected {
+                        theme::CONTROL
+                    } else {
+                        alpha(theme::CONTROL, 0.5)
+                    },
+                );
             }
             if selected {
-                p.rect_filled(Rect::from_min_size(rect.left_top() + vec2(0.0, 7.0), vec2(2.5, 16.0)), 1.0, theme::ACCENT);
+                p.rect_filled(
+                    Rect::from_min_size(rect.left_top() + vec2(0.0, 7.0), vec2(2.5, 16.0)),
+                    1.0,
+                    theme::ACCENT,
+                );
             }
-            let col = if selected { theme::TEXT } else if hot { theme::TEXT } else { theme::TEXT_DIM };
+            let col = if selected {
+                theme::TEXT
+            } else if hot {
+                theme::TEXT
+            } else {
+                theme::TEXT_DIM
+            };
             let icon_col = if selected { theme::ACCENT } else { col };
             tab_icon(p, pos2(rect.left() + 20.0, rect.center().y), tab, icon_col);
-            p.text(pos2(rect.left() + 36.0, rect.center().y), Align2::LEFT_CENTER, tab.title(), FontId::proportional(12.5), col);
+            p.text(
+                pos2(rect.left() + 36.0, rect.center().y),
+                Align2::LEFT_CENTER,
+                tab.title(),
+                FontId::proportional(12.5),
+                col,
+            );
             if resp.on_hover_cursor(CursorIcon::PointingHand).clicked() {
                 self.tab = tab;
             }
@@ -304,7 +403,15 @@ impl SettingsWindow {
     }
 
     /// The Sync tab; returns new sync settings if changed.
-    fn sync_cards(&mut self, ui: &mut Ui, cx: &SettingsContext, outputs: &[String], lights: &HashMap<String, Lights>, now: f64, dt: f32) -> Option<SyncSettings> {
+    fn sync_cards(
+        &mut self,
+        ui: &mut Ui,
+        cx: &SettingsContext,
+        outputs: &[String],
+        lights: &HashMap<String, Lights>,
+        now: f64,
+        dt: f32,
+    ) -> Option<SyncSettings> {
         let mut sync = cx.sync.clone();
         let inputs: Vec<&str> = cx.midi_inputs.iter().map(|i| i.name.as_str()).collect();
         card(ui, "CLOCK SOURCE", |ui| {
@@ -314,35 +421,57 @@ impl SettingsWindow {
                     Some(s) if inputs.contains(&s.as_str()) => format!("MIDI clock · {s}"),
                     Some(s) => format!("MIDI clock · {s} (not connected)"),
                 };
-                ComboBox::from_id_salt("sync_source").width(COMBO_W).selected_text(shown).show_ui(ui, |ui| {
-                    ui.selectable_value(&mut sync.source, None, "Internal · the board's tempo");
-                    for name in &inputs {
-                        let label = format!("MIDI clock · {name}");
-                        ui.selectable_value(&mut sync.source, Some((*name).to_owned()), label);
-                    }
-                });
+                ComboBox::from_id_salt("sync_source")
+                    .width(COMBO_W)
+                    .selected_text(shown)
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut sync.source, None, "Internal · the board's tempo");
+                        for name in &inputs {
+                            let label = format!("MIDI clock · {name}");
+                            ui.selectable_value(&mut sync.source, Some((*name).to_owned()), label);
+                        }
+                    });
             });
             let (text, color) = match &sync.source {
-                None => ("The board keeps time: its BPM, TAP, and Start/Stop in the toolbar.".to_owned(), theme::TEXT_FAINT),
+                None => (
+                    "The board keeps time: its BPM, TAP, and Start/Stop in the toolbar.".to_owned(),
+                    theme::TEXT_FAINT,
+                ),
                 Some(name) => {
                     let clock = cx.shared.sync.clock();
                     let t = now_ns();
                     if !inputs.contains(&name.as_str()) {
                         (format!("Waiting for {name} to be connected."), theme::SOLO)
                     } else if !clock.alive(t) {
-                        (format!("No clock from {name} yet: start it there, or send clock from it."), theme::SOLO)
+                        (
+                            format!(
+                                "No clock from {name} yet: start it there, or send clock from it."
+                            ),
+                            theme::SOLO,
+                        )
                     } else {
                         let bpm = clock.bpm() as f32;
-                        self.shown_bpm = if (self.shown_bpm - bpm).abs() > 5.0 { bpm } else { self.shown_bpm + (bpm - self.shown_bpm) * (1.0 - (-dt / 0.4).exp()) };
+                        self.shown_bpm = if (self.shown_bpm - bpm).abs() > 5.0 {
+                            bpm
+                        } else {
+                            self.shown_bpm + (bpm - self.shown_bpm) * (1.0 - (-dt / 0.4).exp())
+                        };
                         let state = if clock.playing(t) {
                             let beat = clock.beat_at(t);
-                            format!("playing · bar {} beat {}", (beat / 4.0).floor() as i64 + 1, (beat % 4.0).floor() as i64 + 1)
+                            format!(
+                                "playing · bar {} beat {}",
+                                (beat / 4.0).floor() as i64 + 1,
+                                (beat % 4.0).floor() as i64 + 1
+                            )
                         } else if clock.running {
                             "started, waiting for the first tick".to_owned()
                         } else {
                             "stopped".to_owned()
                         };
-                        (format!("Receiving {:.1} BPM · {state}", self.shown_bpm), theme::METER_GREEN)
+                        (
+                            format!("Receiving {:.1} BPM · {state}", self.shown_bpm),
+                            theme::METER_GREEN,
+                        )
                     }
                 }
             };
@@ -387,7 +516,11 @@ impl SettingsWindow {
             if let Some(e) = error {
                 line(ui, e, theme::MUTE);
             } else if !sending.is_empty() {
-                line(ui, format!("Sending to {}", sending.join(", ")), theme::METER_GREEN);
+                line(
+                    ui,
+                    format!("Sending to {}", sending.join(", ")),
+                    theme::METER_GREEN,
+                );
             }
             note(
                 ui,
@@ -404,7 +537,12 @@ impl SettingsWindow {
 
 /// A titled card: thin outline, the rows inside.
 fn card(ui: &mut Ui, title: &str, body: impl FnOnce(&mut Ui)) {
-    ui.label(RichText::new(title).size(10.0).strong().color(theme::TEXT_DIM));
+    ui.label(
+        RichText::new(title)
+            .size(10.0)
+            .strong()
+            .color(theme::TEXT_DIM),
+    );
     ui.add_space(4.0);
     egui::Frame::NONE
         .fill(alpha(theme::INSET, 0.55))
@@ -423,7 +561,13 @@ fn row<R>(ui: &mut Ui, label: &str, control: impl FnOnce(&mut Ui) -> R) -> R {
     ui.horizontal(|ui| {
         ui.set_min_height(ROW_H);
         let (rect, _) = ui.allocate_exact_size(vec2(LABEL_W, ROW_H), Sense::hover());
-        ui.painter().text(rect.left_center(), Align2::LEFT_CENTER, label, FontId::proportional(12.0), theme::TEXT_DIM);
+        ui.painter().text(
+            rect.left_center(),
+            Align2::LEFT_CENTER,
+            label,
+            FontId::proportional(12.0),
+            theme::TEXT_DIM,
+        );
         ui.add_space(6.0);
         control(ui)
     })
@@ -447,15 +591,21 @@ fn line(ui: &mut Ui, text: impl Into<String>, color: Color32) {
 /// The window's close button: a line-art cross.
 fn close_button(ui: &mut Ui, rect: Rect) -> Response {
     let resp = ui.interact(rect, egui::Id::unique("settings_close"), Sense::CLICK);
-    let col = if resp.hovered() { theme::TEXT } else { theme::TEXT_DIM };
+    let col = if resp.hovered() {
+        theme::TEXT
+    } else {
+        theme::TEXT_DIM
+    };
     if resp.hovered() {
         ui.painter().rect_filled(rect, 4.0, theme::CONTROL);
     }
     let c = rect.center();
     for d in [vec2(4.5, 4.5), vec2(4.5, -4.5)] {
-        ui.painter().line_segment([c - d, c + d], Stroke::new(1.3, col));
+        ui.painter()
+            .line_segment([c - d, c + d], Stroke::new(1.3, col));
     }
-    resp.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Close (Esc)")
+    resp.on_hover_cursor(CursorIcon::PointingHand)
+        .on_hover_text("Close (Esc)")
 }
 
 /// A status line under the rows, in the control column.
@@ -488,31 +638,66 @@ fn pill_button(ui: &mut Ui, text: &str) -> Response {
 /// filled when on.
 fn switch(ui: &mut Ui, on: &mut bool, label: &str) -> Response {
     let font = FontId::proportional(12.0);
-    let galley = ui.painter().layout_no_wrap(label.to_owned(), font, theme::TEXT);
-    let (rect, mut resp) = ui.allocate_exact_size(vec2(34.0 + 10.0 + galley.size().x, ROW_H), Sense::CLICK);
+    let galley = ui
+        .painter()
+        .layout_no_wrap(label.to_owned(), font, theme::TEXT);
+    let (rect, mut resp) =
+        ui.allocate_exact_size(vec2(34.0 + 10.0 + galley.size().x, ROW_H), Sense::CLICK);
     if resp.clicked() {
         *on = !*on;
         resp.mark_changed();
     }
     let p = ui.painter();
     let track = Rect::from_min_size(pos2(rect.left(), rect.center().y - 8.0), vec2(30.0, 16.0));
-    let col = if *on { theme::ACCENT } else { theme::NODE_BORDER };
-    p.rect(track, 8.0, if *on { alpha(theme::ACCENT, 0.18) } else { Color32::TRANSPARENT }, Stroke::new(1.2, col), StrokeKind::Inside);
-    let x = if *on { track.right() - 8.0 } else { track.left() + 8.0 };
+    let col = if *on {
+        theme::ACCENT
+    } else {
+        theme::NODE_BORDER
+    };
+    p.rect(
+        track,
+        8.0,
+        if *on {
+            alpha(theme::ACCENT, 0.18)
+        } else {
+            Color32::TRANSPARENT
+        },
+        Stroke::new(1.2, col),
+        StrokeKind::Inside,
+    );
+    let x = if *on {
+        track.right() - 8.0
+    } else {
+        track.left() + 8.0
+    };
     let dot = pos2(x, track.center().y);
     if *on {
         p.circle_filled(dot, 4.5, theme::ACCENT);
     } else {
         p.circle_stroke(dot, 4.0, Stroke::new(1.2, theme::TEXT_DIM));
     }
-    let text_col = if resp.hovered() || *on { theme::TEXT } else { theme::TEXT_DIM };
-    p.galley(pos2(track.right() + 10.0, rect.center().y - galley.size().y * 0.5), galley, text_col);
+    let text_col = if resp.hovered() || *on {
+        theme::TEXT
+    } else {
+        theme::TEXT_DIM
+    };
+    p.galley(
+        pos2(
+            track.right() + 10.0,
+            rect.center().y - galley.size().y * 0.5,
+        ),
+        galley,
+        text_col,
+    );
     resp.on_hover_cursor(CursorIcon::PointingHand)
 }
 
 /// An activity light: a ring that fills while active, and its label.
 fn light(ui: &mut Ui, label: &str, active: bool, color: Color32) {
-    let (rect, _) = ui.allocate_exact_size(vec2(14.0 + 6.0 + 7.0 * label.len() as f32, 16.0), Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(
+        vec2(14.0 + 6.0 + 7.0 * label.len() as f32, 16.0),
+        Sense::hover(),
+    );
     let c = pos2(rect.left() + 5.0, rect.center().y);
     let p = ui.painter();
     if active {
@@ -520,7 +705,13 @@ fn light(ui: &mut Ui, label: &str, active: bool, color: Color32) {
     } else {
         p.circle_stroke(c, 3.5, Stroke::new(1.0, theme::TEXT_FAINT));
     }
-    p.text(pos2(c.x + 9.0, c.y), Align2::LEFT_CENTER, label, FontId::monospace(9.5), if active { color } else { theme::TEXT_FAINT });
+    p.text(
+        pos2(c.x + 9.0, c.y),
+        Align2::LEFT_CENTER,
+        label,
+        FontId::monospace(9.5),
+        if active { color } else { theme::TEXT_FAINT },
+    );
 }
 
 /// Line-art icons for the tabs.
@@ -529,13 +720,22 @@ fn tab_icon(p: &egui::Painter, c: Pos2, tab: Tab, col: Color32) {
     match tab {
         Tab::Audio => {
             // A speaker and two waves.
-            let body = vec![c + vec2(-7.0, -2.5), c + vec2(-4.0, -2.5), c + vec2(0.0, -6.0), c + vec2(0.0, 6.0), c + vec2(-4.0, 2.5), c + vec2(-7.0, 2.5)];
+            let body = vec![
+                c + vec2(-7.0, -2.5),
+                c + vec2(-4.0, -2.5),
+                c + vec2(0.0, -6.0),
+                c + vec2(0.0, 6.0),
+                c + vec2(-4.0, 2.5),
+                c + vec2(-7.0, 2.5),
+            ];
             p.add(Shape::closed_line(body, s));
             for r in [3.5f32, 6.5] {
-                let pts: Vec<Pos2> = (0..=8).map(|k| {
-                    let a = -0.9 + 1.8 * k as f32 / 8.0;
-                    c + vec2(1.0 + r * a.cos(), r * a.sin())
-                }).collect();
+                let pts: Vec<Pos2> = (0..=8)
+                    .map(|k| {
+                        let a = -0.9 + 1.8 * k as f32 / 8.0;
+                        c + vec2(1.0 + r * a.cos(), r * a.sin())
+                    })
+                    .collect();
                 p.add(Shape::line(pts, s));
             }
         }
@@ -546,11 +746,19 @@ fn tab_icon(p: &egui::Painter, c: Pos2, tab: Tab, col: Color32) {
                 let a = std::f32::consts::PI * (1.0 + k as f32 / 4.0);
                 p.circle_filled(c + vec2(4.2 * a.cos(), 4.2 * a.sin()), 0.9, col);
             }
-            p.line_segment([c + vec2(-1.5, 7.0), c + vec2(1.5, 7.0)], Stroke::new(2.0, theme::PANEL));
+            p.line_segment(
+                [c + vec2(-1.5, 7.0), c + vec2(1.5, 7.0)],
+                Stroke::new(2.0, theme::PANEL),
+            );
         }
         Tab::Sync => {
             // A metronome: its body and the arm.
-            let body = vec![c + vec2(-5.0, 7.0), c + vec2(5.0, 7.0), c + vec2(2.5, -7.0), c + vec2(-2.5, -7.0)];
+            let body = vec![
+                c + vec2(-5.0, 7.0),
+                c + vec2(5.0, 7.0),
+                c + vec2(2.5, -7.0),
+                c + vec2(-2.5, -7.0),
+            ];
             p.add(Shape::closed_line(body, s));
             p.line_segment([c + vec2(0.0, 4.0), c + vec2(4.5, -5.0)], s);
             p.circle_filled(c + vec2(2.6, -1.2), 1.4, col);
@@ -567,7 +775,11 @@ fn tab_icon(p: &egui::Painter, c: Pos2, tab: Tab, col: Color32) {
 }
 
 fn rate_label(rate: u32) -> String {
-    if rate.is_multiple_of(1000) { format!("{} kHz", rate / 1000) } else { format!("{:.1} kHz", rate as f32 / 1000.0) }
+    if rate.is_multiple_of(1000) {
+        format!("{} kHz", rate / 1000)
+    } else {
+        format!("{:.1} kHz", rate as f32 / 1000.0)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -581,46 +793,78 @@ fn output_card(ui: &mut Ui, list: &DeviceList, audio: &AudioHandle, config: &mut
         if list.hosts.len() > 1 {
             row(ui, "Audio system", |ui| {
                 let current = config.host.clone().unwrap_or_else(|| list.host.clone());
-                ComboBox::from_id_salt("host").width(COMBO_W).selected_text(&current).show_ui(ui, |ui| {
-                    for host in &list.hosts {
-                        if ui.selectable_label(*host == current, host).clicked() && *host != current {
-                            // Another system: its own devices, from their defaults.
-                            *config = AudioConfig { host: Some(host.clone()), buffer_size: config.buffer_size, ..Default::default() };
+                ComboBox::from_id_salt("host")
+                    .width(COMBO_W)
+                    .selected_text(&current)
+                    .show_ui(ui, |ui| {
+                        for host in &list.hosts {
+                            if ui.selectable_label(*host == current, host).clicked()
+                                && *host != current
+                            {
+                                // Another system: its own devices, from their defaults.
+                                *config = AudioConfig {
+                                    host: Some(host.clone()),
+                                    buffer_size: config.buffer_size,
+                                    ..Default::default()
+                                };
+                            }
                         }
-                    }
-                });
+                    });
             });
         }
         row(ui, "Device", |ui| {
             let default_name = list.output(None).map_or("none", |d| d.name.as_str());
             let shown = match &config.output {
                 None => format!("System default ({default_name})"),
-                Some(id) => list.outputs.iter().find(|d| d.id == *id).map_or_else(|| "Missing device".to_owned(), |d| d.name.clone()),
+                Some(id) => list
+                    .outputs
+                    .iter()
+                    .find(|d| d.id == *id)
+                    .map_or_else(|| "Missing device".to_owned(), |d| d.name.clone()),
             };
-            ComboBox::from_id_salt("output").width(COMBO_W).selected_text(shown).show_ui(ui, |ui| {
-                if ui.selectable_label(config.output.is_none(), format!("System default ({default_name})")).clicked() {
-                    config.output = None;
-                    config.output_channel = 0;
-                }
-                for d in &list.outputs {
-                    let on = config.output.as_deref() == Some(d.id.as_str());
-                    if ui.selectable_label(on, format!("{}  ·  {} ch", d.name, d.channels)).clicked() && !on {
-                        config.output = Some(d.id.clone());
+            ComboBox::from_id_salt("output")
+                .width(COMBO_W)
+                .selected_text(shown)
+                .show_ui(ui, |ui| {
+                    if ui
+                        .selectable_label(
+                            config.output.is_none(),
+                            format!("System default ({default_name})"),
+                        )
+                        .clicked()
+                    {
+                        config.output = None;
                         config.output_channel = 0;
                     }
-                }
-            });
+                    for d in &list.outputs {
+                        let on = config.output.as_deref() == Some(d.id.as_str());
+                        if ui
+                            .selectable_label(on, format!("{}  ·  {} ch", d.name, d.channels))
+                            .clicked()
+                            && !on
+                        {
+                            config.output = Some(d.id.clone());
+                            config.output_channel = 0;
+                        }
+                    }
+                });
         });
         let channels = device.map_or(info.channels, |d| d.channels);
         if channels > 2 {
             row(ui, "Channels", |ui| {
                 let pairs = device::pairs(channels);
-                let shown = pairs.iter().find(|(c, _)| *c == config.output_channel).map_or("1–2", |(_, l)| l.as_str());
-                ComboBox::from_id_salt("out_pair").width(COMBO_W).selected_text(shown).show_ui(ui, |ui| {
-                    for (c, label) in pairs.iter().filter(|(c, _)| c + 1 < channels) {
-                        ui.selectable_value(&mut config.output_channel, *c, label);
-                    }
-                });
+                let shown = pairs
+                    .iter()
+                    .find(|(c, _)| *c == config.output_channel)
+                    .map_or("1–2", |(_, l)| l.as_str());
+                ComboBox::from_id_salt("out_pair")
+                    .width(COMBO_W)
+                    .selected_text(shown)
+                    .show_ui(ui, |ui| {
+                        for (c, label) in pairs.iter().filter(|(c, _)| c + 1 < channels) {
+                            ui.selectable_value(&mut config.output_channel, *c, label);
+                        }
+                    });
             });
         }
         row(ui, "Sample rate", |ui| {
@@ -628,12 +872,15 @@ fn output_card(ui: &mut Ui, list: &DeviceList, audio: &AudioHandle, config: &mut
                 None => format!("Device's own ({})", rate_label(info.sample_rate)),
                 Some(rate) => rate_label(rate),
             };
-            ComboBox::from_id_salt("rate").width(COMBO_W).selected_text(shown).show_ui(ui, |ui| {
-                ui.selectable_value(&mut config.sample_rate, None, "Device's own");
-                for &rate in device.map_or(&[][..], |d| &d.rates) {
-                    ui.selectable_value(&mut config.sample_rate, Some(rate), rate_label(rate));
-                }
-            });
+            ComboBox::from_id_salt("rate")
+                .width(COMBO_W)
+                .selected_text(shown)
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut config.sample_rate, None, "Device's own");
+                    for &rate in device.map_or(&[][..], |d| &d.rates) {
+                        ui.selectable_value(&mut config.sample_rate, Some(rate), rate_label(rate));
+                    }
+                });
         });
         row(ui, "Buffer size", |ui| {
             let ms = |frames: u32| frames as f32 / info.sample_rate.max(1) as f32 * 1000.0;
@@ -642,49 +889,101 @@ fn output_card(ui: &mut Ui, list: &DeviceList, audio: &AudioHandle, config: &mut
                 Some(size) => format!("{size} samples · {:.1} ms", ms(size)),
             };
             let range = device.and_then(|d| d.buffer_range).or(info.buffer_range);
-            ComboBox::from_id_salt("buffer").width(COMBO_W).selected_text(shown).show_ui(ui, |ui| {
-                ui.selectable_value(&mut config.buffer_size, None, "Device's own");
-                for size in BUFFER_SIZES {
-                    if range.is_none_or(|(lo, hi)| (lo..=hi).contains(&size)) {
-                        ui.selectable_value(&mut config.buffer_size, Some(size), format!("{size} samples · {:.1} ms", ms(size)));
+            ComboBox::from_id_salt("buffer")
+                .width(COMBO_W)
+                .selected_text(shown)
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut config.buffer_size, None, "Device's own");
+                    for size in BUFFER_SIZES {
+                        if range.is_none_or(|(lo, hi)| (lo..=hi).contains(&size)) {
+                            ui.selectable_value(
+                                &mut config.buffer_size,
+                                Some(size),
+                                format!("{size} samples · {:.1} ms", ms(size)),
+                            );
+                        }
                     }
-                }
-            });
+                });
         });
         match &info.error {
             Some(e) => status(ui, e, theme::MUTE),
             None => {
-                let frames = audio.shared.frames.load(std::sync::atomic::Ordering::Relaxed);
-                let pair = device::pairs(info.channels).into_iter().find(|(c, _)| *c == info.output_channel).map_or_else(String::new, |(_, l)| format!(" · out {l}"));
+                let frames = audio
+                    .shared
+                    .frames
+                    .load(std::sync::atomic::Ordering::Relaxed);
+                let pair = device::pairs(info.channels)
+                    .into_iter()
+                    .find(|(c, _)| *c == info.output_channel)
+                    .map_or_else(String::new, |(_, l)| format!(" · out {l}"));
                 let ms = frames as f32 / info.sample_rate.max(1) as f32 * 1000.0;
-                status(ui, format!("Playing on {} · {} · {frames} samples ({ms:.1} ms){pair}", info.device, rate_label(info.sample_rate)), theme::METER_GREEN);
+                status(
+                    ui,
+                    format!(
+                        "Playing on {} · {} · {frames} samples ({ms:.1} ms){pair}",
+                        info.device,
+                        rate_label(info.sample_rate)
+                    ),
+                    theme::METER_GREEN,
+                );
             }
         }
         if config.sample_rate.is_some_and(|r| r != info.sample_rate) {
-            note(ui, "A new sample rate rebuilds every node (the patch stays as it is).");
+            note(
+                ui,
+                "A new sample rate rebuilds every node (the patch stays as it is).",
+            );
         }
     });
 }
 
-fn input_card(ui: &mut Ui, list: &DeviceList, audio: &AudioHandle, config: &mut AudioConfig, levels: &[f32; MAX_CHANNELS]) {
+fn input_card(
+    ui: &mut Ui,
+    list: &DeviceList,
+    audio: &AudioHandle,
+    config: &mut AudioConfig,
+    levels: &[f32; MAX_CHANNELS],
+) {
     let info = &audio.info;
     card(ui, "INPUT", |ui| {
         row(ui, "Device", |ui| {
-            let default_name = list.input(&InputChoice::SystemDefault).map_or("none", |d| d.name.as_str());
+            let default_name = list
+                .input(&InputChoice::SystemDefault)
+                .map_or("none", |d| d.name.as_str());
             let shown = match &config.input {
                 InputChoice::Off => "Off".to_owned(),
                 InputChoice::SystemDefault => format!("System default ({default_name})"),
-                InputChoice::Device(id) => list.inputs.iter().find(|d| d.id == *id).map_or_else(|| "Missing device".to_owned(), |d| d.name.clone()),
+                InputChoice::Device(id) => list
+                    .inputs
+                    .iter()
+                    .find(|d| d.id == *id)
+                    .map_or_else(|| "Missing device".to_owned(), |d| d.name.clone()),
             };
-            ComboBox::from_id_salt("input").width(COMBO_W).selected_text(shown).show_ui(ui, |ui| {
-                ui.selectable_value(&mut config.input, InputChoice::Off, "Off");
-                ui.selectable_value(&mut config.input, InputChoice::SystemDefault, format!("System default ({default_name})"));
-                for d in &list.inputs {
-                    let rate_ok = d.rates.contains(&info.sample_rate);
-                    let label = format!("{}  ·  {} ch{}", d.name, d.channels, if rate_ok { "" } else { "  ·  other rate" });
-                    ui.selectable_value(&mut config.input, InputChoice::Device(d.id.clone()), label);
-                }
-            });
+            ComboBox::from_id_salt("input")
+                .width(COMBO_W)
+                .selected_text(shown)
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut config.input, InputChoice::Off, "Off");
+                    ui.selectable_value(
+                        &mut config.input,
+                        InputChoice::SystemDefault,
+                        format!("System default ({default_name})"),
+                    );
+                    for d in &list.inputs {
+                        let rate_ok = d.rates.contains(&info.sample_rate);
+                        let label = format!(
+                            "{}  ·  {} ch{}",
+                            d.name,
+                            d.channels,
+                            if rate_ok { "" } else { "  ·  other rate" }
+                        );
+                        ui.selectable_value(
+                            &mut config.input,
+                            InputChoice::Device(d.id.clone()),
+                            label,
+                        );
+                    }
+                });
         });
         if let Some(e) = &info.input_error {
             status(ui, e, theme::MUTE);
@@ -692,19 +991,37 @@ fn input_card(ui: &mut Ui, list: &DeviceList, audio: &AudioHandle, config: &mut 
         }
         let Some(name) = &info.input else {
             if config.input != InputChoice::Off {
-                status(ui, "Opens while an Audio In node is on the board.", theme::TEXT_FAINT);
+                status(
+                    ui,
+                    "Opens while an Audio In node is on the board.",
+                    theme::TEXT_FAINT,
+                );
             }
             return;
         };
         let channels = (info.input_channels as usize).min(MAX_CHANNELS);
-        status(ui, format!("Listening to {name} · {channels} ch · Audio In nodes pick their channels"), theme::METER_GREEN);
+        status(
+            ui,
+            format!("Listening to {name} · {channels} ch · Audio In nodes pick their channels"),
+            theme::METER_GREEN,
+        );
         ui.add_space(4.0);
         for (c, &level) in levels.iter().enumerate().take(channels) {
             meter(ui, c + 1, level);
         }
-        let lost = audio.shared.input.dropouts.load(std::sync::atomic::Ordering::Relaxed);
+        let lost = audio
+            .shared
+            .input
+            .dropouts
+            .load(std::sync::atomic::Ordering::Relaxed);
         if lost > 0 {
-            status(ui, format!("{lost} input dropouts (a larger buffer, or the same device for input and output, helps)"), theme::SOLO);
+            status(
+                ui,
+                format!(
+                    "{lost} input dropouts (a larger buffer, or the same device for input and output, helps)"
+                ),
+                theme::SOLO,
+            );
         }
     });
 }
@@ -715,13 +1032,40 @@ fn meter(ui: &mut Ui, channel: usize, level: f32) {
     let width = ui.available_width();
     let (rect, _) = ui.allocate_exact_size(vec2(width, 12.0), Sense::hover());
     let p = ui.painter();
-    p.text(pos2(rect.left() + LABEL_W, rect.center().y), Align2::RIGHT_CENTER, format!("in {channel}"), theme::mono(9.0), theme::TEXT_DIM);
-    let bar = Rect::from_min_max(pos2(rect.left() + LABEL_W + 12.0, rect.top() + 2.0), rect.right_bottom() - vec2(0.0, 2.0));
-    p.rect_stroke(bar, 2.0, Stroke::new(1.0, theme::PANEL_BORDER), StrokeKind::Inside);
+    p.text(
+        pos2(rect.left() + LABEL_W, rect.center().y),
+        Align2::RIGHT_CENTER,
+        format!("in {channel}"),
+        theme::mono(9.0),
+        theme::TEXT_DIM,
+    );
+    let bar = Rect::from_min_max(
+        pos2(rect.left() + LABEL_W + 12.0, rect.top() + 2.0),
+        rect.right_bottom() - vec2(0.0, 2.0),
+    );
+    p.rect_stroke(
+        bar,
+        2.0,
+        Stroke::new(1.0, theme::PANEL_BORDER),
+        StrokeKind::Inside,
+    );
     let x = (1.0 + 20.0 * level.max(1e-6).log10() / 60.0).clamp(0.0, 1.0);
-    let color = if level >= 0.89 { theme::METER_RED } else if level >= 0.5 { theme::METER_YELLOW } else { theme::METER_GREEN };
+    let color = if level >= 0.89 {
+        theme::METER_RED
+    } else if level >= 0.5 {
+        theme::METER_YELLOW
+    } else {
+        theme::METER_GREEN
+    };
     if x > 0.0 {
-        p.rect_filled(Rect::from_min_size(bar.min + vec2(1.0, 1.0), vec2((bar.width() - 2.0) * x, bar.height() - 2.0)), 1.5, color);
+        p.rect_filled(
+            Rect::from_min_size(
+                bar.min + vec2(1.0, 1.0),
+                vec2((bar.width() - 2.0) * x, bar.height() - 2.0),
+            ),
+            1.5,
+            color,
+        );
     }
     for db in [-18.0, -6.0] {
         let x = bar.left() + bar.width() * (1.0 + db / 60.0);
@@ -740,7 +1084,11 @@ fn midi_card(ui: &mut Ui, cx: &SettingsContext, lights: &HashMap<String, Lights>
             return;
         }
         if cx.midi_inputs.is_empty() {
-            line(ui, "No MIDI input connected. Plug one in: it is picked up within seconds.", theme::TEXT_FAINT);
+            line(
+                ui,
+                "No MIDI input connected. Plug one in: it is picked up within seconds.",
+                theme::TEXT_FAINT,
+            );
         }
         for input in &cx.midi_inputs {
             let l = lights.get(&input.name).copied().unwrap_or_default();
@@ -780,13 +1128,33 @@ fn plugins_card(ui: &mut Ui, cx: &SettingsContext, changes: &mut Vec<SettingsCha
                     Some(rest) => format!("~/{}", rest.display()),
                     None => dir.display().to_string(),
                 };
-                ui.label(RichText::new(text).font(FontId::monospace(10.5)).color(if there { theme::TEXT } else { theme::TEXT_FAINT }));
+                ui.label(
+                    RichText::new(text)
+                        .font(FontId::monospace(10.5))
+                        .color(if there {
+                            theme::TEXT
+                        } else {
+                            theme::TEXT_FAINT
+                        }),
+                );
                 if !there {
-                    ui.label(RichText::new("not there").size(10.0).color(theme::TEXT_FAINT));
+                    ui.label(
+                        RichText::new("not there")
+                            .size(10.0)
+                            .color(theme::TEXT_FAINT),
+                    );
                 }
             });
         }
-        line(ui, format!("{} VST3 plugin{} found", counts.vst3, if counts.vst3 == 1 { "" } else { "s" }), theme::METER_GREEN);
+        line(
+            ui,
+            format!(
+                "{} VST3 plugin{} found",
+                counts.vst3,
+                if counts.vst3 == 1 { "" } else { "s" }
+            ),
+            theme::METER_GREEN,
+        );
     });
     ui.add_space(12.0);
     card(ui, "AUDIO UNITS", |ui| {
@@ -795,15 +1163,31 @@ fn plugins_card(ui: &mut Ui, cx: &SettingsContext, changes: &mut Vec<SettingsCha
             return;
         }
         let mut p = cx.plugins.clone();
-        item(ui, |ui| switch(ui, &mut p.audio_units, "List Audio Units: AUv3 extensions and AU components"));
+        item(ui, |ui| {
+            switch(
+                ui,
+                &mut p.audio_units,
+                "List Audio Units: AUv3 extensions and AU components",
+            )
+        });
         ui.add_enabled_ui(p.audio_units, |ui| {
             item(ui, |ui| {
-                switch(ui, &mut p.apple_units, "Include Apple's own").on_hover_text("AUDelay, AUReverb2, AUNBandEQ, DLSMusicDevice, AUSampler…")
+                switch(ui, &mut p.apple_units, "Include Apple's own")
+                    .on_hover_text("AUDelay, AUReverb2, AUNBandEQ, DLSMusicDevice, AUSampler…")
             });
         });
         if p.audio_units {
             let v2 = counts.au - counts.auv3;
-            line(ui, format!("{} Audio Unit{} listed · {} AUv3 · {v2} AU", counts.au, if counts.au == 1 { "" } else { "s" }, counts.auv3), theme::METER_GREEN);
+            line(
+                ui,
+                format!(
+                    "{} Audio Unit{} listed · {} AUv3 · {v2} AU",
+                    counts.au,
+                    if counts.au == 1 { "" } else { "s" },
+                    counts.auv3
+                ),
+                theme::METER_GREEN,
+            );
         }
         note(
             ui,
@@ -823,16 +1207,32 @@ fn plugins_card(ui: &mut Ui, cx: &SettingsContext, changes: &mut Vec<SettingsCha
                     Some(rest) => format!("~/{}", rest.display()),
                     None => dir.display().to_string(),
                 };
-                ui.label(RichText::new(text).font(FontId::monospace(10.5)).color(if there { theme::TEXT } else { theme::TEXT_FAINT }));
+                ui.label(
+                    RichText::new(text)
+                        .font(FontId::monospace(10.5))
+                        .color(if there {
+                            theme::TEXT
+                        } else {
+                            theme::TEXT_FAINT
+                        }),
+                );
                 if !there {
-                    ui.label(RichText::new("not there").size(10.0).color(theme::TEXT_FAINT));
+                    ui.label(
+                        RichText::new("not there")
+                            .size(10.0)
+                            .color(theme::TEXT_FAINT),
+                    );
                 }
             });
         }
         let libraries = crate::audio::node_plugin::libraries();
         for (file, name, version, nodes) in &libraries {
             let s = if *nodes == 1 { "" } else { "s" };
-            line(ui, format!("{name} {version} · {nodes} node{s} · {file}"), theme::METER_GREEN);
+            line(
+                ui,
+                format!("{name} {version} · {nodes} node{s} · {file}"),
+                theme::METER_GREEN,
+            );
         }
         if libraries.is_empty() {
             line(ui, "No node plugins loaded", theme::TEXT_FAINT);

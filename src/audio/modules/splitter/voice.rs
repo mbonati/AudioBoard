@@ -27,7 +27,9 @@ pub const WINDOW: usize = 512;
 /// How long a choked voice takes to fall silent.
 const CHOKE_SECONDS: f32 = 0.002;
 /// Grain densities locked to the grid, in grains per beat.
-pub const SYNC_DENSITIES: [f32; 12] = [1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, 16.0, 24.0, 32.0, 48.0, 64.0];
+pub const SYNC_DENSITIES: [f32; 12] = [
+    1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, 16.0, 24.0, 32.0, 48.0, 64.0,
+];
 
 /// How a slice plays.
 pub const ONE: usize = 0;
@@ -37,7 +39,11 @@ pub const LOOP: usize = 2;
 /// What a voice reads: the sample, an atom, or nothing.
 #[derive(Clone, Copy)]
 pub enum Src<'a> {
-    Sample { l: &'a [f32], r: &'a [f32], rate: f32 },
+    Sample {
+        l: &'a [f32],
+        r: &'a [f32],
+        rate: f32,
+    },
     Atom(usize),
     Empty,
 }
@@ -162,7 +168,12 @@ pub struct Variation {
 }
 
 impl Variation {
-    pub const NONE: Variation = Variation { pitch: 0.0, flip: false, skip: 0.0, gain: 1.0 };
+    pub const NONE: Variation = Variation {
+        pitch: 0.0,
+        flip: false,
+        skip: 0.0,
+        gain: 1.0,
+    };
 }
 
 /// What holds a voice's note: a MIDI key, the panel's PLAY button, or a
@@ -328,13 +339,27 @@ impl Voice {
 
     /// Starts slice `slice` with settings `s`.
     #[allow(clippy::too_many_arguments)]
-    pub fn start(&mut self, slice: usize, s: &Settings, src: &Src, sr: f32, velocity: f32, holder: Holder, var: &Variation, clock: &Clock, age: u64) {
+    pub fn start(
+        &mut self,
+        slice: usize,
+        s: &Settings,
+        src: &Src,
+        sr: f32,
+        velocity: f32,
+        holder: Holder,
+        var: &Variation,
+        clock: &Clock,
+        age: u64,
+    ) {
         let len = src.len();
         if len < 2.0 {
             self.active = false;
             return;
         }
-        let (mut a, mut b) = ((s.start.min(s.end) as f64 * len).max(0.0), (s.start.max(s.end) as f64 * len).min(len - 1.0));
+        let (mut a, mut b) = (
+            (s.start.min(s.end) as f64 * len).max(0.0),
+            (s.start.max(s.end) as f64 * len).min(len - 1.0),
+        );
         let shortest = (0.0005 * src.rate()) as f64;
         if b - a < shortest {
             b = (a + shortest).min(len - 1.0);
@@ -346,7 +371,11 @@ impl Voice {
         self.slice = slice;
         self.source = s.source;
         self.holder = holder;
-        self.gate_left = if let Holder::Timed(n) = holder { n.max(1) } else { 0 };
+        self.gate_left = if let Holder::Timed(n) = holder {
+            n.max(1)
+        } else {
+            0
+        };
         self.age = age;
         self.start = a;
         self.end = b;
@@ -372,9 +401,21 @@ impl Voice {
         }
         let span = b - a;
         let real = (src.rate() / sr) as f64;
-        self.head = if self.dir > 0.0 { a + s.pos as f64 * span } else { b - s.pos as f64 * span };
+        self.head = if self.dir > 0.0 {
+            a + s.pos as f64 * span
+        } else {
+            b - s.pos as f64 * span
+        };
         self.head = (self.head + skip * self.dir).clamp(a, b);
-        self.life = if self.frozen { span / real } else { (if self.dir > 0.0 { b - self.head } else { self.head - a }) / real };
+        self.life = if self.frozen {
+            span / real
+        } else {
+            (if self.dir > 0.0 {
+                b - self.head
+            } else {
+                self.head - a
+            }) / real
+        };
         self.life_total = self.life;
         self.spawn = 0.0;
         self.sync_grains(clock, sr);
@@ -405,7 +446,11 @@ impl Voice {
         self.rel_samples = (s.release * sr).max(1.0);
         // A release longer than the slice fades its second half.
         self.rel_dist = (self.rel_samples as f64 * speed).min((self.end - self.start) * 0.5);
-        self.q = if s.bits < 15.5 { crate::audio::fastmath::exp2(s.bits.max(1.0) - 1.0) } else { 0.0 };
+        self.q = if s.bits < 15.5 {
+            crate::audio::fastmath::exp2(s.bits.max(1.0) - 1.0)
+        } else {
+            0.0
+        };
         self.down = s.down.max(1.0);
         // Grains.
         self.frozen = s.freeze;
@@ -413,7 +458,11 @@ impl Voice {
         self.head_inc = if s.freeze { 0.0 } else { self.dir * real };
         if s.freeze && self.granular {
             let span = self.end - self.start;
-            self.head = if self.dir > 0.0 { self.start + s.pos as f64 * span } else { self.end - s.pos as f64 * span };
+            self.head = if self.dir > 0.0 {
+                self.start + s.pos as f64 * span
+            } else {
+                self.end - s.pos as f64 * span
+            };
         }
         self.grain_samples = (s.size * sr).max(16.0);
         self.spray = s.spray;
@@ -526,7 +575,11 @@ impl Voice {
         if self.down > 1.0 {
             self.hold_phase += 1.0;
             if self.hold_phase >= self.down {
-                self.hold_phase = if self.hold_phase == f32::MAX { 0.0 } else { self.hold_phase - self.down };
+                self.hold_phase = if self.hold_phase == f32::MAX {
+                    0.0
+                } else {
+                    self.hold_phase - self.down
+                };
                 self.held = y;
             }
             y = self.held;
@@ -583,7 +636,11 @@ impl Voice {
             }
             // ONE and GATE slices fade out before their end.
             if !looping && self.stage != Stage::Release {
-                let left = if self.dir > 0.0 { self.end - self.pos } else { self.pos - self.start };
+                let left = if self.dir > 0.0 {
+                    self.end - self.pos
+                } else {
+                    self.pos - self.start
+                };
                 if left <= self.rel_dist {
                     self.stage = Stage::Release;
                     self.rel_step = self.env / ((left / self.inc.abs()) as f32).max(1.0);
@@ -607,7 +664,14 @@ impl Voice {
         }
     }
 
-    fn render_grains(&mut self, src: &Src, l: &mut [f32], r: &mut [f32], window: &[f32], peak: &mut f32) {
+    fn render_grains(
+        &mut self,
+        src: &Src,
+        l: &mut [f32],
+        r: &mut [f32],
+        window: &[f32],
+        peak: &mut f32,
+    ) {
         let span = self.end - self.start;
         let one = self.play == ONE;
         let wmax = (window.len() - 1) as f32;
@@ -668,7 +732,9 @@ impl Voice {
     }
 
     fn add_grain(&mut self, atom: bool) {
-        let Some(slot) = self.grains.iter_mut().position(|g| g.step == 0.0) else { return };
+        let Some(slot) = self.grains.iter_mut().position(|g| g.step == 0.0) else {
+            return;
+        };
         let span = self.end - self.start;
         let mut pos = self.head + self.rng.bipolar() as f64 * self.spray as f64 * span * 0.5;
         if pos >= self.end {
@@ -678,7 +744,11 @@ impl Voice {
             pos += span;
         }
         let pos = pos.clamp(self.start, self.end);
-        let detune = if self.jitter > 0.0 { crate::audio::fastmath::exp2(self.rng.bipolar() * self.jitter / 12.0) } else { 1.0 };
+        let detune = if self.jitter > 0.0 {
+            crate::audio::fastmath::exp2(self.rng.bipolar() * self.jitter / 12.0)
+        } else {
+            1.0
+        };
         let pan = (self.pan + self.spread * self.rng.bipolar()).clamp(-1.0, 1.0);
         let (gl, gr) = pan_gains(pan);
         let speed = self.dir * self.real;
@@ -686,7 +756,11 @@ impl Voice {
         g.pos = pos;
         // An atom's grain keeps time and moves its frequency; a sample's
         // grain reads faster or slower.
-        g.inc = if atom { speed } else { speed * (self.ratio * detune) as f64 };
+        g.inc = if atom {
+            speed
+        } else {
+            speed * (self.ratio * detune) as f64
+        };
         g.hz = self.hz * if atom { detune } else { 1.0 };
         g.phase = 0.0;
         g.step = 1.0 / self.grain_samples;
@@ -698,10 +772,16 @@ impl Voice {
 /// The grid density nearest `per_beat` grains a beat.
 pub fn nearest_density(per_beat: f32) -> f32 {
     let target = per_beat.max(0.01).ln();
-    SYNC_DENSITIES.iter().copied().min_by(|a, b| (a.ln() - target).abs().total_cmp(&(b.ln() - target).abs())).unwrap_or(4.0)
+    SYNC_DENSITIES
+        .iter()
+        .copied()
+        .min_by(|a, b| (a.ln() - target).abs().total_cmp(&(b.ln() - target).abs()))
+        .unwrap_or(4.0)
 }
 
 /// The grain window: a Hann curve of [`WINDOW`] + 1 points.
 pub fn window() -> Vec<f32> {
-    (0..=WINDOW).map(|k| 0.5 - 0.5 * (std::f32::consts::TAU * k as f32 / WINDOW as f32).cos()).collect()
+    (0..=WINDOW)
+        .map(|k| 0.5 - 0.5 * (std::f32::consts::TAU * k as f32 / WINDOW as f32).cos())
+        .collect()
 }

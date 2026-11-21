@@ -33,16 +33,26 @@ audioboard_node::export_nodes! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use audioboard_node::{BLOCK, Buf, MidiMsg, Node, Params, ProcessCtx, Shared};
     use audioboard_node::node::{Init, Io};
+    use audioboard_node::{BLOCK, Buf, MidiMsg, Node, Params, ProcessCtx, Shared};
 
     fn ctx(beat: f64, playing: bool) -> ProcessCtx {
-        ProcessCtx { sample_rate: 48_000.0, smooth: 0.01, beat, beats_per_sample: 2.0 / 48_000.0, playing, restart: false }
+        ProcessCtx {
+            sample_rate: 48_000.0,
+            smooth: 0.01,
+            beat,
+            beats_per_sample: 2.0 / 48_000.0,
+            playing,
+            restart: false,
+        }
     }
 
     fn make<N: Node>(params: &Params) -> N {
         // SAFETY: `params` outlives the node in each test.
-        N::new(&Init { sample_rate: 48_000.0, params: unsafe { Shared::from_raw(params.raw()) } })
+        N::new(&Init {
+            sample_rate: 48_000.0,
+            params: unsafe { Shared::from_raw(params.raw()) },
+        })
     }
 
     #[test]
@@ -65,7 +75,10 @@ mod tests {
         let params = Params::new(&Glass::DESCRIPTOR.def);
         let mut g: Glass = make(&params);
         let mut out: [Buf; 1] = [[[0.0; BLOCK]; 2]];
-        let midi = [MidiMsg { frame: 0, data: [0x90, 69, 100] }];
+        let midi = [MidiMsg {
+            frame: 0,
+            data: [0x90, 69, 100],
+        }];
         let mut room = [MidiMsg::default(); 8];
         let mut peak = 0.0f32;
         for b in 0..40 {
@@ -106,8 +119,16 @@ mod tests {
             let mut room = [MidiMsg::default(); 16];
             let mut io = Io::new(BLOCK, &[], &[], &mut out, &[], &mut room);
             p.process(&ctx(beat, true), &mut io);
-            ons += io.midi_sent().iter().filter(|m| m.note_on().is_some()).count();
-            offs += io.midi_sent().iter().filter(|m| m.note_off().is_some()).count();
+            ons += io
+                .midi_sent()
+                .iter()
+                .filter(|m| m.note_on().is_some())
+                .count();
+            offs += io
+                .midi_sent()
+                .iter()
+                .filter(|m| m.note_off().is_some())
+                .count();
             beat += 2.0 / 48_000.0 * BLOCK as f64;
         }
         assert_eq!(ons, 3, "one bar of 8 sixteenths with 3 hits");

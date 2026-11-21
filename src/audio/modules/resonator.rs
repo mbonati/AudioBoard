@@ -5,7 +5,9 @@
 use std::f32::consts::TAU;
 use std::sync::Arc;
 
-use super::{ModuleDef, ModuleParams, approach, mix_gains, pan_gains, soft_limit, time_coeff, Quiet, silence};
+use super::{
+    ModuleDef, ModuleParams, Quiet, approach, mix_gains, pan_gains, silence, soft_limit, time_coeff,
+};
 use crate::audio::engine::{Buf, Inputs, ProcessCtx, Processor};
 use crate::audio::params::{ParamSpec, Unit};
 
@@ -31,7 +33,10 @@ pub const MODES: usize = 8;
 pub const MATERIALS: [(&str, [f32; MODES]); 4] = [
     ("String", [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]),
     ("Pipe", [1.0, 3.0, 5.0, 7.0, 9.0, 11.0, 13.0, 15.0]),
-    ("Bar", [1.0, 2.756, 5.404, 8.933, 13.344, 18.638, 24.815, 31.873]),
+    (
+        "Bar",
+        [1.0, 2.756, 5.404, 8.933, 13.344, 18.638, 24.815, 31.873],
+    ),
     ("Bell", [0.5, 1.0, 1.183, 1.506, 2.0, 2.514, 2.662, 3.011]),
 ];
 
@@ -190,7 +195,11 @@ impl Processor for Resonator {
             // very loudly, so hold the wet signal under ~0.7.
             let level = wl.abs().max(wr.abs());
             inner = inner.max(level);
-            self.env = if level > self.env { level } else { self.env + (level - self.env) * self.release };
+            self.env = if level > self.env {
+                level
+            } else {
+                self.env + (level - self.env) * self.release
+            };
             let agc = if self.env > 0.7 { 0.7 / self.env } else { 1.0 };
 
             let (dry_g, wet_g) = mix_gains(self.mix);

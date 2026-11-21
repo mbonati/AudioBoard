@@ -14,9 +14,11 @@ use crate::audio::AudioHandle;
 use crate::audio::engine::NodeId;
 use crate::audio::modules::{ModuleKind, ModuleParams};
 use crate::audio::params::{
-    CONSOLE_CHANNELS, DEFAULT_TEMPO, FADER_UNITY, MIXER_CHANNELS, MixerParams, OSC_PARAMS, OscParams, TEMPO_RANGE, Waveform,
+    CONSOLE_CHANNELS, DEFAULT_TEMPO, FADER_UNITY, MIXER_CHANNELS, MixerParams, OSC_PARAMS,
+    OscParams, TEMPO_RANGE, Waveform,
 };
 use crate::graph::{Console, Graph, GroupId, Node, NodeKind, PortRef, Target};
+use crate::tracks::{Layout, TrackKey, View};
 use crate::ui::groups;
 use crate::ui::nodes::HEADER_H;
 
@@ -40,6 +42,98 @@ pub struct Project {
     /// Stickers and background (with their images).
     #[serde(default, skip_serializing_if = "crate::board::Board::is_default")]
     board: crate::board::Board,
+    /// The view shown (nodes or tracks) and the track view's layout.
+    #[serde(default, skip_serializing_if = "TracksData::is_default")]
+    tracks: TracksData,
+}
+
+/// The track view's layout, by node ids in the file (see `tracks::Layout`).
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug, Default)]
+struct TracksData {
+    #[serde(default, skip_serializing_if = "ViewData::is_nodes")]
+    view: ViewData,
+    /// Track order as the user left it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    order: Vec<KeyData>,
+    /// Tracks shown as a thin row.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    folded: Vec<KeyData>,
+    /// Devices with their panel open in the track view.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    open: Vec<u32>,
+}
+
+impl TracksData {
+    fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Debug, Default)]
+#[serde(rename_all = "lowercase")]
+enum ViewData {
+    #[default]
+    Nodes,
+    Tracks,
+}
+
+impl ViewData {
+    fn is_nodes(&self) -> bool {
+        *self == ViewData::Nodes
+    }
+}
+
+/// A track: the mixer channel it ends in (`[node, port]`), or the node it
+/// ends at.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Debug)]
+#[serde(rename_all = "lowercase")]
+enum KeyData {
+    Channel([u32; 2]),
+    Node(u32),
+}
+
+fn key_data(key: TrackKey, numbers: &HashMap<NodeId, u32>) -> Option<KeyData> {
+    match key {
+        TrackKey::Channel(p) => Some(KeyData::Channel([*numbers.get(&p.node)?, p.port as u32])),
+        TrackKey::Node(n) => Some(KeyData::Node(*numbers.get(&n)?)),
+        TrackKey::Loose => None,
+    }
+}
+
+fn track_key(key: KeyData, ids: &HashMap<u32, NodeId>) -> Option<TrackKey> {
+    match key {
+        KeyData::Channel([n, port]) => Some(TrackKey::Channel(PortRef {
+            node: *ids.get(&n)?,
+            port: port as usize,
+        })),
+        KeyData::Node(n) => Some(TrackKey::Node(*ids.get(&n)?)),
+    }
+}
+
+fn tracks_data(l: &Layout, numbers: &HashMap<NodeId, u32>) -> TracksData {
+    let keys = |list: &[TrackKey]| list.iter().filter_map(|k| key_data(*k, numbers)).collect();
+    TracksData {
+        view: match l.view {
+            View::Nodes => ViewData::Nodes,
+            View::Tracks => ViewData::Tracks,
+        },
+        order: keys(&l.order),
+        folded: keys(&l.folded),
+        open: l.open.iter().filter_map(|n| numbers.get(n).copied()).collect(),
+    }
+}
+
+fn layout(t: &TracksData, ids: &HashMap<u32, NodeId>) -> Layout {
+    let keys = |list: &[KeyData]| list.iter().filter_map(|k| track_key(*k, ids)).collect();
+    Layout {
+        view: match t.view {
+            ViewData::Nodes => View::Nodes,
+            ViewData::Tracks => View::Tracks,
+        },
+        order: keys(&t.order),
+        folded: keys(&t.folded),
+        open: t.open.iter().filter_map(|n| ids.get(n).copied()).collect(),
+    }
 }
 
 fn fader_unity() -> f32 {
@@ -179,7 +273,13 @@ struct ModuleData {
 // ---------------------------------------------------------------------------
 
 /// `fresh`: read plugin states now rather than reuse recent copies.
-fn node_data(graph: &Graph, n: &Node, numbers: &HashMap<NodeId, u32>, origin: Vec2, fresh: bool) -> NodeData {
+fn node_data(
+    graph: &Graph,
+    n: &Node,
+    numbers: &HashMap<NodeId, u32>,
+    origin: Vec2,
+    fresh: bool,
+) -> NodeData {
     let kind = match &n.kind {
         NodeKind::Osc(o) => KindData::Oscillator {
             waveform: o.params.waveform().name().to_owned(),
@@ -202,7 +302,10 @@ fn node_data(graph: &Graph, n: &Node, numbers: &HashMap<NodeId, u32>, origin: Ve
             master: m.params.master.get(),
             master_mute: m.params.master_mute.load(Ordering::Relaxed),
             aux: m.params.aux_master.get(),
-            console: m.console.map(|c| ConsoleData { channels: c.channels, horizontal: c.horizontal }),
+            console: m.console.map(|c| ConsoleData {
+                channels: c.channels,
+                horizontal: c.horizontal,
+            }),
         },
         NodeKind::Plugin(p) => KindData::Plugin {
             path: p.meta.path.to_string_lossy().into_owned(),
@@ -222,7 +325,12 @@ fn node_data(graph: &Graph, n: &Node, numbers: &HashMap<NodeId, u32>, origin: Ve
                     .enumerate()
                     .map(|(i, spec)| (spec.name.to_owned(), p.get(i)))
                     .collect(),
-                mode: def.modes.get(p.mode()).copied().unwrap_or_default().to_owned(),
+                mode: def
+                    .modes
+                    .get(p.mode())
+                    .copied()
+                    .unwrap_or_default()
+                    .to_owned(),
                 toggle: p.toggled(),
                 data: p.data.iter().map(|v| v.get()).collect(),
                 // Kept only when the mapped node is saved too.
@@ -254,7 +362,11 @@ fn capture(
     origin: Vec2,
     fresh: bool,
 ) -> (Vec<NodeData>, Vec<CableData>, HashMap<NodeId, u32>) {
-    let numbers: HashMap<NodeId, u32> = ids.iter().enumerate().map(|(i, id)| (*id, i as u32 + 1)).collect();
+    let numbers: HashMap<NodeId, u32> = ids
+        .iter()
+        .enumerate()
+        .map(|(i, id)| (*id, i as u32 + 1))
+        .collect();
     let nodes = ids
         .iter()
         .filter_map(|id| graph.node(*id))
@@ -293,7 +405,11 @@ fn snapshot_with(graph: &Graph, fresh: bool) -> Project {
         .iter()
         .map(|g| ModuleData {
             title: g.title.clone(),
-            members: g.members.iter().filter_map(|m| numbers.get(m).copied()).collect(),
+            members: g
+                .members
+                .iter()
+                .filter_map(|m| numbers.get(m).copied())
+                .collect(),
             collapsed: g.collapsed,
         })
         .collect();
@@ -305,6 +421,7 @@ fn snapshot_with(graph: &Graph, fresh: bool) -> Project {
         modules,
         tempo: graph.tempo,
         board: graph.board.clone(),
+        tracks: tracks_data(&graph.tracks, &numbers),
     }
 }
 
@@ -359,9 +476,22 @@ fn instantiate(
                 }
                 graph.add_osc_with(pos, Arc::new(p), audio)
             }
-            KindData::Mixer { channels, master, master_mute, aux, console } => {
-                let console = console.map(|c| Console { channels: if c.channels > 12 { 24 } else { 12 }, horizontal: c.horizontal });
-                let p = MixerParams::new(if console.is_some() { CONSOLE_CHANNELS } else { MIXER_CHANNELS });
+            KindData::Mixer {
+                channels,
+                master,
+                master_mute,
+                aux,
+                console,
+            } => {
+                let console = console.map(|c| Console {
+                    channels: if c.channels > 12 { 24 } else { 12 },
+                    horizontal: c.horizontal,
+                });
+                let p = MixerParams::new(if console.is_some() {
+                    CONSOLE_CHANNELS
+                } else {
+                    MIXER_CHANNELS
+                });
                 for (ch, c) in channels.iter().take(p.channels()).enumerate() {
                     p.fader[ch].set(c.fader.clamp(0.0, 1.0));
                     p.pan[ch].set(c.pan.clamp(-1.0, 1.0));
@@ -374,7 +504,12 @@ fn instantiate(
                 p.aux_master.set(aux.clamp(0.0, 1.0));
                 graph.add_mixer_with(pos, Arc::new(p), console, audio)
             }
-            KindData::Plugin { path, state, pinned, midi } => {
+            KindData::Plugin {
+                path,
+                state,
+                pinned,
+                midi,
+            } => {
                 let Ok(id) = graph.add_plugin(&locate_plugin(path), pos, audio) else {
                     continue;
                 };
@@ -382,8 +517,10 @@ fn instantiate(
                     if let Some(bytes) = base64_decode(state) {
                         let _ = p.load_state(&bytes);
                     }
-                    let wanted: Vec<usize> =
-                        pinned.iter().filter_map(|id| p.params.iter().position(|q| q.id == *id)).collect();
+                    let wanted: Vec<usize> = pinned
+                        .iter()
+                        .filter_map(|id| p.params.iter().position(|q| q.id == *id))
+                        .collect();
                     if !wanted.is_empty() {
                         p.pinned = wanted;
                     }
@@ -391,9 +528,21 @@ fn instantiate(
                 }
                 id
             }
-            KindData::Module { module, params, mode, toggle, data: extra, sample, .. } => {
+            KindData::Module {
+                module,
+                params,
+                mode,
+                toggle,
+                data: extra,
+                sample,
+                ..
+            } => {
                 // Frakture was first called Fractal.
-                let module = if module == "Fractal" { "Frakture" } else { module.as_str() };
+                let module = if module == "Fractal" {
+                    "Frakture"
+                } else {
+                    module.as_str()
+                };
                 let Some(kind) = ModuleKind::from_key(module) else {
                     continue;
                 };
@@ -409,7 +558,10 @@ fn instantiate(
                 for (dst, v) in p.data.iter().zip(extra) {
                     dst.set(*v);
                 }
-                if let Some(s) = sample.as_ref().and_then(crate::audio::sample::Sample::from_saved) {
+                if let Some(s) = sample
+                    .as_ref()
+                    .and_then(crate::audio::sample::Sample::from_saved)
+                {
                     p.sample.set(Some(Arc::new(s)));
                 }
                 graph.add_module_with(pos, Arc::new(p), audio)
@@ -424,7 +576,9 @@ fn instantiate(
         ids.insert(data.id, id);
     }
     for data in nodes {
-        if let KindData::Module { target: Some(t), .. } = &data.kind
+        if let KindData::Module {
+            target: Some(t), ..
+        } = &data.kind
             && let (Some(&from), Some(&to)) = (ids.get(&data.id), ids.get(&t.node))
             && let Some(param) = graph.node(to).and_then(|n| n.param_by_name(&t.param))
         {
@@ -433,8 +587,14 @@ fn instantiate(
     }
     for c in cables {
         if let (Some(&from), Some(&to)) = (ids.get(&c.from[0]), ids.get(&c.to[0])) {
-            let from = PortRef { node: from, port: c.from[1] as usize };
-            let to = PortRef { node: to, port: c.to[1] as usize };
+            let from = PortRef {
+                node: from,
+                port: c.from[1] as usize,
+            };
+            let to = PortRef {
+                node: to,
+                port: c.to[1] as usize,
+            };
             graph.connect(from, to, audio);
         }
     }
@@ -464,21 +624,35 @@ pub fn restore(graph: &mut Graph, project: &Project, audio: &AudioHandle) -> usi
     graph.board = project.board.clone();
     let ids = instantiate(graph, &project.nodes, &project.cables, Vec2::ZERO, audio);
     for m in &project.modules {
-        let members: Vec<NodeId> = m.members.iter().filter_map(|id| ids.get(id).copied()).collect();
+        let members: Vec<NodeId> = m
+            .members
+            .iter()
+            .filter_map(|id| ids.get(id).copied())
+            .collect();
         if let Some(gid) = graph.create_group(&members) {
             graph.rename_group(gid, &m.title);
             graph.set_group_collapsed(gid, m.collapsed);
         }
     }
+    graph.tracks = layout(&project.tracks, &ids);
     project.nodes.len() - ids.len()
 }
 
 /// Adds a library module with its frame's top-left corner at `at`; returns
 /// its nodes.
-pub fn insert_preset(graph: &mut Graph, preset: &Preset, at: Pos2, audio: &AudioHandle) -> Vec<NodeId> {
+pub fn insert_preset(
+    graph: &mut Graph,
+    preset: &Preset,
+    at: Pos2,
+    audio: &AudioHandle,
+) -> Vec<NodeId> {
     let origin = at.to_vec2() + vec2(groups::PAD, groups::PAD + HEADER_H);
     let ids = instantiate(graph, &preset.nodes, &preset.cables, origin, audio);
-    let members: Vec<NodeId> = preset.nodes.iter().filter_map(|n| ids.get(&n.id).copied()).collect();
+    let members: Vec<NodeId> = preset
+        .nodes
+        .iter()
+        .filter_map(|n| ids.get(&n.id).copied())
+        .collect();
     // Arrives folded: a library module is used as one block.
     if let Some(gid) = graph.create_group(&members) {
         graph.rename_group(gid, &preset.name);
@@ -498,7 +672,8 @@ pub fn save_project(path: &Path, project: &Project) -> Result<(), String> {
 
 pub fn load_project(path: &Path) -> Result<Project, String> {
     let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-    let project: Project = serde_json::from_str(&text).map_err(|e| format!("not a valid project ({e})"))?;
+    let project: Project =
+        serde_json::from_str(&text).map_err(|e| format!("not a valid project ({e})"))?;
     if project.format != FORMAT {
         return Err("not an AudioBoard project".to_owned());
     }
@@ -545,7 +720,8 @@ impl Library {
             .map(|e| e.path())
             .filter(|p| p.extension().is_some_and(|x| x == PRESET_EXT))
             .filter_map(|p| {
-                let preset: Preset = serde_json::from_str(&std::fs::read_to_string(&p).ok()?).ok()?;
+                let preset: Preset =
+                    serde_json::from_str(&std::fs::read_to_string(&p).ok()?).ok()?;
                 (preset.format == FORMAT).then_some((p, preset))
             })
             .collect();
@@ -556,7 +732,13 @@ impl Library {
     fn path_of(&self, name: &str) -> PathBuf {
         let safe: String = name
             .chars()
-            .map(|c| if c.is_alphanumeric() || " -_".contains(c) { c } else { '_' })
+            .map(|c| {
+                if c.is_alphanumeric() || " -_".contains(c) {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .collect();
         self.dir.join(format!("{}.{PRESET_EXT}", safe.trim()))
     }
@@ -605,7 +787,11 @@ const BASE64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz
 pub fn base64_encode(data: &[u8]) -> String {
     let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     for chunk in data.chunks(3) {
-        let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
+        let b = [
+            chunk[0],
+            *chunk.get(1).unwrap_or(&0),
+            *chunk.get(2).unwrap_or(&0),
+        ];
         let n = (b[0] as u32) << 16 | (b[1] as u32) << 8 | b[2] as u32;
         for k in 0..4 {
             if k <= chunk.len() {
@@ -621,7 +807,10 @@ pub fn base64_encode(data: &[u8]) -> String {
 pub fn base64_decode(text: &str) -> Option<Vec<u8>> {
     let mut out = Vec::with_capacity(text.len() / 4 * 3);
     let (mut acc, mut bits) = (0u32, 0);
-    for c in text.bytes().filter(|c| !c.is_ascii_whitespace() && *c != b'=') {
+    for c in text
+        .bytes()
+        .filter(|c| !c.is_ascii_whitespace() && *c != b'=')
+    {
         let v = BASE64.iter().position(|&b| b == c)? as u32;
         acc = acc << 6 | v;
         bits += 6;

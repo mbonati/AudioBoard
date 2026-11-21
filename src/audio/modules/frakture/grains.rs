@@ -143,7 +143,14 @@ impl Res {
         let g = fastmath::tan_turns(f.clamp(30.0, sr * 0.4) / (2.0 * sr));
         let k = 1.0 / q;
         let a1 = 1.0 / (1.0 + g * (g + k));
-        Self { a1, a2: g * a1, a3: g * g * a1, k, gain: (q.sqrt() * 0.6).max(1.0), ..Self::default() }
+        Self {
+            a1,
+            a2: g * a1,
+            a3: g * g * a1,
+            k,
+            gain: (q.sqrt() * 0.6).max(1.0),
+            ..Self::default()
+        }
     }
 
     /// One sample through it, at unity on its note (times the makeup).
@@ -167,7 +174,10 @@ struct Diffuser {
 impl Diffuser {
     fn new(sr: f32) -> Self {
         let delays = DIFFUSION_MS.map(|ch| ch.map(|ms| ((ms * 0.001 * sr) as usize).max(2)));
-        Self { lines: delays.map(|ch| ch.map(|d| DelayLine::new(d + 2))), delays }
+        Self {
+            lines: delays.map(|ch| ch.map(|d| DelayLine::new(d + 2))),
+            delays,
+        }
     }
 
     #[inline]
@@ -308,9 +318,18 @@ impl Layer {
     }
 
     /// A trigger: one grain, or with SWARM a cloud of them.
-    fn spawn(&mut self, s: &LayerSettings, m: Option<&MutateSettings>, w: usize, len: usize, sr: f32) {
+    fn spawn(
+        &mut self,
+        s: &LayerSettings,
+        m: Option<&MutateSettings>,
+        w: usize,
+        len: usize,
+        sr: f32,
+    ) {
         let count = match m {
-            Some(m) if m.swarm > 0.0 => 1 + (self.rng.unit() * swarm_most(m.swarm) as f32) as usize % swarm_most(m.swarm),
+            Some(m) if m.swarm > 0.0 => {
+                1 + (self.rng.unit() * swarm_most(m.swarm) as f32) as usize % swarm_most(m.swarm)
+            }
             _ => 1,
         };
         for k in 0..count {
@@ -320,7 +339,15 @@ impl Layer {
 
     /// Grain `index` of a cloud: past the first, a swarm's grains are
     /// scattered and detuned a little, or with SYNC wait their turn.
-    fn spawn_one(&mut self, s: &LayerSettings, m: Option<&MutateSettings>, w: usize, len: usize, sr: f32, index: usize) {
+    fn spawn_one(
+        &mut self,
+        s: &LayerSettings,
+        m: Option<&MutateSettings>,
+        w: usize,
+        len: usize,
+        sr: f32,
+        index: usize,
+    ) {
         let Some(slot) = self.grains.iter().position(|g| !g.active) else {
             return;
         };
@@ -338,7 +365,8 @@ impl Layer {
                     // In time: the same slice again, a note value later.
                     Some(step) => wait = (index as f32 * step) as u32,
                     None => {
-                        start = (start + (rng.bipolar() * m.swarm * SWARM_SPREAD * sr) as f64).rem_euclid(lenf);
+                        start = (start + (rng.bipolar() * m.swarm * SWARM_SPREAD * sr) as f64)
+                            .rem_euclid(lenf);
                         semis += rng.bipolar() * m.swarm * SWARM_DETUNE;
                     }
                 }
@@ -349,7 +377,11 @@ impl Layer {
             }
             // Each grain bends its own way: more or less, and with CHAOS
             // sometimes the other way.
-            let sign = if rng.unit() < s.chaos * 0.5 { -1.0 } else { 1.0 };
+            let sign = if rng.unit() < s.chaos * 0.5 {
+                -1.0
+            } else {
+                1.0
+            };
             glide = m.glide * (0.5 + rng.unit()) * sign;
         }
         let semis = semis.clamp(-48.0, 48.0);
@@ -377,7 +409,12 @@ impl Layer {
         }
         // Trailing the recording, a grain sped up must not catch it.
         let fastest = ratio * fastmath::exp2(glide.max(0.0)) as f64;
-        if matches!(s.playhead, Playhead::Behind(_) | Playhead::BehindFraction(_)) && !reverse && fastest > 1.0 {
+        if matches!(
+            s.playhead,
+            Playhead::Behind(_) | Playhead::BehindFraction(_)
+        ) && !reverse
+            && fastest > 1.0
+        {
             let need = len_g as f64 * (fastest - 1.0) + 2.0;
             if (w as f64 - start).rem_euclid(lenf) < need && need < lenf {
                 start = (w as f64 - need).rem_euclid(lenf);
@@ -416,7 +453,9 @@ impl Layer {
             side: 1.0 - pan.abs(),
             pitch: semis,
             glide,
-            glide_inv: m.and_then(|m| m.glide_len).map_or(1.0 / len_g as f32, |l| 1.0 / l.max(1.0)),
+            glide_inv: m
+                .and_then(|m| m.glide_len)
+                .map_or(1.0 / len_g as f32, |l| 1.0 / l.max(1.0)),
             wait,
             res,
             res_mix,
@@ -476,7 +515,9 @@ impl Grains {
             fb_lp: [0.0; 2],
             fb_hp: [0.0; 2],
             blur: Diffuser::new(sample_rate),
-            fb_line: std::array::from_fn(|_| DelayLine::new((FEEDBACK_SECONDS * sample_rate) as usize)),
+            fb_line: std::array::from_fn(|_| {
+                DelayLine::new((FEEDBACK_SECONDS * sample_rate) as usize)
+            }),
         }
     }
 
@@ -487,7 +528,8 @@ impl Grains {
 
     #[allow(clippy::needless_range_loop)] // both channels, sample by sample
     pub fn process(&mut self, x: &mut Buf, n: usize, s: &GrainSettings, clock: &Clock) {
-        let len = ((s.buffer_beats * clock.samples_per_beat).round() as usize).clamp(BLOCK * 4, self.cap);
+        let len =
+            ((s.buffer_beats * clock.samples_per_beat).round() as usize).clamp(BLOCK * 4, self.cap);
         if len != self.len {
             self.len = len;
             self.w %= len;
@@ -509,7 +551,8 @@ impl Grains {
             }
         }
         // The write head follows the tempo: back in step whenever it drifts.
-        let target = (((clock.beat0 / s.buffer_beats).rem_euclid(1.0) * lenf) as usize).min(len - 1);
+        let target =
+            (((clock.beat0 / s.buffer_beats).rem_euclid(1.0) * lenf) as usize).min(len - 1);
         let drift = (self.w as i64 - target as i64).rem_euclid(len as i64);
         if drift.min(len as i64 - drift) > 256 {
             self.w = target;
@@ -534,15 +577,32 @@ impl Grains {
                 Rate::Grid(beats) => sr / (beats as f32 * spb),
                 Rate::Hz(hz) => hz,
             };
-            let swarm = if m.layers[k] { (1.0 + swarm_most(m.swarm) as f32) * 0.5 } else { 1.0 };
+            let swarm = if m.layers[k] {
+                (1.0 + swarm_most(m.swarm) as f32) * 0.5
+            } else {
+                1.0
+            };
             norm_t[k] = 1.0 / (per_second * swarm * set.size / sr * 0.7).max(1.0).sqrt();
         }
         let feedback = m.feedback * FEEDBACK_MAX;
-        let (fb_lp_k, fb_hp_k) = (time_coeff(1.0 / (std::f32::consts::TAU * FEEDBACK_HI), sr), time_coeff(1.0 / (std::f32::consts::TAU * FEEDBACK_LO), sr));
+        let (fb_lp_k, fb_hp_k) = (
+            time_coeff(1.0 / (std::f32::consts::TAU * FEEDBACK_HI), sr),
+            time_coeff(1.0 / (std::f32::consts::TAU * FEEDBACK_LO), sr),
+        );
         let blur_g = 0.5 + 0.25 * m.blur;
-        let dry_t = if dry_n > 0 { dry_sum / dry_n as f32 } else { 1.0 };
+        let dry_t = if dry_n > 0 {
+            dry_sum / dry_n as f32
+        } else {
+            1.0
+        };
 
-        let Grains { buf, layers, band, overview, .. } = self;
+        let Grains {
+            buf,
+            layers,
+            band,
+            overview,
+            ..
+        } = self;
         let bin_len = (len / OVERVIEW).max(1);
         for i in 0..n {
             let (in_l, in_r) = (x[0][i], x[1][i]);
@@ -586,11 +646,19 @@ impl Grains {
             for (k, layer) in layers.iter_mut().enumerate() {
                 let set = &s.layers[k];
                 approach(&mut layer.norm, norm_t[k], self.smooth);
-                approach(&mut layer.wet, if set.on { set.wet } else { 0.0 }, self.smooth);
+                approach(
+                    &mut layer.wet,
+                    if set.on { set.wet } else { 0.0 },
+                    self.smooth,
+                );
                 match set.playhead {
-                    Playhead::Scan(speed) => layer.scan = (layer.scan + speed as f64).rem_euclid(lenf),
+                    Playhead::Scan(speed) => {
+                        layer.scan = (layer.scan + speed as f64).rem_euclid(lenf)
+                    }
                     // Where the transport says: whole passes per buffer.
-                    Playhead::ScanSync(ratio) => layer.scan = (beat / s.buffer_beats * ratio as f64).rem_euclid(1.0) * lenf,
+                    Playhead::ScanSync(ratio) => {
+                        layer.scan = (beat / s.buffer_beats * ratio as f64).rem_euclid(1.0) * lenf
+                    }
                     _ => {}
                 }
                 if set.on {
@@ -651,7 +719,11 @@ impl Grains {
                     ll += env * (mid * g.gl + side);
                     lr += env * (mid * g.gr - side);
                     // GLIDE bends the speed (so the pitch) over the grain.
-                    g.pos += if g.glide != 0.0 { g.inc * fastmath::exp2(g.glide * g.bent()) as f64 } else { g.inc };
+                    g.pos += if g.glide != 0.0 {
+                        g.inc * fastmath::exp2(g.glide * g.bent()) as f64
+                    } else {
+                        g.inc
+                    };
                     if g.pos >= lenf {
                         g.pos -= lenf;
                     } else if g.pos < 0.0 {
@@ -691,7 +763,10 @@ impl Grains {
             viz[viz::PLAYHEADS + k].set((layer.head(self.w, self.len) / lenf) as f32);
             let mut shown = 0;
             let mut count = 0;
-            for g in layer.grains[..layer.top].iter().filter(|g| g.active && g.wait == 0) {
+            for g in layer.grains[..layer.top]
+                .iter()
+                .filter(|g| g.active && g.wait == 0)
+            {
                 count += 1;
                 if shown < VIZ_GRAINS {
                     let at = viz::GRAINS + (k * VIZ_GRAINS + shown) * GRAIN_VIZ;
@@ -721,7 +796,13 @@ fn read(buf: &[f32], len: usize, valid: usize, pos: f64) -> (f32, f32) {
     let i = (pos as usize).min(len - 1);
     let f = (pos - i as f64) as f32;
     let j = if i + 1 >= len { 0 } else { i + 1 };
-    let at = |k: usize| if k < valid { (buf[k * 2], buf[k * 2 + 1]) } else { (0.0, 0.0) };
+    let at = |k: usize| {
+        if k < valid {
+            (buf[k * 2], buf[k * 2 + 1])
+        } else {
+            (0.0, 0.0)
+        }
+    };
     let (al, ar) = at(i);
     let (bl, br) = at(j);
     (al + (bl - al) * f, ar + (br - ar) * f)

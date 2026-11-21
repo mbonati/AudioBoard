@@ -37,7 +37,10 @@ fn knot(seed: u32, lane: u32, octave: u32, cell: i64) -> f32 {
 #[inline]
 fn spline([a, b, c, d]: [f32; 4], t: f32) -> f32 {
     let t2 = t * t;
-    0.5 * (2.0 * b + (c - a) * t + (2.0 * a - 5.0 * b + 4.0 * c - d) * t2 + (3.0 * (b - c) + d - a) * t2 * t)
+    0.5 * (2.0 * b
+        + (c - a) * t
+        + (2.0 * a - 5.0 * b + 4.0 * c - d) * t2
+        + (3.0 * (b - c) + d - a) * t2 * t)
 }
 
 /// The knots around cell `cell` of one octave.
@@ -80,7 +83,12 @@ pub struct Lane {
 
 impl Lane {
     pub fn new(lane: u32) -> Self {
-        Self { lane, seed: 0, cells: [i64::MIN; OCTAVES], knots: [[0.0; 4]; OCTAVES] }
+        Self {
+            lane,
+            seed: 0,
+            cells: [i64::MIN; OCTAVES],
+            knots: [[0.0; 4]; OCTAVES],
+        }
     }
 
     /// The motion at `x`, as [`fbm`] gives it, each octave weighted (0
@@ -143,5 +151,7 @@ pub fn spectrum(color: f32) -> [f32; PARTIALS] {
 
 /// The nearest timbre's name.
 pub fn spectrum_name(color: f32) -> &'static str {
-    SPECTRA[((color.clamp(0.0, 1.0) * (SPECTRA.len() - 1) as f32).round() as usize).min(SPECTRA.len() - 1)].0
+    SPECTRA[((color.clamp(0.0, 1.0) * (SPECTRA.len() - 1) as f32).round() as usize)
+        .min(SPECTRA.len() - 1)]
+    .0
 }

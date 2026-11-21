@@ -97,9 +97,26 @@ pub const EUCLID: usize = 4;
 pub const STUTTER: usize = 5;
 
 /// Step lengths: name and steps per beat.
-pub const RATES: [(&str, f64); 8] = [("1/2", 0.5), ("1/4", 1.0), ("1/8", 2.0), ("1/8T", 3.0), ("1/16", 4.0), ("1/16T", 6.0), ("1/32", 8.0), ("1/64", 16.0)];
+pub const RATES: [(&str, f64); 8] = [
+    ("1/2", 0.5),
+    ("1/4", 1.0),
+    ("1/8", 2.0),
+    ("1/8T", 3.0),
+    ("1/16", 4.0),
+    ("1/16T", 6.0),
+    ("1/32", 8.0),
+    ("1/64", 16.0),
+];
 /// A ratchet's rates: name and strikes per beat.
-pub const REPEAT_RATES: [(&str, f64); 7] = [("1/8", 2.0), ("1/16", 4.0), ("1/16T", 6.0), ("1/32", 8.0), ("1/32T", 12.0), ("1/64", 16.0), ("1/128", 32.0)];
+pub const REPEAT_RATES: [(&str, f64); 7] = [
+    ("1/8", 2.0),
+    ("1/16", 4.0),
+    ("1/16T", 6.0),
+    ("1/32", 8.0),
+    ("1/32T", 12.0),
+    ("1/64", 16.0),
+    ("1/128", 32.0),
+];
 /// The panel's choices of repeats and bits.
 pub const REPEATS: [f32; 8] = [1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, 16.0];
 pub const BITS: [f32; 8] = [16.0, 12.0, 10.0, 8.0, 6.0, 4.0, 3.0, 2.0];
@@ -168,7 +185,12 @@ pub struct Field {
 }
 
 const fn f(name: &'static str, lo: f32, hi: f32, default: f32) -> Field {
-    Field { name, lo, hi, default }
+    Field {
+        name,
+        lo,
+        hi,
+        default,
+    }
 }
 
 pub const FIELDS: [Field; slice::LEN] = [
@@ -255,19 +277,126 @@ pub const fn at(s: usize, k: usize) -> usize {
 const KIT: [(usize, &[(usize, f32)]); 8] = {
     use slice::*;
     [
-        (4, &[(END, 0.35), (RELEASE, 160.0), (GAIN, -2.0), (HITS, 4.0), (NOTE, 36.0), (PROB, 70.0)]),
-        (3, &[(END, 0.012), (RELEASE, 4.0), (GAIN, -4.0), (PAN, -0.3), (HITS, 7.0), (ROTATE, 2.0), (NOTE, 37.0), (PROB, 55.0)]),
-        (2, &[(END, 0.25), (RELEASE, 120.0), (GAIN, -9.0), (PAN, 0.35), (HITS, 3.0), (STEPS, 11.0), (NOTE, 38.0), (PROB, 30.0)]),
-        (1, &[(PITCH, 24.0), (END, 0.06), (ATTACK, 1.0), (RELEASE, 20.0), (GAIN, -18.0), (PAN, 0.55), (HITS, 2.0), (STEPS, 13.0), (ROTATE, 3.0), (NOTE, 39.0), (PROB, 25.0)]),
-        (5, &[(END, 0.03), (RELEASE, 10.0), (BITS, 6.0), (GAIN, -13.0), (PAN, -0.5), (REPEAT, 2.0), (REP_RATE, 5.0), (HITS, 5.0), (ROTATE, 1.0), (NOTE, 40.0), (PROB, 35.0)]),
-        (6, &[(END, 0.12), (RELEASE, 15.0), (DOWN, 2.0), (GAIN, -17.0), (HITS, 1.0), (STEPS, 12.0), (ROTATE, 6.0), (NOTE, 41.0), (PROB, 15.0)]),
-        (8, &[(END, 1.0), (GRAIN, 1.0), (SIZE, 30.0), (DENSITY, 40.0), (SPRAY, 0.8), (RELEASE, 400.0), (GAIN, -8.0), (HITS, 1.0), (STEPS, 32.0), (NOTE, 42.0), (PROB, 10.0)]),
-        (7, &[(PITCH, -12.0), (END, 0.08), (BITS, 4.0), (RELEASE, 30.0), (GAIN, -15.0), (HITS, 3.0), (STEPS, 7.0), (NOTE, 43.0), (PROB, 20.0)]),
+        (
+            4,
+            &[
+                (END, 0.35),
+                (RELEASE, 160.0),
+                (GAIN, -2.0),
+                (HITS, 4.0),
+                (NOTE, 36.0),
+                (PROB, 70.0),
+            ],
+        ),
+        (
+            3,
+            &[
+                (END, 0.012),
+                (RELEASE, 4.0),
+                (GAIN, -4.0),
+                (PAN, -0.3),
+                (HITS, 7.0),
+                (ROTATE, 2.0),
+                (NOTE, 37.0),
+                (PROB, 55.0),
+            ],
+        ),
+        (
+            2,
+            &[
+                (END, 0.25),
+                (RELEASE, 120.0),
+                (GAIN, -9.0),
+                (PAN, 0.35),
+                (HITS, 3.0),
+                (STEPS, 11.0),
+                (NOTE, 38.0),
+                (PROB, 30.0),
+            ],
+        ),
+        (
+            1,
+            &[
+                (PITCH, 24.0),
+                (END, 0.06),
+                (ATTACK, 1.0),
+                (RELEASE, 20.0),
+                (GAIN, -18.0),
+                (PAN, 0.55),
+                (HITS, 2.0),
+                (STEPS, 13.0),
+                (ROTATE, 3.0),
+                (NOTE, 39.0),
+                (PROB, 25.0),
+            ],
+        ),
+        (
+            5,
+            &[
+                (END, 0.03),
+                (RELEASE, 10.0),
+                (BITS, 6.0),
+                (GAIN, -13.0),
+                (PAN, -0.5),
+                (REPEAT, 2.0),
+                (REP_RATE, 5.0),
+                (HITS, 5.0),
+                (ROTATE, 1.0),
+                (NOTE, 40.0),
+                (PROB, 35.0),
+            ],
+        ),
+        (
+            6,
+            &[
+                (END, 0.12),
+                (RELEASE, 15.0),
+                (DOWN, 2.0),
+                (GAIN, -17.0),
+                (HITS, 1.0),
+                (STEPS, 12.0),
+                (ROTATE, 6.0),
+                (NOTE, 41.0),
+                (PROB, 15.0),
+            ],
+        ),
+        (
+            8,
+            &[
+                (END, 1.0),
+                (GRAIN, 1.0),
+                (SIZE, 30.0),
+                (DENSITY, 40.0),
+                (SPRAY, 0.8),
+                (RELEASE, 400.0),
+                (GAIN, -8.0),
+                (HITS, 1.0),
+                (STEPS, 32.0),
+                (NOTE, 42.0),
+                (PROB, 10.0),
+            ],
+        ),
+        (
+            7,
+            &[
+                (PITCH, -12.0),
+                (END, 0.08),
+                (BITS, 4.0),
+                (RELEASE, 30.0),
+                (GAIN, -15.0),
+                (HITS, 3.0),
+                (STEPS, 7.0),
+                (NOTE, 43.0),
+                (PROB, 20.0),
+            ],
+        ),
     ]
 };
 
 /// The pattern it starts with (slices of the kit, −1 rests).
-const PATTERN_STEPS: [f32; 16] = [0.0, -1.0, 1.0, -1.0, 4.0, -1.0, 1.0, 2.0, 0.0, -1.0, 1.0, 5.0, 4.0, 3.0, 1.0, -1.0];
+const PATTERN_STEPS: [f32; 16] = [
+    0.0, -1.0, 1.0, -1.0, 4.0, -1.0, 1.0, 2.0, 0.0, -1.0, 1.0, 5.0, 4.0, 3.0, 1.0, -1.0,
+];
 
 static DATA: [f32; data::LEN] = {
     let mut d = [0.0; data::LEN];
@@ -283,7 +412,11 @@ static DATA: [f32; data::LEN] = {
     d[data::SENS] = 50.0;
     let mut i = 0;
     while i < MAX_LEN {
-        d[data::STEPS + i] = if i < PATTERN_STEPS.len() { PATTERN_STEPS[i] } else { -1.0 };
+        d[data::STEPS + i] = if i < PATTERN_STEPS.len() {
+            PATTERN_STEPS[i]
+        } else {
+            -1.0
+        };
         i += 1;
     }
     let mut s = 0;
@@ -364,7 +497,11 @@ pub static DEF: ModuleDef = ModuleDef {
 /// A data value as a whole number in `lo..=hi`.
 pub fn int(p: &ModuleParams, i: usize, lo: i32, hi: i32) -> i32 {
     let v = p.data[i].get();
-    if v.is_nan() { lo } else { (v.round() as i32).clamp(lo, hi) }
+    if v.is_nan() {
+        lo
+    } else {
+        (v.round() as i32).clamp(lo, hi)
+    }
 }
 
 pub fn on(p: &ModuleParams, i: usize) -> bool {
@@ -379,12 +516,20 @@ pub fn toggle(p: &ModuleParams, i: usize) {
 pub fn get(p: &ModuleParams, s: usize, k: usize) -> f32 {
     let v = p.data[at(s.min(MAX_SLICES - 1), k)].get();
     let fl = &FIELDS[k];
-    if v.is_nan() { fl.default } else { v.clamp(fl.lo, fl.hi) }
+    if v.is_nan() {
+        fl.default
+    } else {
+        v.clamp(fl.lo, fl.hi)
+    }
 }
 
 pub fn set(p: &ModuleParams, s: usize, k: usize, v: f32) {
     let fl = &FIELDS[k];
-    p.data[at(s.min(MAX_SLICES - 1), k)].set(if v.is_nan() { fl.default } else { v.clamp(fl.lo, fl.hi) });
+    p.data[at(s.min(MAX_SLICES - 1), k)].set(if v.is_nan() {
+        fl.default
+    } else {
+        v.clamp(fl.lo, fl.hi)
+    });
 }
 
 /// A slice's whole-number setting.
@@ -419,7 +564,12 @@ pub fn length(p: &ModuleParams) -> usize {
 
 /// The pattern's step `i`: a slice, or a rest.
 pub fn step(p: &ModuleParams, i: usize) -> Option<usize> {
-    let v = int(p, data::STEPS + i.min(MAX_LEN - 1), -1, MAX_SLICES as i32 - 1);
+    let v = int(
+        p,
+        data::STEPS + i.min(MAX_LEN - 1),
+        -1,
+        MAX_SLICES as i32 - 1,
+    );
     (v >= 0).then_some(v as usize)
 }
 
@@ -604,7 +754,13 @@ struct HitList {
 
 impl HitList {
     fn new() -> Self {
-        HitList { hits: [Hit { frame: 0, event: Event::Release(Holder::Panel) }; MAX_HITS], len: 0 }
+        HitList {
+            hits: [Hit {
+                frame: 0,
+                event: Event::Release(Holder::Panel),
+            }; MAX_HITS],
+            len: 0,
+        }
     }
 
     fn push(&mut self, h: Hit) {
@@ -677,7 +833,9 @@ impl Splitter {
             sr: sample_rate,
             sample,
             seen,
-            voices: Box::new(std::array::from_fn(|i| Voice::new(0x5711_7700 ^ (i as u32).wrapping_mul(0x9E37_79B9)))),
+            voices: Box::new(std::array::from_fn(|i| {
+                Voice::new(0x5711_7700 ^ (i as u32).wrapping_mul(0x9E37_79B9))
+            })),
             ratchets: [None; MAX_RATCHETS],
             window: voice::window(),
             clock: StepClock::new(),
@@ -696,21 +854,42 @@ impl Splitter {
     }
 
     fn source_len(&self, source: usize) -> f64 {
-        if source == 0 { self.sample.as_ref().map_or(0.0, |s| s.frames() as f64) } else { ATOM_LEN }
+        if source == 0 {
+            self.sample.as_ref().map_or(0.0, |s| s.frames() as f64)
+        } else {
+            ATOM_LEN
+        }
     }
 
     /// A slice struck: its last voice choked, a free (or the oldest) voice
     /// started.
-    fn strike(&mut self, slice: usize, velocity: f32, holder: Holder, var: &Variation, clock: &Clock) {
+    fn strike(
+        &mut self,
+        slice: usize,
+        velocity: f32,
+        holder: Holder,
+        var: &Variation,
+        clock: &Clock,
+    ) {
         let s = settings(&self.params, slice);
-        for v in self.voices.iter_mut().filter(|v| v.active && v.slice == slice) {
+        for v in self
+            .voices
+            .iter_mut()
+            .filter(|v| v.active && v.slice == slice)
+        {
             v.choke(self.sr);
         }
         // A free voice, or the oldest (restarted at once).
-        let i = self.voices.iter().position(|v| !v.active).unwrap_or_else(|| (0..VOICES).min_by_key(|&i| self.voices[i].age).unwrap_or(0));
+        let i = self
+            .voices
+            .iter()
+            .position(|v| !v.active)
+            .unwrap_or_else(|| (0..VOICES).min_by_key(|&i| self.voices[i].age).unwrap_or(0));
         self.age += 1;
         let src = src_of(&self.sample, s.source);
-        self.voices[i].start(slice, &s, &src, self.sr, velocity, holder, var, clock, self.age);
+        self.voices[i].start(
+            slice, &s, &src, self.sr, velocity, holder, var, clock, self.age,
+        );
         self.hits[slice] = self.hits[slice].wrapping_add(1);
     }
 
@@ -729,7 +908,11 @@ impl Splitter {
             p.viz[viz::STEP].set(-1.0);
             return;
         }
-        let mut steps = [Step { frame: 0, beat: 0.0, index: 0 }; MAX_STEPS];
+        let mut steps = [Step {
+            frame: 0,
+            beat: 0.0,
+            index: 0,
+        }; MAX_STEPS];
         let per_beat = RATES[rate(&p)].1;
         let found = self.clock.steps(ctx, n, per_beat, p.get(SWING), &mut steps);
         if found == 0 {
@@ -743,7 +926,9 @@ impl Splitter {
         let fill = p.get(FILL).clamp(0.0, 1.0);
         let chaos = p.get(CHAOS).clamp(0.0, 1.0);
         let step_samples = 1.0 / (per_beat * ctx.beats_per_sample.max(1e-12));
-        let gate = ((step_samples * p.data[data::GATE].get().clamp(5.0, 100.0) as f64 / 100.0) as u32).max(1);
+        let gate = ((step_samples * p.data[data::GATE].get().clamp(5.0, 100.0) as f64 / 100.0)
+            as u32)
+            .max(1);
         let mut pool = [0usize; MAX_SLICES];
         let mut pooled = 0;
         for s in (0..n_slices).filter(|&s| !flag(&p, s, slice::MUTE)) {
@@ -755,10 +940,25 @@ impl Splitter {
             let i = st.index.rem_euclid(len as i64) as usize;
             p.viz[viz::STEP].set(i as f32);
             p.viz[viz::INDEX].set(st.index.max(0) as f32);
-            let mut rng = if lock { Rng::new(hash(seed.wrapping_mul(0x9E37_79B9) ^ (i as u32 + 1).wrapping_mul(0x85EB_CA6B)) | 1) } else { Rng::new(self.rng.next_u32()) };
+            let mut rng = if lock {
+                Rng::new(
+                    hash(seed.wrapping_mul(0x9E37_79B9) ^ (i as u32 + 1).wrapping_mul(0x85EB_CA6B))
+                        | 1,
+                )
+            } else {
+                Rng::new(self.rng.next_u32())
+            };
             let strike = |slice: usize, var: Variation, roll: Option<Roll>| Hit {
                 frame: st.frame,
-                event: Event::Strike { slice, velocity: 0.9, holder: Holder::Timed(gate), var, local: true, roll, repeat: false },
+                event: Event::Strike {
+                    slice,
+                    velocity: 0.9,
+                    holder: Holder::Timed(gate),
+                    var,
+                    local: true,
+                    roll,
+                    repeat: false,
+                },
             };
             let mut lane: Option<usize> = None;
             match mode {
@@ -768,15 +968,23 @@ impl Splitter {
                         RANDOM if !pool.is_empty() => {
                             let mut k = (rng.unit() * pool.len() as f32) as usize % pool.len();
                             if !lock && pool.len() > 1 && Some(pool[k]) == self.last {
-                                k = (k + 1 + (rng.unit() * (pool.len() - 1) as f32) as usize) % pool.len();
+                                k = (k + 1 + (rng.unit() * (pool.len() - 1) as f32) as usize)
+                                    % pool.len();
                             }
                             Some(pool[k])
                         }
-                        PATTERN => step(&p, i).filter(|&s| s < n_slices && !flag(&p, s, slice::MUTE)),
+                        PATTERN => {
+                            step(&p, i).filter(|&s| s < n_slices && !flag(&p, s, slice::MUTE))
+                        }
                         STUTTER => {
-                            let from_pattern = step(&p, i).filter(|&s| s < n_slices && !flag(&p, s, slice::MUTE));
+                            let from_pattern =
+                                step(&p, i).filter(|&s| s < n_slices && !flag(&p, s, slice::MUTE));
                             let any = (0..len).any(|j| step(&p, j).is_some_and(|s| s < n_slices));
-                            if any { from_pattern } else { (!pool.is_empty()).then(|| pool[i % pool.len()]) }
+                            if any {
+                                from_pattern
+                            } else {
+                                (!pool.is_empty()).then(|| pool[i % pool.len()])
+                            }
                         }
                         _ => None,
                     };
@@ -822,7 +1030,11 @@ impl Splitter {
                 }
             }
             if let Some(l) = lane {
-                p.viz[viz::STEP_SLICE + i.min(MAX_LEN - 1)].set(if l == usize::MAX { -1.0 } else { l as f32 });
+                p.viz[viz::STEP_SLICE + i.min(MAX_LEN - 1)].set(if l == usize::MAX {
+                    -1.0
+                } else {
+                    l as f32
+                });
             }
         }
     }
@@ -832,7 +1044,11 @@ impl Splitter {
 fn src_of(sample: &Option<Arc<Sample>>, source: usize) -> Src<'_> {
     if source == 0 {
         match sample {
-            Some(s) if s.frames() >= 2 => Src::Sample { l: &s.left, r: s.right(), rate: s.rate },
+            Some(s) if s.frames() >= 2 => Src::Sample {
+                l: &s.left,
+                r: s.right(),
+                rate: s.rate,
+            },
             _ => Src::Empty,
         }
     } else {
@@ -852,7 +1068,17 @@ fn vary(rng: &mut Rng, chaos: f32) -> (Variation, Option<Roll>) {
         2 => var.pitch = if rng.unit() < 0.5 { 7.0 } else { -5.0 },
         3 => var.skip = 0.25 + 0.4 * rng.unit(),
         4 => var.gain = 0.5,
-        _ => return (var, Some(Roll { count: 2 + (rng.unit() * 2.0) as u8, per_beat: if rng.unit() < 0.5 { 8.0 } else { 16.0 }, ramp: 0.0, fall: 0.25 })),
+        _ => {
+            return (
+                var,
+                Some(Roll {
+                    count: 2 + (rng.unit() * 2.0) as u8,
+                    per_beat: if rng.unit() < 0.5 { 8.0 } else { 16.0 },
+                    ramp: 0.0,
+                    fall: 0.25,
+                }),
+            );
+        }
     }
     (var, None)
 }
@@ -863,7 +1089,9 @@ fn stutter_roll(rng: &mut Rng, chaos: f32) -> Roll {
     const COUNTS: [u8; 6] = [2, 3, 4, 6, 8, 12];
     const PER_BEAT: [f64; 5] = [8.0, 12.0, 16.0, 16.0, 32.0];
     const RAMPS: [f32; 8] = [0.0, 0.0, 0.0, 12.0, -12.0, 7.0, -5.0, 1.0];
-    let pick = |rng: &mut Rng, n: usize, reach: f32| ((rng.unit() * (n as f32) * reach) as usize).min(n - 1);
+    let pick = |rng: &mut Rng, n: usize, reach: f32| {
+        ((rng.unit() * (n as f32) * reach) as usize).min(n - 1)
+    };
     let reach = 0.5 + 0.5 * chaos;
     Roll {
         count: COUNTS[pick(rng, COUNTS.len(), reach)],
@@ -912,14 +1140,42 @@ impl Processor for Splitter {
                         let mut mapped = false;
                         for s in (0..n_slices).filter(|&s| note(&p, s) == Some(d1)) {
                             mapped = true;
-                            list.push(Hit { frame, event: Event::Strike { slice: s, velocity, holder: Holder::Key(d1), var: Variation::NONE, local: false, roll: None, repeat: false } });
+                            list.push(Hit {
+                                frame,
+                                event: Event::Strike {
+                                    slice: s,
+                                    velocity,
+                                    holder: Holder::Key(d1),
+                                    var: Variation::NONE,
+                                    local: false,
+                                    roll: None,
+                                    repeat: false,
+                                },
+                            });
                         }
                         if !mapped && on(&p, data::CHROMA) && n_slices > 0 {
-                            let var = Variation { pitch: d1 as f32 - 60.0, ..Variation::NONE };
-                            list.push(Hit { frame, event: Event::Strike { slice: selected(&p), velocity, holder: Holder::Key(d1), var, local: false, roll: None, repeat: false } });
+                            let var = Variation {
+                                pitch: d1 as f32 - 60.0,
+                                ..Variation::NONE
+                            };
+                            list.push(Hit {
+                                frame,
+                                event: Event::Strike {
+                                    slice: selected(&p),
+                                    velocity,
+                                    holder: Holder::Key(d1),
+                                    var,
+                                    local: false,
+                                    roll: None,
+                                    repeat: false,
+                                },
+                            });
                         }
                     }
-                    0x80 | 0x90 => list.push(Hit { frame, event: Event::Release(Holder::Key(d1)) }),
+                    0x80 | 0x90 => list.push(Hit {
+                        frame,
+                        event: Event::Release(Holder::Key(d1)),
+                    }),
                     _ => {}
                 }
             }
@@ -931,14 +1187,28 @@ impl Processor for Splitter {
         if a != self.auditioned {
             self.auditioned = a;
             if n_slices > 0 {
-                list.push(Hit { frame: 0, event: Event::Strike { slice: selected(&p), velocity: 0.9, holder: Holder::Panel, var: Variation::NONE, local: false, roll: None, repeat: false } });
+                list.push(Hit {
+                    frame: 0,
+                    event: Event::Strike {
+                        slice: selected(&p),
+                        velocity: 0.9,
+                        holder: Holder::Panel,
+                        var: Variation::NONE,
+                        local: false,
+                        roll: None,
+                        repeat: false,
+                    },
+                });
                 self.panel_held = Some(0);
             }
         }
         if let Some(t) = &mut self.panel_held {
             *t = t.saturating_add(n as u32);
             if p.viz[viz::HOLD].get() < 0.5 && *t as f32 >= PANEL_GATE * self.sr {
-                list.push(Hit { frame: 0, event: Event::Release(Holder::Panel) });
+                list.push(Hit {
+                    frame: 0,
+                    event: Event::Release(Holder::Panel),
+                });
                 self.panel_held = None;
             }
         }
@@ -951,21 +1221,66 @@ impl Processor for Splitter {
         let bps = ctx.beats_per_sample.max(1e-12);
         for i in 0..list.len {
             let h = list.hits[i];
-            let Event::Strike { slice: s, velocity, holder, var, local, roll, repeat: false } = h.event else { continue };
+            let Event::Strike {
+                slice: s,
+                velocity,
+                holder,
+                var,
+                local,
+                roll,
+                repeat: false,
+            } = h.event
+            else {
+                continue;
+            };
             let own = get_int(&p, s, slice::REPEAT).max(1) as u8;
-            let roll = roll.or((own > 1).then(|| Roll { count: own, per_beat: repeat_rate(&p, s), ramp: get(&p, s, slice::RAMP), fall: get(&p, s, slice::FALL) * 0.01 }));
-            let Some(roll) = roll.filter(|r| r.count > 1) else { continue };
+            let roll = roll.or((own > 1).then(|| Roll {
+                count: own,
+                per_beat: repeat_rate(&p, s),
+                ramp: get(&p, s, slice::RAMP),
+                fall: get(&p, s, slice::FALL) * 0.01,
+            }));
+            let Some(roll) = roll.filter(|r| r.count > 1) else {
+                continue;
+            };
             let interval = 1.0 / (roll.per_beat * bps);
             if let Some(slot) = self.ratchets.iter_mut().find(|r| r.is_none()) {
-                *slot = Some(Ratchet { slice: s, left: roll.count - 1, k: 1, interval, countdown: h.frame as f64 + interval, velocity, holder, var, local, ramp: roll.ramp, fall: roll.fall });
+                *slot = Some(Ratchet {
+                    slice: s,
+                    left: roll.count - 1,
+                    k: 1,
+                    interval,
+                    countdown: h.frame as f64 + interval,
+                    velocity,
+                    holder,
+                    var,
+                    local,
+                    ramp: roll.ramp,
+                    fall: roll.fall,
+                });
             }
         }
         for slot in self.ratchets.iter_mut() {
             let Some(r) = slot else { continue };
             while r.left > 0 && r.countdown < n as f64 {
                 let k = r.k as f32;
-                let var = Variation { pitch: r.var.pitch + r.ramp * k, gain: r.var.gain * (1.0 - r.fall).max(0.0).powf(k), ..r.var };
-                list.push(Hit { frame: r.countdown.max(0.0) as usize, event: Event::Strike { slice: r.slice, velocity: r.velocity, holder: r.holder, var, local: r.local, roll: None, repeat: true } });
+                let var = Variation {
+                    pitch: r.var.pitch + r.ramp * k,
+                    gain: r.var.gain * (1.0 - r.fall).max(0.0).powf(k),
+                    ..r.var
+                };
+                list.push(Hit {
+                    frame: r.countdown.max(0.0) as usize,
+                    event: Event::Strike {
+                        slice: r.slice,
+                        velocity: r.velocity,
+                        holder: r.holder,
+                        var,
+                        local: r.local,
+                        roll: None,
+                        repeat: true,
+                    },
+                });
                 r.k += 1;
                 r.left -= 1;
                 r.countdown += r.interval;
@@ -979,7 +1294,9 @@ impl Processor for Splitter {
         for h in &list.hits[..list.len] {
             if let Event::Release(holder) = h.event {
                 for slot in self.ratchets.iter_mut() {
-                    if slot.is_some_and(|r| r.holder == holder && get_int(&p, r.slice, slice::PLAY) != voice::ONE as i32) {
+                    if slot.is_some_and(|r| {
+                        r.holder == holder && get_int(&p, r.slice, slice::PLAY) != voice::ONE as i32
+                    }) {
                         *slot = None;
                     }
                 }
@@ -996,33 +1313,59 @@ impl Processor for Splitter {
             if *off >= 0 {
                 *off -= n as i64;
                 if *off < n as i64 {
-                    self.out.push((*off).max(0) as usize, [0x80 | out_ch, self.sent[s], 0]);
+                    self.out
+                        .push((*off).max(0) as usize, [0x80 | out_ch, self.sent[s], 0]);
                     *off = -1;
                 }
             }
         }
         if send {
             for h in hits.iter() {
-                let Event::Strike { slice: s, velocity, holder, local: true, .. } = h.event else { continue };
+                let Event::Strike {
+                    slice: s,
+                    velocity,
+                    holder,
+                    local: true,
+                    ..
+                } = h.event
+                else {
+                    continue;
+                };
                 if self.note_off[s] >= 0 {
                     self.out.push(h.frame, [0x80 | out_ch, self.sent[s], 0]);
                 }
                 self.sent[s] = out_note(&p, s);
-                self.out.push(h.frame, [0x90 | out_ch, self.sent[s], ((velocity * 127.0).round() as u8).clamp(1, 127)]);
-                let length = if let Holder::Timed(g) = holder { g as i64 } else { (NOTE_SECONDS * self.sr) as i64 };
+                self.out.push(
+                    h.frame,
+                    [
+                        0x90 | out_ch,
+                        self.sent[s],
+                        ((velocity * 127.0).round() as u8).clamp(1, 127),
+                    ],
+                );
+                let length = if let Holder::Timed(g) = holder {
+                    g as i64
+                } else {
+                    (NOTE_SECONDS * self.sr) as i64
+                };
                 self.note_off[s] = h.frame as i64 + length.max(1);
             }
             // Notes so short they end in this block.
             for (s, off) in self.note_off.iter_mut().enumerate() {
                 if *off >= 0 && *off < n as i64 {
-                    self.out.push(*off as usize, [0x80 | out_ch, self.sent[s], 0]);
+                    self.out
+                        .push(*off as usize, [0x80 | out_ch, self.sent[s], 0]);
                     *off = -1;
                 }
             }
         }
 
         // The voices follow their slices' settings (block rate).
-        let clock = Clock { beat: ctx.beat, beats_per_sample: bps, playing: ctx.playing };
+        let clock = Clock {
+            beat: ctx.beat,
+            beats_per_sample: bps,
+            playing: ctx.playing,
+        };
         let mut cache: [Option<Settings>; MAX_SLICES] = [None; MAX_SLICES];
         for v in self.voices.iter_mut().filter(|v| v.active) {
             let cfg = *cache[v.slice].get_or_insert_with(|| settings(&p, v.slice));
@@ -1041,12 +1384,25 @@ impl Processor for Splitter {
             while from < n {
                 while next < hits.len() && hits[next].frame <= from {
                     match hits[next].event {
-                        Event::Strike { slice: s, velocity, holder, var, .. } => {
-                            let hit_clock = Clock { beat: ctx.beat + bps * from as f64, ..clock };
+                        Event::Strike {
+                            slice: s,
+                            velocity,
+                            holder,
+                            var,
+                            ..
+                        } => {
+                            let hit_clock = Clock {
+                                beat: ctx.beat + bps * from as f64,
+                                ..clock
+                            };
                             self.strike(s, velocity, holder, &var, &hit_clock);
                         }
                         Event::Release(holder) => {
-                            for v in self.voices.iter_mut().filter(|v| v.active && v.holder == holder) {
+                            for v in self
+                                .voices
+                                .iter_mut()
+                                .filter(|v| v.active && v.holder == holder)
+                            {
                                 if get_int(&p, v.slice, slice::PLAY) != voice::ONE as i32 {
                                     v.release();
                                 }
@@ -1055,10 +1411,19 @@ impl Processor for Splitter {
                     }
                     next += 1;
                 }
-                let to = if next < hits.len() { hits[next].frame.clamp(from + 1, n) } else { n };
+                let to = if next < hits.len() {
+                    hits[next].frame.clamp(from + 1, n)
+                } else {
+                    n
+                };
                 for v in self.voices.iter_mut().filter(|v| v.active) {
                     let src = src_of(&self.sample, v.source);
-                    v.render(&src, &mut acc_l[from..to], &mut acc_r[from..to], &self.window);
+                    v.render(
+                        &src,
+                        &mut acc_l[from..to],
+                        &mut acc_r[from..to],
+                        &self.window,
+                    );
                 }
                 from = to;
             }

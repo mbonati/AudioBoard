@@ -46,7 +46,9 @@ pub fn folder_hint(path: &Path, max: usize) -> String {
     if chars.len() <= max {
         text
     } else {
-        let tail: String = chars[chars.len() - max.saturating_sub(1)..].iter().collect();
+        let tail: String = chars[chars.len() - max.saturating_sub(1)..]
+            .iter()
+            .collect();
         format!("…{tail}")
     }
 }
@@ -61,16 +63,31 @@ pub enum RecentPick {
 pub fn menu(ui: &mut Ui, recent: &[PathBuf]) -> Option<RecentPick> {
     let mut picked = None;
     if recent.is_empty() {
-        ui.add_enabled(false, egui::Button::new(RichText::new("No recent projects").size(12.5)).min_size(vec2(260.0, 22.0)));
+        ui.add_enabled(
+            false,
+            egui::Button::new(RichText::new("No recent projects").size(12.5))
+                .min_size(vec2(260.0, 22.0)),
+        );
         return None;
     }
     for path in recent {
-        let name = path.file_stem().map_or_else(|| path.display().to_string(), |s| s.to_string_lossy().into_owned());
+        let name = path.file_stem().map_or_else(
+            || path.display().to_string(),
+            |s| s.to_string_lossy().into_owned(),
+        );
         let exists = path.exists();
-        let hint = if exists { folder_hint(path, 30) } else { "missing".to_owned() };
-        let button = egui::Button::new(RichText::new(name).size(12.5).color(if exists { theme::TEXT } else { theme::TEXT_FAINT }))
-            .right_text(RichText::new(hint).size(10.5).color(theme::TEXT_FAINT))
-            .min_size(vec2(260.0, 22.0));
+        let hint = if exists {
+            folder_hint(path, 30)
+        } else {
+            "missing".to_owned()
+        };
+        let button = egui::Button::new(RichText::new(name).size(12.5).color(if exists {
+            theme::TEXT
+        } else {
+            theme::TEXT_FAINT
+        }))
+        .right_text(RichText::new(hint).size(10.5).color(theme::TEXT_FAINT))
+        .min_size(vec2(260.0, 22.0));
         let resp = ui.add_enabled(exists, button);
         let resp = if exists {
             resp.on_hover_text(path.display().to_string())
@@ -104,7 +121,10 @@ mod tests {
         assert_eq!(list[0], Path::new("/nowhere/p11.audioboard"));
         remember(&mut list, Path::new("/nowhere/p5.audioboard"));
         assert_eq!(list[0], Path::new("/nowhere/p5.audioboard"));
-        assert_eq!(list.iter().filter(|p| p.ends_with("p5.audioboard")).count(), 1);
+        assert_eq!(
+            list.iter().filter(|p| p.ends_with("p5.audioboard")).count(),
+            1
+        );
         assert_eq!(list.len(), RECENT_MAX);
         forget(&mut list, Path::new("/nowhere/p5.audioboard"));
         assert!(list.iter().all(|p| !p.ends_with("p5.audioboard")));
@@ -113,9 +133,18 @@ mod tests {
     #[test]
     fn folder_hints_are_short() {
         let home = std::env::var("HOME").unwrap_or_default();
-        assert_eq!(folder_hint(Path::new(&format!("{home}/Music/a.audioboard")), 40), "~/Music");
+        assert_eq!(
+            folder_hint(Path::new(&format!("{home}/Music/a.audioboard")), 40),
+            "~/Music"
+        );
         assert_eq!(folder_hint(Path::new("/tmp/a.audioboard"), 40), "/tmp");
-        let long = folder_hint(Path::new("/a/very/long/folder/name/for/projects/x.audioboard"), 12);
-        assert!(long.starts_with('…') && long.chars().count() == 12, "{long}");
+        let long = folder_hint(
+            Path::new("/a/very/long/folder/name/for/projects/x.audioboard"),
+            12,
+        );
+        assert!(
+            long.starts_with('…') && long.chars().count() == 12,
+            "{long}"
+        );
     }
 }

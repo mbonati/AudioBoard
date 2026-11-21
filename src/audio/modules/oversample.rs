@@ -1,7 +1,6 @@
 //! 2× oversampling for non-linear stages (Magma's High Quality, Tape's
 //! saturation): stereo, a 63-tap half-band FIR each way.
 
-
 /// Side taps of the half-band filter (its centre is ½, every other tap 0).
 const HB: usize = 16;
 
@@ -40,7 +39,13 @@ impl Oversampler {
         for v in &mut h {
             *v *= 0.25 / sum;
         }
-        Self { h, up: [[0.0; 2 * HB]; 2], up_pos: 0, down: [[0.0; 4 * HB]; 2], down_pos: 0 }
+        Self {
+            h,
+            up: [[0.0; 2 * HB]; 2],
+            up_pos: 0,
+            down: [[0.0; 4 * HB]; 2],
+            down_pos: 0,
+        }
     }
 
     pub fn reset(&mut self) {

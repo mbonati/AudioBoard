@@ -3,7 +3,10 @@
 //! then a grid of knobs. Only the readout and the display are per kind.
 
 use egui::epaint::{Mesh, Vertex, WHITE_UV};
-use egui::{Align2, Color32, CursorIcon, Id, Painter, Pos2, Rect, Sense, Shape, Stroke, StrokeKind, Vec2, pos2, vec2};
+use egui::{
+    Align2, Color32, CursorIcon, Id, Painter, Pos2, Rect, Sense, Shape, Stroke, StrokeKind, Vec2,
+    pos2, vec2,
+};
 
 use super::nodes::{KnobCell, NodeView, knob_cell, note_name, segmented};
 use super::theme::{self, alpha};
@@ -11,8 +14,10 @@ use super::widgets;
 use crate::audio::engine::NodeId;
 use crate::audio::midi::note_hz;
 use crate::audio::modules::{
-    ModuleDef, ModuleKind, ModuleParams, aether, arpeggiator, fjord, iris, larsen, looper, vesper, audio_in, automa, colloid, delay, drone, equalizer, filter, frakture, magma, pops, granular, midi_cc, midi_in, midi_note,
-    midicer, nullpunkt, orrery, pingpong, prism, random, resonator, reverb, sequencer, splitter, steps, tape,
+    ModuleDef, ModuleKind, ModuleParams, aether, arpeggiator, audio_in, automa, colloid, delay,
+    drone, equalizer, filter, fjord, frakture, granular, iris, larsen, looper, magma, midi_cc,
+    midi_in, midi_note, midicer, nullpunkt, orrery, pingpong, pops, prism, random, resonator,
+    reverb, sequencer, sibyl, splitter, steps, tape, vesper,
 };
 use crate::audio::params::{
     DIVISIONS, NOTE_NAMES, NOTE_VALUES, format_hz, format_seconds, note_label, sync_division,
@@ -87,6 +92,9 @@ pub fn size(def: &ModuleDef) -> Vec2 {
     if std::ptr::eq(def, &orrery::DEF) {
         return super::orrery::SIZE;
     }
+    if std::ptr::eq(def, &sibyl::DEF) {
+        return super::sibyl::SIZE;
+    }
     if std::ptr::eq(def, &iris::DEF) {
         return Vec2::from(iris::DEFAULT_SIZE);
     }
@@ -135,7 +143,13 @@ pub fn draw(
     let w = size(def).x;
     let patched = |i: usize| inputs.get(i).copied().unwrap_or(false);
     if kind == ModuleKind::Frakture {
-        super::frakture::draw(v, id, accent, m, (patched(0), outputs.first().copied().unwrap_or(false)));
+        super::frakture::draw(
+            v,
+            id,
+            accent,
+            m,
+            (patched(0), outputs.first().copied().unwrap_or(false)),
+        );
         return MapButton::default();
     }
     if kind == ModuleKind::Pops {
@@ -148,7 +162,14 @@ pub fn draw(
         return MapButton::default();
     }
     if kind == ModuleKind::Splitter {
-        super::splitter::draw(v, id, accent, m, outputs.first().copied().unwrap_or(false), midi);
+        super::splitter::draw(
+            v,
+            id,
+            accent,
+            m,
+            outputs.first().copied().unwrap_or(false),
+            midi,
+        );
         return MapButton::default();
     }
     if kind == ModuleKind::Magma {
@@ -161,7 +182,13 @@ pub fn draw(
         return MapButton::default();
     }
     if kind == ModuleKind::Aether {
-        super::aether::draw(v, id, accent, m, (midi.0, outputs.first().copied().unwrap_or(false)));
+        super::aether::draw(
+            v,
+            id,
+            accent,
+            m,
+            (midi.0, outputs.first().copied().unwrap_or(false)),
+        );
         return MapButton::default();
     }
     if kind == ModuleKind::Looper {
@@ -169,11 +196,27 @@ pub fn draw(
         return MapButton::default();
     }
     if kind == ModuleKind::Larsen {
-        super::larsen::draw(v, id, accent, m, (patched(0), midi.0, outputs.first().copied().unwrap_or(false)));
+        super::larsen::draw(
+            v,
+            id,
+            accent,
+            m,
+            (
+                patched(0),
+                midi.0,
+                outputs.first().copied().unwrap_or(false),
+            ),
+        );
         return MapButton::default();
     }
     if kind == ModuleKind::Vesper {
-        super::vesper::draw(v, id, accent, m, (midi.0, midi.1, outputs.first().copied().unwrap_or(false)));
+        super::vesper::draw(
+            v,
+            id,
+            accent,
+            m,
+            (midi.0, midi.1, outputs.first().copied().unwrap_or(false)),
+        );
         return MapButton::default();
     }
     if kind == ModuleKind::Automa {
@@ -188,12 +231,34 @@ pub fn draw(
         super::orrery::draw(v, id, accent, m, midi);
         return MapButton::default();
     }
+    if kind == ModuleKind::Sibyl {
+        super::sibyl::draw(
+            v,
+            id,
+            accent,
+            m,
+            (midi.0, outputs.first().copied().unwrap_or(false)),
+        );
+        return MapButton::default();
+    }
     if kind == ModuleKind::Iris {
-        super::iris::draw(v, id, accent, m, (patched(0), outputs.first().copied().unwrap_or(false)));
+        super::iris::draw(
+            v,
+            id,
+            accent,
+            m,
+            (patched(0), outputs.first().copied().unwrap_or(false)),
+        );
         return MapButton::default();
     }
     if kind == ModuleKind::Tape {
-        super::tape::draw(v, id, accent, m, (patched(0), outputs.first().copied().unwrap_or(false)));
+        super::tape::draw(
+            v,
+            id,
+            accent,
+            m,
+            (patched(0), outputs.first().copied().unwrap_or(false)),
+        );
         return MapButton::default();
     }
     if kind == ModuleKind::Equalizer {
@@ -206,23 +271,57 @@ pub fn draw(
         super::prism::draw(v, id, accent, m, [patched(0), patched(1), out]);
         return MapButton::default();
     }
-    let label_col = |on: bool| if on { theme::TEXT_DIM } else { theme::TEXT_FAINT };
+    let label_col = |on: bool| {
+        if on {
+            theme::TEXT_DIM
+        } else {
+            theme::TEXT_FAINT
+        }
+    };
 
     // Ports.
     for (i, label) in def.inputs.iter().enumerate() {
-        v.text(PAD, PORT_Y + PORT_DY * i as f32, Align2::LEFT_CENTER, label, v.font(9.0), label_col(patched(i)));
+        v.text(
+            PAD,
+            PORT_Y + PORT_DY * i as f32,
+            Align2::LEFT_CENTER,
+            label,
+            v.font(9.0),
+            label_col(patched(i)),
+        );
     }
     for (i, label) in def.outputs.iter().enumerate() {
         let on = outputs.get(i).copied().unwrap_or(false);
-        v.text(w - PAD, PORT_Y + PORT_DY * i as f32, Align2::RIGHT_CENTER, label, v.font(9.0), label_col(on));
+        v.text(
+            w - PAD,
+            PORT_Y + PORT_DY * i as f32,
+            Align2::RIGHT_CENTER,
+            label,
+            v.font(9.0),
+            label_col(on),
+        );
     }
     if def.midi_in {
         let y = PORT_Y + PORT_DY * def.inputs.len() as f32;
-        v.text(PAD, y, Align2::LEFT_CENTER, "MIDI", v.font(9.0), label_col(midi.0));
+        v.text(
+            PAD,
+            y,
+            Align2::LEFT_CENTER,
+            "MIDI",
+            v.font(9.0),
+            label_col(midi.0),
+        );
     }
     if def.midi_out {
         let y = PORT_Y + PORT_DY * def.outputs.len() as f32;
-        v.text(w - PAD, y, Align2::RIGHT_CENTER, "MIDI", v.font(9.0), label_col(midi.1));
+        v.text(
+            w - PAD,
+            y,
+            Align2::RIGHT_CENTER,
+            "MIDI",
+            v.font(9.0),
+            label_col(midi.1),
+        );
     }
 
     // Readout.
@@ -234,24 +333,72 @@ pub fn draw(
     } else {
         sub
     };
-    v.text(w * 0.5, PORT_Y, Align2::CENTER_CENTER, main, v.mono(13.0), theme::TEXT);
-    let sub_col = if map.target.is_some() || map.picking { accent } else { theme::TEXT_DIM };
+    v.text(
+        w * 0.5,
+        PORT_Y,
+        Align2::CENTER_CENTER,
+        main,
+        v.mono(13.0),
+        theme::TEXT,
+    );
+    let sub_col = if map.target.is_some() || map.picking {
+        accent
+    } else {
+        theme::TEXT_DIM
+    };
     // The second line shares its row with the toggle, if there is one; a
     // mapping that does not fit shows just the control's name.
-    let (left, right) = (PAD + 30.0, if def.toggle.is_some() { w - PAD - 50.0 } else { w - PAD - 30.0 });
-    let fits = |s: &str| v.painter.layout_no_wrap(s.to_owned(), v.font(9.5), sub_col).size().x <= (right - left) * z;
+    let (left, right) = (
+        PAD + 30.0,
+        if def.toggle.is_some() {
+            w - PAD - 50.0
+        } else {
+            w - PAD - 30.0
+        },
+    );
+    let fits = |s: &str| {
+        v.painter
+            .layout_no_wrap(s.to_owned(), v.font(9.5), sub_col)
+            .size()
+            .x
+            <= (right - left) * z
+    };
     let sub = match map.target {
-        Some(t) if !map.picking && !fits(&sub) => format!("→ {}", t.rsplit(" · ").next().unwrap_or(t)),
+        Some(t) if !map.picking && !fits(&sub) => {
+            format!("→ {}", t.rsplit(" · ").next().unwrap_or(t))
+        }
         _ => sub,
     };
-    let cx = if def.toggle.is_some() { (left + right) * 0.5 } else { w * 0.5 };
-    v.text(cx, PORT_Y + PORT_DY, Align2::CENTER_CENTER, sub, v.font(9.5), sub_col);
+    let cx = if def.toggle.is_some() {
+        (left + right) * 0.5
+    } else {
+        w * 0.5
+    };
+    v.text(
+        cx,
+        PORT_Y + PORT_DY,
+        Align2::CENTER_CENTER,
+        sub,
+        v.font(9.5),
+        sub_col,
+    );
 
     if let Some(label) = def.toggle {
         let y = PORT_Y + PORT_DY;
         let rect = v.r(w - PAD - 46.0, y - 8.0, w - PAD, y + 8.0);
         let on = p.toggled();
-        if widgets::toggle(v.ui, v.painter, Id::unique(("toggle", id)), rect, label, on, accent, z).clicked() {
+        if widgets::toggle(
+            v.ui,
+            v.painter,
+            Id::unique(("toggle", id)),
+            rect,
+            label,
+            on,
+            accent,
+            z,
+        )
+        .clicked()
+        {
             p.set_toggle(!on);
         }
     }
@@ -259,7 +406,9 @@ pub fn draw(
     // Display.
     let rect = v.r(PAD, display_top(def), w - PAD, display_bottom(def));
     v.painter.rect_filled(rect, 4.0 * z, theme::INSET);
-    let painter = v.painter.with_clip_rect(rect.intersect(v.painter.clip_rect()));
+    let painter = v
+        .painter
+        .with_clip_rect(rect.intersect(v.painter.clip_rect()));
     let screen = Screen {
         p: &painter,
         rect: rect.shrink2(vec2(6.0 * z, 5.0 * z)),
@@ -271,7 +420,24 @@ pub fn draw(
         ModuleKind::AudioIn => audio_in_display(&screen, p),
         ModuleKind::Random | ModuleKind::MidiCc | ModuleKind::MidiNote => trace_display(&screen, m),
         ModuleKind::Granular => granular_display(&screen, p),
-        ModuleKind::Frakture | ModuleKind::Equalizer | ModuleKind::Prism | ModuleKind::Magma | ModuleKind::Pops | ModuleKind::Fjord | ModuleKind::Splitter | ModuleKind::Tape | ModuleKind::Nullpunkt | ModuleKind::Aether | ModuleKind::Larsen | ModuleKind::Vesper | ModuleKind::Automa | ModuleKind::Colloid | ModuleKind::Orrery | ModuleKind::Looper | ModuleKind::Iris => {}
+        ModuleKind::Frakture
+        | ModuleKind::Equalizer
+        | ModuleKind::Prism
+        | ModuleKind::Magma
+        | ModuleKind::Pops
+        | ModuleKind::Fjord
+        | ModuleKind::Splitter
+        | ModuleKind::Tape
+        | ModuleKind::Nullpunkt
+        | ModuleKind::Aether
+        | ModuleKind::Larsen
+        | ModuleKind::Vesper
+        | ModuleKind::Automa
+        | ModuleKind::Colloid
+        | ModuleKind::Orrery
+        | ModuleKind::Looper
+        | ModuleKind::Iris
+        | ModuleKind::Sibyl => {}
         ModuleKind::Resonator => resonator_display(&screen, p),
         ModuleKind::Filter => filter_display(&screen, p),
         ModuleKind::Delay => delay_display(&screen, p, echo_seconds(p, v.tempo)),
@@ -290,7 +456,11 @@ pub fn draw(
     let mut button = MapButton::default();
     let mut modes_right = w - PAD;
     if def.map {
-        let left = if def.modes.is_empty() { PAD } else { w - PAD - 76.0 };
+        let left = if def.modes.is_empty() {
+            PAD
+        } else {
+            w - PAD - 76.0
+        };
         let [top, bottom] = selector_y(def);
         let rect = v.r(left, top, w - PAD, bottom);
         let label = if map.picking {
@@ -300,12 +470,21 @@ pub fn draw(
         } else {
             "MAP"
         };
-        let resp = widgets::toggle(v.ui, v.painter, Id::unique(("map", id)), rect, label, map.picking, accent, z)
-            .on_hover_text(if map.target.is_some() {
-                "Stop driving the mapped control"
-            } else {
-                "Drive a knob or fader directly: click MAP, then the control"
-            });
+        let resp = widgets::toggle(
+            v.ui,
+            v.painter,
+            Id::unique(("map", id)),
+            rect,
+            label,
+            map.picking,
+            accent,
+            z,
+        )
+        .on_hover_text(if map.target.is_some() {
+            "Stop driving the mapped control"
+        } else {
+            "Drive a knob or fader directly: click MAP, then the control"
+        });
         button = MapButton {
             clicked: resp.clicked(),
             rect: Some(rect),
@@ -315,10 +494,24 @@ pub fn draw(
     if !def.modes.is_empty() {
         let [top, bottom] = selector_y(def);
         let bar = v.r(PAD, top, modes_right, bottom);
-        let picked = segmented(v, ("mode", id), bar, def.modes.len(), p.mode(), accent, |i, seg, col| {
-            v.painter.text(seg.center(), Align2::CENTER_CENTER, def.modes[i], v.font(8.5), col);
-            mode_name(kind, i)
-        });
+        let picked = segmented(
+            v,
+            ("mode", id),
+            bar,
+            def.modes.len(),
+            p.mode(),
+            accent,
+            |i, seg, col| {
+                v.painter.text(
+                    seg.center(),
+                    Align2::CENTER_CENTER,
+                    def.modes[i],
+                    v.font(8.5),
+                    col,
+                );
+                mode_name(kind, i)
+            },
+        );
         if let Some(i) = picked {
             p.set_mode(i);
         }
@@ -328,8 +521,11 @@ pub fn draw(
     let cols = columns(def);
     let top = knobs_top(def);
     for (k, spec) in def.params.iter().enumerate() {
-        let dimmed =
-            def.cv_depth.iter().any(|&(param, input)| param == k && !patched(input)) || knob_unused(kind, p, k);
+        let dimmed = def
+            .cv_depth
+            .iter()
+            .any(|&(param, input)| param == k && !patched(input))
+            || knob_unused(kind, p, k);
         let cell = KnobCell {
             cx: PAD + COL_W * ((k % cols) as f32 + 0.5),
             row_y: top + ROW_H * (k / cols) as f32,
@@ -369,13 +565,22 @@ pub fn summary(p: &ModuleParams, tempo: f32) -> String {
 /// A delay's echo time in seconds (TIME, or DIV at `tempo` with SYNC).
 /// Delay and Ping Pong share their TIME, DIV and SYNC layout.
 fn echo_seconds(p: &ModuleParams, tempo: f32) -> f32 {
-    delay::delay_seconds(p.toggled(), p.get(delay::TIME), p.get(delay::DIV), 60.0 / tempo.max(1.0) as f64)
+    delay::delay_seconds(
+        p.toggled(),
+        p.get(delay::TIME),
+        p.get(delay::DIV),
+        60.0 / tempo.max(1.0) as f64,
+    )
 }
 
 /// "1/8D · 375 ms" with SYNC, else "375 ms".
 fn echo_label(p: &ModuleParams, tempo: f32) -> String {
     let t = format_seconds(echo_seconds(p, tempo));
-    if p.toggled() { format!("{} · {t}", sync_division(p.get(delay::DIV)).0) } else { t }
+    if p.toggled() {
+        format!("{} · {t}", sync_division(p.get(delay::DIV)).0)
+    } else {
+        t
+    }
 }
 
 /// "Tail ≈ 4.2 s": how long the repeats take to fall by 60 dB.
@@ -407,16 +612,28 @@ fn readout(kind: ModuleKind, p: &ModuleParams, tempo: f32) -> (String, String) {
             let sub = if learning {
                 "Move a controller…".to_owned()
             } else {
-                let ch = if channel == 0 { "Omni".to_owned() } else { format!("Ch {channel}") };
+                let ch = if channel == 0 {
+                    "Omni".to_owned()
+                } else {
+                    format!("Ch {channel}")
+                };
                 format!("{ch} · {:+.2}", p.viz[midi_cc::VALUE].get())
             };
             (format!("CC {number}"), sub)
         }
         ModuleKind::MidiNote => {
             let note = p.viz[midi_note::NOTE].get();
-            let main = if note < 0.0 { "—".to_owned() } else { note_name(note_hz(note)) };
+            let main = if note < 0.0 {
+                "—".to_owned()
+            } else {
+                note_name(note_hz(note))
+            };
             let channel = midi_note::channel(p);
-            let ch = if channel == 0 { "Omni".to_owned() } else { format!("Ch {channel}") };
+            let ch = if channel == 0 {
+                "Omni".to_owned()
+            } else {
+                format!("Ch {channel}")
+            };
             (main, format!("{ch} · play a key"))
         }
         ModuleKind::Midicer => {
@@ -430,10 +647,16 @@ fn readout(kind: ModuleKind, p: &ModuleParams, tempo: f32) -> (String, String) {
             } else {
                 note_name(note_hz(note))
             };
-            let (lo, hi) = (p.get(midicer::LOW).round() as i32, p.get(midicer::HIGH).round() as i32);
+            let (lo, hi) = (
+                p.get(midicer::LOW).round() as i32,
+                p.get(midicer::HIGH).round() as i32,
+            );
             let range = format!("{}–{}", note_label(lo.min(hi)), note_label(lo.max(hi)));
             let what = match p.mode() {
-                midicer::SEQ => format!("{} · {range}", NOTE_VALUES[(p.get(midicer::NOTE).round().max(0.0) as usize).min(8)].0),
+                midicer::SEQ => format!(
+                    "{} · {range}",
+                    NOTE_VALUES[(p.get(midicer::NOTE).round().max(0.0) as usize).min(8)].0
+                ),
                 midicer::SEQ_GATE => format!("gate in · {range}"),
                 midicer::QUANT1 => format!("CV2 per beat · {range}"),
                 _ => format!("CV2 while held · {range}"),
@@ -451,26 +674,57 @@ fn readout(kind: ModuleKind, p: &ModuleParams, tempo: f32) -> (String, String) {
             } else {
                 note_name(note_hz(note))
             };
-            let root = crate::audio::params::NOTE_NAMES[p.get(sequencer::ROOT).round() as usize % 12];
-            (main, format!("{root} {} · {}", mode.to_lowercase(), division(p.get(sequencer::RATE))))
+            let root =
+                crate::audio::params::NOTE_NAMES[p.get(sequencer::ROOT).round() as usize % 12];
+            (
+                main,
+                format!(
+                    "{root} {} · {}",
+                    mode.to_lowercase(),
+                    division(p.get(sequencer::RATE))
+                ),
+            )
         }
         ModuleKind::Arpeggiator => {
             let octaves = p.get(arpeggiator::OCTAVES).round();
-            let oct = if octaves > 1.0 { format!(" · {octaves:.0} oct") } else { String::new() };
-            (current_note(p), format!("{mode} · {}{oct}", division(p.get(arpeggiator::RATE))))
+            let oct = if octaves > 1.0 {
+                format!(" · {octaves:.0} oct")
+            } else {
+                String::new()
+            };
+            (
+                current_note(p),
+                format!("{mode} · {}{oct}", division(p.get(arpeggiator::RATE))),
+            )
         }
         ModuleKind::MidiIn => {
             let channel = p.get(midi_in::CHANNEL).round();
-            let ch = if channel < 1.0 { "Omni".to_owned() } else { format!("Ch {channel:.0}") };
+            let ch = if channel < 1.0 {
+                "Omni".to_owned()
+            } else {
+                format!("Ch {channel:.0}")
+            };
             let t = p.get(midi_in::TRANSPOSE).round();
-            let sub = if t == 0.0 { format!("{ch} · play a key") } else { format!("{ch} · {t:+.0} st") };
+            let sub = if t == 0.0 {
+                format!("{ch} · play a key")
+            } else {
+                format!("{ch} · {t:+.0} st")
+            };
             (current_note(p), sub)
         }
         ModuleKind::AudioIn => {
             let (left, right) = audio_in::channels(p);
-            let main = if left == right { format!("In {}", left + 1) } else { format!("In {}–{}", left + 1, right + 1) };
+            let main = if left == right {
+                format!("In {}", left + 1)
+            } else {
+                format!("In {}–{}", left + 1, right + 1)
+            };
             let open = p.viz[audio_in::viz::CHANNELS].get() as usize;
-            let sub = if open == 0 { "no input open".to_owned() } else { format!("{} · {:+.1} dB", mode.to_lowercase(), p.get(audio_in::GAIN)) };
+            let sub = if open == 0 {
+                "no input open".to_owned()
+            } else {
+                format!("{} · {:+.1} dB", mode.to_lowercase(), p.get(audio_in::GAIN))
+            };
             (main, sub)
         }
         ModuleKind::Drone => {
@@ -478,7 +732,11 @@ fn readout(kind: ModuleKind, p: &ModuleParams, tempo: f32) -> (String, String) {
             (format_hz(f), format!("{} · {mode}", note_name(f)))
         }
         ModuleKind::Random => {
-            let style = if p.get(random::SMOOTH) < 0.05 { "stepped" } else { "smooth" };
+            let style = if p.get(random::SMOOTH) < 0.05 {
+                "stepped"
+            } else {
+                "smooth"
+            };
             (
                 format!("{:+.2}", p.viz[random::VALUE].get()),
                 format!("{} · {style}", format_hz(p.get(random::RATE))),
@@ -498,6 +756,7 @@ fn readout(kind: ModuleKind, p: &ModuleParams, tempo: f32) -> (String, String) {
         ModuleKind::Vesper => super::vesper::readout(p),
         ModuleKind::Looper => super::looper::readout(p),
         ModuleKind::Iris => super::iris::readout(p),
+        ModuleKind::Sibyl => super::sibyl::readout(p),
         ModuleKind::Automa => super::automa::readout(p),
         ModuleKind::Colloid => super::colloid::readout(p),
         ModuleKind::Orrery => super::orrery::readout(p),
@@ -544,7 +803,11 @@ fn division(rate: f32) -> &'static str {
 /// The note a MIDI generator is sounding, or "—".
 fn current_note(p: &ModuleParams) -> String {
     let note = p.viz[steps::viz::CURRENT].get();
-    if note < 0.0 { "—".to_owned() } else { note_name(note_hz(note)) }
+    if note < 0.0 {
+        "—".to_owned()
+    } else {
+        note_name(note_hz(note))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -569,7 +832,10 @@ impl Screen<'_> {
     fn partial(&self, x: f32, amp: f32, color: Color32) {
         let r = self.rect;
         self.p.line_segment(
-            [pos2(x, r.bottom()), pos2(x, r.bottom() - r.height() * amp.clamp(0.0, 1.0))],
+            [
+                pos2(x, r.bottom()),
+                pos2(x, r.bottom() - r.height() * amp.clamp(0.0, 1.0)),
+            ],
             Stroke::new(1.3 * self.z, color),
         );
     }
@@ -579,8 +845,16 @@ impl Screen<'_> {
         let base = self.rect.bottom();
         let mut mesh = Mesh::default();
         for (i, pt) in pts.iter().enumerate() {
-            mesh.vertices.push(Vertex { pos: *pt, uv: WHITE_UV, color: alpha(self.accent, 0.18) });
-            mesh.vertices.push(Vertex { pos: pos2(pt.x, base), uv: WHITE_UV, color: alpha(self.accent, 0.02) });
+            mesh.vertices.push(Vertex {
+                pos: *pt,
+                uv: WHITE_UV,
+                color: alpha(self.accent, 0.18),
+            });
+            mesh.vertices.push(Vertex {
+                pos: pos2(pt.x, base),
+                uv: WHITE_UV,
+                color: alpha(self.accent, 0.02),
+            });
             if i > 0 {
                 let k = (i * 2) as u32;
                 mesh.add_triangle(k - 2, k - 1, k);
@@ -588,12 +862,17 @@ impl Screen<'_> {
             }
         }
         self.p.add(Shape::mesh(mesh));
-        self.p.add(Shape::line(pts, Stroke::new(1.3 * self.z, self.accent)));
+        self.p
+            .add(Shape::line(pts, Stroke::new(1.3 * self.z, self.accent)));
     }
 
     fn center_line(&self) {
         let r = self.rect;
-        self.p.hline(r.x_range(), r.center().y, Stroke::new(1.0 * self.z, theme::GRID_MAJOR));
+        self.p.hline(
+            r.x_range(),
+            r.center().y,
+            Stroke::new(1.0 * self.z, theme::GRID_MAJOR),
+        );
     }
 }
 
@@ -625,12 +904,25 @@ fn audio_in_display(s: &Screen, p: &ModuleParams) {
     let open = p.viz[audio_in::viz::CHANNELS].get() as usize;
     if open == 0 {
         let text = "No audio input · choose one in Settings (Cmd+,)";
-        s.p.text(r.center(), Align2::CENTER_CENTER, text, theme::mono(8.5 * z), theme::TEXT_FAINT);
+        s.p.text(
+            r.center(),
+            Align2::CENTER_CENTER,
+            text,
+            theme::mono(8.5 * z),
+            theme::TEXT_FAINT,
+        );
         return;
     }
     let (left, right) = audio_in::channels(p);
-    let sides = [(left, p.viz[audio_in::viz::LEFT].get()), (right, p.viz[audio_in::viz::RIGHT].get())];
-    let rows = if left == right { &sides[..1] } else { &sides[..] };
+    let sides = [
+        (left, p.viz[audio_in::viz::LEFT].get()),
+        (right, p.viz[audio_in::viz::RIGHT].get()),
+    ];
+    let rows = if left == right {
+        &sides[..1]
+    } else {
+        &sides[..]
+    };
     let row_h = r.height() / rows.len() as f32;
     let label_w = 18.0 * z;
     // −60 … 0 dBFS across.
@@ -638,20 +930,45 @@ fn audio_in_display(s: &Screen, p: &ModuleParams) {
     for (k, &(channel, level)) in rows.iter().enumerate() {
         let y = r.top() + row_h * (k as f32 + 0.5);
         let missing = channel >= open;
-        let col = if missing { theme::TEXT_FAINT } else { theme::TEXT_DIM };
-        s.p.text(pos2(r.left() + label_w * 0.5, y), Align2::CENTER_CENTER, format!("{}", channel + 1), theme::mono(9.0 * z), col);
-        let bar = Rect::from_min_max(pos2(r.left() + label_w, y - 3.0 * z), pos2(r.right(), y + 3.0 * z));
+        let col = if missing {
+            theme::TEXT_FAINT
+        } else {
+            theme::TEXT_DIM
+        };
+        s.p.text(
+            pos2(r.left() + label_w * 0.5, y),
+            Align2::CENTER_CENTER,
+            format!("{}", channel + 1),
+            theme::mono(9.0 * z),
+            col,
+        );
+        let bar = Rect::from_min_max(
+            pos2(r.left() + label_w, y - 3.0 * z),
+            pos2(r.right(), y + 3.0 * z),
+        );
         s.p.rect_filled(bar, 1.5 * z, alpha(theme::TEXT, 0.06));
         if missing {
             continue;
         }
         let w = bar.width() * x_of(level);
-        let fill = if level >= 0.89 { theme::METER_RED } else { s.accent };
-        s.p.rect_filled(Rect::from_min_size(bar.min, vec2(w, bar.height())), 1.5 * z, fill);
+        let fill = if level >= 0.89 {
+            theme::METER_RED
+        } else {
+            s.accent
+        };
+        s.p.rect_filled(
+            Rect::from_min_size(bar.min, vec2(w, bar.height())),
+            1.5 * z,
+            fill,
+        );
         // −18 and −6 dBFS marks.
         for db in [-18.0, -6.0] {
             let x = bar.left() + bar.width() * (1.0 + db / 60.0);
-            s.p.vline(x, bar.y_range(), Stroke::new(1.0 * z, alpha(theme::TEXT, 0.18)));
+            s.p.vline(
+                x,
+                bar.y_range(),
+                Stroke::new(1.0 * z, alpha(theme::TEXT, 0.18)),
+            );
         }
     }
 }
@@ -670,7 +987,12 @@ fn trace_display(s: &Screen, m: &ModuleNode) {
         .trace
         .iter()
         .enumerate()
-        .map(|(i, v)| pos2(x0 + step * i as f32, r.center().y - v.clamp(-1.0, 1.0) * r.height() * 0.5))
+        .map(|(i, v)| {
+            pos2(
+                x0 + step * i as f32,
+                r.center().y - v.clamp(-1.0, 1.0) * r.height() * 0.5,
+            )
+        })
         .collect();
     let last = *pts.last().expect("at least two points");
     s.p.add(Shape::line(pts, Stroke::new(1.3 * s.z, s.accent)));
@@ -719,7 +1041,11 @@ fn granular_display(s: &Screen, p: &ModuleParams) {
         }
         let amp = p.viz[viz::GRAIN_AMP + k].get();
         let x = x_of(age);
-        s.p.vline(x, r.y_range(), Stroke::new(1.4 * s.z, alpha(s.accent, 0.2 + 0.8 * amp)));
+        s.p.vline(
+            x,
+            r.y_range(),
+            Stroke::new(1.4 * s.z, alpha(s.accent, 0.2 + 0.8 * amp)),
+        );
     }
 }
 
@@ -735,7 +1061,11 @@ fn resonator_display(s: &Screen, p: &ModuleParams) {
             break;
         }
         let (amp, decay) = resonator::mode_shape(k, bright);
-        s.partial(s.log_x(f, lo, hi), amp * 0.9, alpha(s.accent, 0.35 + 0.6 * decay));
+        s.partial(
+            s.log_x(f, lo, hi),
+            amp * 0.9,
+            alpha(s.accent, 0.35 + 0.6 * decay),
+        );
     }
 }
 
@@ -747,7 +1077,11 @@ fn filter_display(s: &Screen, p: &ModuleParams) {
     let mode = p.mode();
     let (db_lo, db_hi) = (-30.0f32, 24.0f32);
     let y_of = |db: f32| r.bottom() - r.height() * ((db - db_lo) / (db_hi - db_lo)).clamp(0.0, 1.0);
-    s.p.hline(r.x_range(), y_of(0.0), Stroke::new(1.0 * s.z, theme::GRID_MAJOR));
+    s.p.hline(
+        r.x_range(),
+        y_of(0.0),
+        Stroke::new(1.0 * s.z, theme::GRID_MAJOR),
+    );
 
     let n = (r.width() / 3.0).max(16.0) as usize;
     let pts = (0..=n)
@@ -785,8 +1119,14 @@ fn delay_display(s: &Screen, p: &ModuleParams, t: f32) {
             break;
         }
         let (l, rr) = (e[0].min(1.0), e[1].min(1.0));
-        s.p.line_segment([pos2(x, r.center().y), pos2(x, r.center().y - l * half)], stroke(l));
-        s.p.line_segment([pos2(x, r.center().y), pos2(x, r.center().y + rr * half)], stroke(rr));
+        s.p.line_segment(
+            [pos2(x, r.center().y), pos2(x, r.center().y - l * half)],
+            stroke(l),
+        );
+        s.p.line_segment(
+            [pos2(x, r.center().y), pos2(x, r.center().y + rr * half)],
+            stroke(rr),
+        );
         e = [
             fb * ((1.0 - ping) * e[0] + ping * e[1]),
             fb * ((1.0 - ping) * e[1] + ping * e[0]),
@@ -815,8 +1155,14 @@ fn pingpong_display(s: &Screen, p: &ModuleParams, t: f32) {
         let right = (k % 2 == 1) == first_right;
         let (main, leak) = (level * (0.5 + 0.5 * width), level * (0.5 - 0.5 * width));
         let (l, rr) = if right { (leak, main) } else { (main, leak) };
-        s.p.line_segment([pos2(x, r.center().y), pos2(x, r.center().y - l * half)], stroke(l));
-        s.p.line_segment([pos2(x, r.center().y), pos2(x, r.center().y + rr * half)], stroke(rr));
+        s.p.line_segment(
+            [pos2(x, r.center().y), pos2(x, r.center().y - l * half)],
+            stroke(l),
+        );
+        s.p.line_segment(
+            [pos2(x, r.center().y), pos2(x, r.center().y + rr * half)],
+            stroke(rr),
+        );
         level *= fb;
     }
 }
@@ -831,10 +1177,17 @@ fn reverb_display(s: &Screen, p: &ModuleParams) {
     let pts = (0..=n)
         .map(|i| {
             let t = span * i as f32 / n as f32;
-            let env = if frozen { 1.0 } else { 10f32.powf(-3.0 * t / decay) };
+            let env = if frozen {
+                1.0
+            } else {
+                10f32.powf(-3.0 * t / decay)
+            };
             // Envelope in dB over a 60 dB range, so long tails read clearly.
             let level = (1.0 + (20.0 * env.max(1e-6).log10()) / 60.0).clamp(0.0, 1.0);
-            pos2(r.left() + r.width() * i as f32 / n as f32, r.bottom() - r.height() * 0.9 * level)
+            pos2(
+                r.left() + r.width() * i as f32 / n as f32,
+                r.bottom() - r.height() * 0.9 * level,
+            )
         })
         .collect();
     s.area(pts);
@@ -854,10 +1207,9 @@ fn step_grid(v: &NodeView, id: NodeId, s: &Screen, p: &ModuleParams) {
         let degree = (((r.bottom() - pos.y) / cell_h).max(0.0) as usize).min(DEGREE_MAX);
         (step, degree)
     };
-    let resp = v
-        .ui
-        .interact(r, Id::unique(("steps", id)), Sense::CLICK | Sense::DRAG)
-        .on_hover_cursor(CursorIcon::Crosshair);
+    let resp =
+        v.ui.interact(r, Id::unique(("steps", id)), Sense::CLICK | Sense::DRAG)
+            .on_hover_cursor(CursorIcon::Crosshair);
     if let Some(pos) = resp.interact_pointer_pos() {
         let (step, degree) = cell_at(pos);
         if resp.clicked() && degree == sequencer::degree(p, step) {
@@ -869,10 +1221,16 @@ fn step_grid(v: &NodeView, id: NodeId, s: &Screen, p: &ModuleParams) {
     }
 
     // Rows of the root note, one per octave of the scale.
-    let scale_len = sequencer::SCALES[p.mode().min(sequencer::SCALES.len() - 1)].1.len();
+    let scale_len = sequencer::SCALES[p.mode().min(sequencer::SCALES.len() - 1)]
+        .1
+        .len();
     for degree in (0..=DEGREE_MAX).step_by(scale_len) {
         let y = r.bottom() - cell_h * (degree as f32 + 0.5);
-        s.p.hline(r.x_range(), y, Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.18)));
+        s.p.hline(
+            r.x_range(),
+            y,
+            Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.18)),
+        );
     }
     let len = sequencer::length(p);
     let playing = p.viz[sequencer::STEP].get();
@@ -889,23 +1247,37 @@ fn step_grid(v: &NodeView, id: NodeId, s: &Screen, p: &ModuleParams) {
         let degree = sequencer::degree(p, i);
         let cell = Rect::from_x_y_ranges(
             x0 + 1.5 * z..=x0 + col_w - 1.5 * z,
-            r.bottom() - cell_h * (degree + 1) as f32 + 0.5 * z..=r.bottom() - cell_h * degree as f32 - 0.5 * z,
+            r.bottom() - cell_h * (degree + 1) as f32 + 0.5 * z
+                ..=r.bottom() - cell_h * degree as f32 - 0.5 * z,
         );
         let active = if i < len { 1.0 } else { 0.3 };
         if sequencer::is_on(p, i) {
             let stem = Rect::from_x_y_ranges(cell.x_range(), cell.bottom()..=r.bottom());
             s.p.rect_filled(stem, 0.0, alpha(s.accent, 0.12 * active));
-            let color = if now { theme::mix(s.accent, Color32::WHITE, 0.45) } else { alpha(s.accent, 0.9 * active) };
+            let color = if now {
+                theme::mix(s.accent, Color32::WHITE, 0.45)
+            } else {
+                alpha(s.accent, 0.9 * active)
+            };
             s.p.rect_filled(cell, 1.0 * z, color);
         } else {
-            s.p.rect_stroke(cell, 1.0 * z, Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.8 * active)), StrokeKind::Inside);
+            s.p.rect_stroke(
+                cell,
+                1.0 * z,
+                Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.8 * active)),
+                StrokeKind::Inside,
+            );
         }
     }
 
     // The note under the pointer.
     if let Some(pos) = resp.hover_pos() {
         let (step, degree) = cell_at(pos);
-        let label = format!("{} · {}", step + 1, note_name(note_hz(sequencer::note_of(p, degree) as f32)));
+        let label = format!(
+            "{} · {}",
+            step + 1,
+            note_name(note_hz(sequencer::note_of(p, degree) as f32))
+        );
         s.p.text(
             r.left_top() + vec2(2.0, 1.0) * z,
             Align2::LEFT_TOP,
@@ -922,14 +1294,19 @@ fn keys_display(s: &Screen, p: &ModuleParams) {
     let r = s.rect;
     let z = s.z;
     let count = (p.viz[viz::COUNT].get() as usize).min(viz::SHOWN);
-    let held: Vec<i32> = p.viz[viz::NOTES..viz::NOTES + count].iter().map(|n| n.get() as i32).collect();
+    let held: Vec<i32> = p.viz[viz::NOTES..viz::NOTES + count]
+        .iter()
+        .map(|n| n.get() as i32)
+        .collect();
     let current = p.viz[viz::CURRENT].get();
     let current = (current >= 0.0).then_some(current as i32);
     // Whole octaves around the notes: three at least, five at most.
     let lowest = held.iter().chain(&current).copied().min().unwrap_or(48);
     let highest = held.iter().chain(&current).copied().max().unwrap_or(48);
     let lo = lowest.div_euclid(12) * 12;
-    let hi = (lo + 36).max((highest.div_euclid(12) + 1) * 12).min(lo + 60);
+    let hi = (lo + 36)
+        .max((highest.div_euclid(12) + 1) * 12)
+        .min(lo + 60);
     let is_black = |n: i32| matches!(n.rem_euclid(12), 1 | 3 | 6 | 8 | 10);
     let whites = (lo..hi).filter(|&n| !is_black(n)).count().max(1);
     let key_w = r.width() / whites as f32;
@@ -967,7 +1344,10 @@ fn keys_display(s: &Screen, p: &ModuleParams) {
             x += key_w;
             continue;
         }
-        let key = Rect::from_center_size(pos2(x, r.top() + r.height() * 0.3), vec2(key_w * 0.6, r.height() * 0.6));
+        let key = Rect::from_center_size(
+            pos2(x, r.top() + r.height() * 0.3),
+            vec2(key_w * 0.6, r.height() * 0.6),
+        );
         s.p.rect_filled(key, 1.0 * z, fill(n, theme::INSET));
     }
 }
@@ -986,9 +1366,12 @@ fn midicer_display(v: &NodeView, id: NodeId, s: &Screen, p: &ModuleParams) {
     let bars = Rect::from_x_y_ranges(faders.x_range(), faders.top()..=faders.bottom() - label_h);
     let col_w = faders.width() / 12.0;
 
-    let resp = v
-        .ui
-        .interact(faders, Id::unique(("midicer_faders", id)), Sense::CLICK | Sense::DRAG)
+    let resp =
+        v.ui.interact(
+            faders,
+            Id::unique(("midicer_faders", id)),
+            Sense::CLICK | Sense::DRAG,
+        )
         .on_hover_cursor(CursorIcon::ResizeVertical);
     if let Some(pos) = resp.interact_pointer_pos()
         && (resp.clicked() || resp.dragged())
@@ -1004,17 +1387,44 @@ fn midicer_display(v: &NodeView, id: NodeId, s: &Screen, p: &ModuleParams) {
         let x0 = faders.left() + col_w * i as f32;
         let column = Rect::from_x_y_ranges(x0 + 1.5 * z..=x0 + col_w - 1.5 * z, bars.y_range());
         let black = matches!(i, 1 | 3 | 6 | 8 | 10);
-        s.p.rect_filled(column, 1.5 * z, if black { theme::GRID_MINOR } else { alpha(theme::CONTROL, 0.6) });
+        s.p.rect_filled(
+            column,
+            1.5 * z,
+            if black {
+                theme::GRID_MINOR
+            } else {
+                alpha(theme::CONTROL, 0.6)
+            },
+        );
         let w = p.data[data::WEIGHTS + i].get().clamp(0.0, 1.0);
         if w > 0.0 {
-            let bar = Rect::from_x_y_ranges(column.x_range(), column.bottom() - column.height() * w..=column.bottom());
-            let color = if lit == Some(i) { theme::mix(s.accent, Color32::WHITE, 0.45) } else { alpha(s.accent, 0.35 + 0.5 * w) };
+            let bar = Rect::from_x_y_ranges(
+                column.x_range(),
+                column.bottom() - column.height() * w..=column.bottom(),
+            );
+            let color = if lit == Some(i) {
+                theme::mix(s.accent, Color32::WHITE, 0.45)
+            } else {
+                alpha(s.accent, 0.35 + 0.5 * w)
+            };
             s.p.rect_filled(bar, 1.5 * z, color);
         }
-        let label_col = if lit == Some(i) { theme::TEXT } else if w > 0.0 { theme::TEXT_DIM } else { theme::TEXT_FAINT };
+        let label_col = if lit == Some(i) {
+            theme::TEXT
+        } else if w > 0.0 {
+            theme::TEXT_DIM
+        } else {
+            theme::TEXT_FAINT
+        };
         let font = theme::font(8.0 * z);
         if font.size >= super::nodes::MIN_TEXT {
-            s.p.text(pos2(column.center().x, faders.bottom()), Align2::CENTER_BOTTOM, *name, font, label_col);
+            s.p.text(
+                pos2(column.center().x, faders.bottom()),
+                Align2::CENTER_BOTTOM,
+                *name,
+                font,
+                label_col,
+            );
         }
     }
 
@@ -1029,7 +1439,11 @@ fn midicer_display(v: &NodeView, id: NodeId, s: &Screen, p: &ModuleParams) {
         let color = if step >= 0.0 && step as usize == i {
             s.accent
         } else if (first..=last).contains(&i) {
-            if i % 4 == 0 { theme::TEXT_FAINT } else { theme::CONTROL_HI }
+            if i % 4 == 0 {
+                theme::TEXT_FAINT
+            } else {
+                theme::CONTROL_HI
+            }
         } else {
             theme::GRID_MINOR
         };
@@ -1052,15 +1466,36 @@ fn midicer_controls(v: &NodeView, id: NodeId, p: &ModuleParams, accent: Color32,
         v.r(x, y, x + bw, y + 20.0)
     };
     let button = |row: usize, k: usize, label: &str, lit: bool, tip: &str| {
-        widgets::toggle(v.ui, v.painter, Id::unique(("midicer", id, label)), slot(row, k), label, lit, accent, z)
-            .on_hover_text(tip)
+        widgets::toggle(
+            v.ui,
+            v.painter,
+            Id::unique(("midicer", id, label)),
+            slot(row, k),
+            label,
+            lit,
+            accent,
+            z,
+        )
+        .on_hover_text(tip)
     };
     let now = v.ui.input(|i| i.time);
-    for (k, (dice, seed, name)) in [(data::DICE_R, data::SEED_R, "R"), (data::DICE_M, data::SEED_M, "M")].into_iter().enumerate() {
+    for (k, (dice, seed, name)) in [
+        (data::DICE_R, data::SEED_R, "R"),
+        (data::DICE_M, data::SEED_M, "M"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
         let what = if name == "R" { "rhythm" } else { "melody" };
-        let d = button(0, 2 * k, &format!("DICE {name}"), on(dice), &format!(
-            "The {what} repeats: click for new random values\n(in LIVE, click to come back to the kept ones)"
-        ));
+        let d = button(
+            0,
+            2 * k,
+            &format!("DICE {name}"),
+            on(dice),
+            &format!(
+                "The {what} repeats: click for new random values\n(in LIVE, click to come back to the kept ones)"
+            ),
+        );
         if d.clicked() {
             if on(dice) {
                 p.data[seed].set(midicer::new_seed((now * 1e6) as u32 ^ seed as u32));
@@ -1068,23 +1503,57 @@ fn midicer_controls(v: &NodeView, id: NodeId, p: &ModuleParams, accent: Color32,
                 p.data[dice].set(1.0);
             }
         }
-        let l = button(0, 2 * k + 1, &format!("LIVE {name}"), !on(dice), &format!(
-            "New random {what} values all the time: no repeating pattern"
-        ));
+        let l = button(
+            0,
+            2 * k + 1,
+            &format!("LIVE {name}"),
+            !on(dice),
+            &format!("New random {what} values all the time: no repeating pattern"),
+        );
         if l.clicked() {
             p.data[dice].set(0.0);
         }
     }
-    if button(1, 0, "LOCK", on(data::LOCK), "Keep playing with the current settings while you change them;\nclick again to apply").clicked() {
+    if button(
+        1,
+        0,
+        "LOCK",
+        on(data::LOCK),
+        "Keep playing with the current settings while you change them;\nclick again to apply",
+    )
+    .clicked()
+    {
         flip(data::LOCK);
     }
-    if button(1, 1, "MUTE", on(data::MUTE), "Silence the notes; the pattern keeps running").clicked() {
+    if button(
+        1,
+        1,
+        "MUTE",
+        on(data::MUTE),
+        "Silence the notes; the pattern keeps running",
+    )
+    .clicked()
+    {
         flip(data::MUTE);
     }
-    if button(1, 2, "RESTART", false, "Start the pattern again from FIRST on the next beat").clicked() {
+    if button(
+        1,
+        2,
+        "RESTART",
+        false,
+        "Start the pattern again from FIRST on the next beat",
+    )
+    .clicked()
+    {
         p.data[data::RESTART].set(p.data[data::RESTART].get() + 1.0);
     }
-    let setup = button(1, 3, "SETUP", false, "Note variation, mute, CV routing, MIDI commands");
+    let setup = button(
+        1,
+        3,
+        "SETUP",
+        false,
+        "Note variation, mute, CV routing, MIDI commands",
+    );
     egui::Popup::menu(&setup)
         .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
         .show(|ui| midicer_setup(ui, p));
@@ -1108,14 +1577,20 @@ fn midicer_setup(ui: &mut egui::Ui, p: &ModuleParams) {
     check(ui, data::TRIPLETS, "Triplets");
     check(ui, data::THIRTY_SECOND, "1/32 notes");
     heading(ui, "MUTE");
-    check(ui, data::UNMUTE_RESTART, "Unmuting restarts the pattern on the next beat");
+    check(
+        ui,
+        data::UNMUTE_RESTART,
+        "Unmuting restarts the pattern on the next beat",
+    );
     heading(ui, "CV1 · PITCH");
     let mut pitch = p.data[data::CV1_PITCH].get().round() as i32;
     let before = pitch;
     ui.horizontal(|ui| {
         ui.radio_value(&mut pitch, 0, "Off");
-        ui.radio_value(&mut pitch, 1, "Bend").on_hover_text("Pitch bend, unquantized (like ADD SEQ)");
-        ui.radio_value(&mut pitch, 2, "Transpose").on_hover_text("Moves the notes ±24 semitones (like TRANS SEQ)");
+        ui.radio_value(&mut pitch, 1, "Bend")
+            .on_hover_text("Pitch bend, unquantized (like ADD SEQ)");
+        ui.radio_value(&mut pitch, 2, "Transpose")
+            .on_hover_text("Moves the notes ±24 semitones (like TRANS SEQ)");
     });
     if pitch != before {
         p.data[data::CV1_PITCH].set(pitch as f32);

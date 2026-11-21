@@ -13,13 +13,19 @@ use egui::{Color32, Pos2, Vec2, vec2};
 
 use crate::audio::AudioHandle;
 use crate::audio::dsp::{Mixer, Oscillator};
-use crate::audio::engine::{Command, MAX_INPUTS, NodeId, Slot, TopoEntry, Topology, audio_idle, wait_audio_idle};
+use crate::audio::engine::{
+    Command, MAX_INPUTS, NodeId, Slot, TopoEntry, Topology, audio_idle, wait_audio_idle,
+};
 use crate::audio::midi::{MidiState, note_hz};
 use crate::audio::modules::{ModuleKind, ModuleParams, midi_cc, midi_note, random};
 use crate::audio::params::{
-    AtomicF32, CONSOLE_CHANNELS, DEFAULT_TEMPO, MIXER_CHANNELS, MixerParams, OSC_PARAMS, OscParams, ParamSpec, Unit, osc,
+    AtomicF32, CONSOLE_CHANNELS, DEFAULT_TEMPO, MIXER_CHANNELS, MixerParams, OSC_PARAMS, OscParams,
+    ParamSpec, Unit, osc,
 };
-use crate::audio::plugin::{self, Control, Format, Instance, LoadedAny, PluginMeta, PluginParam, PluginProcessor, PluginShared};
+use crate::audio::plugin::{
+    self, Control, Format, Instance, LoadedAny, PluginMeta, PluginParam, PluginProcessor,
+    PluginShared,
+};
 use crate::ui::nodes;
 use crate::ui::theme;
 use crate::ui::widgets::MeterState;
@@ -70,6 +76,7 @@ impl NodeType {
                 NodeType::Module(ModuleKind::Vesper),
                 NodeType::Module(ModuleKind::Random),
                 NodeType::Module(ModuleKind::Pops),
+                NodeType::Module(ModuleKind::Sibyl),
                 NodeType::Module(ModuleKind::Fjord),
                 NodeType::Module(ModuleKind::Splitter),
                 NodeType::Module(ModuleKind::Nullpunkt),
@@ -167,13 +174,18 @@ pub struct Console {
 
 impl Default for Console {
     fn default() -> Self {
-        Self { channels: 12, horizontal: true }
+        Self {
+            channels: 12,
+            horizontal: true,
+        }
     }
 }
 
 /// Mixer input names.
-const CHANNEL_NAMES: [&str; CONSOLE_CHANNELS] =
-    ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24"];
+const CHANNEL_NAMES: [&str; CONSOLE_CHANNELS] = [
+    "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17",
+    "18", "19", "20", "21", "22", "23", "24",
+];
 
 /// A knob or fader that a MIDI node can drive.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -279,13 +291,20 @@ impl Drop for EditorWindow {
         #[cfg(target_os = "macos")]
         if let EditorWindow::Au(unit) = self {
             wait_audio_idle(Duration::from_millis(50));
-            unit.lock().unwrap_or_else(|e| e.into_inner()).close_editor();
+            unit.lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .close_editor();
         }
     }
 }
 
 impl PluginNode {
-    fn new(meta: PluginMeta, params: Vec<PluginParam>, shared: Arc<PluginShared>, control: Sender<Control>) -> Self {
+    fn new(
+        meta: PluginMeta,
+        params: Vec<PluginParam>,
+        shared: Arc<PluginShared>,
+        control: Sender<Control>,
+    ) -> Self {
         let n = params.len();
         Self {
             values: params.iter().map(|p| p.default).collect(),
@@ -322,7 +341,9 @@ impl PluginNode {
 
     /// Sets a parameter from the UI (applied on the audio thread).
     pub fn set_param(&mut self, index: usize, value: f64, now: f64) {
-        let Some(p) = self.params.get(index) else { return };
+        let Some(p) = self.params.get(index) else {
+            return;
+        };
         let value = value.clamp(0.0, 1.0);
         self.values[index] = value;
         self.held_until[index] = now + 0.3;
@@ -364,7 +385,9 @@ impl PluginNode {
         if gone {
             self.window = None;
         }
-        self.shared.editor_open.store(self.window.is_some(), Ordering::Relaxed);
+        self.shared
+            .editor_open
+            .store(self.window.is_some(), Ordering::Relaxed);
         // Every call below takes the plugin's lock, which the audio thread
         // needs for each callback: only between callbacks.
         if !audio_idle() {
@@ -391,7 +414,9 @@ impl PluginNode {
             if !audio_idle() {
                 return;
             }
-            let Ok(plugin) = self.shared.plugin.try_lock() else { return };
+            let Ok(plugin) = self.shared.plugin.try_lock() else {
+                return;
+            };
             if self.held_until[i] < now
                 && let Ok(v) = plugin.get_parameter(id)
                 && v != self.values[i]
@@ -407,7 +432,10 @@ impl PluginNode {
 
     /// Reads the current value of any parameter (for the parameter list).
     pub fn refresh(&mut self, index: usize, now: f64) {
-        if self.held_until[index] >= now || now - self.read_at[index] < PLUGIN_SYNC_EVERY || !audio_idle() {
+        if self.held_until[index] >= now
+            || now - self.read_at[index] < PLUGIN_SYNC_EVERY
+            || !audio_idle()
+        {
             return;
         }
         self.read_at[index] = now;
@@ -455,7 +483,9 @@ impl PluginNode {
             Instance::Au(unit) => {
                 wait_audio_idle(Duration::from_millis(50));
                 let title = format!("{} - {}", self.meta.name, self.meta.format.label());
-                unit.lock().unwrap_or_else(|e| e.into_inner()).open_editor(&title);
+                unit.lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .open_editor(&title);
                 self.window = Some(EditorWindow::Au(unit.clone()));
             }
         }
@@ -486,7 +516,13 @@ impl PluginNode {
 /// Node title prefix for a plugin: "CINEMATIC PADS" for "Originals - Cinematic Pads".
 fn plugin_prefix(name: &str) -> String {
     let short = name.rsplit(" - ").next().unwrap_or(name);
-    short.to_uppercase().chars().take(24).collect::<String>().trim().to_owned()
+    short
+        .to_uppercase()
+        .chars()
+        .take(24)
+        .collect::<String>()
+        .trim()
+        .to_owned()
 }
 
 pub const TRACE_LEN: usize = 180;
@@ -537,7 +573,9 @@ impl Node {
             NodeKind::Module(m) => {
                 let def = m.params.kind.def();
                 // Iris only listens: its THRU is the input itself.
-                def.inputs.first() == Some(&"IN") && !def.outputs.is_empty() && m.params.kind != ModuleKind::Iris
+                def.inputs.first() == Some(&"IN")
+                    && !def.outputs.is_empty()
+                    && m.params.kind != ModuleKind::Iris
             }
             NodeKind::Plugin(p) => p.meta.inputs > 0,
             _ => false,
@@ -554,7 +592,9 @@ impl Node {
     /// has no outputs at all. (Granular's loop is only recent sound, like a
     /// delay line's: it rests with the others and keeps what it held.)
     pub fn runs_unheard(&self) -> bool {
-        let NodeKind::Module(m) = &self.kind else { return false };
+        let NodeKind::Module(m) = &self.kind else {
+            return false;
+        };
         let def = m.params.kind.def();
         def.map
             || (def.outputs.is_empty() && !def.midi_out)
@@ -582,7 +622,9 @@ impl Node {
     pub fn inputs(&self) -> &'static [&'static str] {
         match &self.kind {
             NodeKind::Osc(_) => &["FM", "AM"],
-            NodeKind::Mixer(m) => &CHANNEL_NAMES[..m.console.map_or(MIXER_CHANNELS, |c| c.channels)],
+            NodeKind::Mixer(m) => {
+                &CHANNEL_NAMES[..m.console.map_or(MIXER_CHANNELS, |c| c.channels)]
+            }
             NodeKind::Module(m) => m.params.kind.def().inputs,
             NodeKind::Plugin(p) if p.meta.inputs > 0 => &["IN"],
             NodeKind::Plugin(_) => &[],
@@ -631,16 +673,28 @@ impl Node {
 
     /// Every input port: the audio ones, then MIDI ([`MIDI_PORT`]).
     pub fn input_ports(&self) -> Vec<usize> {
-        (0..self.inputs().len()).chain(self.midi_in().then_some(MIDI_PORT)).collect()
+        (0..self.inputs().len())
+            .chain(self.midi_in().then_some(MIDI_PORT))
+            .collect()
     }
 
     pub fn output_ports(&self) -> Vec<usize> {
-        (0..self.outputs().len()).chain(self.midi_out().then_some(MIDI_PORT)).collect()
+        (0..self.outputs().len())
+            .chain(self.midi_out().then_some(MIDI_PORT))
+            .collect()
     }
 
     pub fn port_label(&self, port: usize, output: bool) -> &'static str {
-        let names = if output { self.outputs() } else { self.inputs() };
-        if is_midi(port) { "MIDI" } else { names.get(port).copied().unwrap_or("?") }
+        let names = if output {
+            self.outputs()
+        } else {
+            self.inputs()
+        };
+        if is_midi(port) {
+            "MIDI"
+        } else {
+            names.get(port).copied().unwrap_or("?")
+        }
     }
 
     /// Which row a port sits on: MIDI comes after the audio ports.
@@ -683,13 +737,23 @@ impl Node {
     pub fn param_name(&self, p: ParamRef) -> Option<String> {
         match (&self.kind, p) {
             (NodeKind::Osc(_), ParamRef::Osc(i)) => OSC_PARAMS.get(i).map(|s| s.name.to_owned()),
-            (NodeKind::Module(m), ParamRef::Module(i)) => m.params.kind.def().params.get(i).map(|s| s.name.to_owned()),
-            (NodeKind::Mixer(m), ParamRef::Fader(ch)) if ch < m.params.channels() => Some(format!("FADER {}", ch + 1)),
-            (NodeKind::Mixer(m), ParamRef::Pan(ch)) if ch < m.params.channels() => Some(format!("PAN {}", ch + 1)),
-            (NodeKind::Mixer(m), ParamRef::Aux(ch)) if ch < m.params.channels() => Some(format!("AUX {}", ch + 1)),
+            (NodeKind::Module(m), ParamRef::Module(i)) => {
+                m.params.kind.def().params.get(i).map(|s| s.name.to_owned())
+            }
+            (NodeKind::Mixer(m), ParamRef::Fader(ch)) if ch < m.params.channels() => {
+                Some(format!("FADER {}", ch + 1))
+            }
+            (NodeKind::Mixer(m), ParamRef::Pan(ch)) if ch < m.params.channels() => {
+                Some(format!("PAN {}", ch + 1))
+            }
+            (NodeKind::Mixer(m), ParamRef::Aux(ch)) if ch < m.params.channels() => {
+                Some(format!("AUX {}", ch + 1))
+            }
             (NodeKind::Mixer(_), ParamRef::Master) => Some("MASTER".to_owned()),
             (NodeKind::Mixer(_), ParamRef::AuxMaster) => Some("AUX".to_owned()),
-            (NodeKind::Plugin(p), ParamRef::Plugin(id)) => p.params.iter().find(|q| q.id == id).map(|q| q.name.clone()),
+            (NodeKind::Plugin(p), ParamRef::Plugin(id)) => {
+                p.params.iter().find(|q| q.id == id).map(|q| q.name.clone())
+            }
             _ => None,
         }
     }
@@ -699,7 +763,13 @@ impl Node {
         let specs: &[ParamSpec] = match &self.kind {
             NodeKind::Osc(_) => &OSC_PARAMS,
             NodeKind::Module(m) => m.params.kind.def().params,
-            NodeKind::Plugin(p) => return p.params.iter().find(|q| q.name == name).map(|q| ParamRef::Plugin(q.id)),
+            NodeKind::Plugin(p) => {
+                return p
+                    .params
+                    .iter()
+                    .find(|q| q.name == name)
+                    .map(|q| ParamRef::Plugin(q.id));
+            }
             NodeKind::Mixer(_) => &[],
         };
         let wrap = |i| match self.kind {
@@ -709,7 +779,9 @@ impl Node {
         if let Some(i) = specs.iter().position(|s| s.name == name) {
             return Some(wrap(i));
         }
-        let NodeKind::Mixer(m) = &self.kind else { return None };
+        let NodeKind::Mixer(m) = &self.kind else {
+            return None;
+        };
         let channel = |prefix: &str| {
             let ch: usize = name.strip_prefix(prefix)?.trim().parse().ok()?;
             (1..=m.params.channels()).contains(&ch).then_some(ch - 1)
@@ -756,7 +828,9 @@ impl Node {
                     ModuleKind::Random => Some(m.params.viz[random::VALUE].get()),
                     ModuleKind::MidiCc => Some(m.params.viz[midi_cc::VALUE].get()),
                     ModuleKind::MidiNote => Some(m.params.viz[midi_note::ENV].get() * 2.0 - 1.0),
-                    ModuleKind::Ext(e) => crate::ui::node_panel::traced(e).and_then(|i| m.params.viz.get(i)).map(|v| v.get()),
+                    ModuleKind::Ext(e) => crate::ui::node_panel::traced(e)
+                        .and_then(|i| m.params.viz.get(i))
+                        .map(|v| v.get()),
                     _ => None,
                 };
                 if let Some(v) = traced {
@@ -809,6 +883,9 @@ pub struct Graph {
     graveyard: Vec<Arc<PluginShared>>,
     /// The board's stickers and background.
     pub board: crate::board::Board,
+    /// The track view's layout: which view is shown, track order, open
+    /// panels (see `tracks`).
+    pub tracks: crate::tracks::Layout,
 }
 
 impl Default for Graph {
@@ -824,6 +901,7 @@ impl Default for Graph {
             plugin_host: None,
             graveyard: Vec::new(),
             board: crate::board::Board::default(),
+            tracks: crate::tracks::Layout::default(),
         }
     }
 }
@@ -840,8 +918,12 @@ impl Graph {
     /// Lets the plugin host go once no plugin is left, so the next one
     /// starts a host at the current sample rate.
     pub fn release_plugin_host(&mut self) {
-        self.graveyard.retain(|shared| Arc::strong_count(shared) > 1);
-        let plugins = self.nodes.iter().any(|n| matches!(n.kind, NodeKind::Plugin(_)));
+        self.graveyard
+            .retain(|shared| Arc::strong_count(shared) > 1);
+        let plugins = self
+            .nodes
+            .iter()
+            .any(|n| matches!(n.kind, NodeKind::Plugin(_)));
         if !plugins && self.graveyard.is_empty() {
             self.plugin_host = None;
         }
@@ -858,6 +940,7 @@ impl Graph {
         self.accent_count = 0;
         self.tempo = DEFAULT_TEMPO;
         self.board = crate::board::Board::default();
+        self.tracks = crate::tracks::Layout::default();
     }
 
     fn alloc_id(&mut self) -> NodeId {
@@ -904,11 +987,20 @@ impl Graph {
         self.add_osc_with(pos, Arc::new(OscParams::new()), audio)
     }
 
-    pub fn add_osc_with(&mut self, pos: Pos2, params: Arc<OscParams>, audio: &AudioHandle) -> NodeId {
+    pub fn add_osc_with(
+        &mut self,
+        pos: Pos2,
+        params: Arc<OscParams>,
+        audio: &AudioHandle,
+    ) -> NodeId {
         let id = self.alloc_id();
         let accent = self.next_accent();
         let title = self.next_title("OSC");
-        let bypass = spawn(id, Slot::new(Box::new(Oscillator::new(params.clone())), 1), audio);
+        let bypass = spawn(
+            id,
+            Slot::new(Box::new(Oscillator::new(params.clone())), 1),
+            audio,
+        );
         self.nodes.push(Node {
             id,
             pos,
@@ -930,14 +1022,33 @@ impl Graph {
     }
 
     pub fn add_console(&mut self, pos: Pos2, audio: &AudioHandle) -> NodeId {
-        self.add_mixer_with(pos, Arc::new(MixerParams::new(CONSOLE_CHANNELS)), Some(Console::default()), audio)
+        self.add_mixer_with(
+            pos,
+            Arc::new(MixerParams::new(CONSOLE_CHANNELS)),
+            Some(Console::default()),
+            audio,
+        )
     }
 
     /// A Mixer, or (`console`) a Console; `params` has 4 or 24 channels.
-    pub fn add_mixer_with(&mut self, pos: Pos2, params: Arc<MixerParams>, console: Option<Console>, audio: &AudioHandle) -> NodeId {
+    pub fn add_mixer_with(
+        &mut self,
+        pos: Pos2,
+        params: Arc<MixerParams>,
+        console: Option<Console>,
+        audio: &AudioHandle,
+    ) -> NodeId {
         let id = self.alloc_id();
-        let title = self.next_title(if console.is_some() { "CONSOLE" } else { "MIXER" });
-        let bypass = spawn(id, Slot::new(Box::new(Mixer::new(params.clone())), 2), audio);
+        let title = self.next_title(if console.is_some() {
+            "CONSOLE"
+        } else {
+            "MIXER"
+        });
+        let bypass = spawn(
+            id,
+            Slot::new(Box::new(Mixer::new(params.clone())), 2),
+            audio,
+        );
         self.nodes.push(Node {
             id,
             pos,
@@ -946,7 +1057,9 @@ impl Graph {
             collapsed: false,
             bypass,
             kind: NodeKind::Mixer(MixerNode {
-                channels: (0..params.channels()).map(|_| MeterState::default()).collect(),
+                channels: (0..params.channels())
+                    .map(|_| MeterState::default())
+                    .collect(),
                 params,
                 master: Default::default(),
                 aux: Default::default(),
@@ -961,7 +1074,12 @@ impl Graph {
         self.add_module_with(pos, Arc::new(ModuleParams::new(kind)), audio)
     }
 
-    pub fn add_module_with(&mut self, pos: Pos2, params: Arc<ModuleParams>, audio: &AudioHandle) -> NodeId {
+    pub fn add_module_with(
+        &mut self,
+        pos: Pos2,
+        params: Arc<ModuleParams>,
+        audio: &AudioHandle,
+    ) -> NodeId {
         let id = self.alloc_id();
         let kind = params.kind;
         let accent = self.next_accent();
@@ -983,12 +1101,19 @@ impl Graph {
 
     /// Loads a plugin (a VST3 bundle, or an Audio Unit by its pseudo-path)
     /// as a node. Runs plugin code (UI thread).
-    pub fn add_plugin(&mut self, path: &Path, pos: Pos2, audio: &AudioHandle) -> Result<NodeId, String> {
+    pub fn add_plugin(
+        &mut self,
+        path: &Path,
+        pos: Pos2,
+        audio: &AudioHandle,
+    ) -> Result<NodeId, String> {
         let loaded = match Format::of(path) {
             Format::Vst3 => {
                 let host = match &mut self.plugin_host {
                     Some(h) => h,
-                    None => self.plugin_host.insert(plugin::new_host(audio.info.sample_rate as f32)?),
+                    None => self
+                        .plugin_host
+                        .insert(plugin::new_host(audio.info.sample_rate as f32)?),
                 };
                 plugin::load(host, path)?.into()
             }
@@ -998,7 +1123,11 @@ impl Graph {
     }
 
     fn add_plugin_loaded(&mut self, loaded: LoadedAny, pos: Pos2, audio: &AudioHandle) -> NodeId {
-        let LoadedAny { instance, meta, params } = loaded;
+        let LoadedAny {
+            instance,
+            meta,
+            params,
+        } = loaded;
         let id = self.alloc_id();
         let accent = self.next_accent();
         let title = self.next_title(&plugin_prefix(&meta.name));
@@ -1018,7 +1147,10 @@ impl Graph {
         let mut node = PluginNode::new(meta, params, shared, tx);
         #[cfg(target_os = "macos")]
         if let Instance::Au(unit) = &node.shared.plugin {
-            node.au_params = unit.lock().unwrap_or_else(|e| e.into_inner()).param_handle();
+            node.au_params = unit
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .param_handle();
         }
         self.nodes.push(Node {
             id,
@@ -1038,11 +1170,14 @@ impl Graph {
     /// Some plugin may have changed since the project was saved (its state
     /// is only read when saving).
     pub fn plugins_edited(&self) -> bool {
-        self.nodes.iter().any(|n| matches!(&n.kind, NodeKind::Plugin(p) if p.edited()))
+        self.nodes
+            .iter()
+            .any(|n| matches!(&n.kind, NodeKind::Plugin(p) if p.edited()))
     }
 
     pub fn service_plugins(&mut self, now: f64) {
-        self.graveyard.retain(|shared| Arc::strong_count(shared) > 1);
+        self.graveyard
+            .retain(|shared| Arc::strong_count(shared) > 1);
         for n in &mut self.nodes {
             if let NodeKind::Plugin(p) = &mut n.kind {
                 p.sync(now);
@@ -1131,6 +1266,7 @@ impl Graph {
             g.members.retain(|m| *m != id);
         }
         self.groups.retain(|g| !g.members.is_empty());
+        self.tracks.forget(id);
         for n in &mut self.nodes {
             if let NodeKind::Module(m) = &mut n.kind
                 && m.target.is_some_and(|t| t.node == id)
@@ -1164,8 +1300,14 @@ impl Graph {
             .copied()
             .collect();
         for c in inner {
-            let from = PortRef { node: copies[&c.from.node], port: c.from.port };
-            let to = PortRef { node: copies[&c.to.node], port: c.to.port };
+            let from = PortRef {
+                node: copies[&c.from.node],
+                port: c.from.port,
+            };
+            let to = PortRef {
+                node: copies[&c.to.node],
+                port: c.to.port,
+            };
             self.connect(from, to, audio);
         }
         // MIDI mappings inside the copied set follow the copies.
@@ -1173,7 +1315,13 @@ impl Graph {
             if let Some(t) = self.target_of(new)
                 && let Some(&moved) = copies.get(&t.node)
             {
-                self.set_target(new, Some(Target { node: moved, param: t.param }));
+                self.set_target(
+                    new,
+                    Some(Target {
+                        node: moved,
+                        param: t.param,
+                    }),
+                );
             }
         }
         let groups: Vec<(Vec<NodeId>, bool)> = self
@@ -1187,7 +1335,9 @@ impl Graph {
                 self.set_group_collapsed(gid, collapsed);
             }
         }
-        ids.iter().filter_map(|id| copies.get(id).copied()).collect()
+        ids.iter()
+            .filter_map(|id| copies.get(id).copied())
+            .collect()
     }
 
     // --- MIDI mapping ---------------------------------------------------------
@@ -1275,19 +1425,29 @@ impl Graph {
         // distance from middle C; anything else follows the key's position.
         let value = |spec: &ParamSpec| match (write, spec.unit) {
             (Write::Note(note), Unit::Hz) => note_hz(note).clamp(spec.min, spec.max),
-            (Write::Note(note), Unit::Semitones) if spec.bipolar => (note - 60.0).clamp(spec.min, spec.max),
+            (Write::Note(note), Unit::Semitones) if spec.bipolar => {
+                (note - 60.0).clamp(spec.min, spec.max)
+            }
             _ => spec.denorm(norm),
         };
         match (&node.kind, t.param) {
-            (NodeKind::Osc(o), ParamRef::Osc(i)) if i < osc::COUNT => o.params.set(i, value(&OSC_PARAMS[i])),
+            (NodeKind::Osc(o), ParamRef::Osc(i)) if i < osc::COUNT => {
+                o.params.set(i, value(&OSC_PARAMS[i]))
+            }
             (NodeKind::Module(m), ParamRef::Module(i)) => {
                 if let Some(spec) = m.params.kind.def().params.get(i) {
                     m.params.set(i, value(spec));
                 }
             }
-            (NodeKind::Mixer(m), ParamRef::Fader(ch)) if ch < m.params.channels() => m.params.fader[ch].set(norm),
-            (NodeKind::Mixer(m), ParamRef::Pan(ch)) if ch < m.params.channels() => m.params.pan[ch].set(norm * 2.0 - 1.0),
-            (NodeKind::Mixer(m), ParamRef::Aux(ch)) if ch < m.params.channels() => m.params.aux[ch].set(norm),
+            (NodeKind::Mixer(m), ParamRef::Fader(ch)) if ch < m.params.channels() => {
+                m.params.fader[ch].set(norm)
+            }
+            (NodeKind::Mixer(m), ParamRef::Pan(ch)) if ch < m.params.channels() => {
+                m.params.pan[ch].set(norm * 2.0 - 1.0)
+            }
+            (NodeKind::Mixer(m), ParamRef::Aux(ch)) if ch < m.params.channels() => {
+                m.params.aux[ch].set(norm)
+            }
             (NodeKind::Mixer(m), ParamRef::Master) => m.params.master.set(norm),
             (NodeKind::Mixer(m), ParamRef::AuxMaster) => m.params.aux_master.set(norm),
             (NodeKind::Plugin(p), ParamRef::Plugin(id)) => {
@@ -1369,13 +1529,23 @@ impl Graph {
         let (mut ins, mut outs) = (Vec::new(), Vec::new());
         for node in g.members.iter().filter_map(|m| self.node(*m)) {
             for port in node.input_ports() {
-                let pr = PortRef { node: node.id, port };
-                if !self.cables.iter().any(|c| c.to == pr && inside(c.from.node)) {
+                let pr = PortRef {
+                    node: node.id,
+                    port,
+                };
+                if !self
+                    .cables
+                    .iter()
+                    .any(|c| c.to == pr && inside(c.from.node))
+                {
                     ins.push(pr);
                 }
             }
             for port in node.output_ports() {
-                let pr = PortRef { node: node.id, port };
+                let pr = PortRef {
+                    node: node.id,
+                    port,
+                };
                 let mut uses = self.cables.iter().filter(|c| c.from == pr).peekable();
                 let used = uses.peek().is_some();
                 if !used || uses.any(|c| !inside(c.to.node)) {
@@ -1390,9 +1560,17 @@ impl Graph {
     /// Refuses connections that would create a feedback loop.
     pub fn connect(&mut self, from: PortRef, to: PortRef, audio: &AudioHandle) -> bool {
         // MIDI only into MIDI, audio only into audio, between ports that exist.
-        let exists = self.node(from.node).is_some_and(|n| n.output_ports().contains(&from.port))
-            && self.node(to.node).is_some_and(|n| n.input_ports().contains(&to.port));
-        if !exists || is_midi(from.port) != is_midi(to.port) || from.node == to.node || self.reaches(to.node, from.node) {
+        let exists = self
+            .node(from.node)
+            .is_some_and(|n| n.output_ports().contains(&from.port))
+            && self
+                .node(to.node)
+                .is_some_and(|n| n.input_ports().contains(&to.port));
+        if !exists
+            || is_midi(from.port) != is_midi(to.port)
+            || from.node == to.node
+            || self.reaches(to.node, from.node)
+        {
             return false;
         }
         self.cables.retain(|c| c.to != to);
@@ -1406,20 +1584,33 @@ impl Graph {
         self.sync(audio);
     }
 
+    /// Puts back cables taken with `cables.clone()` (an edit that could not
+    /// be finished, see `tracks`).
+    pub fn set_cables(&mut self, cables: Vec<Cable>, audio: &AudioHandle) {
+        self.cables = cables;
+        self.sync(audio);
+    }
+
     /// Cables a Console would lose in shape `c` (its inputs past
     /// `c.channels`).
     pub fn console_losses(&self, id: NodeId, c: Console) -> usize {
-        self.cables.iter().filter(|k| k.to.node == id && !is_midi(k.to.port) && k.to.port >= c.channels).count()
+        self.cables
+            .iter()
+            .filter(|k| k.to.node == id && !is_midi(k.to.port) && k.to.port >= c.channels)
+            .count()
     }
 
     /// Reshapes a Console, unplugging the inputs it no longer has.
     pub fn set_console(&mut self, id: NodeId, c: Console, audio: &AudioHandle) {
-        let Some(NodeKind::Mixer(m)) = self.node_mut(id).map(|n| &mut n.kind) else { return };
+        let Some(NodeKind::Mixer(m)) = self.node_mut(id).map(|n| &mut n.kind) else {
+            return;
+        };
         if m.console.is_none() {
             return;
         }
         m.console = Some(c);
-        self.cables.retain(|k| k.to.node != id || is_midi(k.to.port) || k.to.port < c.channels);
+        self.cables
+            .retain(|k| k.to.node != id || is_midi(k.to.port) || k.to.port < c.channels);
         self.sync(audio);
     }
 
@@ -1436,7 +1627,12 @@ impl Graph {
                 return true;
             }
             if seen.insert(n) {
-                stack.extend(self.cables.iter().filter(|c| c.from.node == n).map(|c| c.to.node));
+                stack.extend(
+                    self.cables
+                        .iter()
+                        .filter(|c| c.from.node == n)
+                        .map(|c| c.to.node),
+                );
             }
         }
         false
@@ -1459,7 +1655,13 @@ impl Graph {
             .iter()
             .filter(|n| {
                 let sink = matches!(n.kind, NodeKind::Mixer(_))
-                    && !self.cables.iter().any(|c| c.from == PortRef { node: n.id, port: 0 });
+                    && !self.cables.iter().any(|c| {
+                        c.from
+                            == PortRef {
+                                node: n.id,
+                                port: 0,
+                            }
+                    });
                 sink || n.runs_unheard()
             })
             .map(|n| n.id)
@@ -1467,7 +1669,12 @@ impl Graph {
         let mut seen = HashSet::with_capacity(self.nodes.len());
         while let Some(id) = stack.pop() {
             if seen.insert(id) {
-                stack.extend(self.cables.iter().filter(|c| c.to.node == id).map(|c| c.from.node));
+                stack.extend(
+                    self.cables
+                        .iter()
+                        .filter(|c| c.to.node == id)
+                        .map(|c| c.from.node),
+                );
             }
         }
         seen
@@ -1500,9 +1707,21 @@ impl Graph {
                 }
             }
             // A mixer feeds the device unless its main output is patched.
-            let mixer = self.node(id).is_some_and(|n| matches!(n.kind, NodeKind::Mixer(_)));
-            let sink = mixer && !self.cables.iter().any(|c| c.from == PortRef { node: id, port: 0 });
-            order.push(TopoEntry { id, inputs, midi_input, sink, heard: heard.contains(&id) });
+            let mixer = self
+                .node(id)
+                .is_some_and(|n| matches!(n.kind, NodeKind::Mixer(_)));
+            let sink = mixer
+                && !self
+                    .cables
+                    .iter()
+                    .any(|c| c.from == PortRef { node: id, port: 0 });
+            order.push(TopoEntry {
+                id,
+                inputs,
+                midi_input,
+                sink,
+                heard: heard.contains(&id),
+            });
             for c in self.cables.iter().filter(|c| c.from.node == id) {
                 let d = indegree.get_mut(&c.to.node).expect("cable to unknown node");
                 *d -= 1;

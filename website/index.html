@@ -567,11 +567,35 @@
   </div>
 </section>
 
+<!-- ============================================================== TRACKS -->
+<section class="section" id="tracks" style="padding-top: 0">
+  <div class="wrap">
+    <div class="section-head reveal" style="--accent: var(--amber)">
+      <span class="label">06 · Track view</span>
+      <h2>The same patch, <span class="outline">as tracks.</span></h2>
+      <p class="lead">Press <strong>V</strong> and the canvas becomes rows, in the spirit of Ableton Live: one per track, its chain of devices from left to right, down to the mixer channel it feeds, with the channel's mute, solo, fader and meter in the header. Drag a device to move it, drop an effect between two devices, remove one and the chain closes up: the cables follow. Splits, MIDI devices, modulators and returns all show; no cable is hidden. <a href="guide.html#tracks">How it reads a patch</a>.</p>
+    </div>
+    <figure class="window reveal" style="margin-top: 0">
+      <div class="window-bar" aria-hidden="true">
+        <span class="lights"><i></i><i></i><i></i></span>
+        <span class="chip">≡ Track view</span>
+        <span class="chip go">▶ Start</span>
+        <span class="chip">BPM 112</span>
+        <span class="grow"></span>
+        <span class="hide-sm">Sequencer → Arpeggiator → Sibyl · Drone → Filter → Reverb · Fjord → Tape</span>
+      </div>
+      <div class="window-shot">
+        <img src="assets/shots/tracks-1x.png" srcset="assets/shots/tracks-1x.png 1500w, assets/shots/tracks.png 3000w" sizes="(max-width: 1240px) 100vw, 1240px" width="1500" height="900" loading="lazy" alt="The track view: a row per track with its header (name, destination, mute, solo, fader, meter) and its devices left to right, from a sequencer and an arpeggiator playing Sibyl to the Console's master row." data-zoom="assets/shots/tracks.png" data-title="The track view">
+      </div>
+    </figure>
+  </div>
+</section>
+
 <!-- ============================================================ FEATURES -->
 <section class="section" id="features" style="padding-top: 0">
   <div class="wrap">
     <div class="section-head reveal" style="--accent: var(--orange)">
-      <span class="label">06 · The board</span>
+      <span class="label">07 · The board</span>
       <h2>Built like an instrument, <span class="outline">not a toy.</span></h2>
     </div>
     <div class="features">
@@ -643,7 +667,7 @@
 <section class="section" id="catalogue" style="padding-top: 0">
   <div class="wrap">
     <div class="section-head reveal" style="--accent: var(--teal)">
-      <span class="label">07 · Catalogue</span>
+      <span class="label">08 · Catalogue</span>
       <h2>Thirty-five nodes, <span class="outline">eight groups.</span></h2>
       <p class="lead">Plus every VST3 and Audio Unit plugin on your machine, and the nodes you <a href="sdk.html">build yourself</a>. Browse them all with a picture and the details of each.</p>
     </div>
@@ -664,7 +688,7 @@
 <section class="section" id="start" style="padding-top: 0">
   <div class="wrap">
     <div class="section-head reveal" style="--accent: var(--green)">
-      <span class="label">08 · Getting started</span>
+      <span class="label">09 · Getting started</span>
       <h2>One command <span class="outline">to the first drone.</span></h2>
       <p class="lead">AudioBoard is a native Rust app (egui and eframe for the interface, cpal for audio, midir for MIDI). With a Rust toolchain installed, build and run it from the repository:</p>
     </div>
@@ -696,7 +720,7 @@
 <section class="section" id="architecture" style="padding-top: 0">
   <div class="wrap">
     <div class="section-head reveal" style="--accent: var(--blue)">
-      <span class="label">09 · Under the hood</span>
+      <span class="label">10 · Under the hood</span>
       <h2>Two threads <span class="outline">that never wait.</span></h2>
     </div>
     <div class="arch">

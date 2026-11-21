@@ -64,12 +64,24 @@ pub struct Detector {
 
 impl Detector {
     pub fn new() -> Self {
-        Self { level: -120.0, avg: -40.0, threshold: -40.0 + AUTO_OVER, ..Default::default() }
+        Self {
+            level: -120.0,
+            avg: -40.0,
+            threshold: -40.0 + AUTO_OVER,
+            ..Default::default()
+        }
     }
 
     /// Remakes the filters when the settings moved.
     fn prepare(&mut self, t: &Trigger, sr: f32) {
-        let key = (t.shape, t.free, t.freq.to_bits(), t.q.to_bits(), t.lo.to_bits(), t.hi.to_bits());
+        let key = (
+            t.shape,
+            t.free,
+            t.freq.to_bits(),
+            t.q.to_bits(),
+            t.lo.to_bits(),
+            t.hi.to_bits(),
+        );
         if self.made == Some(key) {
             return;
         }
@@ -145,16 +157,28 @@ impl Detector {
         if self.level > -80.0 {
             // Rises in about half a second, falls over two: settles on what
             // is steady, still catches what jumps out.
-            let k = if self.level > self.avg { avg_k } else { avg_k * 0.25 };
+            let k = if self.level > self.avg {
+                avg_k
+            } else {
+                avg_k * 0.25
+            };
             self.avg += (self.level - self.avg) * k;
         }
-        self.threshold = if t.auto { (self.avg + AUTO_OVER).clamp(-80.0, 0.0) } else { t.threshold };
+        self.threshold = if t.auto {
+            (self.avg + AUTO_OVER).clamp(-80.0, 0.0)
+        } else {
+            t.threshold
+        };
         self.dynamic = dynamic_gain(self.level - self.threshold, t.range);
     }
 
     /// One-pole coefficients for attack and release at `sr`.
     pub fn coefficients(&self, t: &Trigger, sr: f32) -> (f32, f32) {
-        let f = if t.free { (t.lo.max(10.0) * t.hi.max(10.0)).sqrt() } else { t.freq };
+        let f = if t.free {
+            (t.lo.max(10.0) * t.hi.max(10.0)).sqrt()
+        } else {
+            t.freq
+        };
         let (a, r) = auto_times(f);
         let a = a * time_factor(t.attack);
         // Deeper changes let go more slowly, as a compressor's program release.

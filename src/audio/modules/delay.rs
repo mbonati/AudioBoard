@@ -6,7 +6,9 @@
 use std::f32::consts::TAU;
 use std::sync::Arc;
 
-use super::{DelayLine, ModuleDef, ModuleParams, approach, mix_gains, soft_limit, time_coeff, Quiet, silence};
+use super::{
+    DelayLine, ModuleDef, ModuleParams, Quiet, approach, mix_gains, silence, soft_limit, time_coeff,
+};
 use crate::audio::engine::{Buf, Inputs, ProcessCtx, Processor};
 use crate::audio::fastmath;
 use crate::audio::params::{DEFAULT_TEMPO, ParamSpec, SYNC_DIVISIONS, Unit, sync_division};
@@ -25,7 +27,13 @@ pub const MAX_SYNC_TIME: f32 = 4.0;
 
 const PARAMS: [ParamSpec; 7] = [
     ParamSpec::log("TIME", 0.01, MAX_TIME, 0.42, Unit::Seconds),
-    ParamSpec::lin("DIV", 0.0, (SYNC_DIVISIONS.len() - 1) as f32, 8.0, Unit::Sync),
+    ParamSpec::lin(
+        "DIV",
+        0.0,
+        (SYNC_DIVISIONS.len() - 1) as f32,
+        8.0,
+        Unit::Sync,
+    ),
     ParamSpec::lin("FEEDBACK", 0.0, 1.0, 0.55, Unit::Percent),
     ParamSpec::lin("TONE", 0.0, 1.0, 0.55, Unit::Percent),
     ParamSpec::lin("WOW", 0.0, 1.0, 0.25, Unit::Percent),
@@ -147,7 +155,8 @@ impl Processor for Delay {
             self.wow_phase[0] = (self.wow_phase[0] + 0.43 / sr).fract();
             self.wow_phase[1] = (self.wow_phase[1] + 5.3 / sr).fract();
             let modulation = if wow > 0.0 {
-                wow_depth * fastmath::sin_turns(self.wow_phase[0]) + flutter_depth * fastmath::sin_turns(self.wow_phase[1])
+                wow_depth * fastmath::sin_turns(self.wow_phase[0])
+                    + flutter_depth * fastmath::sin_turns(self.wow_phase[1])
             } else {
                 0.0
             };

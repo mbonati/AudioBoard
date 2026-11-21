@@ -18,22 +18,86 @@ pub struct Mood {
 }
 
 pub const MOODS: [Mood; 16] = [
-    Mood { name: "Radiant", scale: "Major (Ionian)", semis: [0, 2, 4, 5, 7, 9, 11] },
-    Mood { name: "Dreaming", scale: "Lydian", semis: [0, 2, 4, 6, 7, 9, 11] },
-    Mood { name: "Roaming", scale: "Mixolydian", semis: [0, 2, 4, 5, 7, 9, 10] },
-    Mood { name: "Dawn", scale: "Harmonic major", semis: [0, 2, 4, 5, 7, 8, 11] },
-    Mood { name: "Elegy", scale: "Natural minor (Aeolian)", semis: [0, 2, 3, 5, 7, 8, 10] },
-    Mood { name: "Reverie", scale: "Dorian", semis: [0, 2, 3, 5, 7, 9, 10] },
-    Mood { name: "Tragic", scale: "Harmonic minor", semis: [0, 2, 3, 5, 7, 8, 11] },
-    Mood { name: "Mystery", scale: "Melodic minor", semis: [0, 2, 3, 5, 7, 9, 11] },
-    Mood { name: "Descent", scale: "Phrygian", semis: [0, 1, 3, 5, 7, 8, 10] },
-    Mood { name: "Void", scale: "Locrian", semis: [0, 1, 3, 5, 6, 8, 10] },
-    Mood { name: "Noir", scale: "Hungarian minor", semis: [0, 2, 3, 6, 7, 8, 11] },
-    Mood { name: "Ritual", scale: "Neapolitan minor", semis: [0, 1, 3, 5, 7, 8, 11] },
-    Mood { name: "Sands", scale: "Phrygian dominant", semis: [0, 1, 4, 5, 7, 8, 10] },
-    Mood { name: "Temple", scale: "Double harmonic", semis: [0, 1, 4, 5, 7, 8, 11] },
-    Mood { name: "Cosmos", scale: "Lydian augmented", semis: [0, 2, 4, 6, 8, 9, 11] },
-    Mood { name: "Orbit", scale: "Lydian dominant", semis: [0, 2, 4, 6, 7, 9, 10] },
+    Mood {
+        name: "Radiant",
+        scale: "Major (Ionian)",
+        semis: [0, 2, 4, 5, 7, 9, 11],
+    },
+    Mood {
+        name: "Dreaming",
+        scale: "Lydian",
+        semis: [0, 2, 4, 6, 7, 9, 11],
+    },
+    Mood {
+        name: "Roaming",
+        scale: "Mixolydian",
+        semis: [0, 2, 4, 5, 7, 9, 10],
+    },
+    Mood {
+        name: "Dawn",
+        scale: "Harmonic major",
+        semis: [0, 2, 4, 5, 7, 8, 11],
+    },
+    Mood {
+        name: "Elegy",
+        scale: "Natural minor (Aeolian)",
+        semis: [0, 2, 3, 5, 7, 8, 10],
+    },
+    Mood {
+        name: "Reverie",
+        scale: "Dorian",
+        semis: [0, 2, 3, 5, 7, 9, 10],
+    },
+    Mood {
+        name: "Tragic",
+        scale: "Harmonic minor",
+        semis: [0, 2, 3, 5, 7, 8, 11],
+    },
+    Mood {
+        name: "Mystery",
+        scale: "Melodic minor",
+        semis: [0, 2, 3, 5, 7, 9, 11],
+    },
+    Mood {
+        name: "Descent",
+        scale: "Phrygian",
+        semis: [0, 1, 3, 5, 7, 8, 10],
+    },
+    Mood {
+        name: "Void",
+        scale: "Locrian",
+        semis: [0, 1, 3, 5, 6, 8, 10],
+    },
+    Mood {
+        name: "Noir",
+        scale: "Hungarian minor",
+        semis: [0, 2, 3, 6, 7, 8, 11],
+    },
+    Mood {
+        name: "Ritual",
+        scale: "Neapolitan minor",
+        semis: [0, 1, 3, 5, 7, 8, 11],
+    },
+    Mood {
+        name: "Sands",
+        scale: "Phrygian dominant",
+        semis: [0, 1, 4, 5, 7, 8, 10],
+    },
+    Mood {
+        name: "Temple",
+        scale: "Double harmonic",
+        semis: [0, 1, 4, 5, 7, 8, 11],
+    },
+    Mood {
+        name: "Cosmos",
+        scale: "Lydian augmented",
+        semis: [0, 2, 4, 6, 8, 9, 11],
+    },
+    Mood {
+        name: "Orbit",
+        scale: "Lydian dominant",
+        semis: [0, 2, 4, 6, 7, 9, 10],
+    },
 ];
 
 /// Chords a loop holds at most; also how many chords EVOLVE shows.
@@ -65,7 +129,10 @@ impl Step {
 
     pub fn unpack(v: f32) -> Self {
         let v = v.max(0.0) as u32;
-        Self { degree: (v % 8).min(6) as u8, flavor: (v / 8).min(3) as u8 }
+        Self {
+            degree: (v % 8).min(6) as u8,
+            flavor: (v / 8).min(3) as u8,
+        }
     }
 }
 
@@ -183,7 +250,14 @@ fn pick(rng: &mut Rng, weights: &[f32]) -> usize {
 /// thirds (which keep two notes), then steps; never onto themselves unless
 /// there's nowhere else; `before` (the chord before that) is less welcome, so
 /// that two chords don't just swap, and `avoid` not at all.
-pub fn next_step(rng: &mut Rng, rules: &Rules, allowed: &[u8], prev: Step, before: Option<u8>, avoid: Option<u8>) -> Step {
+pub fn next_step(
+    rng: &mut Rng,
+    rules: &Rules,
+    allowed: &[u8],
+    prev: Step,
+    before: Option<u8>,
+    avoid: Option<u8>,
+) -> Step {
     let mut weights = [0.0f32; 7];
     for (w, &c) in weights.iter_mut().zip(allowed) {
         if c == prev.degree || Some(c) == avoid {
@@ -197,7 +271,11 @@ pub fn next_step(rng: &mut Rng, rules: &Rules, allowed: &[u8], prev: Step, befor
         let again = if Some(c) == before { 0.35 } else { 1.0 };
         *w = rules.weight(c as usize) * motion * again;
     }
-    let degree = if weights.iter().any(|&w| w > 0.0) { allowed[pick(rng, &weights)] } else { prev.degree };
+    let degree = if weights.iter().any(|&w| w > 0.0) {
+        allowed[pick(rng, &weights)]
+    } else {
+        prev.degree
+    };
     let x = rng.unit();
     let flavor = if x < 0.62 {
         flavor::PLAIN
@@ -218,8 +296,15 @@ pub fn progression(seed: u32, count: usize, rules: &Rules) -> [Step; MAX_CHORDS]
     let degrees = &degrees[..len];
     let mut rng = Rng::new(spread(seed, 1));
     let start = rng.unit();
-    let first = if start < 0.75 || len == 1 { 0 } else { degrees[1 + (rng.unit() * (len - 1) as f32) as usize % (len - 1)] };
-    let mut out = [Step { degree: first, flavor: flavor::PLAIN }; MAX_CHORDS];
+    let first = if start < 0.75 || len == 1 {
+        0
+    } else {
+        degrees[1 + (rng.unit() * (len - 1) as f32) as usize % (len - 1)]
+    };
+    let mut out = [Step {
+        degree: first,
+        flavor: flavor::PLAIN,
+    }; MAX_CHORDS];
     let count = count.clamp(1, MAX_CHORDS);
     for k in 1..count {
         let before = (k >= 2).then(|| out[k - 2].degree);
@@ -238,7 +323,13 @@ pub fn stream(seed: u32) -> Rng {
 /// notes before it; empty: nearest the centre). Tries each inversion, closed
 /// and spread, in three octaves. Returns how many notes `out` got, low to
 /// high.
-pub fn voice(rules: &Rules, step: Step, prev: &[i32], center: i32, out: &mut [i32; MAX_TONES]) -> usize {
+pub fn voice(
+    rules: &Rules,
+    step: Step,
+    prev: &[i32],
+    center: i32,
+    out: &mut [i32; MAX_TONES],
+) -> usize {
     let (tones, len) = rules.tones(step);
     let pcs: [i32; MAX_TONES] = tones.map(|t| (rules.root + t).rem_euclid(12));
     let mut best = f32::INFINITY;
@@ -300,10 +391,16 @@ pub fn fold(note: i32, low: i32) -> i32 {
 
 /// How this key spells a pitch class.
 pub fn note_name(rules: &Rules, pc: i32) -> &'static str {
-    const FLATS: [&str; 12] = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
+    const FLATS: [&str; 12] = [
+        "C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B",
+    ];
     // A minor scale reads from its relative major.
     let parent = (rules.root + if rules.semis(2) == 3 { 3 } else { 0 }).rem_euclid(12);
-    let names = if matches!(parent, 1 | 3 | 5 | 8 | 10) { &FLATS } else { &NOTE_NAMES };
+    let names = if matches!(parent, 1 | 3 | 5 | 8 | 10) {
+        &FLATS
+    } else {
+        &NOTE_NAMES
+    };
     names[pc.rem_euclid(12) as usize]
 }
 

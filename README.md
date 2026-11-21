@@ -3,6 +3,8 @@
 A node-based modular synthesizer in Rust, in the spirit of Max/MSP and Pure Data:
 small blocks (nodes) joined by virtual cables generate sound in real time.
 It is designed especially for ambient sounds, drones, and organic and granular textures.
+The patch is shown on a free canvas or, at the press of V, as tracks in the spirit of Ableton Live, each
+track's chain of devices in a row (see Track view).
 
 ## Getting started
 
@@ -224,6 +226,76 @@ instruments). It is drawn again as you turn a knob; click it to hear the sound.
 Like any node, it also collapses entirely to its title bar (C).
 
 The preset rhythms are new patterns written in each style, not decoded from the original's diode matrix.
+
+**Sibyl**: a sixteen-voice analog polysynth after the Sequential Prophet-5 (rev 3) and u-he's Repro-5, for
+warm, full pads, arpeggios and leads. The panel follows Repro-5's synth view in three rows (VOICE MOD,
+OSCILLATOR A, MIXER, FILTER; LFO, OSCILLATOR B, UNISON, FILTER ENVELOPE; WHEEL MOD, MOD MATRIX, AMPLIFIER),
+in the board's flat style (a colour per kind of section), with the keys or the effects underneath; its engine,
+sounds and names are its own.
+
+- **Voice.** Oscillator A (saw and pulse, hard sync to B) and B (saw, triangle, pulse, LO FREQ seven octaves
+  down, keyboard tracking on or off), each with OCTAVE (four positions), FREQUENCY ±12 semitones and a fine
+  tune; MIXER levels for A, B and noise (or, with a jumper, the voice's own output fed back); a four-pole
+  low pass of the CEM3320 kind (CUTOFF, RESONANCE — it self-oscillates above 60 % and thins the bass as it
+  rises —, ENV AMOUNT, KEYBOARD tracking, 100 % = in tune) saturating where its loop meets the input; two
+  envelopes with a curved attack (ATTACK 2 ms–15 s, DECAY 2 ms–15 s, SUSTAIN, RELEASE 2 ms–55 s, VEL),
+  restarting from where they are on a new note. Oscillators run free and are band-limited (polynomial
+  BLEP/BLAMP, one sample late so sync and audio-rate FM are exact).
+- **VOICE MOD (poly-mod).** The filter envelope and oscillator B, each with its amount, to oscillator A's
+  frequency, A's pulse width and the cutoff: sync sweeps, metallic FM, growls, per voice and at audio rate.
+- **LFO and WHEEL MOD.** Saw, triangle and square (they add up), 0.03–27.5 Hz or synced (8 bars to 1/64,
+  dotted and triplets); SOURCE MIX from LFO to noise; destinations FREQ A, FREQ B, PW A, PW B, FILTER, under
+  the mod wheel between two limits (the triangles beside the wheel: a minimum depth with the wheel down).
+- **UNISON, GLIDE, VOICE DETUNE.** VOICES (1–16) are the polyphony; UNISON stacks UNISON VOICES (1–16) on one
+  key with LOW, HIGH or LAST priority, spread by VOICE DETUNE; GLIDE slews each voice's pitch (poly or
+  unison). VOICE DETUNE also sets how much the voices differ (tuning, cutoff, envelope times, pulse width,
+  level) and drift, as real voice cards do; a light per voice shows them work.
+- **MOD MATRIX.** Four slots (MM A and MM B, two a page): a source (mod wheel, bend, two controllers,
+  LFO, trigger, gate, key, key + bend, velocity, aftertouch, the envelopes, voice index, voice detune), a
+  destination (44, from the oscillators, filter, envelopes, mixer and pan to the distortion, the effects
+  and the LFO's rate), DEPTH, and modifiers: CURVE, RECT(ify), QUANT(ize to semitones, steps of 12,
+  overtones, scales, chords, series of thirds, fifths), S+H (on a rising zero crossing of another signal)
+  and SLEW.
+- **TWEAKS.** Jumpers: LFO with or without DC, inverted LFO and oscillator B saws, S&H instead of noise in
+  WHEEL MOD, note priority, voice reallocation (the same key on the same voice, or round robin), mixer
+  feedback, inverted filter envelope, cutoff following the bend. Selectors: the oscillators' model (P5 with
+  its inverted pulse, P1, IDEAL, P5 OLD drifting; BOTTOM for B), the filter's (CRISPY, ROUNDED, DRIVEN, POLY:
+  darker, only open when modulated), the envelopes' (IDEAL, ANALOG, HIGH SUS, ONE SHOT, PIANO 1 and 2), the
+  bend's range up and down (to 24 semitones, then 36 and 48). A pan per voice; the wheels' limits; the two
+  controllers' numbers.
+- **Effects.** A DISTORTION per voice (soft clip, hard clip, foldback, or CORRODE: rate reduction and bit
+  crushing; AMOUNT, TONE, MIX), then five effects in a chain you reorder by dragging and switch by clicking:
+  TAPE (saturation at twice the rate, head bump, roll-off, hiss, wow and flutter on WORN), ECHO (a bucket
+  brigade: CHORUS, LONG, synced to 1/16 or 1/4 × 1–8; ECHO, PPONG, SWING, GROOVE; modulation; CLEAN, BRIGHT,
+  DARK repeats; changing TIME glides the pitch), RES·EQ (low shelf, mid bell and high shelf, or three
+  resonant band passes), PLATE (pre-delay, DECAY from 0.35 s through about 2 s in the middle to a minute, TONE, DRY/WET at equal
+  power, so the dry sound leads until the middle) and CONDITIONER (GAIN that
+  saturates above the middle, TRANSIENT, WIDTH). The EFFECTS tab, under KEYS on the left of the lower panel,
+  opens them and shows with a dot each which ones are on.
+- **ARPEGGIATOR** (ours): UP, DOWN, UP/DN, UP+DN, ORDER, RANDOM or CHORD, 1/4 to 1/32 with dotted and
+  triplet values, one to four octaves, GATE, SWING, LATCH. It steps on the board's grid while the
+  transport plays and at the board's tempo from the first key while it is stopped.
+- **Programs.** Forty-eight, in banks of eight as on the original (five there, six here), our own sounds
+  (arpeggios, pads, leads, keys and basses, textures, and bank 6: bouncing sequences, where each note
+  springs — the filter snaps shut and the pitch falls a little — over swung steps and echoes that answer
+  from the other side); BANK and PROGRAM recall them, RECORD then a program button stores the panel
+  there (kept with the node; right-click a program to put its factory sound back), Program Change 1–48
+  picks one. The display shows the sound's name (`*` once edited).
+- **Presets.** SAVE asks for a name (24 characters) and a category (ARP, PAD, LEAD, KEYS, BASS, TEXTURE,
+  BOUNCE, OTHER) and keeps the sound in your library, in the app's preset folder (`presets/Sibyl.json`), there
+  in every project (a preset of the same name is replaced); or stores it, with its name and effects order, in
+  the current program. PRESETS ▾ lists your sounds by category (click to load, × to delete), the factory
+  banks, and exports the sound or the whole library to a file, or imports one (a file with one sound loads it
+  too). A preset keeps the sound only: never the master section (TUNE, OUTPUT, HQ, A-440, the mod wheel,
+  VOICES, the controllers) nor the programs recorded in the node. The two-digit display reads bank and
+  program; `*` marks an edited panel. HQ runs the voices at twice the rate; A-440 replaces the output with a
+  reference tone; TUNE (±12 semitones) and OUTPUT stay with the panel.
+- **Keys.** The MIDI input (or the keyboards while it is free), the panel's five octaves (keys about six times
+  as long as wide) and its bend and mod wheels; mod wheel CC 1, sustain CC 64, aftertouch, bend.
+
+Performance: the slow parts of a voice (envelopes, glide, the matrix, pitches, levels) are worked out once
+every 16 frames (or at each MIDI event) and ramped; the oscillators run per voice, the filter four voices
+at a time in lanes; idle voices cost nothing and the node rests when silent.
 
 **Fjord**: a four-channel drum synthesizer after the Clavia Nord Drum (the first one, 2012), with a step
 sequencer. Each channel plays one sound at a time, blended from three components, each with its own
@@ -1420,6 +1492,7 @@ Gain staging follows a DAW's:
 
 | Action | Gesture |
 |--------|---------|
+| Switch between the node view and the track view | V, or the two buttons right of the project name (see Track view) |
 | Add a node or a library module | drag it from the palette onto the canvas (or click it), or right-click the canvas |
 | Connect | drag from a port to the opposite kind (output → input or vice versa) |
 | Reconnect / unplug a cable | drag it away from the input it is plugged into |
@@ -1517,6 +1590,64 @@ zoom percentage in the status bar opens the view menu. **Auto-fit** (A) keeps th
 while you add, remove, collapse or move nodes or resize the window; "auto" appears in the status bar. It
 turns itself off as soon as you zoom or move the view by hand.
 
+## Track view
+
+Besides the free canvas, the same patch can be seen as **tracks**, in the spirit of Ableton Live: one row
+per track, its chain of devices from left to right, down to the mixer channel it feeds. Switch with **V** or
+the two buttons right of the project name (nodes / tracks). It is a second view of the same patch, not a
+copy: whatever is done in one shows in the other, and switching back and forth changes nothing (node
+positions on the canvas, cables, settings, folded nodes all stay as they were). The view in use is saved
+with the project, with the track view's own layout (track order, folded rows, open panels); projects saved
+before the track view open in the node view.
+
+**What a row shows.** On the left, the track's header: its name (the first device's), what kind of track it
+is (INSTRUMENT, AUDIO, EFFECTS, BRANCH, RETURN, BUS), where it goes (click it to send the track to another
+free channel, or to none), and its channel's mute, solo, fader and meter. On the right, the devices: compact
+boxes with the title, the activity light, the bypass switch, the main value and notes on their cables, or
+with their panel open (the arrow in the header, a double-click on it, or C), scaled down to fit when tall.
+A chip at the end says where the audio goes. Each Mixer or Console has a **master row** of its own (its
+master fader, mute and meters, and its panel); a last row, "Not in a track", holds whatever plays into no
+track (a MIDI In patched to nothing). A track folds to a thin row with the arrow left of its name.
+
+**How the patch becomes tracks.** Every input takes one cable, so walking back from any point follows a
+single path; a track is that path:
+
+- A cable into a node's main input (IN on effects, plugin effects, Iris) or into a mixer channel is part of a
+  chain. Every other audio cable (CUT, SC, PITCH, TRIG…) is a side cable (modulation, sidechain); MIDI
+  cables are their own kind.
+- There is one track per patched mixer channel, and one per chain that ends nowhere (an unrouted source, the
+  last of a row of effects). Walking back from there, the track stops at its own source, at an effect fed by
+  nothing, or at a mixer's OUT or AUX: a **bus** or **return** track (a Mixer's AUX through a reverb into the
+  Console is a return).
+- **Splits.** When a node feeds two places (a filter into a reverb and into grains), its devices are shown
+  once, in the first of the tracks; the other one starts with a chip "◂ FILTER 1" and says "from FILTER 1"
+  in its header. Moving a track up or down moves the shared devices with it.
+- Nodes that make no audio for the chain sit in the lane just before the device they serve, with a dashed
+  arrow into it, while the audio runs round under them: sequencers, arpeggiators and other MIDI nodes in
+  front of the instrument they play, modulators (Random, a MIDI Note's envelope) in front of what they
+  modulate, a MIDI CC mapped to a knob in front of that knob's device.
+- **No cable is hidden.** A cable is the arrow between two neighbouring devices, a track's input or
+  destination, the dashed arrow of an attached device, or else a note on the devices at both ends:
+  "CUT ◂ RANDOM 1" and "▸ FILTER 1 · CUT", "SC ◂ SIBYL 1", "▸ GRAINS 1" on a device that also feeds
+  another track, "MIDI ◂ SEQ 1", "CH 2 ▸ CONSOLE 1" for an output other than the first. The notes are
+  listed in full when resting the pointer on a device.
+
+**Editing.** Each edit is a few cable changes, the same as patching them on the canvas:
+
+| Action | Gesture | Cables |
+|--------|---------|--------|
+| Add a device anywhere in a chain | drag an effect from the palette between two devices (a line shows where it goes), or the **+** at the end of a track; a click in the palette adds it after the selected device | what fed that point feeds the new device, which feeds what came after |
+| Add a MIDI device | drag a sequencer, an arpeggiator… onto an instrument's track | it takes what played the instrument (if it takes MIDI) and plays the instrument; refused if that would unplug what played it |
+| Move a device | drag it to another place, in its track or another one | its old neighbours are joined, and it goes between the new ones; its other cables (splits, sidechains) go with it. A move that would make a loop is refused and changes nothing |
+| Remove a device | the × in its header, Del, or right-click → Remove (it asks first) | what fed it now feeds everything it fed, in every track; the same for MIDI through a MIDI device |
+| Add a track | drop a source anywhere but between devices, or click **New track** at the bottom | the new node goes below the patch on the canvas and into the first free mixer channel |
+| Route a track | click where it goes in its header | to a free channel only: a track never takes another's channel |
+| Reorder tracks | drag a track's name up or down | none: only the order of the rows |
+| Bypass | the power switch, B over a device, or right-click | none |
+
+New devices land on the canvas between their neighbours (what lies downstream moves right to make room
+when needed); **L** in the node view tidies everything up. MIDI mapping (MAP) is done in the node view.
+
 ## Palette
 
 The panel on the left (shown and hidden with the button next to the project name) lists all nodes by
@@ -1585,7 +1716,8 @@ empties the list.
 A dot next to the name, and "(edited)" in the window title, flag unsaved changes: before creating a new
 project, opening another one or closing the window, AudioBoard asks whether to save them.
 A project (`.audioboard`) is a JSON file with nodes and parameters, positions, colors, collapsed nodes,
-cables and modules, the board's stickers and background (images inside, base64) and Splitter's samples (16-bit
+cables and modules, the view in use and the track view's layout (written only once the track view has been
+used), the board's stickers and background (images inside, base64) and Splitter's samples (16-bit
 PCM inside, base64); parameters are saved by
 name, built-in modules by name and plugin nodes by their stable id. The demo patch always opens on launch.
 
@@ -1780,6 +1912,11 @@ src/
 │   │   │               motion (hexagon sliders, magnet, drawn/recorded paths, timeline)
 │   │   ├── pops.rs     Pops 66 (after the KORG Mini Pops-7): instruments, user patterns, clock, MIDI in/out
 │   │   ├── pops/       voices (the fifteen synthesized instruments), rhythms (the twenty presets, combining)
+│   │   ├── sibyl.rs    Sibyl (after the Prophet-5 and Repro-5): parameters, programs (record, restore), keys,
+│   │   │               pedal, voice allocation and unison, MIDI, segments, the output
+│   │   ├── sibyl/      voice (oscillators with BLEP, sync and FM; the CEM3320-style filter in lanes of four
+│   │   │               voices; envelopes; distortion; the patch decoded), mods (LFO, wheel noise, the matrix
+│   │   │               and its modifiers), fx (tape, echo, res·eq, plate, conditioner), arp, bank (programs)
 │   │   ├── fjord.rs    Fjord (after the Clavia Nord Drum): the channels' knobs, programs (packed three settings
 │   │   │               to a value, store, Memory Protect), MIDI in and out, learning, Local, the step lanes
 │   │   ├── fjord/      voice (tone, noise and click, gates, sweeps, bend, punch, the tone's ADSRs, held notes,
@@ -1843,12 +1980,16 @@ src/
 │   │               against drift between the two devices' clocks
 │   └── mod.rs      opening the output and input streams (cpal); a new rate builds a new engine
 ├── graph.rs        UI-side patch model (nodes, cables, modules, Kahn ordering)
+├── tracks.rs       the track view's reading of the patch (graph → tracks, its rules) and its edits as
+│                   cable changes (insert, move, remove, route, new track); the track view's saved layout
 ├── board.rs        the board's stickers, images (PNG/JPEG kept encoded, SVG kept as text) and background
 ├── project.rs      saving/loading projects and the module library (JSON)
 ├── presets.rs      named presets of a module (knobs, settings, mode, toggle), one file per kind in the app's
 │                   data folder (Orrery's patterns in a file of their own)
 ├── ui/
 │   ├── canvas.rs   canvas with pan/zoom, selection, cable drag & drop, context menus
+│   ├── tracks.rs   the track view: headers (route, mute, solo, fader, meter), lanes of devices (compact
+│   │               or with their panel), dragging devices and tracks, drops from the palette
 │   ├── groups.rs   modules: frame (expanded) and card with the boundary ports (collapsed)
 │   ├── layout.rs   auto layout by signal flow (columns, aligned ports, corridors for cables)
 │   ├── palette.rs  palette of nodes, plugin nodes, plugins and library modules, with dragging onto the canvas
@@ -1895,6 +2036,8 @@ src/
 │   │               and grains; cutting and moving slices), the slice keys; pages SLICE (SOUND, STUTTER,
 │   │               CRUSH, GRAINS, each drawn), SEQUENCE (the modes, the lane, PROB bars, Euclidean rings),
 │   │               MIDI (the keyboard, LEARN)
+│   ├── sibyl.rs    the Sibyl panel: control bar and programmer, the three rows, the tweaks' boards, keys
+│   │               with wheels and arpeggiator, the effects and their chain
 │   ├── fjord.rs    the Fjord panel: the bank map of the 99 programs, channel keys and their lights, ALEA and
 │   │               its die; pages SOUND (the strike's outlines, NOISE, TONE, CLICK, MIXER, AMP and FILTER
 │   │               ENV) and SEQUENCER · MIDI (the lanes, SYSTEM); the node resizes with the page
@@ -1953,7 +2096,7 @@ modes, toggle) and a `Processor`, an entry in `ModuleKind` and, in `ui/modules.r
 A node that should ship on its own is a plugin instead (see [Writing nodes](#writing-nodes-sdk-plugins-and-ui-kit)):
 it needs no change to the app.
 The panel (ports, selector, knobs) is generated from the definition; Frakture, too large for the generic
-panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`), Prism (`ui/prism.rs`), Magma (`ui/magma.rs`), Tape (`ui/tape.rs`), Nullpunkt (`ui/nullpunkt.rs`), Aether (`ui/aether.rs`), Larsen (`ui/larsen.rs`), Vesper (`ui/vesper.rs`), the MIDI Looper (`ui/looper.rs`), Automa (`ui/automa.rs`), Colloid (`ui/colloid.rs`), Orrery (`ui/orrery.rs`), Fjord (`ui/fjord.rs`), Splitter (`ui/splitter.rs`), Iris (`ui/iris.rs`, sized by the user) and Pops 66
+panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`), Prism (`ui/prism.rs`), Magma (`ui/magma.rs`), Tape (`ui/tape.rs`), Nullpunkt (`ui/nullpunkt.rs`), Aether (`ui/aether.rs`), Larsen (`ui/larsen.rs`), Vesper (`ui/vesper.rs`), the MIDI Looper (`ui/looper.rs`), Automa (`ui/automa.rs`), Colloid (`ui/colloid.rs`), Orrery (`ui/orrery.rs`), Sibyl (`ui/sibyl.rs`), Fjord (`ui/fjord.rs`), Splitter (`ui/splitter.rs`), Iris (`ui/iris.rs`, sized by the user) and Pops 66
 (`ui/pops.rs`; its size, like Fjord's and Iris's, follows its settings through `modules::size_of`). Frakture's hexagon runs on the audio thread, block by block: the panel
 hands it the mouse through the module's display values, so paths keep time even when the window doesn't
 redraw.

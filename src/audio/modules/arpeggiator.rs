@@ -5,7 +5,10 @@
 
 use std::sync::Arc;
 
-use super::steps::{block_end, Held, MAX_STEPS, Step, StepClock, Voice, note_event, publish_notes, roll, steps_per_beat, viz};
+use super::steps::{
+    Held, MAX_STEPS, Step, StepClock, Voice, block_end, note_event, publish_notes, roll,
+    steps_per_beat, viz,
+};
 use super::{ModuleDef, ModuleParams, Rng};
 use crate::audio::engine::{Buf, Inputs, MidiBuf, ProcessCtx, Processor};
 use crate::audio::midi::MidiState;
@@ -195,7 +198,11 @@ impl Processor for Arpeggiator {
             return;
         }
         let per_beat = steps_per_beat(p.get(RATE));
-        let mut steps = [Step { frame: 0, beat: 0.0, index: 0 }; MAX_STEPS];
+        let mut steps = [Step {
+            frame: 0,
+            beat: 0.0,
+            index: 0,
+        }; MAX_STEPS];
         let count = self.clock.steps(ctx, n, per_beat, p.get(SWING), &mut steps);
         let mut notes = [0u8; PATTERN_CAP];
         let octaves = (p.get(OCTAVES).round() as usize).clamp(1, 4);
@@ -213,10 +220,17 @@ impl Processor for Arpeggiator {
             self.position += 1;
             if roll(&mut self.rng, p.get(CHANCE)) {
                 let length = p.get(GATE) as f64 / per_beat;
-                self.voice.play(&mut self.out, step, note, p.get(VELOCITY).round() as u8, length);
+                self.voice.play(
+                    &mut self.out,
+                    step,
+                    note,
+                    p.get(VELOCITY).round() as u8,
+                    length,
+                );
             }
         }
-        self.voice.release_before(&mut self.out, ctx, n, block_end(ctx, n));
+        self.voice
+            .release_before(&mut self.out, ctx, n, block_end(ctx, n));
         publish_notes(&p, self.voice.note(), self.chord.notes());
     }
 
@@ -243,7 +257,10 @@ mod tests {
         assert_eq!(run(&chord, UP_DOWN, 1), [60, 64, 67, 64]);
         assert_eq!(run(&chord, PLAYED, 1), [64, 60, 67]);
         assert_eq!(run(&chord, UP, 2), [60, 64, 67, 72, 76, 79]);
-        assert_eq!(run(&chord, UP_DOWN, 2), [60, 64, 67, 72, 76, 79, 76, 72, 67, 64]);
+        assert_eq!(
+            run(&chord, UP_DOWN, 2),
+            [60, 64, 67, 72, 76, 79, 76, 72, 67, 64]
+        );
         assert_eq!(run(&[60, 62], UP_DOWN, 1), [60, 62]);
         assert!(run(&[], UP, 3).is_empty());
     }

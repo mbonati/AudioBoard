@@ -2,6 +2,7 @@ pub mod au;
 pub mod device;
 pub mod dsp;
 pub mod engine;
+pub mod export;
 pub mod fastmath;
 pub mod input;
 pub mod midi;
@@ -12,7 +13,6 @@ pub mod plugin;
 pub mod record;
 pub mod sample;
 pub mod sync;
-pub mod export;
 
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
@@ -110,7 +110,10 @@ impl AudioHandle {
     /// own). Larger buffers give heavy patches and plugins more headroom,
     /// at the cost of latency. The engine and its nodes carry over.
     pub fn set_buffer_size(&mut self, frames: Option<u32>) -> Result<(), String> {
-        self.apply(AudioConfig { buffer_size: frames, ..self.config.clone() })
+        self.apply(AudioConfig {
+            buffer_size: frames,
+            ..self.config.clone()
+        })
     }
 
     /// Switches to another setup. If it can't run, the previous one comes
@@ -120,7 +123,12 @@ impl AudioHandle {
     pub fn apply(&mut self, config: AudioConfig) -> Result<(), String> {
         let previous = std::mem::replace(&mut self.config, config.clone());
         // Only the input changed: the output keeps playing.
-        if self.stream.is_some() && (AudioConfig { input: previous.input.clone(), ..config.clone() }) == previous {
+        if self.stream.is_some()
+            && (AudioConfig {
+                input: previous.input.clone(),
+                ..config.clone()
+            }) == previous
+        {
             if self.input_wanted {
                 self.open_input();
             }
@@ -161,15 +169,24 @@ impl AudioHandle {
         };
         let mut stream_config = supported.config();
         let mut warning = None;
-        if let Some(rate) = config.sample_rate.filter(|&r| r != stream_config.sample_rate) {
+        if let Some(rate) = config
+            .sample_rate
+            .filter(|&r| r != stream_config.sample_rate)
+        {
             let channels = stream_config.channels;
-            let ok = device
-                .supported_output_configs()
-                .is_ok_and(|mut ranges| ranges.any(|r| r.channels() == channels && (r.min_sample_rate()..=r.max_sample_rate()).contains(&rate)));
+            let ok = device.supported_output_configs().is_ok_and(|mut ranges| {
+                ranges.any(|r| {
+                    r.channels() == channels
+                        && (r.min_sample_rate()..=r.max_sample_rate()).contains(&rate)
+                })
+            });
             if ok {
                 stream_config.sample_rate = rate;
             } else {
-                warning = Some(format!("{} doesn't run at {rate} Hz", device::name_of(&device)));
+                warning = Some(format!(
+                    "{} doesn't run at {rate} Hz",
+                    device::name_of(&device)
+                ));
                 self.config.sample_rate = None;
             }
         }
@@ -189,9 +206,23 @@ impl AudioHandle {
         }
         let engine = self.engine.clone().ok_or("no engine")?;
         let channels = stream_config.channels;
-        let first = if channels > 2 { config.output_channel.min(channels - 2) } else { 0 };
-        let output = Output { device, config: stream_config, format, first: first as usize };
-        let stream = match open(&output, config.buffer_size, engine.clone(), self.shared.clone()) {
+        let first = if channels > 2 {
+            config.output_channel.min(channels - 2)
+        } else {
+            0
+        };
+        let output = Output {
+            device,
+            config: stream_config,
+            format,
+            first: first as usize,
+        };
+        let stream = match open(
+            &output,
+            config.buffer_size,
+            engine.clone(),
+            self.shared.clone(),
+        ) {
             Ok(stream) => stream,
             // Not accepted: the device's own size.
             Err(e) if config.buffer_size.is_some() => {
@@ -251,11 +282,19 @@ impl AudioHandle {
             return;
         }
         let host = device::host(self.config.host.as_deref());
-        let Some(device) = id.and_then(|id| device::find(&host, id)).or_else(|| host.default_input_device()) else {
+        let Some(device) = id
+            .and_then(|id| device::find(&host, id))
+            .or_else(|| host.default_input_device())
+        else {
             self.info.input_error = Some("no input device".into());
             return;
         };
-        match open_input(&device, self.info.sample_rate, self.config.buffer_size, self.shared.clone()) {
+        match open_input(
+            &device,
+            self.info.sample_rate,
+            self.config.buffer_size,
+            self.shared.clone(),
+        ) {
             Ok((stream, channels)) => {
                 self.input_stream = Some(stream);
                 self.info.input = Some(device::name_of(&device));
@@ -279,7 +318,12 @@ pub fn offline(shared: Arc<EngineShared>, sample_rate: u32) -> (AudioHandle, Eng
         tx,
         trash: None,
         shared: shared.clone(),
-        info: AudioInfo { device: "offline".into(), sample_rate, channels: 2, ..AudioInfo::none(None) },
+        info: AudioInfo {
+            device: "offline".into(),
+            sample_rate,
+            channels: 2,
+            ..AudioInfo::none(None)
+        },
         config: AudioConfig::default(),
         generation: 1,
         input_wanted: false,
@@ -315,7 +359,12 @@ pub fn start(shared: Arc<EngineShared>, config: AudioConfig) -> AudioHandle {
     handle
 }
 
-fn open(out: &Output, frames: Option<u32>, engine: Arc<Mutex<Engine>>, shared: Arc<EngineShared>) -> Result<cpal::Stream, String> {
+fn open(
+    out: &Output,
+    frames: Option<u32>,
+    engine: Arc<Mutex<Engine>>,
+    shared: Arc<EngineShared>,
+) -> Result<cpal::Stream, String> {
     let mut config = out.config;
     config.buffer_size = frames.map_or(BufferSize::Default, BufferSize::Fixed);
     let first = out.first;
@@ -354,7 +403,9 @@ where
             // Underruns are counted (the status bar shows them), not printed.
             move |err: cpal::Error| {
                 if err.kind() == cpal::ErrorKind::Xrun {
-                    shared.overloads.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    shared
+                        .overloads
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 } else {
                     eprintln!("audio stream error: {err}");
                 }
@@ -366,16 +417,31 @@ where
 
 /// Opens `device`'s input at the output's `rate`; returns the stream and
 /// its channels.
-fn open_input(device: &cpal::Device, rate: u32, frames: Option<u32>, shared: Arc<EngineShared>) -> Result<(cpal::Stream, u16), String> {
-    let channels = device.default_input_config().map_err(|e| e.to_string())?.channels();
+fn open_input(
+    device: &cpal::Device,
+    rate: u32,
+    frames: Option<u32>,
+    shared: Arc<EngineShared>,
+) -> Result<(cpal::Stream, u16), String> {
+    let channels = device
+        .default_input_config()
+        .map_err(|e| e.to_string())?
+        .channels();
     // Any sample format the device has at this rate, f32 if it can.
     let format = device
         .supported_input_configs()
         .map_err(|e| e.to_string())?
-        .filter(|r| r.channels() == channels && (r.min_sample_rate()..=r.max_sample_rate()).contains(&rate))
+        .filter(|r| {
+            r.channels() == channels && (r.min_sample_rate()..=r.max_sample_rate()).contains(&rate)
+        })
         .map(|r| r.sample_format())
         .max_by_key(|f| *f == SampleFormat::F32)
-        .ok_or_else(|| format!("{} can't run at {rate} Hz, the output's rate", device::name_of(device)))?;
+        .ok_or_else(|| {
+            format!(
+                "{} can't run at {rate} Hz, the output's rate",
+                device::name_of(device)
+            )
+        })?;
     let config = |frames: Option<u32>| StreamConfig {
         channels,
         sample_rate: rate,
@@ -390,13 +456,23 @@ fn open_input(device: &cpal::Device, rate: u32, frames: Option<u32>, shared: Arc
         other => Err(format!("unsupported sample format {other}")),
     };
     // The output's buffer size if the input takes it, else its own.
-    let stream = build(frames).or_else(|e| if frames.is_some() { build(None) } else { Err(e) })?;
+    let stream = build(frames).or_else(|e| {
+        if frames.is_some() {
+            build(None)
+        } else {
+            Err(e)
+        }
+    })?;
     shared.input.open(channels as usize);
     stream.play().map_err(|e| e.to_string())?;
     Ok((stream, channels))
 }
 
-fn build_input<T>(device: &cpal::Device, config: StreamConfig, shared: Arc<EngineShared>) -> Result<cpal::Stream, String>
+fn build_input<T>(
+    device: &cpal::Device,
+    config: StreamConfig,
+    shared: Arc<EngineShared>,
+) -> Result<cpal::Stream, String>
 where
     T: SizedSample,
     f32: FromSample<T>,
@@ -409,7 +485,10 @@ where
             move |data: &[T], _: &cpal::InputCallbackInfo| shared.input.push(data, channels),
             move |err: cpal::Error| {
                 if err.kind() == cpal::ErrorKind::Xrun {
-                    errors.input.dropouts.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    errors
+                        .input
+                        .dropouts
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 } else {
                     eprintln!("audio input error: {err}");
                 }

@@ -94,10 +94,22 @@ pub const TREE: usize = 2;
 pub const JULIA: usize = 3;
 
 pub const ENGINES: [(&str, &str); 4] = [
-    ("LIFE", "Game of Life read column by column: each row is a scale degree"),
-    ("CASCADE", "A one-dimensional automaton pouring down: each generation a row of degrees"),
-    ("TREE", "Nørgård's infinity series: a melody that holds itself at every scale"),
-    ("JULIA", "An orbit of z² + c round its fixed point: spirals, figures, escapes"),
+    (
+        "LIFE",
+        "Game of Life read column by column: each row is a scale degree",
+    ),
+    (
+        "CASCADE",
+        "A one-dimensional automaton pouring down: each generation a row of degrees",
+    ),
+    (
+        "TREE",
+        "Nørgård's infinity series: a melody that holds itself at every scale",
+    ),
+    (
+        "JULIA",
+        "An orbit of z² + c round its fixed point: spirals, figures, escapes",
+    ),
 ];
 
 /// What `ModuleParams::data` holds besides the knobs.
@@ -123,7 +135,8 @@ const DATA: [f32; data::LEN] = [
     4.0, 0.0, 4.0, 5.0, 3.0, 0.0, 0.0, 0.0, 0.0, // I–V–vi–IV
     // A glider low down, another higher up, an R-pentomino in the middle
     // and a blinker near the top.
-    0.0, 0.0, 14.0, 8.0, 4.0, 14336.0, 8192.0, 4096.0, 128.0, 192.0, 384.0, 0.0, 0.0, 14336.0, 0.0, 0.0,
+    0.0, 0.0, 14.0, 8.0, 4.0, 14336.0, 8192.0, 4096.0, 128.0, 192.0, 384.0, 0.0, 0.0, 14336.0, 0.0,
+    0.0,
 ];
 
 /// What the processor publishes for the panel (and what the panel hands it).
@@ -387,7 +400,8 @@ impl Automa {
             if let Some(s) = *voice
                 && s.end < beat
             {
-                self.out.push(frame_of(ctx, n, s.end), [0x80 | s.channel, s.note, 0]);
+                self.out
+                    .push(frame_of(ctx, n, s.end), [0x80 | s.channel, s.note, 0]);
                 *voice = None;
             }
         }
@@ -405,11 +419,28 @@ impl Automa {
         Self::end(&mut self.out, &mut self.pad, frame);
     }
 
-    fn event(&mut self, p: &ModuleParams, note: u8, velocity: u8, step: i64, length: f64, voice: usize) {
+    fn event(
+        &mut self,
+        p: &ModuleParams,
+        note: u8,
+        velocity: u8,
+        step: i64,
+        length: f64,
+        voice: usize,
+    ) {
         let at = viz::EVENTS + (self.events as usize % viz::EVENT_CAP) * viz::EVENT_LEN;
         self.events += 1;
         p.viz[at].set(-1.0);
-        for (k, v) in [note as f32, velocity as f32, step as f32, length as f32, voice as f32].into_iter().enumerate() {
+        for (k, v) in [
+            note as f32,
+            velocity as f32,
+            step as f32,
+            length as f32,
+            voice as f32,
+        ]
+        .into_iter()
+        .enumerate()
+        {
             p.viz[at + 1 + k].set(v);
         }
         p.viz[at].set(self.events as f32);
@@ -432,14 +463,16 @@ impl Automa {
             CASCADE => {
                 let generation = int(p, CASCADE_GEN, 1, 8);
                 if !self.fresh[1] && k.rem_euclid(generation) == 0 {
-                    self.cascade.step(int(p, CASCADE_RULE, 0, 7) as usize, &mut self.rng, mutate);
+                    self.cascade
+                        .step(int(p, CASCADE_RULE, 0, 7) as usize, &mut self.rng, mutate);
                 }
                 self.fresh[1] = false;
                 self.cascade.offer()
             }
             TREE => {
                 let offer = self.tree.offer(int(p, INTERVAL, 1, 4) as i32, span(p));
-                self.tree.advance(int(p, STRIDE, 1, 12) as u64, &mut self.rng, mutate);
+                self.tree
+                    .advance(int(p, STRIDE, 1, 12) as u64, &mut self.rng, mutate);
                 offer
             }
             _ => self.julia.step(span(p), &mut self.rng, mutate),
@@ -452,7 +485,15 @@ impl Automa {
     /// offered cells that sounded. The choices depend on step `kd`, so a
     /// frozen loop chooses again as it did.
     #[allow(clippy::too_many_arguments)]
-    fn choose(&self, p: &ModuleParams, offer: &Offer, h: &Harmony, chord: &Chord, strength: usize, kd: i64) -> ([i32; MAX_VOICES], usize, u16) {
+    fn choose(
+        &self,
+        p: &ModuleParams,
+        offer: &Offer,
+        h: &Harmony,
+        chord: &Chord,
+        strength: usize,
+        kd: i64,
+    ) -> ([i32; MAX_VOICES], usize, u16) {
         let range = (0, H as i32 - 1);
         let tension = p.get(TENSION).clamp(0.0, 1.0);
         let reach = 1.0 + p.get(LEAP).clamp(0.0, 1.0) * 11.0;
@@ -483,7 +524,8 @@ impl Automa {
         let mut cells = 1u16 << (offer.degrees[melody].clamp(0, 15));
 
         let voices = int(p, VOICES, 1, MAX_VOICES as i64) as usize;
-        let apart = |d: i32, chosen: &[i32]| chosen.iter().all(|&c| (pitch(c) - pitch(d)).abs() >= 3);
+        let apart =
+            |d: i32, chosen: &[i32]| chosen.iter().all(|&c| (pitch(c) - pitch(d)).abs() >= 3);
         // The other cells that offered, as chord tones…
         let start = (hash01(self.seed, kd as u64, 0x40C) * offer.len as f32) as usize;
         for i in (0..offer.len).map(|i| (start + i) % offer.len) {
@@ -515,12 +557,25 @@ impl Automa {
     /// The chord's tones held under the melody's range, each the highest of
     /// its pitch class below it: the voicing follows the chords by inversion.
     #[allow(clippy::too_many_arguments)]
-    fn play_pad(&mut self, p: &ModuleParams, step: &Step, chord: &Chord, base: i32, channel: u8, velocity: u8, length: f64) {
+    fn play_pad(
+        &mut self,
+        p: &ModuleParams,
+        step: &Step,
+        chord: &Chord,
+        base: i32,
+        channel: u8,
+        velocity: u8,
+        length: f64,
+    ) {
         Self::end(&mut self.out, &mut self.pad, step.frame);
         for (k, &pc) in chord.tones().iter().enumerate() {
             let note = (base - 1 - (base - 1 - pc as i32).rem_euclid(12)).clamp(0, 127) as u8;
             self.out.push(step.frame, [0x90 | channel, note, velocity]);
-            self.pad[k] = Some(Sounding { note, channel, end: f64::INFINITY });
+            self.pad[k] = Some(Sounding {
+                note,
+                channel,
+                end: f64::INFINITY,
+            });
             self.event(p, note, velocity, step.index, length, PAD_VOICE);
         }
     }
@@ -537,13 +592,23 @@ impl Automa {
         let channel = channel(p);
         let velocity = p.get(VELOCITY).clamp(1.0, 127.0);
 
-        let changed = self.chord.is_none_or(|(at, c)| at != (slot, cycle) || c != chord);
+        let changed = self
+            .chord
+            .is_none_or(|(at, c)| at != (slot, cycle) || c != chord);
         let pad = on(p, data::PAD);
         if changed || (pad && self.pad.iter().all(Option::is_none)) {
             self.chord = Some(((slot, cycle), chord));
             if pad {
                 let length = (prog.beats - grid.rem_euclid(prog.beats)) * per_beat;
-                self.play_pad(p, step, &chord, base, channel, (velocity * 0.7).round() as u8, length);
+                self.play_pad(
+                    p,
+                    step,
+                    &chord,
+                    base,
+                    channel,
+                    (velocity * 0.7).round() as u8,
+                    length,
+                );
             }
         }
 
@@ -567,7 +632,11 @@ impl Automa {
         let (offer, kd) = match self.frozen {
             Some((from, _)) => {
                 let kd = from - length + (k - from).rem_euclid(length);
-                let offer = if engine == LIFE { self.life.column(k.rem_euclid(W as i64) as usize) } else { self.ring[kd.rem_euclid(RING as i64) as usize] };
+                let offer = if engine == LIFE {
+                    self.life.column(k.rem_euclid(W as i64) as usize)
+                } else {
+                    self.ring[kd.rem_euclid(RING as i64) as usize]
+                };
                 (offer, kd)
             }
             None => {
@@ -585,7 +654,8 @@ impl Automa {
         let strength = harmony::strength(grid, prog.beats);
         let weight = WEIGHTS[strength];
         let density = p.get(DENSITY).clamp(0.0, 1.0);
-        let plays = !offer.is_empty() && hash01(self.seed, kd as u64, 0xD3) < density.powf(1.0 / (0.5 + weight));
+        let plays = !offer.is_empty()
+            && hash01(self.seed, kd as u64, 0xD3) < density.powf(1.0 / (0.5 + weight));
         let mut played = 0;
         if plays {
             let (chosen, count, cells) = self.choose(p, &offer, &h, &chord, strength, kd);
@@ -598,9 +668,15 @@ impl Automa {
             Self::end(&mut self.out, &mut self.melody, step.frame);
             for (voice, &d) in chosen[..count].iter().enumerate() {
                 let note = (base + h.semis(d)).clamp(0, 127) as u8;
-                let vel = (level * if voice == 0 { 1.0 } else { 0.8 }).round().clamp(1.0, 127.0) as u8;
+                let vel = (level * if voice == 0 { 1.0 } else { 0.8 })
+                    .round()
+                    .clamp(1.0, 127.0) as u8;
                 self.out.push(step.frame, [0x90 | channel, note, vel]);
-                self.melody[voice] = Some(Sounding { note, channel, end: step.beat + gate / per_beat });
+                self.melody[voice] = Some(Sounding {
+                    note,
+                    channel,
+                    end: step.beat + gate / per_beat,
+                });
                 self.event(p, note, vel, k, gate, voice);
             }
             self.last = Some(h.semis(chosen[0]));
@@ -684,7 +760,10 @@ impl Processor for Automa {
         // JULIA's c follows its knobs (and the beat), even when stopped.
         let c = julia_c(p.get(SHAPE), p.get(CHAOS), p.get(MORPH), ctx.beat);
         self.julia.set_c(c);
-        for (k, v) in [c.0, c.1, self.julia.fix.0, self.julia.fix.1].into_iter().enumerate() {
+        for (k, v) in [c.0, c.1, self.julia.fix.0, self.julia.fix.1]
+            .into_iter()
+            .enumerate()
+        {
             p.viz[viz::C + k].set(v);
         }
         p.viz[viz::BEAT].set(ctx.beat as f32);
@@ -697,7 +776,11 @@ impl Processor for Automa {
                 Self::end(&mut self.out, &mut self.pad, 0);
             }
             let per_beat = steps_per_beat(p.get(RATE));
-            let mut steps = [Step { frame: 0, beat: 0.0, index: 0 }; MAX_STEPS];
+            let mut steps = [Step {
+                frame: 0,
+                beat: 0.0,
+                index: 0,
+            }; MAX_STEPS];
             let count = self.clock.steps(ctx, n, per_beat, p.get(SWING), &mut steps);
             for step in &steps[..count] {
                 self.release_before(ctx, n, step.beat);

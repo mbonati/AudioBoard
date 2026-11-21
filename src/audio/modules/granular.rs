@@ -4,7 +4,9 @@
 
 use std::sync::Arc;
 
-use super::{ModuleDef, ModuleParams, Rng, approach, mix_gains, pan_gains, soft_limit, Quiet, silence};
+use super::{
+    ModuleDef, ModuleParams, Quiet, Rng, approach, mix_gains, pan_gains, silence, soft_limit,
+};
 use crate::audio::engine::{Buf, Inputs, ProcessCtx, Processor};
 use crate::audio::params::{ParamSpec, Unit};
 

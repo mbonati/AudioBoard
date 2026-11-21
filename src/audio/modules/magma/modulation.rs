@@ -3,13 +3,18 @@
 //! controller (or slider). Slots (see the parent module) connect them to
 //! any knob, other slots' levels included.
 
-use super::{Clock, MAX_STEPS, PARAM_COUNT, SYNC_LENGTHS, XY0, choice, data, ef, efp, eg, egp, on, xlfo, xlfo_data, xp};
+use super::{
+    Clock, MAX_STEPS, PARAM_COUNT, SYNC_LENGTHS, XY0, choice, data, ef, efp, eg, egp, on, xlfo,
+    xlfo_data, xp,
+};
 use crate::audio::modules::{ModuleParams, Rng};
 use crate::audio::params::gain_to_db;
 
 /// Source numbers in the slots: 0 none, then these.
-pub const SOURCE_NAMES: [&str; 13] =
-    ["—", "XLFO 1", "XLFO 2", "EG 1", "EG 2", "EF 1", "EF 2", "MIDI 1", "MIDI 2", "XY 1 X", "XY 1 Y", "XY 2 X", "XY 2 Y"];
+pub const SOURCE_NAMES: [&str; 13] = [
+    "—", "XLFO 1", "XLFO 2", "EG 1", "EG 2", "EF 1", "EF 2", "MIDI 1", "MIDI 2", "XY 1 X",
+    "XY 1 Y", "XY 2 X", "XY 2 Y",
+];
 pub const SOURCES: usize = 12;
 pub const SRC_XLFO: usize = 1;
 pub const SRC_EG: usize = 3;
@@ -25,7 +30,14 @@ pub const EG_TRIGGERS: [&str; 3] = ["INPUT", "SC", "MIDI"];
 pub const EG_RANGES: [&str; 2] = ["NORMAL", "NEUTRAL"];
 pub const EF_TRIGGERS: [&str; 2] = ["INPUT", "SC"];
 pub const EF_MODES: [&str; 2] = ["ENVELOPE", "TRANSIENT"];
-pub const MIDI_INPUTS: [&str; 6] = ["VELOCITY", "NOTE", "PITCH BEND", "MOD WHEEL", "AFTERTOUCH", "CONTROLLER"];
+pub const MIDI_INPUTS: [&str; 6] = [
+    "VELOCITY",
+    "NOTE",
+    "PITCH BEND",
+    "MOD WHEEL",
+    "AFTERTOUCH",
+    "CONTROLLER",
+];
 pub const MIDI_CURVES: [&str; 6] = ["LINEAR", "EXP", "LOG", "SQUARE", "SQRT", "SINE"];
 pub const XY_MODES: [&str; 2] = ["XY", "SLIDER"];
 
@@ -132,7 +144,12 @@ pub fn segment(u: f32, slope: f32) -> f32 {
 /// An XLFO step's settings: (value, random, curve, glide).
 pub fn step(p: &ModuleParams, x: usize, i: usize) -> (f32, bool, usize, f32) {
     let at = xlfo_data(x) + xlfo::STEP0 + i * 4;
-    (p.data[at].get(), p.data[at + 1].get() > 0.5, (p.data[at + 2].get().round().max(0.0) as usize).min(3), p.data[at + 3].get())
+    (
+        p.data[at].get(),
+        p.data[at + 1].get() > 0.5,
+        (p.data[at + 2].get().round().max(0.0) as usize).min(3),
+        p.data[at + 3].get(),
+    )
 }
 
 pub fn steps(p: &ModuleParams, x: usize) -> usize {
@@ -149,11 +166,26 @@ pub struct Xlfo {
 
 impl Xlfo {
     fn new() -> Self {
-        Self { phase: 0.0, randoms: [0.0; MAX_STEPS], step: usize::MAX, out: 0.0, shown_phase: 0.0 }
+        Self {
+            phase: 0.0,
+            randoms: [0.0; MAX_STEPS],
+            step: usize::MAX,
+            out: 0.0,
+            shown_phase: 0.0,
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn update(&mut self, x: usize, p: &ModuleParams, vals: &[f32; PARAM_COUNT], clock: &Clock, dt: f32, midi: &MidiIn, rng: &mut Rng) {
+    fn update(
+        &mut self,
+        x: usize,
+        p: &ModuleParams,
+        vals: &[f32; PARAM_COUNT],
+        clock: &Clock,
+        dt: f32,
+        midi: &MidiIn,
+        rng: &mut Rng,
+    ) {
         let d = xlfo_data(x);
         let n = steps(p, x);
         let sync = choice(p, d + xlfo::SYNC, SYNC_LENGTHS.len() + 1);
@@ -177,7 +209,11 @@ impl Xlfo {
         // BALANCE: how the cycle's time splits between its two halves.
         let split = (0.5 + 0.45 * vals[xp(x, xlfo::BALANCE)]) as f64;
         let ph = self.phase;
-        let warped = if ph < split { 0.5 * ph / split } else { 0.5 + 0.5 * (ph - split) / (1.0 - split) };
+        let warped = if ph < split {
+            0.5 * ph / split
+        } else {
+            0.5 + 0.5 * (ph - split) / (1.0 - split)
+        };
         let psi = (warped + vals[xp(x, xlfo::PHASE)] as f64).rem_euclid(1.0) as f32;
         self.shown_phase = psi;
         let pos = psi * n as f32;
@@ -234,11 +270,26 @@ pub struct Eg {
 
 impl Eg {
     fn new() -> Self {
-        Self { stage: IDLE, t: 0.0, level: 0.0, from: 0.0, gate: false, out: 0.0 }
+        Self {
+            stage: IDLE,
+            t: 0.0,
+            level: 0.0,
+            from: 0.0,
+            gate: false,
+            out: 0.0,
+        }
     }
 
     /// `level` is the trigger signal's level in dB (unused with MIDI).
-    fn update(&mut self, e: usize, p: &ModuleParams, vals: &[f32; PARAM_COUNT], level: f32, midi: &MidiIn, dt: f32) {
+    fn update(
+        &mut self,
+        e: usize,
+        p: &ModuleParams,
+        vals: &[f32; PARAM_COUNT],
+        level: f32,
+        midi: &MidiIn,
+        dt: f32,
+    ) {
         let v = |k: usize| vals[egp(e, k)];
         let d = data::EG + e * 2;
         let midi_trig = choice(p, d, 3) == 2;
@@ -305,7 +356,11 @@ impl Eg {
             }
         }
         let neutral = choice(p, d + 1, 2) == 1;
-        self.out = if neutral { self.level - sustain } else { self.level };
+        self.out = if neutral {
+            self.level - sustain
+        } else {
+            self.level
+        };
     }
 }
 
@@ -317,11 +372,22 @@ pub struct Ef {
 
 impl Ef {
     fn new() -> Self {
-        Self { fast: 0.0, slow: 0.0, out: 0.0 }
+        Self {
+            fast: 0.0,
+            slow: 0.0,
+            out: 0.0,
+        }
     }
 
     /// `peak`: the trigger signal's peak this chunk.
-    fn update(&mut self, f: usize, p: &ModuleParams, vals: &[f32; PARAM_COUNT], peak: f32, dt: f32) {
+    fn update(
+        &mut self,
+        f: usize,
+        p: &ModuleParams,
+        vals: &[f32; PARAM_COUNT],
+        peak: f32,
+        dt: f32,
+    ) {
         let (attack, release) = (vals[efp(f, ef::ATTACK)], vals[efp(f, ef::RELEASE)]);
         let follow = |env: &mut f32, a: f32, r: f32| {
             let tau = if peak > *env { a } else { r };
@@ -403,7 +469,11 @@ impl Sources {
             if !used[SRC_EF - 1 + f] {
                 continue;
             }
-            let peak = if choice(p, data::EF + f * 2, 2) == 1 { side } else { main };
+            let peak = if choice(p, data::EF + f * 2, 2) == 1 {
+                side
+            } else {
+                main
+            };
             fol.update(f, p, vals, peak, dt);
             self.out[SRC_EF - 1 + f] = fol.out;
         }

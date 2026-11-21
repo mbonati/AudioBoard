@@ -9,15 +9,51 @@ use crate::audio::params::NOTE_NAMES;
 /// ding, in semitones, low to high). Every note sits well with every other,
 /// so whatever the atoms strike, the line is a melody.
 pub const HANDPANS: [(&str, &str, &[u8]); 9] = [
-    ("KURD", "Kurd: the classic minor handpan (on D: D | A Bb C D E F G A C)", &[7, 8, 10, 12, 14, 15, 17, 19, 22]),
-    ("CELTIC", "Celtic minor: minor without the sixth (on D: D | A C D E F G A C)", &[7, 10, 12, 14, 15, 17, 19, 22]),
-    ("AMARA", "Amara: Celtic minor without the fourth, open and airy (on D: D | A C D E F A C D)", &[7, 10, 12, 14, 15, 19, 22, 24]),
-    ("INTEGRAL", "Integral: the first Hang's sound, minor with the sixth (on D: D | A Bb C D E F A)", &[7, 8, 10, 12, 14, 15, 19]),
-    ("HIJAZ", "Hijaz: Middle Eastern, with the raised seventh (on D: D | A Bb C# D E F G A)", &[7, 8, 11, 12, 14, 15, 17, 19]),
-    ("PYGMY", "Pygmy: a bright minor pentatonic (on D: D | E F A C D E F A)", &[2, 3, 7, 10, 12, 14, 15, 19]),
-    ("AKEBONO", "Akebono: Japanese pentatonic (on D: D | A Bb D E F A Bb)", &[7, 8, 12, 14, 15, 19, 20]),
-    ("SABYE", "Sabye: sunny major without the fourth (on D: D | A B C# D E F# A B)", &[7, 9, 11, 12, 14, 16, 19, 21]),
-    ("AEGEAN", "Aegean: dreamy major with the raised fourth (on D: D | A C# D F# G# A C# D)", &[7, 11, 12, 16, 18, 19, 23, 24]),
+    (
+        "KURD",
+        "Kurd: the classic minor handpan (on D: D | A Bb C D E F G A C)",
+        &[7, 8, 10, 12, 14, 15, 17, 19, 22],
+    ),
+    (
+        "CELTIC",
+        "Celtic minor: minor without the sixth (on D: D | A C D E F G A C)",
+        &[7, 10, 12, 14, 15, 17, 19, 22],
+    ),
+    (
+        "AMARA",
+        "Amara: Celtic minor without the fourth, open and airy (on D: D | A C D E F A C D)",
+        &[7, 10, 12, 14, 15, 19, 22, 24],
+    ),
+    (
+        "INTEGRAL",
+        "Integral: the first Hang's sound, minor with the sixth (on D: D | A Bb C D E F A)",
+        &[7, 8, 10, 12, 14, 15, 19],
+    ),
+    (
+        "HIJAZ",
+        "Hijaz: Middle Eastern, with the raised seventh (on D: D | A Bb C# D E F G A)",
+        &[7, 8, 11, 12, 14, 15, 17, 19],
+    ),
+    (
+        "PYGMY",
+        "Pygmy: a bright minor pentatonic (on D: D | E F A C D E F A)",
+        &[2, 3, 7, 10, 12, 14, 15, 19],
+    ),
+    (
+        "AKEBONO",
+        "Akebono: Japanese pentatonic (on D: D | A Bb D E F A Bb)",
+        &[7, 8, 12, 14, 15, 19, 20],
+    ),
+    (
+        "SABYE",
+        "Sabye: sunny major without the fourth (on D: D | A B C# D E F# A B)",
+        &[7, 9, 11, 12, 14, 16, 19, 21],
+    ),
+    (
+        "AEGEAN",
+        "Aegean: dreamy major with the raised fourth (on D: D | A C# D F# G# A C# D)",
+        &[7, 11, 12, 16, 18, 19, 23, 24],
+    ),
 ];
 
 /// The shapes on the selector: the handpans, then the chords.
@@ -45,7 +81,12 @@ pub const CHORDS: [(&str, &str, &[u8], &[u8]); 12] = [
     ("MAJ9", "Major ninth", &[0, 4, 7, 11, 2], &[6, 9]),
     ("MIN9", "Minor ninth", &[0, 3, 7, 10, 2], &[5, 9]),
     ("6/9", "Six-nine", &[0, 4, 7, 9, 2], &[6, 11]),
-    ("QUART", "Quartal: fourths stacked on the root", &[0, 5, 10, 3], &[8, 2]),
+    (
+        "QUART",
+        "Quartal: fourths stacked on the root",
+        &[0, 5, 10, 3],
+        &[8, 2],
+    ),
     ("PENTA", "Pentatonic cloud", &[0, 2, 4, 7, 9], &[11, 6]),
 ];
 
@@ -72,7 +113,9 @@ pub struct ChordSet {
 
 /// The pitch classes of `intervals` above `root`, as bits.
 pub fn mask_of(root: u8, intervals: &[u8]) -> u16 {
-    intervals.iter().fold(0, |m, &i| m | 1 << ((root as u16 + i as u16) % 12))
+    intervals
+        .iter()
+        .fold(0, |m, &i| m | 1 << ((root as u16 + i as u16) % 12))
 }
 
 impl ChordSet {
@@ -85,15 +128,29 @@ impl ChordSet {
         }
         let (_, _, tones, colours) = CHORDS[shape - FIRST_CHORD];
         let mask = mask_of(root, tones);
-        let colours = colours.iter().enumerate().filter(|&(k, _)| pick(k)).fold(0, |m, (_, &i)| m | 1 << ((root as u16 + i as u16) % 12));
-        Self { root: root % 12, mask, colours: colours & !mask, layout: None }
+        let colours = colours
+            .iter()
+            .enumerate()
+            .filter(|&(k, _)| pick(k))
+            .fold(0, |m, (_, &i)| m | 1 << ((root as u16 + i as u16) % 12));
+        Self {
+            root: root % 12,
+            mask,
+            colours: colours & !mask,
+            layout: None,
+        }
     }
 
     /// Handpan `layout` with its ding on `root`.
     pub fn handpan(root: u8, layout: usize) -> Self {
         let layout = layout.min(HANDPANS.len() - 1);
         let mask = mask_of(root, HANDPANS[layout].2) | 1 << (root % 12);
-        Self { root: root % 12, mask, colours: 0, layout: Some(layout as u8) }
+        Self {
+            root: root % 12,
+            mask,
+            colours: 0,
+            layout: Some(layout as u8),
+        }
     }
 
     /// Every pitch class that sounds.
@@ -127,10 +184,18 @@ impl ChordSet {
         if let Some(l) = self.layout {
             return format!("{root} {}", HANDPANS[l as usize % HANDPANS.len()].0);
         }
-        if let Some((label, ..)) = CHORDS.iter().find(|(_, _, tones, _)| mask_of(self.root, tones) == self.mask) {
+        if let Some((label, ..)) = CHORDS
+            .iter()
+            .find(|(_, _, tones, _)| mask_of(self.root, tones) == self.mask)
+        {
             return format!("{root} {label}");
         }
-        (0..12).map(|i| (self.root + i) % 12).filter(|&pc| self.mask >> pc & 1 == 1).map(|pc| NOTE_NAMES[pc as usize]).collect::<Vec<_>>().join(" ")
+        (0..12)
+            .map(|i| (self.root + i) % 12)
+            .filter(|&pc| self.mask >> pc & 1 == 1)
+            .map(|pc| NOTE_NAMES[pc as usize])
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 }
 
@@ -139,7 +204,13 @@ impl ChordSet {
 /// holds too few, it reaches higher. A handpan plays its own layout from its
 /// ding on `low` (`octaves` aside), and an octave up if it needs more notes.
 /// Returns how many it wrote (sorted, all different).
-pub fn voicing(set: &ChordSet, low: i32, octaves: i32, count: usize, out: &mut [u8; MAX_MOLECULES]) -> usize {
+pub fn voicing(
+    set: &ChordSet,
+    low: i32,
+    octaves: i32,
+    count: usize,
+    out: &mut [u8; MAX_MOLECULES],
+) -> usize {
     let count = count.min(MAX_MOLECULES);
     if count == 0 || set.all() == 0 {
         return 0;
@@ -165,17 +236,17 @@ pub fn voicing(set: &ChordSet, low: i32, octaves: i32, count: usize, out: &mut [
         len
     } else {
         loop {
-        let mut len = 0;
-        for pitch in low..=high.min(127) {
-            if set.contains(pitch as u8) {
-                candidates[len] = pitch as u8;
-                len += 1;
+            let mut len = 0;
+            for pitch in low..=high.min(127) {
+                if set.contains(pitch as u8) {
+                    candidates[len] = pitch as u8;
+                    len += 1;
+                }
             }
-        }
-        if len >= count || high >= 127 {
-            break len;
-        }
-        high += 12;
+            if len >= count || high >= 127 {
+                break len;
+            }
+            high += 12;
         }
     };
     if len == 0 {
@@ -190,13 +261,22 @@ pub fn voicing(set: &ChordSet, low: i32, octaves: i32, count: usize, out: &mut [
     let mut used = [0u8; 12];
     let mut start = 0;
     for (k, slot) in out.iter_mut().enumerate().take(count) {
-        let target = if count == 1 { lowest } else { lowest + span * k as f32 / (count - 1) as f32 };
+        let target = if count == 1 {
+            lowest
+        } else {
+            lowest + span * k as f32 / (count - 1) as f32
+        };
         let dist = |i: usize| (candidates[i] as f32 - target).abs();
         let score = |i: usize| used[candidates[i] as usize % 12] as f32 * 8.0 + dist(i);
         // Room is left above for the molecules still to place.
         let last = len - (count - k);
-        let nearest = (start..=last).min_by(|&a, &b| dist(a).total_cmp(&dist(b))).unwrap_or(start);
-        let pick = (start..=last).filter(|&i| dist(i) <= 4.5).min_by(|&a, &b| score(a).total_cmp(&score(b))).unwrap_or(nearest);
+        let nearest = (start..=last)
+            .min_by(|&a, &b| dist(a).total_cmp(&dist(b)))
+            .unwrap_or(start);
+        let pick = (start..=last)
+            .filter(|&i| dist(i) <= 4.5)
+            .min_by(|&a, &b| score(a).total_cmp(&score(b)))
+            .unwrap_or(nearest);
         *slot = candidates[pick];
         used[candidates[pick] as usize % 12] += 1;
         start = pick + 1;
@@ -240,7 +320,12 @@ mod tests {
         let coloured = ChordSet::new(0, FIRST_CHORD, |k| k == 0);
         assert!(coloured.contains(2));
         assert_eq!(coloured.role(2), COLOUR);
-        let odd = ChordSet { root: 0, mask: mask_of(0, &[0, 1, 6]), colours: 0, layout: None };
+        let odd = ChordSet {
+            root: 0,
+            mask: mask_of(0, &[0, 1, 6]),
+            colours: 0,
+            layout: None,
+        };
         assert_eq!(odd.name(), "C C# F#");
     }
 
@@ -257,7 +342,11 @@ mod tests {
         let n = voicing(&kurd, 50, 3, 5, &mut out);
         assert_eq!(out[0], 50);
         assert_eq!(n, 5);
-        assert!(out[..n].iter().all(|p| [50, 57, 58, 60, 62, 64, 65, 67, 69, 72].contains(p)));
+        assert!(
+            out[..n]
+                .iter()
+                .all(|p| [50, 57, 58, 60, 62, 64, 65, 67, 69, 72].contains(p))
+        );
         // More: the layout again an octave up.
         let n = voicing(&kurd, 50, 3, 14, &mut out);
         assert_eq!(n, 14);

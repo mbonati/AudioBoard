@@ -3,12 +3,13 @@ mod board;
 mod graph;
 mod presets;
 mod project;
+mod tracks;
 mod ui;
 
 #[cfg(test)]
-mod tests;
-#[cfg(test)]
 mod perf;
+#[cfg(test)]
+mod tests;
 
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {

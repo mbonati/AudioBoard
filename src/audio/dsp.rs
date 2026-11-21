@@ -191,7 +191,10 @@ impl Processor for Oscillator {
 pub fn balance(pan: f32) -> (f32, f32) {
     let pan = pan.clamp(-1.0, 1.0);
     let fade = |x: f32| (x * FRAC_PI_2).cos();
-    (if pan > 0.0 { fade(pan) } else { 1.0 }, if pan < 0.0 { fade(-pan) } else { 1.0 })
+    (
+        if pan > 0.0 { fade(pan) } else { 1.0 },
+        if pan < 0.0 { fade(-pan) } else { 1.0 },
+    )
 }
 
 /// Any number of channels into two stereo outputs: the main mix (after
@@ -246,14 +249,20 @@ impl Processor for Mixer {
             let muted = p.mute[ch].load(Ordering::Relaxed);
             let soloed = p.solo[ch].load(Ordering::Relaxed);
             let audible = !muted && (!any_solo || soloed);
-            let gain_t = if audible { fader_gain(p.fader[ch].get()) } else { 0.0 };
+            let gain_t = if audible {
+                fader_gain(p.fader[ch].get())
+            } else {
+                0.0
+            };
             let (pan_lt, pan_rt) = balance(p.pan[ch].get());
             let send_t = fader_gain(p.aux[ch].get());
             if self.idle[ch] {
                 self.idle[ch] = false;
-                (self.gain[ch], self.pan_l[ch], self.pan_r[ch], self.send[ch]) = (gain_t, pan_lt, pan_rt, send_t);
+                (self.gain[ch], self.pan_l[ch], self.pan_r[ch], self.send[ch]) =
+                    (gain_t, pan_lt, pan_rt, send_t);
             }
-            let (mut gain, mut pan_l, mut pan_r, mut send) = (self.gain[ch], self.pan_l[ch], self.pan_r[ch], self.send[ch]);
+            let (mut gain, mut pan_l, mut pan_r, mut send) =
+                (self.gain[ch], self.pan_l[ch], self.pan_r[ch], self.send[ch]);
             let mut peak = 0.0f32;
             if send_t == 0.0 && send < 1e-5 {
                 // No send: the main mix only.
@@ -282,11 +291,16 @@ impl Processor for Mixer {
                     aux[1][i] += r * send;
                 }
             }
-            (self.gain[ch], self.pan_l[ch], self.pan_r[ch], self.send[ch]) = (gain, pan_l, pan_r, send);
+            (self.gain[ch], self.pan_l[ch], self.pan_r[ch], self.send[ch]) =
+                (gain, pan_l, pan_r, send);
             p.ch_meter[ch].fetch_max(peak);
         }
 
-        let master_t = if p.master_mute.load(Ordering::Relaxed) { 0.0 } else { fader_gain(p.master.get()) };
+        let master_t = if p.master_mute.load(Ordering::Relaxed) {
+            0.0
+        } else {
+            fader_gain(p.master.get())
+        };
         let aux_t = fader_gain(p.aux_master.get());
         let mut out_peak = [0.0f32; 2];
         let mut aux_peak = [0.0f32; 2];

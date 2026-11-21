@@ -48,7 +48,9 @@ fn load(e: &mut Engine, seconds: f32) -> f64 {
 /// arrived, so that it's measured playing them.
 fn settle(g: &Graph, node: u32, e: &mut Engine) {
     use crate::audio::modules::vesper::{SAMPLED, sound, viz};
-    let Some(NodeKind::Module(m)) = g.node(node).map(|n| &n.kind) else { return };
+    let Some(NodeKind::Module(m)) = g.node(node).map(|n| &n.kind) else {
+        return;
+    };
     if m.params.kind != ModuleKind::Vesper {
         return;
     }
@@ -63,7 +65,11 @@ fn settle(g: &Graph, node: u32, e: &mut Engine) {
 }
 
 fn report(name: &str, share: f64) {
-    eprintln!("{name:<28} {:>7.3}% of real time  ({:>6.2} µs per 64-frame block)", share * 100.0, share * 64.0 / SR as f64 * 1e6);
+    eprintln!(
+        "{name:<28} {:>7.3}% of real time  ({:>6.2} µs per 64-frame block)",
+        share * 100.0,
+        share * 64.0 / SR as f64 * 1e6
+    );
 }
 
 #[test]
@@ -138,7 +144,11 @@ fn perf_snapshot() {
     for _ in 0..50 {
         std::hint::black_box(crate::project::snapshot(&g));
     }
-    eprintln!("snapshot, {} nodes: {:?}", g.nodes.len(), start.elapsed() / 50);
+    eprintln!(
+        "snapshot, {} nodes: {:?}",
+        g.nodes.len(),
+        start.elapsed() / 50
+    );
     let path = std::path::Path::new("/Library/Audio/Plug-Ins/VST3/Originals - Cinematic Pads.vst3");
     if path.exists() {
         g.add_plugin(path, pos2(0.0, 0.0), &a).unwrap();
@@ -146,7 +156,10 @@ fn perf_snapshot() {
         for _ in 0..10 {
             std::hint::black_box(crate::project::snapshot(&g));
         }
-        eprintln!("snapshot with an instrument plugin: {:?}", start.elapsed() / 10);
+        eprintln!(
+            "snapshot with an instrument plugin: {:?}",
+            start.elapsed() / 10
+        );
     }
 }
 
@@ -163,7 +176,10 @@ fn ui_frames(g: &mut Graph, a: &AudioHandle, zooming: bool) -> (Duration, Durati
     for f in 0..frames + 10 {
         let time = f as f64 / 60.0;
         let input = egui::RawInput {
-            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1500.0, 900.0))),
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1500.0, 900.0),
+            )),
             time: Some(time),
             ..Default::default()
         };
@@ -207,13 +223,17 @@ fn perf_ui() {
         let mut buf = vec![0.0f32; 1024];
         e.render(&mut buf, 2);
         let (run, tess, vertices) = ui_frames(&mut g, &a, zooming);
-        eprintln!("UI demo, {what:<8} build {run:>10.2?}  tessellate {tess:>10.2?}  {vertices:>6} vertices");
+        eprintln!(
+            "UI demo, {what:<8} build {run:>10.2?}  tessellate {tess:>10.2?}  {vertices:>6} vertices"
+        );
         for chains in [4, 16] {
             let (mut g, a, _e) = setup();
             big_patch(&mut g, &a, chains);
             let (run, tess, vertices) = ui_frames(&mut g, &a, zooming);
             let n = g.nodes.len();
-            eprintln!("UI {n:>3} nodes, {what:<8} build {run:>10.2?}  tessellate {tess:>10.2?}  {vertices:>6} vertices");
+            eprintln!(
+                "UI {n:>3} nodes, {what:<8} build {run:>10.2?}  tessellate {tess:>10.2?}  {vertices:>6} vertices"
+            );
         }
     }
 }
@@ -224,14 +244,20 @@ fn perf_ui() {
 #[ignore]
 fn perf_one_module() {
     let name = std::env::var("PERF_MODULE").unwrap_or_else(|_| "Drone".into());
-    let kind = ModuleKind::ALL.into_iter().find(|k| k.def().name == name).expect("module name");
+    let kind = ModuleKind::ALL
+        .into_iter()
+        .find(|k| k.def().name == name)
+        .expect("module name");
     let (mut g, a, mut e) = setup();
     let src = g.add_osc(pos2(0.0, 0.0), &a);
     let m = g.add_module(kind, pos2(0.0, 0.0), &a);
     let mix = g.add_mixer(pos2(0.0, 0.0), &a);
     g.connect(port(src, 0), port(m, 0), &a);
     g.connect(port(m, 0), port(mix, 0), &a);
-    let secs = std::env::var("PERF_SECS").ok().and_then(|s| s.parse().ok()).unwrap_or(20.0);
+    let secs = std::env::var("PERF_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(20.0);
     settle(&g, m, &mut e);
     report(kind.def().name, load(&mut e, secs));
 }
@@ -253,7 +279,10 @@ fn perf_fastmath() {
             }
         }
         std::hint::black_box(acc);
-        eprintln!("{name:<12} {:.2} ns", start.elapsed().as_secs_f64() * 1e9 / n as f64);
+        eprintln!(
+            "{name:<12} {:.2} ns",
+            start.elapsed().as_secs_f64() * 1e9 / n as f64
+        );
     };
     time("empty", &|x| x);
     time("sin_turns", &|x| fastmath::sin_turns(x));
@@ -277,7 +306,10 @@ fn perf_ui_vertices() {
     let mut shapes = Vec::new();
     for f in 0..3 {
         let input = egui::RawInput {
-            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1500.0, 900.0))),
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1500.0, 900.0),
+            )),
             time: Some(f as f64 / 60.0),
             ..Default::default()
         };
@@ -301,8 +333,17 @@ fn perf_ui_vertices() {
     }
     let mut totals: std::collections::BTreeMap<&str, (usize, usize)> = Default::default();
     let mut flat = Vec::new();
-    for ClippedShape { clip_rect, shape, transform_after_tessellation } in shapes {
-        let wrap = |s| ClippedShape { clip_rect, shape: s, transform_after_tessellation };
+    for ClippedShape {
+        clip_rect,
+        shape,
+        transform_after_tessellation,
+    } in shapes
+    {
+        let wrap = |s| ClippedShape {
+            clip_rect,
+            shape: s,
+            transform_after_tessellation,
+        };
         match shape {
             Shape::Vec(v) => flat.extend(v.into_iter().map(wrap)),
             s => flat.push(wrap(s)),
@@ -346,7 +387,12 @@ fn perf_layout() {
 #[ignore]
 fn perf_plugins_block_size() {
     let dir = std::path::Path::new("/Library/Audio/Plug-Ins/VST3");
-    for name in ["Vital", "ValhallaSupermassive", "ValhallaFreqEcho", "Originals - Cinematic Pads"] {
+    for name in [
+        "Vital",
+        "ValhallaSupermassive",
+        "ValhallaFreqEcho",
+        "Originals - Cinematic Pads",
+    ] {
         let path = dir.join(format!("{name}.vst3"));
         if !path.exists() {
             continue;
@@ -359,14 +405,19 @@ fn perf_plugins_block_size() {
                 .build()
                 .unwrap();
             let mut l = crate::audio::plugin::load(&mut host, &path).unwrap();
-            let mut b = vst3_host::AudioBuffers::new(l.meta.inputs, l.meta.outputs, block, 48_000.0);
+            let mut b =
+                vst3_host::AudioBuffers::new(l.meta.inputs, l.meta.outputs, block, 48_000.0);
             for ch in b.inputs.iter_mut() {
                 for (i, s) in ch.iter_mut().enumerate() {
                     *s = ((i as f32) * 0.05).sin() * 0.3;
                 }
             }
             let chan = vst3_host::MidiChannel::from_index(0).unwrap();
-            let _ = l.plugin.send_midi_event(vst3_host::MidiEvent::NoteOn { channel: chan, note: 60, velocity: 100 });
+            let _ = l.plugin.send_midi_event(vst3_host::MidiEvent::NoteOn {
+                channel: chan,
+                note: 60,
+                velocity: 100,
+            });
             let blocks = 48_000 * 4 / block;
             for _ in 0..blocks / 4 {
                 let _ = l.plugin.process_audio(&mut b);
@@ -376,7 +427,10 @@ fn perf_plugins_block_size() {
                 let _ = l.plugin.process_audio(&mut b);
             }
             let share = start.elapsed().as_secs_f64() / 4.0;
-            eprintln!("{name:<28} block {block:>4}: {:>6.2}% of real time", share * 100.0);
+            eprintln!(
+                "{name:<28} block {block:>4}: {:>6.2}% of real time",
+                share * 100.0
+            );
         }
     }
 }
@@ -391,7 +445,9 @@ fn perf_stopped_patch() {
     let mut g = Graph::default();
     big_patch(&mut g, &a, 16);
     report("84 nodes, playing", load(&mut e, 2.0));
-    shared.running.store(false, std::sync::atomic::Ordering::Relaxed);
+    shared
+        .running
+        .store(false, std::sync::atomic::Ordering::Relaxed);
     let mut buf = vec![0.0f32; 512 * 2];
     for _ in 0..(SR as usize * 20 / 512) {
         e.render(&mut buf, 2);
@@ -414,7 +470,10 @@ fn perf_plugin_calls() {
             .build()
             .unwrap();
         let mut l = crate::audio::plugin::load(&mut host, &path).unwrap();
-        eprintln!("{name}: inputs {} outputs {} midi {}", l.meta.inputs, l.meta.outputs, l.meta.midi);
+        eprintln!(
+            "{name}: inputs {} outputs {} midi {}",
+            l.meta.inputs, l.meta.outputs, l.meta.midi
+        );
         let mut b = vst3_host::AudioBuffers::new(l.meta.inputs, l.meta.outputs, block, 48_000.0);
         let period = block as f64 / 48_000.0;
         let chan = vst3_host::MidiChannel::from_index(9).unwrap();
@@ -424,7 +483,11 @@ fn perf_plugin_calls() {
             for k in 0..calls {
                 if phase == "notes" && k % (48_000 / 8 / block).max(1) == 0 {
                     for note in [36u8, 38, 42] {
-                        let _ = l.plugin.send_midi_event(vst3_host::MidiEvent::NoteOn { channel: chan, note, velocity: 110 });
+                        let _ = l.plugin.send_midi_event(vst3_host::MidiEvent::NoteOn {
+                            channel: chan,
+                            note,
+                            velocity: 110,
+                        });
                     }
                 }
                 let t = Instant::now();
@@ -436,7 +499,11 @@ fn perf_plugin_calls() {
                     std::thread::sleep(Duration::from_secs_f64(left));
                 }
             }
-            let peak = b.outputs.iter().flatten().fold(0.0f32, |m, s| m.max(s.abs()));
+            let peak = b
+                .outputs
+                .iter()
+                .flatten()
+                .fold(0.0f32, |m, s| m.max(s.abs()));
             times.sort_by(f64::total_cmp);
             let mean = times.iter().sum::<f64>() / times.len() as f64;
             let p99 = times[times.len() * 99 / 100];
@@ -501,7 +568,14 @@ fn perf_magma_busy() {
             p.data[data::ROUTING].set(3.0);
             p.data[data::HQ].set(if hq { 1.0 } else { 0.0 });
         }
-        report(if hq { "Magma, busy, High Quality" } else { "Magma, busy" }, load(&mut e, 4.0));
+        report(
+            if hq {
+                "Magma, busy, High Quality"
+            } else {
+                "Magma, busy"
+            },
+            load(&mut e, 4.0),
+        );
     }
 }
 
@@ -520,7 +594,12 @@ fn perf_pops_busy() {
         g.connect(port(m, 0), port(mix, 0), &a);
         if let NodeKind::Module(node) = &g.node(m).unwrap().kind {
             let p = &node.params;
-            let all = Rhythm { name: "ALL", per_beat: 4, len: 16, rows: [(1u32 << MAX_LEN.min(16)) - 1; COUNT] };
+            let all = Rhythm {
+                name: "ALL",
+                per_beat: 4,
+                len: 16,
+                rows: [(1u32 << MAX_LEN.min(16)) - 1; COUNT],
+            };
             pops::set_user(p, 0, &all);
             p.data[data::SOURCE].set(1.0);
             p.data[data::PATTERN].set(0.0);
@@ -535,7 +614,14 @@ fn perf_pops_busy() {
                 }
             }
         }
-        report(if shaped { "Pops 66, busy, reshaped" } else { "Pops 66, busy" }, load(&mut e, 4.0));
+        report(
+            if shaped {
+                "Pops 66, busy, reshaped"
+            } else {
+                "Pops 66, busy"
+            },
+            load(&mut e, 4.0),
+        );
     }
 }
 
@@ -548,7 +634,14 @@ fn perf_console_24() {
     for stage in 0..3 {
         let (mut g, a, mut e) = setup();
         let c = g.add_console(pos2(0.0, 0.0), &a);
-        g.set_console(c, Console { channels: 24, horizontal: true }, &a);
+        g.set_console(
+            c,
+            Console {
+                channels: 24,
+                horizontal: true,
+            },
+            &a,
+        );
         for ch in 0..24 {
             let o = g.add_osc(pos2(0.0, 0.0), &a);
             if stage > 0 {
@@ -562,7 +655,11 @@ fn perf_console_24() {
                 m.params.aux[ch].set(0.5);
             }
         }
-        let name = ["24 oscillators, unpatched", "24 oscillators into Console", "  … every channel on AUX"][stage];
+        let name = [
+            "24 oscillators, unpatched",
+            "24 oscillators into Console",
+            "  … every channel on AUX",
+        ][stage];
         report(name, load(&mut e, 4.0));
     }
 }
@@ -578,21 +675,31 @@ fn perf_console_24() {
 #[ignore]
 fn perf_project() {
     use crate::audio::engine::profile;
-    let path = std::env::var("PERF_PROJECT").map(std::path::PathBuf::from).unwrap_or_else(|_| {
-        std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default()).join("Documents/AudioBoard/Fjord.audioboard")
-    });
+    let path = std::env::var("PERF_PROJECT")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| {
+            std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default())
+                .join("Documents/AudioBoard/Fjord.audioboard")
+        });
     let Ok(project) = crate::project::load_project(&path) else {
         eprintln!("no project at {}", path.display());
         return;
     };
     let shared = Arc::new(EngineShared::new());
-    shared.running.store(true, std::sync::atomic::Ordering::Relaxed);
+    shared
+        .running
+        .store(true, std::sync::atomic::Ordering::Relaxed);
     let (a, mut e) = audio::offline(shared, SR);
     let mut g = Graph::default();
     crate::project::restore(&mut g, &project, &a);
     shared_tempo(&a, g.tempo);
     let heard = g.heard();
-    eprintln!("{}: {} nodes, {} heard", path.display(), g.nodes.len(), heard.len());
+    eprintln!(
+        "{}: {} nodes, {} heard",
+        path.display(),
+        g.nodes.len(),
+        heard.len()
+    );
     let mut buf = vec![0.0f32; 512 * 2];
     // Settle: plugins start, delay lines and reverbs fill.
     for _ in 0..(SR as usize * 4 / 512) {
@@ -633,7 +740,11 @@ fn perf_project() {
             let mean = times.iter().sum::<f64>() / times.len() as f64;
             eprintln!(
                 "round {round} {:<16} offline {:>5.1}%   real time: mean {:>5.1}% p99 {:>5.1}% worst {:>5.1}% of the buffer",
-                if keep_all { "every node" } else { "unheard resting" },
+                if keep_all {
+                    "every node"
+                } else {
+                    "unheard resting"
+                },
                 offline * 100.0,
                 mean / period * 100.0,
                 times[times.len() * 99 / 100] / period * 100.0,
@@ -666,7 +777,11 @@ fn perf_project() {
             kind,
             s / total * 100.0,
             rest.get(&id).copied().unwrap_or(0.0) / total * 100.0,
-            if heard.contains(&id) { "" } else { "  (not heard)" }
+            if heard.contains(&id) {
+                ""
+            } else {
+                "  (not heard)"
+            }
         );
     }
 }
@@ -675,24 +790,31 @@ fn shared_tempo(a: &AudioHandle, tempo: f32) {
     a.shared.tempo.set(tempo);
 }
 
-
 /// Renders a saved project offline (`PERF_PROJECT`, as `perf_project`) for
 /// `PERF_SECONDS` (default 30) into `PERF_RENDER_OUT` as raw interleaved
 /// stereo f32: to check that an optimization leaves what is heard as it was.
 #[test]
 #[ignore]
 fn perf_project_render() {
-    let path = std::env::var("PERF_PROJECT").map(std::path::PathBuf::from).unwrap_or_else(|_| {
-        std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default()).join("Documents/AudioBoard/Fjord.audioboard")
-    });
+    let path = std::env::var("PERF_PROJECT")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| {
+            std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default())
+                .join("Documents/AudioBoard/Fjord.audioboard")
+        });
     let Ok(out) = std::env::var("PERF_RENDER_OUT") else {
         eprintln!("set PERF_RENDER_OUT");
         return;
     };
-    let seconds: usize = std::env::var("PERF_SECONDS").ok().and_then(|s| s.parse().ok()).unwrap_or(30);
+    let seconds: usize = std::env::var("PERF_SECONDS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(30);
     let project = crate::project::load_project(&path).unwrap();
     let shared = Arc::new(EngineShared::new());
-    shared.running.store(true, std::sync::atomic::Ordering::Relaxed);
+    shared
+        .running
+        .store(true, std::sync::atomic::Ordering::Relaxed);
     let (a, mut e) = audio::offline(shared, SR);
     let mut g = Graph::default();
     crate::project::restore(&mut g, &project, &a);
@@ -707,4 +829,141 @@ fn perf_project_render() {
     }
     std::fs::write(&out, &bytes).unwrap();
     eprintln!("wrote {} s to {out}", seconds);
+}
+
+/// Sibyl's cost per voice and per setting: sixteen held notes for a few
+/// seconds, measured on the processor alone (best of five rounds).
+#[test]
+#[ignore]
+fn perf_sibyl() {
+    use crate::audio::engine::{Inputs, MAX_INPUTS, MidiBuf, ProcessCtx, Processor};
+    use crate::audio::modules::ModuleParams;
+    use crate::audio::modules::sibyl::{self as sb, *};
+    // As the engine runs nodes: denormals flushed to zero.
+    #[cfg(target_arch = "x86_64")]
+    #[allow(deprecated)]
+    unsafe {
+        use std::arch::x86_64::{_mm_getcsr, _mm_setcsr};
+        _mm_setcsr(_mm_getcsr() | 0x8040);
+    }
+    let only = std::env::var("PERF_ONLY").ok();
+    let run = |name: &str, setup: &dyn Fn(&ModuleParams), notes: usize| {
+        if only.as_ref().is_some_and(|o| !name.contains(o.as_str())) {
+            return;
+        }
+        let rounds = if only.is_some() { 40 } else { 5 };
+        #[cfg(target_arch = "x86_64")]
+        #[allow(deprecated)]
+        if only.is_some() {
+            eprintln!("MXCSR {:#x}", unsafe { std::arch::x86_64::_mm_getcsr() });
+        }
+        let p = Arc::new(ModuleParams::new(ModuleKind::Sibyl));
+        setup(&p);
+        let mut proc = Sibyl::new(
+            p.clone(),
+            Arc::new(crate::audio::midi::MidiState::new()),
+            SR as f32,
+        );
+        let ctx = ProcessCtx {
+            sample_rate: SR as f32,
+            smooth: 0.01,
+            beat: 0.0,
+            beats_per_sample: 2.0 / SR as f64,
+            playing: false,
+            restart: false,
+        };
+        let mut inputs = Box::new(Inputs {
+            bufs: [[[0.0; 64]; 2]; MAX_INPUTS],
+            connected: [false; MAX_INPUTS],
+            midi: MidiBuf::default(),
+            midi_connected: true,
+        });
+        let mut out = vec![[[0.0f32; 64]; 2]; 1];
+        for i in 0..notes {
+            inputs.midi.push(0, [0x90, 36 + (i as u8 * 5) % 48, 100]);
+        }
+        proc.process(&ctx, &inputs, &mut out, 64);
+        inputs.midi.clear();
+        let blocks = (SR as usize * 4) / 64;
+        for _ in 0..200 {
+            proc.process(&ctx, &inputs, &mut out, 64);
+        }
+        let best = (0..rounds)
+            .map(|_| {
+                let start = Instant::now();
+                for _ in 0..blocks {
+                    proc.process(&ctx, &inputs, &mut out, 64);
+                }
+                start.elapsed().as_secs_f64() / 4.0
+            })
+            .fold(f64::INFINITY, f64::min);
+        report(name, best);
+    };
+    let sustain = |p: &ModuleParams| {
+        p.set(A_SUSTAIN, 1.0);
+        p.set(A_RELEASE, 1.0);
+    };
+    run("Sibyl idle", &|p| sustain(p), 0);
+    run("Sibyl 1 voice", &|p| sustain(p), 1);
+    run("Sibyl 8 voices", &|p| sustain(p), 8);
+    run("Sibyl 16 voices", &|p| sustain(p), 16);
+    run(
+        "Sibyl 16 v, sync + FM",
+        &|p| {
+            sustain(p);
+            p.set(A_SYNC, 1.0);
+            p.set(A_PULSE, 1.0);
+            p.set(B_TRI, 1.0);
+            p.set(B_PULSE, 1.0);
+            p.set(PM_OSCB, 0.5);
+            p.set(PM_FREQ_A, 1.0);
+            p.set(PM_FILTER, 1.0);
+            p.set(MIX_NOISE, 0.3);
+        },
+        16,
+    );
+    run(
+        "Sibyl 16 v, distortion",
+        &|p| {
+            sustain(p);
+            p.set(DIST_ON, 1.0);
+        },
+        16,
+    );
+    run(
+        "Sibyl 16 v, matrix ×4",
+        &|p| {
+            sustain(p);
+            for k in 0..4 {
+                p.set(sp(k, slot::SOURCE), (5 + k) as f32);
+                p.set(sp(k, slot::DEST), (18 + k * 3) as f32);
+                p.set(sp(k, slot::DEPTH), 0.2);
+                p.set(sp(k, slot::SLEW), 2.0);
+            }
+        },
+        16,
+    );
+    run(
+        "Sibyl 16 v, all effects",
+        &|p| {
+            sustain(p);
+            for k in [TAPE_ON, ECHO_ON, RESEQ_ON, PLATE_ON, COND_ON] {
+                p.set(k, 1.0);
+            }
+        },
+        16,
+    );
+    run(
+        "Sibyl 16 v, HQ",
+        &|p| {
+            sustain(p);
+            p.set(HQ, 1.0);
+        },
+        16,
+    );
+    run(
+        "Sibyl factory 'Warm Analog Pad' ×16",
+        &|p| sb::load_program(p, 8),
+        16,
+    );
 }

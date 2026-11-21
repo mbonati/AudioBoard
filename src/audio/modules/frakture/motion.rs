@@ -15,9 +15,9 @@
 //! Hexagon space: x and y in −1…1 from the centre, y down.
 
 use super::{
-    Clock, CUR_HOLD, CUR_RANGE, CUR_RELEASE, CUR_STRENGTH, DIVS, HOLD_FOREVER, MAX_POINTS, MAX_REC, MULTIPLIERS, REC_HZ,
-    AR_ATTACK, AR_GAIN, AR_RELEASE, AR_THRESHOLD, TIME_DIVS, TIME_S, TL_MULT, TL_OFFSET, TL_TIME, choice, data, log_range,
-    on, pick, viz,
+    AR_ATTACK, AR_GAIN, AR_RELEASE, AR_THRESHOLD, CUR_HOLD, CUR_RANGE, CUR_RELEASE, CUR_STRENGTH,
+    Clock, DIVS, HOLD_FOREVER, MAX_POINTS, MAX_REC, MULTIPLIERS, REC_HZ, TIME_DIVS, TIME_S,
+    TL_MULT, TL_OFFSET, TL_TIME, choice, data, log_range, on, pick, viz,
 };
 use crate::audio::modules::ModuleParams;
 use crate::audio::params::gain_to_db;
@@ -31,17 +31,32 @@ pub const SELECT: usize = 0;
 pub const ATTRACT: usize = 1;
 pub const REPEL: usize = 2;
 pub const MAGNET_MODES: [(&str, &str); 3] = [
-    ("SELECT", "Select: drag the nodes to set where the sliders rest"),
-    ("ATTRACT", "Attract: the magnet pulls the nodes towards the cursor"),
-    ("REPEL", "Repel: the magnet pushes the nodes away from the cursor"),
+    (
+        "SELECT",
+        "Select: drag the nodes to set where the sliders rest",
+    ),
+    (
+        "ATTRACT",
+        "Attract: the magnet pulls the nodes towards the cursor",
+    ),
+    (
+        "REPEL",
+        "Repel: the magnet pushes the nodes away from the cursor",
+    ),
 ];
 pub const CONSTANT: usize = 0;
 pub const CLICK_ON: usize = 1;
 pub const CLICK_OFF: usize = 2;
 pub const ACTIVATIONS: [(&str, &str); 3] = [
-    ("CONSTANT", "The magnet works whenever the cursor is over the hexagon"),
+    (
+        "CONSTANT",
+        "The magnet works whenever the cursor is over the hexagon",
+    ),
     ("CLICK ON", "The magnet works while the mouse is clicked"),
-    ("CLICK OFF", "The magnet works while the mouse is not clicked"),
+    (
+        "CLICK OFF",
+        "The magnet works while the mouse is not clicked",
+    ),
 ];
 
 /// Path kinds, and timeline settings.
@@ -162,9 +177,15 @@ pub fn rec_span(p: &ModuleParams) -> (f32, f32) {
 /// curve whose control point sits off the middle by `a.bend`.
 pub fn segment(a: PathPoint, b: PathPoint, t: f32) -> (f32, f32) {
     let (dx, dy) = (b.x - a.x, b.y - a.y);
-    let (cx, cy) = ((a.x + b.x) * 0.5 - dy * a.bend, (a.y + b.y) * 0.5 + dx * a.bend);
+    let (cx, cy) = (
+        (a.x + b.x) * 0.5 - dy * a.bend,
+        (a.y + b.y) * 0.5 + dx * a.bend,
+    );
     let u = 1.0 - t;
-    (u * u * a.x + 2.0 * u * t * cx + t * t * b.x, u * u * a.y + 2.0 * u * t * cy + t * t * b.y)
+    (
+        u * u * a.x + 2.0 * u * t * cx + t * t * b.x,
+        u * u * a.y + 2.0 * u * t * cy + t * t * b.y,
+    )
 }
 
 fn segment_length(a: PathPoint, b: PathPoint) -> f32 {
@@ -217,11 +238,23 @@ impl PathCache {
         }
         self.lengths[segments] = total;
         let d = u * total;
-        let s = (0..segments).rev().find(|&s| self.lengths[s] <= d).unwrap_or(0);
+        let s = (0..segments)
+            .rev()
+            .find(|&s| self.lengths[s] <= d)
+            .unwrap_or(0);
         let span = (self.lengths[s + 1] - self.lengths[s]).max(1e-6);
         let a = self.points[s];
-        let (x, y) = segment(a, self.points[(s + 1) % n], ((d - self.lengths[s]) / span).clamp(0.0, 1.0));
-        Some(PathPoint { x, y, bend: 0.0, clicked: a.clicked })
+        let (x, y) = segment(
+            a,
+            self.points[(s + 1) % n],
+            ((d - self.lengths[s]) / span).clamp(0.0, 1.0),
+        );
+        Some(PathPoint {
+            x,
+            y,
+            bend: 0.0,
+            clicked: a.clicked,
+        })
     }
 
     fn recorded_at(&mut self, p: &ModuleParams, u: f32) -> Option<PathPoint> {
@@ -233,7 +266,10 @@ impl PathCache {
             a + (b - a) * u
         } else {
             // Even speed: walk the samples by distance.
-            let (first, last) = (a.floor() as usize, (b.ceil() as usize).max(a.floor() as usize + 1));
+            let (first, last) = (
+                a.floor() as usize,
+                (b.ceil() as usize).max(a.floor() as usize + 1),
+            );
             let mut total = 0.0;
             let mut prev = rec_point(p, first);
             self.lengths[0] = 0.0;
@@ -269,7 +305,10 @@ impl PathCache {
 
 /// One pass of the path, in seconds.
 pub fn duration(p: &ModuleParams, seconds_per_beat: f64) -> f64 {
-    if choice(p, data::DURATION, 2) == FREE && choice(p, data::PATH_KIND, 2) == RECORDED && rec_count(p) >= 2 {
+    if choice(p, data::DURATION, 2) == FREE
+        && choice(p, data::PATH_KIND, 2) == RECORDED
+        && rec_count(p) >= 2
+    {
         let (a, b) = rec_span(p);
         return ((b - a) / REC_HZ).max(0.05) as f64;
     }
@@ -396,7 +435,11 @@ impl Motion {
         let threshold = gain_to_db(p.get(AR_THRESHOLD)).min(-1.0);
         let db = gain_to_db(level * p.get(AR_GAIN));
         let target = ((db - threshold) / -threshold).clamp(0.0, 1.0);
-        let tau = if target > self.env { p.get(AR_ATTACK) } else { p.get(AR_RELEASE) };
+        let tau = if target > self.env {
+            p.get(AR_ATTACK)
+        } else {
+            p.get(AR_RELEASE)
+        };
         self.env += (target - self.env) * (1.0 - (-dt / tau.max(1e-4)).exp());
     }
 
@@ -444,7 +487,11 @@ impl Motion {
         let direction = choice(p, data::DIRECTION, 3);
         let lap = if direction == PENDULUM { 2.0 } else { 1.0 };
         let done = !on(p, data::LOOP) && passes >= lap;
-        let phase = if done { lap - 1e-6 } else { passes.rem_euclid(lap) } as f32;
+        let phase = if done {
+            lap - 1e-6
+        } else {
+            passes.rem_euclid(lap)
+        } as f32;
         let u = match direction {
             BACKWARD => 1.0 - phase,
             PENDULUM if phase > 1.0 => 2.0 - phase,
@@ -452,7 +499,11 @@ impl Motion {
         };
         p.viz[viz::PATH_POS].set(u);
         p.viz[viz::PATH_DONE].set(if done { 1.0 } else { 0.0 });
-        self.cache.at(p, u).map(|c| Cursor { x: c.x, y: c.y, clicked: c.clicked })
+        self.cache.at(p, u).map(|c| Cursor {
+            x: c.x,
+            y: c.y,
+            clicked: c.clicked,
+        })
     }
 }
 
@@ -465,7 +516,14 @@ mod tests {
     const DT: f32 = 64.0 / 48_000.0;
 
     fn clock() -> Clock {
-        Clock { beat0: 0.0, bps: 2.0 / 48_000.0, samples_per_beat: 24_000.0, seconds_per_beat: 0.5, playing: false, started: false }
+        Clock {
+            beat0: 0.0,
+            bps: 2.0 / 48_000.0,
+            samples_per_beat: 24_000.0,
+            seconds_per_beat: 0.5,
+            playing: false,
+            started: false,
+        }
     }
 
     /// Runs `seconds` of blocks, moving the mouse to `at` (None: away).
@@ -496,7 +554,11 @@ mod tests {
         run(&mut m, &p, None, 0.4);
         assert!((m.values[0] - pulled).abs() < 1e-6, "held");
         run(&mut m, &p, None, 3.0);
-        assert!((m.values[0] - 0.5).abs() < 0.02, "released: {}", m.values[0]);
+        assert!(
+            (m.values[0] - 0.5).abs() < 0.02,
+            "released: {}",
+            m.values[0]
+        );
         // Repel pushes the node away from the cursor.
         p.data[data::MAGNET].set(REPEL as f32);
         run(&mut m, &p, Some(node_pos(0, 0.6)), 0.3);
@@ -517,16 +579,32 @@ mod tests {
         let mut seen = Vec::new();
         for _ in 0..200 {
             m.update(&p, &clock(), 0.0, DT);
-            assert_eq!(p.viz[viz::CURSOR_STATE].get(), 2.0, "the magnet follows the path");
+            assert_eq!(
+                p.viz[viz::CURSOR_STATE].get(),
+                2.0,
+                "the magnet follows the path"
+            );
             let (x, y) = (p.viz[viz::CURSOR_X].get(), p.viz[viz::CURSOR_Y].get());
-            assert!((x.hypot(y) - CIRCLE_R).abs() < 0.05, "on the circle: {x}, {y}");
+            assert!(
+                (x.hypot(y) - CIRCLE_R).abs() < 0.05,
+                "on the circle: {x}, {y}"
+            );
             seen.push(p.viz[viz::PATH_POS].get());
         }
         assert!(seen.windows(2).all(|w| w[1] >= w[0]), "moves forwards");
         // Recorded path, played at its own speed.
         p.data[data::PATH_KIND].set(RECORDED as f32);
         for i in 0..50 {
-            set_rec_point(&p, i, PathPoint { x: -0.5 + i as f32 / 49.0, y: 0.0, bend: 0.0, clicked: true });
+            set_rec_point(
+                &p,
+                i,
+                PathPoint {
+                    x: -0.5 + i as f32 / 49.0,
+                    y: 0.0,
+                    bend: 0.0,
+                    clicked: true,
+                },
+            );
         }
         p.data[data::REC_COUNT].set(50.0);
         let mut cache = PathCache::default();

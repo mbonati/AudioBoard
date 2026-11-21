@@ -15,7 +15,8 @@ use super::widgets;
 use crate::audio::engine::NodeId;
 use crate::audio::modules::ModuleParams;
 use crate::audio::modules::tape::{
-    self as tp, AGE, BIAS, CASSETTE, FLUTTER, HISS, INPUT, MACHINES, MIX, OUTPUT, SATURATION, SPEEDS, TAPES, WOW, data, viz,
+    self as tp, AGE, BIAS, CASSETTE, FLUTTER, HISS, INPUT, MACHINES, MIX, OUTPUT, SATURATION,
+    SPEEDS, TAPES, WOW, data, viz,
 };
 use crate::graph::{ModuleNode, ParamRef};
 
@@ -47,16 +48,38 @@ struct Layout {
 
 const ALL_KNOBS: [(usize, &str, &str); 9] = [
     (INPUT, "INPUT", "Record level: drive the tape"),
-    (SATURATION, "SATURATION", "How hard into the tape, at the same level: harmonics, warmth, rounded and compressed peaks"),
-    (BIAS, "BIAS", "Under: brighter, grittier · over: cleaner, darker"),
+    (
+        SATURATION,
+        "SATURATION",
+        "How hard into the tape, at the same level: harmonics, warmth, rounded and compressed peaks",
+    ),
+    (
+        BIAS,
+        "BIAS",
+        "Under: brighter, grittier · over: cleaner, darker",
+    ),
     (WOW, "WOW", "Slow pitch drift of the transport"),
-    (FLUTTER, "FLUTTER", "Fast pitch jitter: capstan and pinch roller"),
+    (
+        FLUTTER,
+        "FLUTTER",
+        "Fast pitch jitter: capstan and pinch roller",
+    ),
     (HISS, "HISS", "Tape noise"),
     (AGE, "AGE", "Worn tape: dropouts and a duller top"),
-    (OUTPUT, "OUTPUT", "Playback level (with AUTO GAIN it follows INPUT)"),
+    (
+        OUTPUT,
+        "OUTPUT",
+        "Playback level (with AUTO GAIN it follows INPUT)",
+    ),
     (MIX, "MIX", "Dry against tape"),
 ];
-const FEW_KNOBS: [(usize, &str, &str); 5] = [ALL_KNOBS[0], ALL_KNOBS[1], ALL_KNOBS[3], ALL_KNOBS[4], ALL_KNOBS[8]];
+const FEW_KNOBS: [(usize, &str, &str); 5] = [
+    ALL_KNOBS[0],
+    ALL_KNOBS[1],
+    ALL_KNOBS[3],
+    ALL_KNOBS[4],
+    ALL_KNOBS[8],
+];
 
 const COMPACT: Layout = Layout {
     size: vec2(380.0, 206.0),
@@ -88,10 +111,17 @@ const FULL: Layout = Layout {
 
 pub const SIZE: Vec2 = FULL.size;
 
-const DETAILS: [(&str, &str); 2] = [("COMPACT", "The deck and the main knobs"), ("FULL", "Every switch and knob")];
+const DETAILS: [(&str, &str); 2] = [
+    ("COMPACT", "The deck and the main knobs"),
+    ("FULL", "Every switch and knob"),
+];
 
 fn layout(p: &ModuleParams) -> &'static Layout {
-    if tp::choice(p, data::DETAIL, 2) == 0 { &COMPACT } else { &FULL }
+    if tp::choice(p, data::DETAIL, 2) == 0 {
+        &COMPACT
+    } else {
+        &FULL
+    }
 }
 
 pub fn size(p: &ModuleParams) -> Vec2 {
@@ -127,13 +157,46 @@ struct Panel<'a, 'b> {
 /// `ports`: the input and the output are patched.
 pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, ports: (bool, bool)) {
     let p = &m.params;
-    let s = Panel { v, id, p, accent, l: layout(p) };
+    let s = Panel {
+        v,
+        id,
+        p,
+        accent,
+        l: layout(p),
+    };
     let w = s.l.size.x;
-    let col = |on: bool| if on { theme::TEXT_DIM } else { theme::TEXT_FAINT };
-    v.text(PAD, 42.0, Align2::LEFT_CENTER, "IN", v.font(9.0), col(ports.0));
-    v.text(w - PAD, 42.0, Align2::RIGHT_CENTER, "OUT", v.font(9.0), col(ports.1));
+    let col = |on: bool| {
+        if on {
+            theme::TEXT_DIM
+        } else {
+            theme::TEXT_FAINT
+        }
+    };
+    v.text(
+        PAD,
+        42.0,
+        Align2::LEFT_CENTER,
+        "IN",
+        v.font(9.0),
+        col(ports.0),
+    );
+    v.text(
+        w - PAD,
+        42.0,
+        Align2::RIGHT_CENTER,
+        "OUT",
+        v.font(9.0),
+        col(ports.1),
+    );
     let m = tp::machine(p);
-    v.text(PAD + 22.0, 42.0, Align2::LEFT_CENTER, format!("{} · {} ips", m.name, tp::speed_name(p)), v.font(8.0), theme::TEXT_FAINT);
+    v.text(
+        PAD + 22.0,
+        42.0,
+        Align2::LEFT_CENTER,
+        format!("{} · {} ips", m.name, tp::speed_name(p)),
+        v.font(8.0),
+        theme::TEXT_FAINT,
+    );
     let switch = v.r(w - 44.0 - 120.0, 34.0, w - 44.0, 50.0);
     if let Some(k) = s.seg("detail", switch, &DETAILS, tp::choice(p, data::DETAIL, 2)) {
         p.data[data::DETAIL].set(k as f32);
@@ -147,7 +210,8 @@ pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, ports: (b
     s.knobs();
     let moving = p.viz[viz::SPEED].get() > 0.0 || deck.needle.iter().any(|n| *n > 0.002);
     if moving {
-        v.ui.ctx().request_repaint_after(std::time::Duration::from_millis(33));
+        v.ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(33));
     }
 }
 
@@ -215,7 +279,11 @@ impl Panel<'_, '_> {
         d.last = now;
         let running = p.viz[viz::SPEED].get();
         // Faster at 30 ips, slower on cassette; eight minutes of tape at 15.
-        let pace = if self.cassette() { 0.8 } else { [0.6, 1.0, 1.6][tp::choice(p, data::SPEED, SPEEDS.len())] };
+        let pace = if self.cassette() {
+            0.8
+        } else {
+            [0.6, 1.0, 1.6][tp::choice(p, data::SPEED, SPEEDS.len())]
+        };
         let speed = 0.5 * pace * running;
         d.wound = (d.wound + speed * dt / 240.0).fract();
         // The same tape length moves on both: the fuller reel turns slower.
@@ -227,7 +295,11 @@ impl Panel<'_, '_> {
         for k in 0..2 {
             let at = if k == 0 { viz::VU_IN } else { viz::VU_OUT };
             let rms = p.viz[at].get().max(p.viz[at + 1].get());
-            let target = if rms > 1e-5 { vu_pos(rms).max(0.0) } else { 0.0 };
+            let target = if rms > 1e-5 {
+                vu_pos(rms).max(0.0)
+            } else {
+                0.0
+            };
             let steps = (dt / 0.005).ceil().max(1.0) as usize;
             let h = dt / steps as f32;
             let (w0, zeta) = (13.0f32, 0.78f32);
@@ -249,7 +321,11 @@ impl Panel<'_, '_> {
         let (v, p, z, l) = (self.v, self.p, self.z(), self.l);
         let painter = v.painter;
         let w = l.size.x;
-        painter.rect_filled(v.r(PAD, l.deck[0], w - PAD, l.deck[1]), 8.0 * z, alpha(theme::INSET, 0.35));
+        painter.rect_filled(
+            v.r(PAD, l.deck[0], w - PAD, l.deck[1]),
+            8.0 * z,
+            alpha(theme::INSET, 0.35),
+        );
 
         let packs = [pack(1.0 - d.wound) * l.reel_r, pack(d.wound) * l.reel_r];
         let out = self.level(viz::VU_OUT);
@@ -260,7 +336,10 @@ impl Panel<'_, '_> {
         // The tape: off the left pack, along the line past the head, onto
         // the right pack; it sags and sways with wow and flutter, and
         // fades in a dropout.
-        let (a, b) = (pos2(l.keys.x - l.reel_r, l.tape_y), pos2(l.keys.x + l.reel_r, l.tape_y));
+        let (a, b) = (
+            pos2(l.keys.x - l.reel_r, l.tape_y),
+            pos2(l.keys.x + l.reel_r, l.tape_y),
+        );
         let sway = (p.viz[viz::WOBBLE].get() * 2.5).clamp(-4.0, 4.0);
         let mut line = vec![tangent(l.reels[0], packs[0], a)];
         line.extend((0..=16).map(|k| {
@@ -269,7 +348,10 @@ impl Panel<'_, '_> {
         }));
         line.push(tangent(l.reels[1], packs[1], b));
         let tape = Stroke::new(1.4 * z, alpha(theme::TEXT_DIM, 0.75 * (1.0 - 0.7 * drop)));
-        painter.add(Shape::line(line.iter().map(|q| v.p(q.x, q.y)).collect(), tape));
+        painter.add(Shape::line(
+            line.iter().map(|q| v.p(q.x, q.y)).collect(),
+            tape,
+        ));
 
         for ((c, pack), turns) in l.reels.iter().zip(packs).zip(d.reels) {
             self.reel(*c, l.reel_r, pack, turns);
@@ -278,12 +360,20 @@ impl Panel<'_, '_> {
         // The head: a short bar under the tape, glowing with the output
         // (orange when the tape squeezes).
         let glow = if running { out } else { 0.0 };
-        let colour = theme::mix(theme::mix(theme::TEXT_FAINT, self.accent, glow), SAT_COL, sat);
+        let colour = theme::mix(
+            theme::mix(theme::TEXT_FAINT, self.accent, glow),
+            SAT_COL,
+            sat,
+        );
         let head = v.p(l.keys.x, l.tape_y + 4.0);
         if glow > 0.05 {
             painter.circle_filled(head, (5.0 + 7.0 * glow) * z, alpha(colour, 0.18 * glow));
         }
-        painter.rect_filled(Rect::from_center_size(head, vec2(16.0, 5.0) * z), 2.0 * z, colour);
+        painter.rect_filled(
+            Rect::from_center_size(head, vec2(16.0, 5.0) * z),
+            2.0 * z,
+            colour,
+        );
 
         for (k, label) in ["IN", "OUT"].into_iter().enumerate() {
             self.vu(l.meters[k], l.meter_r, d.needle[k], label);
@@ -298,7 +388,11 @@ impl Panel<'_, '_> {
         let painter = v.painter;
         let centre = v.p(c.x, c.y);
         painter.circle_filled(centre, pack * z, alpha(self.accent, 0.12));
-        painter.circle_stroke(centre, pack * z, Stroke::new(1.0 * z, alpha(self.accent, 0.5)));
+        painter.circle_stroke(
+            centre,
+            pack * z,
+            Stroke::new(1.0 * z, alpha(self.accent, 0.5)),
+        );
         let gap = 0.5;
         let sweep = TAU / 3.0 - gap;
         for k in 0..3 {
@@ -309,11 +403,18 @@ impl Panel<'_, '_> {
                     centre + vec2(a.cos(), a.sin()) * r * z
                 })
                 .collect();
-            painter.add(Shape::line(arc, Stroke::new(1.4 * z, alpha(theme::TEXT_DIM, 0.8))));
+            painter.add(Shape::line(
+                arc,
+                Stroke::new(1.4 * z, alpha(theme::TEXT_DIM, 0.8)),
+            ));
         }
         painter.circle_filled(centre, r * 0.09 * z, theme::TEXT_DIM);
         let a = turns * TAU;
-        painter.circle_filled(centre + vec2(a.cos(), a.sin()) * r * HUB * 0.9 * z, 1.6 * z, self.accent);
+        painter.circle_filled(
+            centre + vec2(a.cos(), a.sin()) * r * HUB * 0.9 * z,
+            1.6 * z,
+            self.accent,
+        );
     }
 
     /// A VU meter, barely there: a bare arc (red past 0 VU) and a needle.
@@ -326,15 +427,38 @@ impl Panel<'_, '_> {
             v.p(c.x + a.cos() * rr, c.y + a.sin() * rr)
         };
         let zero = vu_pos(VU_REF);
-        let arc = |t0: f32, t1: f32| (0..=16).map(|k| at(t0 + (t1 - t0) * k as f32 / 16.0, r)).collect::<Vec<_>>();
-        painter.add(Shape::line(arc(0.0, zero), Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.9))));
-        painter.add(Shape::line(arc(zero, 1.0), Stroke::new(2.0 * z, alpha(theme::METER_RED, 0.8))));
-        painter.line_segment([at(zero, r + 2.0), at(zero, r + 5.0)], Stroke::new(1.0 * z, theme::TEXT_FAINT));
+        let arc = |t0: f32, t1: f32| {
+            (0..=16)
+                .map(|k| at(t0 + (t1 - t0) * k as f32 / 16.0, r))
+                .collect::<Vec<_>>()
+        };
+        painter.add(Shape::line(
+            arc(0.0, zero),
+            Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.9)),
+        ));
+        painter.add(Shape::line(
+            arc(zero, 1.0),
+            Stroke::new(2.0 * z, alpha(theme::METER_RED, 0.8)),
+        ));
+        painter.line_segment(
+            [at(zero, r + 2.0), at(zero, r + 5.0)],
+            Stroke::new(1.0 * z, theme::TEXT_FAINT),
+        );
         let hot = pos >= 0.99;
         let needle = if hot { theme::METER_RED } else { self.accent };
-        painter.line_segment([v.p(c.x, c.y), at(pos, r + 3.0)], Stroke::new(1.5 * z, needle));
+        painter.line_segment(
+            [v.p(c.x, c.y), at(pos, r + 3.0)],
+            Stroke::new(1.5 * z, needle),
+        );
         painter.circle_filled(v.p(c.x, c.y), 2.5 * z, theme::TEXT_DIM);
-        v.text(c.x, c.y + 9.0, Align2::CENTER_CENTER, label, v.font(6.5), theme::TEXT_FAINT);
+        v.text(
+            c.x,
+            c.y + 9.0,
+            Align2::CENTER_CENTER,
+            label,
+            v.font(6.5),
+            theme::TEXT_FAINT,
+        );
     }
 
     /// STOP and PLAY, as two bare glyphs; and in the full view the tape's
@@ -343,23 +467,42 @@ impl Panel<'_, '_> {
         let (v, p, z, l) = (self.v, self.p, self.z(), self.l);
         let painter = v.painter;
         let running = self.on(data::RUNNING);
-        let keys = [("■", false, "Stop: the tape slows to a halt"), ("▶", true, "Play: the tape spins back up")];
+        let keys = [
+            ("■", false, "Stop: the tape slows to a halt"),
+            ("▶", true, "Play: the tape spins back up"),
+        ];
         for (k, (glyph, play, tip)) in keys.into_iter().enumerate() {
             let c = pos2(l.keys.x + if play { 14.0 } else { -14.0 }, l.keys.y);
             let rect = v.r(c.x - 10.0, c.y - 9.0, c.x + 10.0, c.y + 9.0);
-            let resp = v.ui.interact(rect, self.uid(("key", k)), Sense::CLICK).on_hover_cursor(CursorIcon::PointingHand).on_hover_text(tip);
+            let resp =
+                v.ui.interact(rect, self.uid(("key", k)), Sense::CLICK)
+                    .on_hover_cursor(CursorIcon::PointingHand)
+                    .on_hover_text(tip);
             if resp.hovered() {
                 painter.circle_filled(rect.center(), 9.0 * z, theme::CONTROL_HI);
             }
             let lit = play == running;
-            painter.text(rect.center(), Align2::CENTER_CENTER, glyph, theme::font(10.0 * z), if lit { self.accent } else { theme::TEXT_FAINT });
+            painter.text(
+                rect.center(),
+                Align2::CENTER_CENTER,
+                glyph,
+                theme::font(10.0 * z),
+                if lit { self.accent } else { theme::TEXT_FAINT },
+            );
             if resp.clicked() {
                 p.data[data::RUNNING].set(if play { 1.0 } else { 0.0 });
             }
         }
         if std::ptr::eq(l, &FULL) {
             let secs = d.counter as u64;
-            v.text(l.keys.x, l.keys.y + 20.0, Align2::CENTER_CENTER, format!("{:02}:{:02}", (secs / 60) % 100, secs % 60), v.mono(8.0), theme::TEXT_FAINT);
+            v.text(
+                l.keys.x,
+                l.keys.y + 20.0,
+                Align2::CENTER_CENTER,
+                format!("{:02}:{:02}", (secs / 60) % 100, secs % 60),
+                v.mono(8.0),
+                theme::TEXT_FAINT,
+            );
         }
     }
 
@@ -367,12 +510,32 @@ impl Panel<'_, '_> {
     // Switches and knobs
     // -----------------------------------------------------------------------
 
-    fn seg(&self, salt: &str, rect: Rect, items: &[(&'static str, &'static str)], current: usize) -> Option<usize> {
+    fn seg(
+        &self,
+        salt: &str,
+        rect: Rect,
+        items: &[(&'static str, &'static str)],
+        current: usize,
+    ) -> Option<usize> {
         let v = self.v;
-        segmented(v, self.uid(("seg", salt)), rect, items.len(), current, self.accent, |k, r, col| {
-            v.painter.text(r.center(), Align2::CENTER_CENTER, items[k].0, v.font(7.5), col);
-            items[k].1
-        })
+        segmented(
+            v,
+            self.uid(("seg", salt)),
+            rect,
+            items.len(),
+            current,
+            self.accent,
+            |k, r, col| {
+                v.painter.text(
+                    r.center(),
+                    Align2::CENTER_CENTER,
+                    items[k].0,
+                    v.font(7.5),
+                    col,
+                );
+                items[k].1
+            },
+        )
     }
 
     /// Two columns, two rows: MACHINE and SPEED, TAPE and EQ with AUTO GAIN.
@@ -383,28 +546,64 @@ impl Panel<'_, '_> {
         let cols = [(PAD, w * 0.5 - 8.0), (w * 0.5 + 8.0, w - PAD)];
         let slot = |col: usize, row: usize, label: &str| {
             let (x0, x1) = cols[col];
-            v.text(x0, y(row) + 8.0, Align2::LEFT_CENTER, label, v.font(7.5), theme::TEXT_FAINT);
+            v.text(
+                x0,
+                y(row) + 8.0,
+                Align2::LEFT_CENTER,
+                label,
+                v.font(7.5),
+                theme::TEXT_FAINT,
+            );
             (x0 + 54.0, x1, y(row))
         };
-        let fixed = |x: f32, y: f32, text: &str| v.text(x + 4.0, y + 8.0, Align2::LEFT_CENTER, text, v.font(7.5), theme::TEXT_DIM);
+        let fixed = |x: f32, y: f32, text: &str| {
+            v.text(
+                x + 4.0,
+                y + 8.0,
+                Align2::LEFT_CENTER,
+                text,
+                v.font(7.5),
+                theme::TEXT_DIM,
+            )
+        };
 
         let (x0, x1, y0) = slot(0, 0, "MACHINE");
-        let machines: Vec<(&'static str, &'static str)> = MACHINES.iter().map(|m| (m.name, m.hint)).collect();
-        if let Some(k) = self.seg("machine", v.r(x0, y0, x1, y0 + 16.0), &machines, tp::choice(p, data::MACHINE, MACHINES.len())) {
+        let machines: Vec<(&'static str, &'static str)> =
+            MACHINES.iter().map(|m| (m.name, m.hint)).collect();
+        if let Some(k) = self.seg(
+            "machine",
+            v.r(x0, y0, x1, y0 + 16.0),
+            &machines,
+            tp::choice(p, data::MACHINE, MACHINES.len()),
+        ) {
             p.data[data::MACHINE].set(k as f32);
         }
         let (x0, x1, y0) = slot(0, 1, "SPEED");
         if self.cassette() {
             fixed(x0, y0, "1⅞ ips (cassette)");
         } else {
-            let speeds = [("7½ IPS", "7½ ips: darker, lower head bump, more wow"), ("15 IPS", "15 ips: the classic"), ("30 IPS", "30 ips: open top, tight low end")];
-            if let Some(k) = self.seg("speed", v.r(x0, y0, x1, y0 + 16.0), &speeds, tp::choice(p, data::SPEED, SPEEDS.len())) {
+            let speeds = [
+                ("7½ IPS", "7½ ips: darker, lower head bump, more wow"),
+                ("15 IPS", "15 ips: the classic"),
+                ("30 IPS", "30 ips: open top, tight low end"),
+            ];
+            if let Some(k) = self.seg(
+                "speed",
+                v.r(x0, y0, x1, y0 + 16.0),
+                &speeds,
+                tp::choice(p, data::SPEED, SPEEDS.len()),
+            ) {
                 p.data[data::SPEED].set(k as f32);
             }
         }
         let (x0, x1, y0) = slot(1, 0, "TAPE");
         let tapes: Vec<(&'static str, &'static str)> = TAPES.iter().map(|t| (t.0, t.1)).collect();
-        if let Some(k) = self.seg("tape", v.r(x0, y0, x1, y0 + 16.0), &tapes, tp::choice(p, data::TAPE, TAPES.len())) {
+        if let Some(k) = self.seg(
+            "tape",
+            v.r(x0, y0, x1, y0 + 16.0),
+            &tapes,
+            tp::choice(p, data::TAPE, TAPES.len()),
+        ) {
             p.data[data::TAPE].set(k as f32);
         }
         let (x0, x1, y0) = slot(1, 1, "EQ");
@@ -412,14 +611,31 @@ impl Panel<'_, '_> {
         if self.cassette() {
             fixed(x0, y0, "120 µs");
         } else {
-            let eqs = [("NAB", "American curve: fuller lows"), ("IEC", "European (CCIR) curve")];
-            if let Some(k) = self.seg("eq", v.r(x0, y0, mid, y0 + 16.0), &eqs, tp::choice(p, data::EQ, 2)) {
+            let eqs = [
+                ("NAB", "American curve: fuller lows"),
+                ("IEC", "European (CCIR) curve"),
+            ];
+            if let Some(k) = self.seg(
+                "eq",
+                v.r(x0, y0, mid, y0 + 16.0),
+                &eqs,
+                tp::choice(p, data::EQ, 2),
+            ) {
                 p.data[data::EQ].set(k as f32);
             }
         }
         let auto = self.on(data::AUTO);
-        let resp = widgets::toggle(v.ui, v.painter, self.uid("auto"), v.r(mid + 8.0, y0, x1, y0 + 16.0), "AUTO GAIN", auto, self.accent, v.z)
-            .on_hover_text("OUTPUT follows INPUT: drive the tape without getting louder");
+        let resp = widgets::toggle(
+            v.ui,
+            v.painter,
+            self.uid("auto"),
+            v.r(mid + 8.0, y0, x1, y0 + 16.0),
+            "AUTO GAIN",
+            auto,
+            self.accent,
+            v.z,
+        )
+        .on_hover_text("OUTPUT follows INPUT: drive the tape without getting louder");
         if resp.clicked() {
             p.data[data::AUTO].set(if auto { 0.0 } else { 1.0 });
         }
@@ -433,7 +649,14 @@ impl Panel<'_, '_> {
         for (k, (i, label, tip)) in l.knobs.iter().enumerate() {
             let cx = PAD + cw * (k as f32 + 0.5);
             let spec = tp::spec(*i);
-            v.text(cx, l.knob_y, Align2::CENTER_CENTER, label, v.font(7.5), theme::TEXT_FAINT);
+            v.text(
+                cx,
+                l.knob_y,
+                Align2::CENTER_CENTER,
+                label,
+                v.font(7.5),
+                theme::TEXT_FAINT,
+            );
             let mut norm = spec.to_norm(p.get(*i));
             let resp = widgets::knob(
                 v.ui,
@@ -453,7 +676,14 @@ impl Panel<'_, '_> {
                 p.set(*i, spec.denorm(norm));
             }
             let hot = resp.dragged() || resp.hovered();
-            v.text(cx, l.knob_y + 16.0 + 2.0 * r, Align2::CENTER_CENTER, tp::format(p, *i), v.mono(7.5), if hot { theme::TEXT } else { theme::TEXT_DIM });
+            v.text(
+                cx,
+                l.knob_y + 16.0 + 2.0 * r,
+                Align2::CENTER_CENTER,
+                tp::format(p, *i),
+                v.mono(7.5),
+                if hot { theme::TEXT } else { theme::TEXT_DIM },
+            );
         }
         if std::ptr::eq(l, &FULL) {
             let sat = p.viz[viz::SAT].get();
@@ -464,7 +694,14 @@ impl Panel<'_, '_> {
             } else {
                 "clean".to_owned()
             };
-            v.text(w * 0.5, l.size.y - 10.0, Align2::CENTER_CENTER, state, v.font(7.5), theme::TEXT_FAINT);
+            v.text(
+                w * 0.5,
+                l.size.y - 10.0,
+                Align2::CENTER_CENTER,
+                state,
+                v.font(7.5),
+                theme::TEXT_FAINT,
+            );
         }
     }
 }
