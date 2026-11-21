@@ -1,0 +1,124 @@
+# Makes a release: raises the version, builds every platform, then commits
+# the version, tags it vX.Y.Z and publishes a GitHub Release with the
+# packages and notes generated from the merged pull requests.
+#
+# Started by hand from main: Actions → Release → Run workflow, choosing the
+# bump (patch 0.1.0 → 0.1.1, minor → 0.2.0, major → 1.0.0). Nothing is
+# pushed until all three builds pass; if one fails, main and the tags are
+# as they were and the run can simply be started again.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Which part of the version to raise"
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+      draft:
+        description: "Publish as a draft (to look at it before making it public)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Next version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.next.outputs.version }}
+      sha: ${{ steps.next.outputs.sha }}
+    steps:
+      - name: Only from main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Releases are made from main (this run is on ${{ github.ref_name }})."
+          exit 1
+
+      - uses: actions/checkout@v4
+
+      - name: Work out the version
+        id: next
+        run: |
+          current=$(scripts/version.sh)
+          version=$(scripts/version.sh next "${{ inputs.bump }}")
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null; then
+            echo "::error::Tag v$version already exists."
+            exit 1
+          fi
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >>"$GITHUB_OUTPUT"
+          echo "### AudioBoard $current → **$version** (${{ inputs.bump }})" >>"$GITHUB_STEP_SUMMARY"
+
+  build:
+    name: Build
+    needs: prepare
+    uses: ./.github/workflows/build.yml
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      ref: ${{ needs.prepare.outputs.sha }}
+
+  publish:
+    name: Publish v${{ needs.prepare.outputs.version }}
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: AudioBoard-*
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        working-directory: dist
+        run: |
+          sha256sum AudioBoard-* >SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Commit and tag the version
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          scripts/version.sh set "$VERSION"
+          git commit -am "Release v$VERSION"
+          git tag -a "v$VERSION" -m "AudioBoard v$VERSION"
+          # Both or neither: fails, pushing nothing, if main moved meanwhile.
+          git push --atomic origin HEAD:refs/heads/main "refs/tags/v$VERSION"
+
+      - name: Publish the release
+        run: |
+          gh release create "v$VERSION" dist/* \
+            --verify-tag \
+            --title "AudioBoard v$VERSION" \
+            --generate-notes \
+            ${{ inputs.draft && '--draft' || '' }}
+
+      - name: Bring develop up to date
+        run: |
+          # develop gets the version commit when it can simply move forward
+          # to it (no new commits since it was merged into main).
+          git fetch origin develop
+          if git merge-base --is-ancestor origin/develop HEAD; then
+            git push origin HEAD:refs/heads/develop
+            echo "develop moved to the release commit." >>"$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::develop has commits that main hasn't: merge main into develop to carry v$VERSION over."
+            echo "develop has new commits: merge main into develop to carry v$VERSION over." >>"$GITHUB_STEP_SUMMARY"
+          fi

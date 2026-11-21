@@ -400,6 +400,15 @@ impl SettingsWindow {
             }
             ui.add_space(2.0);
         }
+        // The version, at the foot of the sidebar: the one in Cargo.toml,
+        // raised by each release (see README, "Releases").
+        ui.painter().text(
+            ui.max_rect().left_bottom() + vec2(8.0, 0.0),
+            Align2::LEFT_BOTTOM,
+            concat!("AudioBoard ", env!("CARGO_PKG_VERSION")),
+            FontId::proportional(10.0),
+            theme::TEXT_FAINT,
+        );
     }
 
     /// The Sync tab; returns new sync settings if changed.

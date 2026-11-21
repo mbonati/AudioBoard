@@ -8,6 +8,10 @@ track's chain of devices in a row (see Track view).
 
 ## Getting started
 
+Ready-made builds for macOS, Linux and Windows are on the
+[Releases page](https://github.com/mbonati/AudioBoard/releases/latest) (see [Releases](#releases)). From the
+source:
+
 ```bash
 cargo run --release
 ```
@@ -2153,3 +2157,84 @@ PERF_PROJECT=path/to/project.audioboard cargo test --release perf_project -- --i
 `perf_project_render` renders a project offline into a raw file (`PERF_RENDER_OUT`, `PERF_SECONDS`), to
 check that an optimization leaves what is heard as it was: the render is deterministic, plugins included, so
 two renders compare equal byte for byte.
+
+## Releases
+
+Every release is on the [Releases page](https://github.com/mbonati/AudioBoard/releases) (the newest:
+[latest](https://github.com/mbonati/AudioBoard/releases/latest)), with the optimized (`dist`) build for each
+platform:
+
+| File | For | Holds |
+| --- | --- | --- |
+| `AudioBoard-vX.Y.Z-macos-universal.zip` | macOS 11 or newer, Apple Silicon and Intel | `AudioBoard.app` |
+| `AudioBoard-vX.Y.Z-linux-x86_64.tar.gz` | Linux x86_64 with glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Fedora 36 and later) | `audioboard`, this README |
+| `AudioBoard-vX.Y.Z-windows-x86_64.zip` | Windows 10 and 11, x86_64 | `audioboard.exe`, this README |
+| `SHA256SUMS.txt` | | the files' SHA-256 checksums |
+
+Audio Units, and the FLAC, Apple Lossless and AAC exports (made by `afconvert`), are macOS only; VST3 plugins
+are looked for in each system's standard VST3 folders.
+
+**macOS, first launch.** The app is signed ad hoc, not with an Apple Developer ID, and not notarized, so the
+first time macOS refuses to open it ("Apple could not verify…"). Drag `AudioBoard.app` to Applications, open
+it once, then click **Open Anyway** in System Settings → Privacy & Security (up to macOS 14, right-click the
+app → **Open** also works). Or remove the download's quarantine flag in Terminal:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/AudioBoard.app
+```
+
+macOS asks for the microphone the first time an audio input is used.
+
+**Linux.** Unpack and run `./audioboard`. It needs ALSA (`libasound2`), fontconfig, libxcb and libxkbcommon,
+present on any desktop install, and runs on X11 and Wayland.
+
+**Windows.** Unzip and run `audioboard.exe`. It is not signed, so SmartScreen may warn ("Windows protected
+your PC"): **More info** → **Run anyway**.
+
+### Making a release
+
+The version is the one in `Cargo.toml` (`version` under `[package]`). It is shown at the foot of the
+Settings window's sidebar and, on macOS, in the app's Info.plist (Finder → Get Info). Each release raises it,
+by [semantic versioning](https://semver.org): **patch** for fixes (0.1.0 → 0.1.1), **minor** for new features
+(0.1.0 → 0.2.0), **major** for changes that break projects or plugins (0.1.0 → 1.0.0). It isn't edited by
+hand: the release does it.
+
+1. Merge what goes into the release into `main` (the usual pull request from `develop`).
+2. On GitHub, **Actions** → **Release** → **Run workflow**, branch `main`, and choose the bump. **draft**
+   publishes the release as a draft, seen only by the repository's maintainers, to check it before
+   **Publish release**. Or from a terminal:
+
+   ```bash
+   gh workflow run release.yml --ref main -f bump=minor
+   ```
+
+3. The [Release workflow](.github/workflows/release.yml):
+   - works out the next version (`scripts/version.sh next <bump>`); it stops if the run isn't on `main` or
+     the tag already exists;
+   - builds and packages the three platforms with that version
+     ([Build workflow](.github/workflows/build.yml), [`scripts/package.sh`](scripts/package.sh)): macOS on
+     Apple Silicon, compiling both architectures and joining them into a universal app; Linux on Ubuntu
+     22.04; Windows on Windows Server 2025;
+   - only when all three succeed, commits "Release vX.Y.Z" (`Cargo.toml` and `Cargo.lock`) on `main`, tags
+     it `vX.Y.Z`, pushes both together, and publishes the GitHub Release: the packages, `SHA256SUMS.txt`,
+     and notes generated from the pull requests merged since the previous release;
+   - moves `develop` forward to the release commit when `develop` has nothing new since it was merged;
+     otherwise the run ends with a warning, and `main` has to be merged into `develop` to carry the version
+     over.
+
+   If a build fails, nothing is pushed or published: fix it, merge, and run the workflow again. The same
+   happens if `main` gets a new commit while the release builds (the push is refused).
+
+The Build workflow also runs on every pull request into `develop` or `main` (except ones that only change
+the website or Markdown files), publishing nothing, so a change that breaks the Linux or Windows build shows
+up before the release; its packages stay for a week among the run's artifacts. From `main`, **Actions** →
+**Build** → **Run workflow** builds the packages of any branch without making a release.
+
+The same steps on a Mac, without a release:
+
+```bash
+scripts/version.sh              # the current version
+scripts/version.sh next minor   # what a minor bump would make it
+cargo build --profile dist --target aarch64-apple-darwin --target x86_64-apple-darwin
+scripts/package.sh macos        # dist/AudioBoard-vX.Y.Z-macos-universal.zip
+```
