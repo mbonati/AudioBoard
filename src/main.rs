@@ -6,6 +6,7 @@ mod board;
 mod graph;
 mod presets;
 mod project;
+mod song;
 mod tracks;
 mod ui;
 

@@ -305,6 +305,46 @@ mod site_snap {
         (raster(&prims, &texs, w, h, ppp), w, h)
     }
 
+    /// The SONG dock as it is under the board: `info` says what plays.
+    fn shoot_song(s: &mut Scene, size: Vec2, ppp: f32, frames: usize, info: impl Fn(usize) -> crate::ui::song::Info, selected: Option<usize>) -> (Vec<[f32; 3]>, usize, usize) {
+        let ctx = egui::Context::default();
+        theme::apply(&ctx);
+        ctx.set_pixels_per_point(ppp);
+        ctx.options_mut(|o| o.warn_on_id_clash = false);
+        let mut panel = crate::ui::song::SongPanel::default();
+        panel.selected = selected;
+        let mut texs = HashMap::new();
+        let mut prims = Vec::new();
+        for f in 0..frames {
+            render_buf(&mut s.e, 800);
+            let input = egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)),
+                time: Some(f as f64 / 60.0),
+                ..Default::default()
+            };
+            let g = &mut s.g;
+            let info = info(f);
+            let mut out = ctx.run_ui(input, |ui| {
+                let full = ui.max_rect();
+                ui.painter().rect_filled(full, 0.0, theme::PANEL);
+                ui.painter().hline(full.x_range(), full.top() + 0.5, egui::Stroke::new(1.0, theme::PANEL_BORDER));
+                let mut song = std::mem::take(&mut g.song);
+                ui.scope_builder(egui::UiBuilder::new().max_rect(full.shrink(8.0)), |ui| {
+                    panel.show(ui, &mut song, g, &info);
+                });
+                g.song = song;
+            });
+            apply(&mut texs, &out.textures_delta);
+            out.textures_delta.clear();
+            if f + 1 == frames {
+                prims = ctx.tessellate(out.shapes, out.pixels_per_point);
+            }
+        }
+        let w = (size.x * ppp).round() as usize;
+        let h = (size.y * ppp).round() as usize;
+        (raster(&prims, &texs, w, h, ppp), w, h)
+    }
+
     fn bounds(g: &Graph) -> Rect {
         g.nodes.iter().map(|n| Rect::from_min_size(n.pos, n.size())).reduce(|a, b| a.union(b)).unwrap()
     }
@@ -484,6 +524,66 @@ mod site_snap {
             s.g.tracks.set_folded(TrackKey::Channel(crate::graph::PortRef { node: console, port: 2 }), false);
             let (img, w, h) = shoot_tracks(&mut s, vec2(1500.0, 900.0), PPP, FRAMES);
             save("tracks", &img, w, (0, 0, w, h));
+        }
+
+        // --- The song dock ------------------------------------------------
+        if want("song") {
+            use crate::song::{self, Song, Step, Then};
+            let mut s = scene(84.0);
+            let drone = add(&mut s, ModuleKind::Drone, 0.0, 0.0);
+            let filter = add(&mut s, ModuleKind::Filter, 300.0, 0.0);
+            let seq = add(&mut s, ModuleKind::Sequencer, 0.0, 300.0);
+            let orrery = add(&mut s, ModuleKind::Orrery, 0.0, 600.0);
+            let mixer = s.g.add_mixer(pos2(700.0, 0.0), &s.a);
+            link(&mut s, drone, 0, filter, 0);
+            link(&mut s, filter, 0, mixer, 0);
+            let _ = (seq, orrery);
+            let mut song = Song::default();
+            song.home = 2; // D
+            let names = ["Intro", "Drift", "Pulse", "Swell", "Out"];
+            // (bars, key, morph, tempo, then)
+            let steps: [(u32, Option<u8>, u32, Option<f32>, Then); 7] = [
+                (8, None, 0, None, Then::Next),
+                (8, None, 4, None, Then::Next),
+                (16, Some(7), 0, Some(92.0), Then::Next),
+                (8, Some(9), 2, None, Then::Loop),
+                (8, None, 4, None, Then::Next),
+                (4, Some(5), 1, None, Then::Next),
+                (8, None, 8, Some(84.0), Then::Stop),
+            ];
+            let scenes = [0usize, 1, 2, 3, 1, 2, 4];
+            for name in names {
+                let id = song.add_scene(song::capture(&s.g, &song, 0));
+                song.scene_mut(id).unwrap().name = name.to_owned();
+            }
+            for (k, (bars, key, morph, tempo, then)) in steps.into_iter().enumerate() {
+                let mut st = Step::new(song.scenes[scenes[k]].id);
+                st.bars = bars;
+                st.key = key;
+                st.morph = morph;
+                st.tempo = tempo;
+                st.then = then;
+                song.steps.push(st);
+            }
+            song.on = true;
+            song.channel = 16;
+            let pulse = song.scenes[2].id;
+            s.g.song = song;
+            let height = crate::ui::song::HEIGHT + 16.0;
+            let info = |f: usize| crate::ui::song::Info {
+                running: true,
+                beat: 64.0 + 22.0 + f as f64 * 0.01,
+                now: 0.1,
+                current: Some(2),
+                started: 64.0,
+                coming: Some(3),
+                coming_scene: None,
+                loaded: Some(pulse),
+                edited: true,
+                tempo: 92.0,
+            };
+            let (img, w, h) = shoot_song(&mut s, vec2(1400.0, height), PPP, 30, info, Some(2));
+            save("song", &img, w, (0, 0, w, h));
         }
 
         // --- Sources -----------------------------------------------------

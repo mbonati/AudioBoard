@@ -886,6 +886,8 @@ pub struct Graph {
     /// The track view's layout: which view is shown, track order, open
     /// panels (see `tracks`).
     pub tracks: crate::tracks::Layout,
+    /// The song: scenes of the board, played in order (see `song`).
+    pub song: crate::song::Song,
 }
 
 impl Default for Graph {
@@ -902,6 +904,7 @@ impl Default for Graph {
             graveyard: Vec::new(),
             board: crate::board::Board::default(),
             tracks: crate::tracks::Layout::default(),
+            song: crate::song::Song::default(),
         }
     }
 }
@@ -941,6 +944,7 @@ impl Graph {
         self.tempo = DEFAULT_TEMPO;
         self.board = crate::board::Board::default();
         self.tracks = crate::tracks::Layout::default();
+        self.song = crate::song::Song::default();
     }
 
     fn alloc_id(&mut self) -> NodeId {

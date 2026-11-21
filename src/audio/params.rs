@@ -324,6 +324,8 @@ pub struct EngineShared {
     /// MIDI sync: the external clock followed, and the engine's timeline
     /// for the clock sent out.
     pub sync: super::sync::SyncShared,
+    /// The song: the last cue applied and the transport's position.
+    pub song: super::cue::SongShared,
 }
 
 impl EngineShared {
@@ -343,6 +345,7 @@ impl EngineShared {
             tap: super::record::Tap::new(),
             input: super::input::Capture::new(),
             sync: super::sync::SyncShared::new(),
+            song: Default::default(),
         }
     }
 }

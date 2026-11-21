@@ -30,6 +30,7 @@ pub mod prism;
 pub mod recent;
 pub mod settings;
 pub mod sibyl;
+pub mod song;
 pub mod splitter;
 pub mod tape;
 pub mod tempo;
