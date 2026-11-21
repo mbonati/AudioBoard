@@ -13590,3 +13590,542 @@ mod track_view {
         assert!(!g.node(filter).unwrap().collapsed, "the canvas keeps its own folding");
     }
 }
+
+mod song_mode {
+    use super::*;
+    use crate::audio::cue::{self, KeyShift, NOW};
+    use crate::audio::engine::{Command, MidiBuf, NodeId};
+    use crate::audio::modules::{drone, filter, orrery, sequencer};
+    use crate::graph::MIDI_PORT;
+    use crate::song::{self, MidiAsk, Player, Quant, Song, Step, Then, Transport};
+
+    fn transport(a: &AudioHandle) -> Transport {
+        Transport {
+            beat: a.shared.song.beat(),
+            running: a.shared.running.load(Ordering::Relaxed),
+            applied: a.shared.song.applied.load(Ordering::Relaxed),
+        }
+    }
+
+    fn send(a: &AudioHandle, s: song::Send) {
+        match s {
+            song::Send::Cue(c) => a.send(Command::Cue(Some(c))),
+            song::Send::Cancel => a.send(Command::Cue(None)),
+        }
+    }
+
+    /// Plays `frames` with the player driving the engine, as the app does
+    /// every frame (`chunk` frames a frame); calls `each` after every chunk.
+    fn play(
+        g: &mut Graph,
+        a: &AudioHandle,
+        e: &mut Engine,
+        player: &mut Player,
+        frames: usize,
+        chunk: usize,
+        mut each: impl FnMut(&Graph, &Player, f64),
+    ) {
+        let mut done = 0;
+        let mut buf = vec![0.0f32; chunk * 2];
+        while done < frames {
+            let up = player.update(g, &g.song, transport(a));
+            for s in up.sends {
+                send(a, s);
+            }
+            if let Some(t) = up.tempo {
+                g.tempo = t;
+            }
+            e.render(&mut buf, 2);
+            done += chunk;
+            each(g, player, a.shared.song.beat());
+        }
+    }
+
+    /// Drone → Filter → mixer channel 1, and a Step Sequencer.
+    fn board(g: &mut Graph, a: &AudioHandle) -> (NodeId, NodeId, NodeId, NodeId) {
+        let d = g.add_module(ModuleKind::Drone, pos2(0.0, 0.0), a);
+        let f = g.add_module(ModuleKind::Filter, pos2(300.0, 0.0), a);
+        let m = g.add_mixer(pos2(600.0, 0.0), a);
+        let s = g.add_module(ModuleKind::Sequencer, pos2(0.0, 300.0), a);
+        g.connect(port(d, 0), port(f, 0), a);
+        g.connect(port(f, 0), port(m, 0), a);
+        (d, f, m, s)
+    }
+
+    #[test]
+    fn scenes_keep_the_board_and_bring_it_back() {
+        let (mut g, a, mut e) = setup();
+        let (d, f, m, s) = board(&mut g, &a);
+        let o = g.add_module(ModuleKind::Orrery, pos2(0.0, 600.0), &a);
+        module_params(&g, d).set(drone::PITCH, 82.0);
+        module_params(&g, s).data[3].set(6.0);
+        let shift = 0;
+        let nodes = song::capture(&g, &g.song, shift);
+        let mut song = Song::default();
+        let a_id = song.add_scene(nodes);
+        assert_eq!(song.scenes[0].name, "A");
+        assert_eq!(song.scenes[0].nodes.len(), 5, "every node but none left out");
+
+        // Change everything, then recall A.
+        module_params(&g, d).set(drone::PITCH, 200.0);
+        module_params(&g, d).set_mode(4);
+        module_params(&g, f).set(filter::CUTOFF, 300.0);
+        module_params(&g, s).data[3].set(1.0);
+        module_params(&g, s).set_toggle(false);
+        mixer_params(&g, m).mute[0].store(true, Ordering::Relaxed);
+        mixer_params(&g, m).fader[1].set(0.2);
+        g.node(f).unwrap().set_bypass(true);
+        // Orrery: its pattern buttons and LAUNCH are not the scene's.
+        let op = module_params(&g, o);
+        op.data[orrery::data::LAUNCH].set(0.0);
+        op.data[orrery::data::SLOTS + 3].set(0.25);
+        g.song = song.clone();
+        assert!(song::edited(&g, &g.song, &g.song.scenes[0], 0), "the board differs");
+
+        let cue = song::scene_cue(&g, &g.song, g.song.scene(a_id), 0, true, 7, NOW);
+        a.send(Command::Cue(Some(Box::new(cue))));
+        render(&mut e, 512);
+        assert_eq!(a.shared.song.applied.load(Ordering::Relaxed), 7);
+        assert_eq!(module_params(&g, d).get(drone::PITCH), 82.0);
+        assert_eq!(module_params(&g, d).mode(), 0);
+        assert_eq!(module_params(&g, f).get(filter::CUTOFF), 1200.0);
+        assert_eq!(module_params(&g, s).data[3].get(), 6.0, "the sequencer's steps");
+        assert!(module_params(&g, s).toggled(), "PLAY");
+        assert!(!mixer_params(&g, m).mute[0].load(Ordering::Relaxed));
+        assert_eq!(mixer_params(&g, m).fader[1].get(), crate::audio::params::FADER_UNITY);
+        assert!(!g.node(f).unwrap().bypassed());
+        assert_eq!(op.data[orrery::data::LAUNCH].get(), 0.0, "left alone");
+        assert_eq!(op.data[orrery::data::SLOTS + 3].get(), 0.25, "left alone");
+        assert!(!song::edited(&g, &g.song, &g.song.scenes[0], 0));
+
+        // A node left free keeps what it has.
+        g.song.free.insert(d);
+        module_params(&g, d).set(drone::PITCH, 300.0);
+        let cue = song::scene_cue(&g, &g.song, g.song.scene(a_id), 0, true, 8, NOW);
+        a.send(Command::Cue(Some(Box::new(cue))));
+        render(&mut e, 512);
+        assert_eq!(module_params(&g, d).get(drone::PITCH), 300.0);
+        assert!(!song::capture(&g, &g.song, 0).contains_key(&d));
+    }
+
+    #[test]
+    fn a_change_lands_on_its_beat_to_the_sample() {
+        let (mut g, a, mut e) = setup();
+        let p = OscParams::new();
+        p.set(osc::LEVEL, 0.0);
+        let x = g.add_osc_with(pos2(0.0, 0.0), Arc::new(p), &a);
+        let m = g.add_mixer(pos2(300.0, 0.0), &a);
+        g.connect(port(x, 0), port(m, 0), &a);
+        let mut song = Song::default();
+        osc_params(&g, x).set(osc::LEVEL, 0.8);
+        let id = song.add_scene(song::capture(&g, &g.song, 0));
+        g.song = song;
+        osc_params(&g, x).set(osc::LEVEL, 0.0);
+        a.shared.tempo.set(120.0);
+        // Silent for a while, then the scene brings the level up on beat 4
+        // (2 s at 120 BPM: frame 96000).
+        let cue = song::scene_cue(&g, &g.song, g.song.scene(id), 0, true, 1, 4.0);
+        a.send(Command::Cue(Some(Box::new(cue))));
+        let mut out = vec![0.0f32; 100_000 * 2];
+        // Device buffers of 512 frames: beat 4 falls inside one.
+        for chunk in out.chunks_mut(512 * 2) {
+            e.render(chunk, 2);
+        }
+        let first = out.chunks(2).position(|f| f[0].abs() > 1e-6).expect("it sounds");
+        // The limiter's lookahead delays the output by 64 frames.
+        assert!(
+            (96_000..=96_000 + 64 + 2).contains(&first),
+            "the level came up at frame {first}"
+        );
+        assert_eq!(osc_params(&g, x).get(osc::LEVEL), 0.8);
+    }
+
+    #[test]
+    fn a_cue_for_a_later_beat_waits_while_stopped() {
+        let (mut g, a, mut e) = setup();
+        let (d, ..) = board(&mut g, &a);
+        let mut song = Song::default();
+        module_params(&g, d).set(drone::PITCH, 99.0);
+        let id = song.add_scene(song::capture(&g, &g.song, 0));
+        g.song = song;
+        module_params(&g, d).set(drone::PITCH, 55.0);
+        a.shared.running.store(false, Ordering::Relaxed);
+        let cue = song::scene_cue(&g, &g.song, g.song.scene(id), 0, true, 1, 0.0);
+        a.send(Command::Cue(Some(Box::new(cue))));
+        render(&mut e, 4800);
+        assert_eq!(module_params(&g, d).get(drone::PITCH), 55.0, "waits for Start");
+        a.shared.running.store(true, Ordering::Relaxed);
+        render(&mut e, 512);
+        assert_eq!(module_params(&g, d).get(drone::PITCH), 99.0, "made on Start");
+    }
+
+    #[test]
+    fn morph_glides_continuous_knobs_and_switches_the_rest() {
+        let (mut g, a, mut e) = setup();
+        let (d, f, m, _) = board(&mut g, &a);
+        module_params(&g, f).set(filter::CUTOFF, 4000.0);
+        module_params(&g, d).set_mode(2);
+        mixer_params(&g, m).fader[0].set(0.0);
+        let mut song = Song::default();
+        let id = song.add_scene(song::capture(&g, &g.song, 0));
+        g.song = song;
+        module_params(&g, f).set(filter::CUTOFF, 1000.0);
+        module_params(&g, d).set_mode(0);
+        mixer_params(&g, m).fader[0].set(0.8);
+        a.shared.tempo.set(120.0);
+        // Four beats of MORPH from beat 2.
+        let mut cue = song::scene_cue(&g, &g.song, g.song.scene(id), 0, true, 1, 2.0);
+        cue.morph = 4.0;
+        a.send(Command::Cue(Some(Box::new(cue))));
+        render(&mut e, 48_000 + 64); // just past beat 2
+        assert_eq!(module_params(&g, d).mode(), 2, "a mode switches at once");
+        assert!(module_params(&g, f).get(filter::CUTOFF) < 1100.0, "the glide starts");
+        render(&mut e, 48_000); // beat 4: half way
+        let cutoff = module_params(&g, f).get(filter::CUTOFF);
+        assert!((cutoff - 2000.0).abs() < 60.0, "a frequency glides in equal ratios: {cutoff}");
+        let fader = mixer_params(&g, m).fader[0].get();
+        assert!((fader - 0.4).abs() < 0.03, "a fader glides in a line: {fader}");
+        // Stop rewinds: the glide ends where it was going.
+        a.shared.rewinds.fetch_add(1, Ordering::Relaxed);
+        render(&mut e, 512);
+        assert_eq!(module_params(&g, f).get(filter::CUTOFF), 4000.0);
+        assert_eq!(mixer_params(&g, m).fader[0].get(), 0.0);
+    }
+
+    fn note(on: bool, ch: u8, n: u8) -> [u8; 3] {
+        [if on { 0x90 } else { 0x80 } | ch, n, if on { 100 } else { 0 }]
+    }
+
+    fn shifted(k: &mut KeyShift, msgs: &[[u8; 3]]) -> Vec<[u8; 3]> {
+        let mut b = MidiBuf::default();
+        for m in msgs {
+            b.push(0, *m);
+        }
+        k.apply(&mut b);
+        b.events().iter().map(|e| e.data).collect()
+    }
+
+    #[test]
+    fn the_key_moves_notes_and_their_note_offs_match() {
+        let mut k = KeyShift::default();
+        assert_eq!(shifted(&mut k, &[note(true, 0, 60)]), [note(true, 0, 60)], "no shift, as is");
+        k.shift = 5;
+        assert_eq!(shifted(&mut k, &[note(false, 0, 60)]), [note(false, 0, 60)], "started unshifted, ends there");
+        assert_eq!(shifted(&mut k, &[note(true, 0, 62), note(true, 9, 36)]), [note(true, 0, 67), note(true, 9, 36)], "drums stay");
+        // The key changes while the note sounds: its note-off still matches.
+        k.shift = -2;
+        assert_eq!(shifted(&mut k, &[note(false, 0, 62)]), [note(false, 0, 67)]);
+        assert_eq!(shifted(&mut k, &[note(true, 0, 62)]), [note(true, 0, 60)]);
+        // Out of range: the note and its note-off are dropped.
+        k.shift = 6;
+        assert!(shifted(&mut k, &[note(true, 1, 125)]).is_empty());
+        k.shift = 0;
+        assert!(shifted(&mut k, &[note(false, 1, 125)]).is_empty());
+        assert_eq!(shifted(&mut k, &[[0xB0, 64, 127]]), [[0xB0, 64, 127]], "controllers pass");
+    }
+
+    #[test]
+    fn only_the_source_of_a_line_moves_its_notes() {
+        let (mut g, a, _e) = setup();
+        let s = g.add_module(ModuleKind::Sequencer, pos2(0.0, 0.0), &a);
+        let arp = g.add_module(ModuleKind::Arpeggiator, pos2(300.0, 0.0), &a);
+        let o = g.add_module(ModuleKind::Orrery, pos2(0.0, 300.0), &a);
+        let d = g.add_module(ModuleKind::Drone, pos2(0.0, 600.0), &a);
+        let mixer = g.add_mixer(pos2(600.0, 0.0), &a);
+        g.connect(port(s, MIDI_PORT), port(arp, MIDI_PORT), &a);
+        let mut song = Song::default();
+        let n = |id| g.node(id).unwrap();
+        assert!(song.follows(n(s)) && song.follows(n(d)));
+        assert!(!song.follows(n(arp)) && !song.follows(n(o)), "arpeggiators and drums don't");
+        assert!(!song::keyable(n(mixer)));
+        // Even told to follow, the arpeggiator gets notes already moved.
+        song.keys.insert(arp, true);
+        assert!(song.follows(n(arp)));
+        assert!(song::shifts_notes(&g, &song, n(s)));
+        assert!(!song::shifts_notes(&g, &song, n(arp)));
+        let shifts = song::note_shifts(&g, &song, 3);
+        assert!(shifts.contains(&(s, 3)) && shifts.contains(&(arp, 0)) && shifts.contains(&(o, 0)));
+    }
+
+    #[test]
+    fn keys_move_pitch_knobs_and_scenes_keep_the_home_key() {
+        let (mut g, a, mut e) = setup();
+        let (d, ..) = board(&mut g, &a);
+        module_params(&g, d).set(drone::PITCH, 110.0);
+        let mut song = Song::default();
+        song.home = 9; // A
+        let id = song.add_scene(song::capture(&g, &song, 0));
+        let mut step = Step::new(id);
+        step.key = Some(2); // D: up a fourth
+        assert_eq!(song.shift(&step), 5);
+        step.key = Some(4); // E: a fifth up, or (nearer) a fourth down
+        assert_eq!(song.shift(&step), -5);
+        g.song = song;
+        let cue = song::scene_cue(&g, &g.song, g.song.scene(id), 5, true, 1, NOW);
+        a.send(Command::Cue(Some(Box::new(cue))));
+        render(&mut e, 512);
+        let pitch = module_params(&g, d).get(drone::PITCH);
+        assert!((pitch - 110.0 * 2f32.powf(5.0 / 12.0)).abs() < 0.01, "{pitch}");
+        // Kept while in D, the scene still holds the home key's pitch.
+        let kept = song::capture(&g, &g.song, 5);
+        match &kept[&d] {
+            song::State::Module { values, .. } => assert!((values[drone::PITCH] - 110.0).abs() < 0.01),
+            _ => panic!(),
+        }
+        assert!(!song::edited(&g, &g.song, &g.song.scenes[0], 5));
+    }
+
+    /// Scene A (drone at 55 Hz) and B (110 Hz), the song A for one bar,
+    /// then B in F (home C) for one bar, then stop.
+    fn two_scene_song(g: &mut Graph, a: &AudioHandle, d: NodeId) {
+        let mut song = Song::default();
+        module_params(g, d).set(drone::PITCH, 55.0);
+        let sa = song.add_scene(song::capture(g, &song, 0));
+        module_params(g, d).set(drone::PITCH, 110.0);
+        let sb = song.add_scene(song::capture(g, &song, 0));
+        let mut first = Step::new(sa);
+        first.bars = 1;
+        let mut second = Step::new(sb);
+        second.bars = 1;
+        second.key = Some(5);
+        second.then = Then::Stop;
+        song.steps = vec![first, second];
+        song.on = true;
+        g.song = song;
+        module_params(g, d).set(drone::PITCH, 300.0);
+        a.shared.tempo.set(120.0);
+        a.shared.running.store(false, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn the_song_plays_its_steps_in_order_and_stops() {
+        let (mut g, a, mut e) = setup();
+        let (d, ..) = board(&mut g, &a);
+        two_scene_song(&mut g, &a, d);
+        let mut player = Player::default();
+        play(&mut g, &a, &mut e, &mut player, 4800, 480, |_, _, _| {});
+        assert_eq!(module_params(&g, d).get(drone::PITCH), 300.0, "stopped: nothing yet");
+        a.shared.running.store(true, Ordering::Relaxed);
+        // Each step as the player takes it in, with the drone's pitch.
+        let mut seen: Vec<(Option<usize>, f32)> = vec![(None, 300.0)];
+        let dp = module_params(&g, d);
+        play(&mut g, &a, &mut e, &mut player, 48_000 * 5, 480, |_, p, _| {
+            if seen.last().map(|s| s.0) != Some(p.current) {
+                seen.push((p.current, (dp.get(drone::PITCH) * 10.0).round() / 10.0));
+            }
+        });
+        let f = (110.0 * 2f32.powf(5.0 / 12.0) * 10.0).round() / 10.0;
+        assert_eq!(seen, [(None, 300.0), (Some(0), 55.0), (Some(1), f), (None, f)], "A, B in F, stopped");
+        assert!(!a.shared.running.load(Ordering::Relaxed), "THEN STOP stopped the transport");
+    }
+
+    #[test]
+    fn steps_change_on_the_bar_and_hold_repeats_until_asked() {
+        let (mut g, a, mut e) = setup();
+        let (d, ..) = board(&mut g, &a);
+        two_scene_song(&mut g, &a, d);
+        g.song.steps[0].bars = 2;
+        g.song.hold = true;
+        g.song.quant = Quant::Bar;
+        let mut player = Player::default();
+        play(&mut g, &a, &mut e, &mut player, 960, 480, |_, _, _| {});
+        a.shared.running.store(true, Ordering::Relaxed);
+        // HOLD: step 1 repeats past its two bars (to beat 21).
+        let mut second = false;
+        play(&mut g, &a, &mut e, &mut player, 48_000 * 10 + 24_000, 480, |_, p, _| {
+            second |= p.current == Some(1);
+        });
+        assert!(!second && player.current == Some(0), "still on step 1");
+        assert_eq!(player.started, 16.0, "its pass starts again every two bars");
+        // Asked for step 2 at beat 21: it comes in on the next bar.
+        player.queue(1);
+        let mut at = None;
+        play(&mut g, &a, &mut e, &mut player, 48_000 * 3, 480, |_, p, beat| {
+            if p.current == Some(1) && at.is_none() {
+                at = Some(beat);
+            }
+        });
+        let at = at.expect("step 2 came in");
+        assert_eq!(player.started, 24.0, "on the bar");
+        assert!(at >= 24.0 && at < 24.3, "{at}");
+        assert!(a.shared.running.load(Ordering::Relaxed), "HOLD: no STOP");
+    }
+
+    #[test]
+    fn songs_are_saved_with_the_project() {
+        use crate::project;
+        let (mut g, a, _e) = setup();
+        let (d, _, m, s) = board(&mut g, &a);
+        let x = g.add_osc(pos2(0.0, 900.0), &a);
+        osc_params(&g, x).set_waveform(Waveform::Saw);
+        module_params(&g, s).data[2].set(5.0);
+        mixer_params(&g, m).mute[1].store(true, Ordering::Relaxed);
+        let mut song = Song::default();
+        let sa = song.add_scene(song::capture(&g, &song, 0));
+        module_params(&g, d).set(drone::PITCH, 147.0);
+        let sb = song.add_scene(song::capture(&g, &song, 0));
+        song.scenes[1].name = "Swell".into();
+        song.scenes[1].color = 5;
+        let mut st = Step::new(sb);
+        st.key = Some(7);
+        st.morph = 4;
+        st.tempo = Some(84.5);
+        st.then = Then::Loop;
+        song.steps = vec![Step::new(sa), st];
+        song.home = 2;
+        song.on = true;
+        song.quant = Quant::Two;
+        song.start = 1;
+        song.free.insert(x);
+        song.keys.insert(s, false);
+        song.channel = 16;
+        g.song = song.clone();
+
+        let dir = TempDir::new("song");
+        let path = dir.0.join("song.audioboard");
+        let saved = project::snapshot(&g);
+        project::save_project(&path, &saved).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("\"song\"") && text.contains("\"Swell\"") && text.contains("\"key\": \"G\""));
+
+        let (mut h, b, _e2) = setup();
+        source(&mut h, &b);
+        project::restore(&mut h, &project::load_project(&path).unwrap(), &b);
+        assert_eq!(project::snapshot(&h), saved, "the song survives the round trip");
+        let ids: Vec<(NodeId, NodeId)> = g.nodes.iter().zip(&h.nodes).map(|(x, y)| (x.id, y.id)).collect();
+        let map = |id: NodeId| ids.iter().find(|p| p.0 == id).unwrap().1;
+        let loaded = &h.song;
+        assert_eq!(loaded.steps, song.steps);
+        assert_eq!((loaded.home, loaded.on, loaded.quant, loaded.start, loaded.channel), (2, true, Quant::Two, 1, 16));
+        assert!(loaded.free.contains(&map(x)) && loaded.keys.get(&map(s)) == Some(&false));
+        for (old, new) in song.scenes.iter().zip(&loaded.scenes) {
+            assert_eq!((old.id, &old.name, old.color), (new.id, &new.name, new.color));
+            for (id, state) in &old.nodes {
+                assert_eq!(new.nodes.get(&map(*id)), Some(state), "node {id}");
+            }
+        }
+        // A project without a song writes none.
+        let (plain, ..) = setup();
+        let text = serde_json::to_string(&project::snapshot(&plain)).unwrap();
+        assert!(!text.contains("song"));
+    }
+
+    #[test]
+    fn steps_are_added_moved_and_removed() {
+        let mut song = Song::default();
+        assert_eq!(song.add_step(1, None), Some(0));
+        song.steps[0].bars = 8;
+        song.steps[0].key = Some(3);
+        assert_eq!(song.add_step(2, Some(0)), Some(1));
+        assert_eq!((song.steps[1].bars, song.steps[1].key), (8, Some(3)), "a new step keeps the length and key before it");
+        song.add_step(3, None);
+        song.move_step(2, 0);
+        assert_eq!(song.steps.iter().map(|s| s.scene).collect::<Vec<_>>(), [3, 1, 2]);
+        song.start = 2;
+        song.remove_step(2);
+        assert_eq!(song.start, 1);
+        assert_eq!(song.beats(), 48.0);
+        assert_eq!(song::scene_name(0), "A");
+        assert_eq!(song::scene_name(27), "B2");
+    }
+
+    #[test]
+    fn midi_on_the_song_channel_picks_steps() {
+        let mut song = Song::default();
+        assert_eq!(song::midi_ask(&song, [0x9F, 48, 100]), None, "off by default");
+        song.channel = 16;
+        assert_eq!(song::midi_ask(&song, [0x9F, 48, 100]), Some(MidiAsk::Step(0)));
+        assert_eq!(song::midi_ask(&song, [0x9F, 50, 100]), Some(MidiAsk::Step(2)));
+        assert_eq!(song::midi_ask(&song, [0x9F, 47, 100]), Some(MidiAsk::Next));
+        assert_eq!(song::midi_ask(&song, [0x9F, 46, 1]), Some(MidiAsk::Previous));
+        assert_eq!(song::midi_ask(&song, [0xCF, 4, 0]), Some(MidiAsk::Step(4)));
+        assert_eq!(song::midi_ask(&song, [0x9F, 48, 0]), None, "a note-off");
+        assert_eq!(song::midi_ask(&song, [0x90, 48, 100]), None, "another channel");
+        assert_eq!(song::midi_ask(&song, [0xF8, 0, 0]), None, "the clock");
+    }
+
+    #[test]
+    fn only_pattern_data_goes_into_scenes() {
+        use crate::audio::modules::{looper, midicer};
+        let len = |k: ModuleKind| k.def().data.len();
+        assert!(song::data_ranges(ModuleKind::Looper, len(ModuleKind::Looper)).is_empty(), "never the recordings");
+        let m = song::data_ranges(ModuleKind::Midicer, len(ModuleKind::Midicer));
+        assert!(m.iter().all(|r| !r.contains(&midicer::data::RESTART)));
+        assert_eq!(m.iter().map(|r| r.len()).sum::<usize>(), len(ModuleKind::Midicer) - 1);
+        let o = song::data_ranges(ModuleKind::Orrery, len(ModuleKind::Orrery));
+        assert_eq!(o, [orrery::data::RINGS..orrery::data::LAUNCH]);
+        assert_eq!(song::data_ranges(ModuleKind::Sequencer, len(ModuleKind::Sequencer)), [0..len(ModuleKind::Sequencer)]);
+        let _ = looper::data::SCENE;
+        // Every range lies inside its module's data.
+        for kind in ModuleKind::ALL {
+            for r in song::data_ranges(kind, len(kind)) {
+                assert!(r.end <= len(kind) && !r.is_empty(), "{kind:?} {r:?}");
+            }
+        }
+        let _ = cue::NOW;
+        let _ = sequencer::ROOT;
+    }
+
+    #[test]
+    fn song_panel_draws_and_keeps_scenes() {
+        use crate::ui::song::{Act, Info, SongPanel};
+        let (mut g, a, _e) = setup();
+        let (d, ..) = board(&mut g, &a);
+        let mut song = Song::default();
+        for k in 0..6 {
+            module_params(&g, d).set(drone::PITCH, 50.0 + 10.0 * k as f32);
+            let id = song.add_scene(song::capture(&g, &song, 0));
+            let mut st = Step::new(id);
+            st.bars = [4, 8, 2, 16, 1, 4][k];
+            st.key = (k % 2 == 1).then_some(k as u8);
+            st.morph = [0, 1, 2, 4, 8, 0][k];
+            st.then = [Then::Next, Then::Loop, Then::Next, Then::Stop, Then::Next, Then::Next][k];
+            song.steps.push(st);
+        }
+        song.on = true;
+        let ctx = egui::Context::default();
+        let mut panel = SongPanel::default();
+        panel.selected = Some(1);
+        let mut edited = false;
+        for frame in 0..4 {
+            let info = Info {
+                running: frame > 1,
+                beat: 6.0 + frame as f64,
+                now: frame as f64 * 0.3,
+                current: Some(1),
+                started: 4.0,
+                coming: Some(2),
+                coming_scene: None,
+                loaded: Some(song.scenes[1].id),
+                edited: true,
+                tempo: 90.0,
+            };
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1200.0, crate::ui::song::HEIGHT))),
+                time: Some(frame as f64 / 60.0),
+                events: vec![egui::Event::PointerMoved(pos2(400.0 + 60.0 * frame as f32, 80.0))],
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| {
+                edited |= panel.show(ui, &mut song, &g, &info);
+            });
+            out.textures_delta.clear();
+        }
+        assert!(!edited, "drawing changes nothing");
+        // Clicking + NEW asks for a new scene.
+        let click = |pos: egui::Pos2, pressed: bool| egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE };
+        let new_at = pos2(crate::ui::song::SCENES_W - 25.0, 22.0 + 6.0 + 8.0);
+        for events in [vec![egui::Event::PointerMoved(new_at)], vec![click(new_at, true)], vec![click(new_at, false)]] {
+            let info = Info { running: false, beat: 0.0, now: 0.0, current: None, started: 0.0, coming: None, coming_scene: None, loaded: None, edited: false, tempo: 90.0 };
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1200.0, crate::ui::song::HEIGHT))),
+                events,
+                ..Default::default()
+            };
+            let _ = ctx.run_ui(input, |ui| {
+                panel.show(ui, &mut song, &g, &info);
+            });
+        }
+        assert_eq!(panel.acts, [Act::NewScene]);
+    }
+}

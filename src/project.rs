@@ -45,6 +45,9 @@ pub struct Project {
     /// The view shown (nodes or tracks) and the track view's layout.
     #[serde(default, skip_serializing_if = "TracksData::is_default")]
     tracks: TracksData,
+    /// The song: scenes and the steps that play them (only once used).
+    #[serde(default, skip_serializing_if = "crate::song::SongData::is_default")]
+    song: crate::song::SongData,
 }
 
 /// The track view's layout, by node ids in the file (see `tracks::Layout`).
@@ -422,6 +425,7 @@ fn snapshot_with(graph: &Graph, fresh: bool) -> Project {
         tempo: graph.tempo,
         board: graph.board.clone(),
         tracks: tracks_data(&graph.tracks, &numbers),
+        song: crate::song::to_data(&graph.song, &numbers),
     }
 }
 
@@ -635,6 +639,7 @@ pub fn restore(graph: &mut Graph, project: &Project, audio: &AudioHandle) -> usi
         }
     }
     graph.tracks = layout(&project.tracks, &ids);
+    graph.song = crate::song::from_data(&project.song, &ids);
     project.nodes.len() - ids.len()
 }
 

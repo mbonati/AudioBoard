@@ -1497,6 +1497,8 @@ Gain staging follows a DAW's:
 | Action | Gesture |
 |--------|---------|
 | Switch between the node view and the track view | V, or the two buttons right of the project name (see Track view) |
+| Show / hide the song (scenes and steps) | S, or the SONG chip in the toolbar (see Song Mode) |
+| Play a step of the song next | 1–9, or ← / → for the step before or after (see Song Mode) |
 | Add a node or a library module | drag it from the palette onto the canvas (or click it), or right-click the canvas |
 | Connect | drag from a port to the opposite kind (output → input or vice versa) |
 | Reconnect / unplug a cable | drag it away from the input it is plugged into |
@@ -1652,6 +1654,86 @@ single path; a track is that path:
 New devices land on the canvas between their neighbours (what lies downstream moves right to make room
 when needed); **L** in the node view tidies everything up. MIDI mapping (MAP) is done in the node view.
 
+## Song Mode
+
+A **song** turns the board into something to play again, start to end or live: **scenes** of the board,
+played as **steps** in order, each for a number of bars, in a key, changing on the bar. Press **S** (or click
+the **SONG** chip in the toolbar) to show the song's dock under the board; it is there in the node view and in
+the track view alike, so you change the board and keep it without leaving it.
+
+**Scenes.** A scene is a snapshot of the board: for every node its knobs, its mode and switch (a sequencer's
+PLAY too), whether it is bypassed, and what makes its pattern: the Step Sequencer's steps, MIDIcer's faders,
+dice and settings, Automa's progression and LIFE's start, Colloid's CC lanes and seed, Orrery's rings,
+Nullpunkt's lanes, Pops 66's rhythm, pattern and mutes, Fjord's lanes, Vesper's layers, Aether's and Larsen's
+settings and Iris's picture; and for every Mixer and Console the faders, pans, AUX sends, mutes, solos and
+masters. What isn't a pattern stays as it is: a MIDI Looper's recordings, Orrery's pattern buttons, Pops 66's
+user patterns, Fjord's bank, the size of a panel, and plugins (VST3, Audio Units), which keep their own state.
+- **+ NEW** keeps the board as a new scene (A, B, C…) and adds a step that plays it at the end of the song,
+  so a song can be made by setting the board up, + NEW, changing it, + NEW again…
+- Click a scene's pad to **recall** it: at once while stopped, on the next bar while playing (it blinks
+  until then). The pad of the scene on the board is lit; a dot on it says the board has changed since.
+  **SAVE** keeps those changes in it (they are not kept by themselves: recalling another scene, or the song
+  moving on, sets the board to that one).
+- Right-click a pad to recall it, keep the board in it, add it to the song, rename it (or double-click it),
+  duplicate it, give it a colour, or delete it (with the steps that play it).
+- **NODES ▾** in the dock's header lists the nodes: untick one and the scenes leave it alone, to play it by
+  hand (the master fader, a filter you ride); tick or untick **KEY** to choose which nodes follow the key.
+
+**Steps.** The song is the strip in the middle: a block per step, as wide as its bars, in its scene's colour,
+with the bar it starts on above it, its key at the bottom, and its MORPH, tempo and what follows on the right.
+Click a step to set it on the right of the dock:
+- **SCENE**: the scene it plays (the same scene can play in several steps, in other keys).
+- **BARS**: how long it plays (1–64, in 4/4).
+- **KEY**: the home key, or another one (see Keys below).
+- **MORPH**: **CUT** brings the scene in at once; **1**, **2**, **4** or **8** bars glide the continuous knobs
+  (levels, faders, filters, sends, times) into it, frequencies in equal ratios, while what moves in steps
+  (sequencer steps, modes, mutes, switches, notes) changes on the first beat.
+- **TEMPO**: **KEEP** the tempo as it is, or **SET** it when the step starts.
+- **THEN**: **NEXT** (after the last step, the first), **LOOP** (the step again, until you pick another) or
+  **STOP** (the transport stops, and the song is back at its start).
+
+Drag a step to move it, drag a scene's pad onto the strip to add a step there, **+** at the end adds a step;
+right-click a step to play it next, start the song there, duplicate it or remove it. A scene is recalled only
+when the step's scene is not already on the board: two steps of the same scene play on, tweaks and all, while
+the key and tempo still change.
+
+**Playing.** Switch the song **ON** in the dock's header: **Start** plays it from the start step (the one
+with the flag; click a step while stopped to start there), and each step lands exactly on its bar, to the
+sample, whatever the screen is doing: the changes are made by the audio engine, which knows a step ahead.
+**Stop** goes back to the start step. While it plays, the step playing fills up behind the playhead with its
+bar count ("6/16"), the step coming says NEXT and blinks, and the toolbar chip shows the scene and bar even
+with the dock hidden. The header shows the length of the song (steps, bars, minutes at the tempo).
+
+**Live.** Pick the step to play next while the song plays: **double-click** it, press **1**–**9** for steps
+1–9, **→** / **←** for the step after or before the one playing (or the one already coming), or send it on
+MIDI (below). It comes in as **QUANT** says: on the next bar, every 2 or 4 bars of the step playing, or at its
+**END** (the default, so phrases finish). **HOLD** makes every step repeat until you pick another, so the song
+waits for you; off, it follows THEN. Picked while the song is off, a step turns it on; picked while stopped, it
+becomes the start step.
+
+**Keys.** **KEY** in the header is the song's home key; a step in another key transposes the board by the
+nearest way there (D to G is up a fourth, +5; D to A is down a fourth, −5). What follows the key:
+- the notes of the nodes that make melodies: the Step Sequencer, MIDIcer, Automa and Colloid (whatever plays
+  them: a plugin, Sibyl, an arpeggiator after them). Notes already sounding end where they started, so none
+  hang when the key changes; notes on MIDI channel 10 (drums) never move. Only the start of a line moves: an
+  arpeggiator after a sequencer gets its notes already in the key;
+- the pitch of the sources tuned by a knob: the Drone's and Resonator's PITCH, the oscillator's FREQ,
+  Frakture's KEY, Aether's ROOT, Larsen's FREQ and Vesper's ROOT. Scenes keep them in the home key: keeping
+  the board while a step in F plays keeps the pitch it would have in the home key.
+Drums (Orrery, Pops 66, Fjord, Splitter), arpeggiators, the MIDI Looper and MIDI In don't follow by default
+(what you play and record is already in the key you play it in); tick KEY in NODES ▾ to change that.
+
+**MIDI.** **MIDI** in the header picks a channel (off by default) whose messages pick steps, from a pad
+controller or a foot controller: **C3** plays step 1 next, **C#3** step 2 and so on up; **B2** the next step,
+**A#2** the one before; a **Program Change** 1, 2… picks step 1, 2…. Orrery and the MIDI Looper also take
+program changes on any channel when they listen to the keyboards, so give the song a channel of its own.
+
+**Saved.** The song is saved in the project (scenes, steps, the switches and which nodes follow the key or are
+left alone), only once used: projects without a song are as they were.
+
+Later: plugins' parameters in scenes, the MIDI Looper's scenes from the song, a setlist of songs, other meters
+than 4/4.
+
 ## Palette
 
 The panel on the left (shown and hidden with the button next to the project name) lists all nodes by
@@ -1721,7 +1803,7 @@ A dot next to the name, and "(edited)" in the window title, flag unsaved changes
 project, opening another one or closing the window, AudioBoard asks whether to save them.
 A project (`.audioboard`) is a JSON file with nodes and parameters, positions, colors, collapsed nodes,
 cables and modules, the view in use and the track view's layout (written only once the track view has been
-used), the board's stickers and background (images inside, base64) and Splitter's samples (16-bit
+used), the song (only once used), the board's stickers and background (images inside, base64) and Splitter's samples (16-bit
 PCM inside, base64); parameters are saved by
 name, built-in modules by name and plugin nodes by their stable id. The demo patch always opens on launch.
 
@@ -1970,6 +2052,8 @@ src/
 │   │               activity per input, the clock source's follower
 │   ├── sync.rs     MIDI sync: timing an external clock (least-squares tempo, transport, song position),
 │   │               steering the engine's beat onto it, the clock-out thread
+│   ├── cue.rs      the song's changes on the audio thread: a scene's settings written on their beat (the
+│   │               pass ends there), MORPH glides, the tempo, a stop; KeyShift transposes a node's notes
 │   ├── plugin.rs   plugins of both formats behind one lock (VST3 through vst3-host, Audio Units): loading,
 │   │               scanning, processing on the audio thread
 │   ├── au.rs       Audio Units (macOS): listing, pseudo-paths, parameter ranges, the Rust face of au_host.m
@@ -1988,12 +2072,16 @@ src/
 │                   cable changes (insert, move, remove, route, new track); the track view's saved layout
 ├── board.rs        the board's stickers, images (PNG/JPEG kept encoded, SVG kept as text) and background
 ├── project.rs      saving/loading projects and the module library (JSON)
+├── song.rs         Song Mode: scenes (what of each node they keep), steps, keys, scenes into cues, the
+│                   player that sends them ahead of their beat, MIDI control, the song in the project
 ├── presets.rs      named presets of a module (knobs, settings, mode, toggle), one file per kind in the app's
 │                   data folder (Orrery's patterns in a file of their own)
 ├── ui/
 │   ├── canvas.rs   canvas with pan/zoom, selection, cable drag & drop, context menus
 │   ├── tracks.rs   the track view: headers (route, mute, solo, fader, meter), lanes of devices (compact
 │   │               or with their panel), dragging devices and tracks, drops from the palette
+│   ├── song.rs     the SONG dock, flat: scene pads, the strip of steps (playhead, NEXT), the step's
+│   │               settings, NODES ▾; the toolbar's song chip
 │   ├── groups.rs   modules: frame (expanded) and card with the boundary ports (collapsed)
 │   ├── layout.rs   auto layout by signal flow (columns, aligned ports, corridors for cables)
 │   ├── palette.rs  palette of nodes, plugin nodes, plugins and library modules, with dragging onto the canvas

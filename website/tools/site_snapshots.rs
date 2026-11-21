@@ -305,6 +305,91 @@ mod site_snap {
         (raster(&prims, &texs, w, h, ppp), w, h)
     }
 
+    /// The SONG dock as it is under the board, the song's player driving the
+    /// offline engine (as the app does every frame) until beat `until`.
+    fn shoot_song(s: &mut Scene, size: Vec2, ppp: f32, until: f64, selected: Option<usize>, tweak: impl FnOnce(&Graph)) -> (Vec<[f32; 3]>, usize, usize) {
+        use crate::audio::engine::Command;
+        use crate::song::{self, Player, Send, Transport};
+        let mut player = Player::default();
+        let transport = |a: &AudioHandle| Transport {
+            beat: a.shared.song.beat(),
+            running: a.shared.running.load(Ordering::Relaxed),
+            applied: a.shared.song.applied.load(Ordering::Relaxed),
+        };
+        let mut step = |s: &mut Scene, player: &mut Player| {
+            let up = player.update(&s.g, &s.g.song, transport(&s.a));
+            for send in up.sends {
+                match send {
+                    Send::Cue(c) => s.a.send(Command::Cue(Some(c))),
+                    Send::Cancel => s.a.send(Command::Cue(None)),
+                }
+            }
+            if let Some(t) = up.tempo {
+                s.g.tempo = t;
+            }
+            render_buf(&mut s.e, 800);
+        };
+        // From the top: stopped, then Start, as in the app.
+        s.a.shared.running.store(false, Ordering::Relaxed);
+        step(s, &mut player);
+        s.a.shared.running.store(true, Ordering::Relaxed);
+        while s.a.shared.song.beat() < until {
+            step(s, &mut player);
+        }
+        tweak(&s.g);
+        let ctx = egui::Context::default();
+        theme::apply(&ctx);
+        ctx.set_pixels_per_point(ppp);
+        ctx.options_mut(|o| o.warn_on_id_clash = false);
+        let mut panel = crate::ui::song::SongPanel::default();
+        panel.selected = selected;
+        let mut texs = HashMap::new();
+        let mut prims = Vec::new();
+        let frames = 30;
+        for f in 0..frames {
+            step(s, &mut player);
+            let input = egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)),
+                time: Some(f as f64 / 60.0),
+                ..Default::default()
+            };
+            let loaded = player.loaded;
+            let edited = loaded.is_some_and(|(id, shift)| s.g.song.scene(id).is_some_and(|sc| song::edited(&s.g, &s.g.song, sc, shift)));
+            let info = crate::ui::song::Info {
+                running: s.a.shared.running.load(Ordering::Relaxed),
+                beat: s.a.shared.song.beat(),
+                // The step coming shows lit (it blinks in the app).
+                now: 0.1,
+                current: player.current,
+                started: player.started,
+                coming: player.coming(),
+                coming_scene: player.coming_scene(),
+                loaded: loaded.map(|l| l.0),
+                edited,
+                tempo: s.g.tempo,
+            };
+            let g = &mut s.g;
+            let mut out = ctx.run_ui(input, |ui| {
+                let full = ui.max_rect();
+                ui.painter().rect_filled(full, 0.0, theme::PANEL);
+                ui.painter().hline(full.x_range(), full.top() + 0.5, egui::Stroke::new(1.0, theme::PANEL_BORDER));
+                let mut song = std::mem::take(&mut g.song);
+                ui.scope_builder(egui::UiBuilder::new().max_rect(full.shrink(8.0)), |ui| {
+                    panel.show(ui, &mut song, g, &info);
+                });
+                g.song = song;
+            });
+            apply(&mut texs, &out.textures_delta);
+            out.textures_delta.clear();
+            if f + 1 == frames {
+                prims = ctx.tessellate(out.shapes, out.pixels_per_point);
+            }
+        }
+        let w = (size.x * ppp).round() as usize;
+        let h = (size.y * ppp).round() as usize;
+        (raster(&prims, &texs, w, h, ppp), w, h)
+    }
+
     fn bounds(g: &Graph) -> Rect {
         g.nodes.iter().map(|n| Rect::from_min_size(n.pos, n.size())).reduce(|a, b| a.union(b)).unwrap()
     }
@@ -484,6 +569,68 @@ mod site_snap {
             s.g.tracks.set_folded(TrackKey::Channel(crate::graph::PortRef { node: console, port: 2 }), false);
             let (img, w, h) = shoot_tracks(&mut s, vec2(1500.0, 900.0), PPP, FRAMES);
             save("tracks", &img, w, (0, 0, w, h));
+        }
+
+        // --- The song dock ------------------------------------------------
+        if want("song") {
+            use crate::song::{self, Song, Step, Then};
+            let mut s = scene(84.0);
+            let drone = add(&mut s, ModuleKind::Drone, 0.0, 0.0);
+            let filter = add(&mut s, ModuleKind::Filter, 300.0, 0.0);
+            let seq = add(&mut s, ModuleKind::Sequencer, 0.0, 300.0);
+            let orrery = add(&mut s, ModuleKind::Orrery, 0.0, 600.0);
+            let mixer = s.g.add_mixer(pos2(700.0, 0.0), &s.a);
+            link(&mut s, drone, 0, filter, 0);
+            link(&mut s, filter, 0, mixer, 0);
+            let mut song = Song::default();
+            song.home = 2; // D
+            // Each scene a board of its own: the drone's chord and filter,
+            // the sequencer and the rings in or out, the fader.
+            let boards: [(&str, usize, f32, bool, bool, f32); 5] = [
+                ("Intro", 0, 500.0, false, false, 0.55),
+                ("Drift", 1, 900.0, false, false, 0.7),
+                ("Pulse", 1, 1800.0, true, true, 0.8),
+                ("Swell", 4, 3200.0, true, false, 0.85),
+                ("Out", 0, 400.0, false, false, 0.5),
+            ];
+            for (name, mode, cutoff, seq_on, rings, fader) in boards {
+                module_params(&s.g, drone).set_mode(mode);
+                module_params(&s.g, filter).set(md::filter::CUTOFF, cutoff);
+                module_params(&s.g, seq).set_toggle(seq_on);
+                module_params(&s.g, orrery).set_toggle(rings);
+                mixer_params(&s.g, mixer).fader[0].set(fader);
+                let id = song.add_scene(song::capture(&s.g, &song, 0));
+                song.scene_mut(id).unwrap().name = name.to_owned();
+            }
+            // (scene, bars, key, morph, tempo, then)
+            let steps: [(usize, u32, Option<u8>, u32, Option<f32>, Then); 7] = [
+                (0, 8, None, 0, None, Then::Next),
+                (1, 8, None, 4, None, Then::Next),
+                (2, 16, Some(7), 0, Some(92.0), Then::Next),
+                (3, 8, Some(9), 2, None, Then::Loop),
+                (1, 8, None, 4, None, Then::Next),
+                (2, 4, Some(5), 1, None, Then::Next),
+                (4, 8, None, 8, Some(84.0), Then::Stop),
+            ];
+            for (scene, bars, key, morph, tempo, then) in steps {
+                let mut st = Step::new(song.scenes[scene].id);
+                st.bars = bars;
+                st.key = key;
+                st.morph = morph;
+                st.tempo = tempo;
+                st.then = then;
+                song.steps.push(st);
+            }
+            song.on = true;
+            song.channel = 16;
+            s.g.song = song;
+            // Into the third step (Pulse, in G, at 92 BPM), its filter just
+            // ridden by hand: SAVE lights up.
+            let height = crate::ui::song::HEIGHT + 16.0;
+            let (img, w, h) = shoot_song(&mut s, vec2(1400.0, height), PPP, 64.0 + 22.0, Some(2), |g| {
+                module_params(g, filter).set(md::filter::CUTOFF, 2400.0);
+            });
+            save("song", &img, w, (0, 0, w, h));
         }
 
         // --- Sources -----------------------------------------------------

@@ -19,6 +19,7 @@ use std::time::Instant;
 
 use cpal::{FromSample, Sample};
 
+use super::cue::{Cue, KeyShift};
 use super::params::{EngineShared, TEMPO_RANGE};
 use super::sync::{self, Follow, Timeline};
 
@@ -103,6 +104,8 @@ pub struct Slot {
     bypass: Arc<AtomicBool>,
     /// How far output 0 has crossfaded to the input (0: the node's own).
     dry: f32,
+    /// Transposes the MIDI out by the song's key (nodes with a MIDI output).
+    key: Option<Box<KeyShift>>,
     /// Frames since the node stopped being heard (see [`TopoEntry::heard`]).
     unheard: usize,
     /// The outputs' gain while fading back in after a rest unheard (1: none).
@@ -135,6 +138,7 @@ impl Slot {
             midi: vec![MidiBuf::default(); midi].into_boxed_slice(),
             bypass: Arc::new(AtomicBool::new(false)),
             dry: 0.0,
+            key: (midi > 0).then(Box::default),
             unheard: 0,
             fade: 1.0,
         })
@@ -215,6 +219,8 @@ pub enum Command {
     AddNode(NodeId, Box<Slot>),
     RemoveNode(NodeId),
     SetTopology(Box<Topology>),
+    /// The song's next change (replacing one still waiting), or none.
+    Cue(Option<Box<Cue>>),
 }
 
 /// What the engine lets go of (removed nodes, old topologies), sent back to
@@ -223,6 +229,7 @@ pub enum Command {
 pub struct Garbage {
     _slot: Option<Box<Slot>>,
     _topology: Option<Box<Topology>>,
+    _cue: Option<Box<Cue>>,
 }
 
 /// Room in the garbage channel; when full, the engine frees in place.
@@ -273,6 +280,11 @@ pub struct Engine {
     limiter: Limiter,
     /// Steers the beat to an external MIDI clock, while following one.
     follow: Follow,
+    /// The song's next change, waiting for its beat.
+    cue: Option<Box<Cue>>,
+    /// The last change applied while its settings glide, and the beat the
+    /// glide started on.
+    morph: Option<(Box<Cue>, f64)>,
 }
 
 /// Keeps the output under full scale. A sum of loud plugins would otherwise
@@ -394,6 +406,8 @@ impl Engine {
             output: 1.0,
             limiter: Limiter::new(sample_rate),
             follow,
+            cue: None,
+            morph: None,
         }
     }
 
@@ -404,12 +418,27 @@ impl Engine {
     }
 
     fn discard(&self, slot: Option<Box<Slot>>, topology: Option<Box<Topology>>) {
-        // A bounded channel's sending side never allocates; if it is full
-        // (nobody draining), the value is simply freed here.
-        let _ = self.trash.try_send(Garbage {
+        self.throw(Garbage {
             _slot: slot,
             _topology: topology,
+            _cue: None,
         });
+    }
+
+    fn discard_cue(&self, cue: Option<Box<Cue>>) {
+        if cue.is_some() {
+            self.throw(Garbage {
+                _slot: None,
+                _topology: None,
+                _cue: cue,
+            });
+        }
+    }
+
+    fn throw(&self, garbage: Garbage) {
+        // A bounded channel's sending side never allocates; if it is full
+        // (nobody draining), the value is simply freed here.
+        let _ = self.trash.try_send(garbage);
     }
 
     fn drain_commands(&mut self) {
@@ -429,7 +458,82 @@ impl Engine {
                     let old = std::mem::replace(&mut self.topo, t);
                     self.discard(None, Some(old));
                 }
+                Command::Cue(cue) => {
+                    let old = std::mem::replace(&mut self.cue, cue);
+                    self.discard_cue(old);
+                }
             }
+        }
+    }
+
+    /// Frames until the waiting song change is due (0: now), if one waits
+    /// and the transport will get there (a cue for a later beat waits while
+    /// stopped).
+    fn cue_due(&self) -> Option<usize> {
+        let cue = self.cue.as_ref()?;
+        if cue.at == super::cue::NOW {
+            return Some(0);
+        }
+        if !self.ctx.playing {
+            return None;
+        }
+        if cue.at <= self.ctx.beat || self.ctx.beats_per_sample <= 0.0 {
+            return Some(0);
+        }
+        let frames = ((cue.at - self.ctx.beat) / self.ctx.beats_per_sample).round();
+        Some(if frames < 1.0 { 0 } else { frames.min(PASS as f64) as usize })
+    }
+
+    /// Makes the waiting song change: its settings (gliding ones start
+    /// gliding), the key of each node's notes, the tempo, a stop.
+    fn apply_cue(&mut self) {
+        let Some(mut cue) = self.cue.take() else {
+            return;
+        };
+        // A glide still going ends where it was going.
+        if let Some((old, _)) = self.morph.take() {
+            old.glide(1.0);
+            self.discard_cue(Some(old));
+        }
+        let glides = cue.morph > 0.0 && self.ctx.playing;
+        cue.apply(glides);
+        for &(id, shift) in &cue.shifts {
+            if let Some(key) = self.nodes.get_mut(&id).and_then(|s| s.key.as_mut()) {
+                key.shift = shift;
+            }
+        }
+        let following = self.shared.sync.follow.load(Ordering::Relaxed);
+        if let Some(bpm) = cue.tempo.filter(|_| !following) {
+            let (slowest, fastest) = TEMPO_RANGE;
+            let bpm = bpm.clamp(slowest, fastest);
+            self.shared.tempo.set(bpm);
+            self.ctx.beats_per_sample = bpm as f64 / (60.0 * self.ctx.sample_rate as f64);
+        }
+        if cue.stop && !following && self.ctx.playing {
+            // As the Stop button does: the next callback rewinds.
+            self.shared.running.store(false, Ordering::Relaxed);
+            self.shared.rewinds.fetch_add(1, Ordering::Relaxed);
+            self.ctx.playing = false;
+        }
+        self.shared.song.applied.store(cue.id, Ordering::Relaxed);
+        if glides {
+            let start = self.ctx.beat;
+            self.morph = Some((cue, start));
+        } else {
+            self.discard_cue(Some(cue));
+        }
+    }
+
+    /// Moves the gliding settings on, for the pass about to be rendered.
+    fn glide(&mut self) {
+        let Some((cue, start)) = self.morph.as_ref() else {
+            return;
+        };
+        let t = ((self.ctx.beat - start) / cue.morph).max(0.0);
+        cue.glide(t);
+        if t >= 1.0 {
+            let done = self.morph.take().map(|(c, _)| c);
+            self.discard_cue(done);
         }
     }
 
@@ -556,6 +660,9 @@ impl Engine {
                             Some(events) => slot.midi[k].copy_from(events),
                             None => slot.midi[k].clear(),
                         }
+                        if let Some(key) = slot.key.as_mut() {
+                            key.apply(&mut slot.midi[k]);
+                        }
                     }
                 }
             }
@@ -636,6 +743,11 @@ impl Engine {
             self.rewinds = rewinds;
             self.ctx.beat = 0.0;
             self.ctx.restart = true;
+            // Stopped: a glide still going ends where it was going.
+            if let Some((old, _)) = self.morph.take() {
+                old.glide(1.0);
+                self.discard_cue(Some(old));
+            }
         }
 
         let channels = channels.max(1);
@@ -651,7 +763,17 @@ impl Engine {
 
         // Always processed, even when stopped: tails ring out.
         while done < frames {
-            let n = (frames - done).min(PASS);
+            let mut n = (frames - done).min(PASS);
+            // A song change lands on its beat: the pass ends there, and the
+            // change is made before the next one.
+            if let Some(until) = self.cue_due() {
+                if until == 0 {
+                    self.apply_cue();
+                } else {
+                    n = n.min(until);
+                }
+            }
+            self.glide();
             self.process_pass(n);
 
             let mut lowest = 1.0f32;
@@ -684,6 +806,7 @@ impl Engine {
             done += n;
         }
         self.shared.beat.set((self.ctx.beat % 1024.0) as f32);
+        self.shared.song.set_beat(self.ctx.beat);
 
         if frames > 0 {
             let available = frames as f32 / self.ctx.sample_rate;
