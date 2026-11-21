@@ -129,6 +129,7 @@
       <p><strong>Plugin nodes</strong> (<code>audio/node_plugin.rs</code>) are AudioBoard's own format: nodes written against the node SDK (<code>crates/audioboard-node</code>) and built into a dynamic library. App and plugin share only a C ABI, since Rust has none of its own: <code>#[repr(C)]</code> tables and <code>extern "C"</code> functions, whose first field is a version the app checks before reading anything else. A library is opened with libloading, its description copied and checked, and each node registered, lock-free, as one more kind of module (<code>ModuleKind::Ext</code>): the generic panel, presets, MIDI mapping and projects (by a stable id) come with it. On the audio thread a plugin node is called once per 64-frame block with nothing but pointers: its buffers, its MIDI, its settings' atomics. A panic is caught at the boundary and silences only that node; non-finite samples are muted. Libraries are never unloaded, since live nodes run their code. <a href="sdk.html">The SDK page</a> shows how to write one.</p>
       <p>MIDI inputs (midir) connect automatically, even when plugged in after launch, and feed shared state read by the MIDI nodes, including a MIDI clock and transport for the MIDI Looper.</p>
       <p><strong>MIDI sync</strong> (<code>audio/sync.rs</code>): the chosen input's thread times the clock with a least-squares fit over the last beat of ticks, for the tempo and the phase, and publishes it lock-free (seqlocks). Each callback, the engine steers its beat onto the clock's, nudging its rate by a few percent and jumping only when far out or on Start, Continue and song position. To send a clock, the engine publishes its timeline every callback and a thread of its own sends ticks, Start, Stop and song position, timed to leave when their beat is heard.</p>
+      <p><strong>Song changes</strong> (<code>audio/cue.rs</code>, <code>song.rs</code>): the song's player runs on the UI thread and sends the engine one change ahead, a cue holding a scene's settings, a key and a tempo, due on a beat. The engine ends the pass on that beat and writes the cue's atomics before the next one, so a section lands on the bar to the sample whatever the UI is doing; a MORPH then glides the continuous settings pass by pass, and Stop ends it where it was going. The key moves notes on the way out of a node, remembering the shift each note started with, so its note-off matches; cues go back to the UI thread to be freed, like removed nodes.</p>
     </section>
 
     <section id="performance">
@@ -179,6 +180,7 @@
 │   │   └── <b>steps.rs</b>      <i>step grid on the global tempo, outgoing notes, held keys</i>
 │   ├── <b>midi.rs</b>       <i>MIDI inputs (midir), clock and transport, activity per input</i>
 │   ├── <b>sync.rs</b>       <i>MIDI sync: following an external clock, steering the beat, clock out</i>
+│   ├── <b>cue.rs</b>        <i>the song's changes on their beat, MORPH glides, notes moved by the key</i>
 │   ├── <b>plugin.rs</b>     <i>VST3 and Audio Units behind one lock: loading, scanning, processing</i>
 │   ├── <b>node_plugin.rs</b> <i>plugin nodes: scanning, loading, ABI checks, registry, the processor</i>
 │   ├── <b>au.rs</b>         <i>Audio Units: listing, pseudo-paths, the Rust face of au_host.m</i>
@@ -193,10 +195,12 @@
 ├── <b>tracks.rs</b>         <i>the track view's reading of the patch, its edits as cable changes</i>
 ├── <b>board.rs</b>          <i>stickers, their images (PNG/JPEG encoded, SVG as text), background</i>
 ├── <b>project.rs</b>        <i>projects and the module library (JSON)</i>
+├── <b>song.rs</b>           <i>Song Mode: scenes, steps, keys, the player, the song in the project</i>
 ├── <b>presets.rs</b>        <i>named presets, one file per kind</i>
 ├── <b class="d">ui/</b>
 │   ├── <b>canvas.rs</b>     <i>pan and zoom, selection, cables, context menus</i>
 │   ├── <b>tracks.rs</b>     <i>the track view: headers, lanes of devices, drags and drops</i>
+│   ├── <b>song.rs</b>       <i>the SONG dock: scene pads, the strip of steps, the step's settings</i>
 │   ├── <b>groups.rs</b>     <i>modules: frame and card</i>
 │   ├── <b>layout.rs</b>     <i>auto layout by signal flow</i>
 │   ├── <b>palette.rs</b>    <i>nodes and library modules</i>
