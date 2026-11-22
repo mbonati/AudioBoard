@@ -826,7 +826,7 @@ impl AudioBoardApp {
             self.refresh_dirty(false);
         }
         let edited = if self.doc.dirty { " (edited)" } else { "" };
-        let title = format!("{}{edited} — AudioBoard", self.doc.name());
+        let title = format!("{}{edited} — {}", self.doc.name(), crate::APP_TITLE);
         if title != self.window_title {
             ui.ctx()
                 .send_viewport_cmd(ViewportCommand::Title(title.clone()));
@@ -1907,7 +1907,7 @@ fn file_menu(ui: &mut Ui, recent: &[PathBuf]) -> Option<FileCommand> {
 fn logo(ui: &mut Ui) {
     let galley =
         ui.painter()
-            .layout_no_wrap("AudioBoard".to_owned(), theme::strong(12.5), theme::TEXT);
+            .layout_no_wrap(crate::APP_TITLE.to_owned(), theme::strong(12.5), theme::TEXT);
     let (rect, _) = ui.allocate_exact_size(vec2(26.0 + galley.size().x, 24.0), Sense::hover());
     let p = ui.painter();
     let icon = Rect::from_center_size(pos2(rect.left() + 9.0, rect.center().y), vec2(18.0, 18.0));
