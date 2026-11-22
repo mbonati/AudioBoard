@@ -14,6 +14,7 @@ use super::monitor::Monitor;
 use super::palette::{self, Palette, PluginEntry, Spawn};
 use super::plugin_node;
 use super::recent;
+use super::song::{self as song_ui, SongPanel};
 use super::settings::{
     PluginCounts, PluginSettings, SettingsChange, SettingsContext, SettingsWindow, SyncSettings,
 };
@@ -34,11 +35,14 @@ use crate::audio::sync::ClockOut;
 use crate::audio::{self, AudioHandle};
 use crate::graph::{Graph, NodeKind, PortRef};
 use crate::project::{self, Library, PROJECT_EXT, Project};
+use crate::song::{self, Player};
 use crate::tracks::View;
 
 const SHORTCUTS: &[(&str, &str)] = &[
     ("Cmd+N / Cmd+O", "New / open project"),
     ("V", "Switch between the node view and the track view"),
+    ("S", "Show / hide the song (scenes and steps)"),
+    ("1–9 / ← →", "Song: play step 1–9 next / the step before or after"),
     ("Cmd+S / Shift+Cmd+S", "Save / save as"),
     ("Drag from palette", "Add a node or library module"),
     ("Right-click", "Menu for what is under the pointer"),
@@ -141,6 +145,14 @@ pub struct AudioBoardApp {
     tracks: TrackView,
     monitor: Monitor,
     show_monitor: bool,
+    /// The song's dock, and what plays it.
+    song_panel: SongPanel,
+    show_song: bool,
+    player: Player,
+    /// Where the song's reading of the MIDI stream is.
+    song_midi: u32,
+    /// The board differs from the scene on it, and when that was checked.
+    song_edited: (bool, f64),
     palette: Palette,
     show_palette: bool,
     doc: Document,
@@ -213,6 +225,7 @@ impl AudioBoardApp {
         let mut midi = MidiInputs::new();
         midi.set_sync_source(settings.sync.source.clone(), &shared.sync);
         let clock_out = ClockOut::start(shared.clone());
+        let song_midi = audio.midi.stream_head();
         clock_out.set_outputs(clock_outputs(&settings.sync));
         Self {
             recorder: Recorder::new(shared.clone()),
@@ -227,6 +240,11 @@ impl AudioBoardApp {
             tracks: TrackView::new(),
             monitor: Monitor::new(),
             show_monitor: true,
+            song_panel: SongPanel::default(),
+            show_song: false,
+            player: Player::default(),
+            song_midi,
+            song_edited: (false, 0.0),
             palette: Palette::new(),
             show_palette: true,
             library,
@@ -521,6 +539,7 @@ impl AudioBoardApp {
         self.graph.tracks.view = view;
         self.editor.reset();
         self.tracks.reset();
+        self.reset_song();
         self.doc = Document::new(None, project::snapshot(&self.graph));
     }
 
@@ -568,6 +587,7 @@ impl AudioBoardApp {
                 let skipped = project::restore(&mut self.graph, &p, &self.audio);
                 self.editor.reset();
                 self.tracks.reset();
+                self.reset_song();
                 self.remember_recent(&path);
                 self.doc = Document::new(Some(path), project::snapshot(&self.graph));
                 let missing = project::missing_modules(&p);
@@ -1028,6 +1048,15 @@ impl AudioBoardApp {
                 #[cfg(not(target_os = "macos"))]
                 let _ = on_tempo;
                 ui.add_space(8.0);
+                let info = self.song_info(now);
+                let tip = if self.show_song { "Hide the song (S)" } else { "Show the song: scenes of the board played in order (S)" };
+                if song_ui::chip(ui, &self.graph.song, &info, self.show_song)
+                    .on_hover_text(tip)
+                    .clicked()
+                {
+                    self.show_song = !self.show_song;
+                }
+                ui.add_space(6.0);
                 if icon_button(ui, Icon::Monitor, self.show_monitor)
                     .on_hover_text(if self.show_monitor {
                         "Hide analyzers"
@@ -1111,6 +1140,195 @@ impl AudioBoardApp {
                 }
             });
         });
+    }
+
+    /// Forgets what the song was playing (a project opened, the nodes made
+    /// again).
+    fn reset_song(&mut self) {
+        let send = self.player.reset();
+        self.song_send(send);
+        self.song_panel.selected = None;
+        self.song_edited = (false, 0.0);
+    }
+
+    fn song_send(&self, send: song::Send) {
+        use crate::audio::engine::Command;
+        match send {
+            song::Send::Cue(cue) => self.audio.send(Command::Cue(Some(cue))),
+            song::Send::Cancel => self.audio.send(Command::Cue(None)),
+        }
+    }
+
+    fn song_transport(&self) -> song::Transport {
+        song::Transport {
+            beat: self.shared.song.beat(),
+            running: self.running(),
+            applied: self.shared.song.applied.load(Ordering::Relaxed),
+        }
+    }
+
+    fn song_info(&self, now: f64) -> song_ui::Info {
+        song_ui::Info {
+            running: self.running(),
+            beat: self.shared.song.beat(),
+            now,
+            current: self.player.current,
+            started: self.player.started,
+            coming: self.player.coming(),
+            coming_scene: self.player.coming_scene(),
+            loaded: self.player.loaded.map(|l| l.0),
+            edited: self.song_edited.0,
+            tempo: self.graph.tempo,
+        }
+    }
+
+    /// Every frame: steps asked for on the song's MIDI channel, then the
+    /// player's next change; the tempo a step set.
+    fn song_tick(&mut self, ui: &Ui, now: f64) {
+        let mut asks = Vec::new();
+        let song = &self.graph.song;
+        self.audio.midi.read_stream(&mut self.song_midi, |msg| {
+            if let Some(ask) = song::midi_ask(song, msg) {
+                asks.push(ask);
+            }
+        });
+        for ask in asks {
+            self.song_ask(ask);
+        }
+        let t = self.song_transport();
+        let update = self.player.update(&self.graph, &self.graph.song, t);
+        for send in update.sends {
+            self.song_send(send);
+        }
+        // A step's tempo (not while a MIDI clock sets it).
+        if let Some(bpm) = update.tempo.filter(|_| self.following().is_none()) {
+            self.graph.tempo = bpm;
+        }
+        // Whether the board still matches the scene on it, a few times a second.
+        if now - self.song_edited.1 > 0.25 {
+            let edited = self.player.loaded.is_some_and(|(id, shift)| {
+                self.graph
+                    .song
+                    .scene(id)
+                    .is_some_and(|s| song::edited(&self.graph, &self.graph.song, s, shift))
+            });
+            self.song_edited = (edited, now);
+        }
+        // The playhead and the step coming move on their own.
+        if self.graph.song.on && (t.running || self.player.coming().is_some()) {
+            ui.ctx().request_repaint_after(std::time::Duration::from_millis(66));
+        }
+    }
+
+    /// A step asked for by a key or on MIDI: next while playing (the song
+    /// comes on), where Start begins while stopped.
+    fn song_ask(&mut self, ask: song::MidiAsk) {
+        let len = self.graph.song.steps.len();
+        if len == 0 {
+            return;
+        }
+        let from = self
+            .player
+            .coming()
+            .or(self.player.current.filter(|_| self.running()))
+            .unwrap_or(self.graph.song.start);
+        let target = match ask {
+            song::MidiAsk::Step(i) => i,
+            song::MidiAsk::Next => (from + 1) % len,
+            song::MidiAsk::Previous => (from + len - 1) % len,
+        };
+        if target >= len {
+            return;
+        }
+        if self.running() {
+            if !self.graph.song.on {
+                self.graph.song.on = true;
+            }
+            self.player.queue(target);
+        } else {
+            self.graph.song.start = target;
+        }
+        self.song_panel.selected = Some(target);
+        self.player.touch();
+    }
+
+    /// 1–9 and the arrows pick steps (when the song has some).
+    fn song_keys(&mut self, ui: &Ui) {
+        const DIGITS: [Key; 9] = [
+            Key::Num1,
+            Key::Num2,
+            Key::Num3,
+            Key::Num4,
+            Key::Num5,
+            Key::Num6,
+            Key::Num7,
+            Key::Num8,
+            Key::Num9,
+        ];
+        if self.graph.song.steps.is_empty() {
+            return;
+        }
+        let ask = ui.input(|i| {
+            if i.modifiers.any() {
+                return None;
+            }
+            if let Some(k) = DIGITS.iter().position(|k| i.key_pressed(*k)) {
+                return Some(song::MidiAsk::Step(k));
+            }
+            if i.key_pressed(Key::ArrowRight) {
+                Some(song::MidiAsk::Next)
+            } else if i.key_pressed(Key::ArrowLeft) {
+                Some(song::MidiAsk::Previous)
+            } else {
+                None
+            }
+        });
+        if let Some(ask) = ask {
+            self.song_ask(ask);
+        }
+    }
+
+    fn song_dock(&mut self, ui: &mut Ui, now: f64) {
+        let info = self.song_info(now);
+        let mut song = std::mem::take(&mut self.graph.song);
+        let edited = self.song_panel.show(ui, &mut song, &self.graph, &info);
+        self.graph.song = song;
+        if edited {
+            self.player.touch();
+        }
+        let t = self.song_transport();
+        for act in std::mem::take(&mut self.song_panel.acts) {
+            match act {
+                song_ui::Act::Recall(id) => {
+                    let send = self.player.recall(&self.graph, &self.graph.song, id, t);
+                    self.song_send(send);
+                }
+                song_ui::Act::NewScene if self.graph.song.scenes.len() >= song::MAX_SCENES => {
+                    self.notify(now, format!("A song holds up to {} scenes", song::MAX_SCENES), false);
+                }
+                song_ui::Act::NewScene => {
+                    let shift = self.player.shift();
+                    let nodes = song::capture(&self.graph, &self.graph.song, shift);
+                    let id = self.graph.song.add_scene(nodes);
+                    self.player.stored(id);
+                    let after = self.graph.song.steps.len().checked_sub(1);
+                    if let Some(i) = self.graph.song.add_step(id, after) {
+                        self.song_panel.selected = Some(i);
+                    }
+                    self.song_edited = (false, now);
+                    self.player.touch();
+                }
+                song_ui::Act::Store(id) => {
+                    let shift = self.player.shift();
+                    let nodes = song::capture(&self.graph, &self.graph.song, shift);
+                    self.graph.song.store(id, nodes);
+                    self.player.stored(id);
+                    self.song_edited = (false, now);
+                    self.player.touch();
+                }
+                song_ui::Act::Queue(i) => self.song_ask(song::MidiAsk::Step(i)),
+            }
+        }
     }
 
     fn monitor_dock(&mut self, ui: &mut Ui, dt: f32) {
@@ -1335,6 +1553,7 @@ impl eframe::App for AudioBoardApp {
         let (dt, now) = ui.input(|i| (i.stable_dt.min(0.1), i.time));
         self.file_shortcuts(ui, now);
         self.poll_midi(ui, now);
+        self.song_tick(ui, now);
         self.shared.tempo.set(self.graph.tempo);
         for node in &mut self.graph.nodes {
             node.update_meters(dt);
@@ -1354,6 +1573,10 @@ impl eframe::App for AudioBoardApp {
             if ui.input(|i| i.key_pressed(Key::V) && !i.modifiers.any()) {
                 self.toggle_view();
             }
+            if ui.input(|i| i.key_pressed(Key::S) && !i.modifiers.any()) {
+                self.show_song = !self.show_song;
+            }
+            self.song_keys(ui);
         }
 
         let bar_frame = |margin: Margin| Frame::NONE.fill(theme::PANEL).inner_margin(margin);
@@ -1371,6 +1594,13 @@ impl eframe::App for AudioBoardApp {
                 .resizable(false)
                 .frame(bar_frame(Margin::same(8)))
                 .show(ui, |ui| self.monitor_dock(ui, dt));
+        }
+        if self.show_song {
+            Panel::bottom("song")
+                .exact_size(song_ui::HEIGHT)
+                .resizable(false)
+                .frame(bar_frame(Margin::same(8)))
+                .show(ui, |ui| self.song_dock(ui, now));
         }
         if self.show_palette {
             let picked = Panel::left("palette")
@@ -1504,6 +1734,7 @@ impl AudioBoardApp {
         project::restore(&mut self.graph, &snapshot, &self.audio);
         self.editor.reset();
         self.tracks.reset();
+        self.reset_song();
         // The same patch: still saved if it was (its nodes have new ids).
         if clean {
             self.doc.saved = project::snapshot(&self.graph);

@@ -1,4 +1,5 @@
 pub mod au;
+pub mod cue;
 pub mod device;
 pub mod dsp;
 pub mod engine;
