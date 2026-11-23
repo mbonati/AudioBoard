@@ -65,15 +65,15 @@ pub const PRESETS: &[Preset] = &[
     Preset {
         id: "graphite",
         label: "Graphite",
-        fill: theme::BG,
+        fill: theme::bg(),
         grid: Grid::Lines,
-        minor: theme::GRID_MINOR,
-        major: theme::GRID_MAJOR,
+        minor: theme::grid_minor(),
+        major: theme::grid_major(),
     },
     Preset {
         id: "dots",
         label: "Dots",
-        fill: theme::BG,
+        fill: theme::bg(),
         grid: Grid::Dots,
         minor: Color32::from_rgb(40, 42, 48),
         major: Color32::from_rgb(58, 61, 69),
@@ -121,10 +121,10 @@ pub const PRESETS: &[Preset] = &[
     Preset {
         id: "plain",
         label: "Plain",
-        fill: theme::BG,
+        fill: theme::bg(),
         grid: Grid::None,
-        minor: theme::BG,
-        major: theme::BG,
+        minor: theme::bg(),
+        major: theme::bg(),
     },
 ];
 
@@ -398,7 +398,7 @@ impl<'a> Pen<'a> {
 const BADGE: Color32 = Color32::from_rgb(29, 30, 35);
 
 fn accent(i: usize) -> Color32 {
-    theme::OSC_ACCENTS[i % theme::OSC_ACCENTS.len()]
+    theme::osc_accents()[i % theme::osc_accents().len()]
 }
 
 /// Draws a built-in design filling `size` around `c`, turned `degrees`.
@@ -412,8 +412,8 @@ pub fn draw_builtin(p: &Painter, c: Pos2, size: Vec2, degrees: f32, name: &str) 
         accent(4),
         accent(5),
     );
-    let yellow = theme::SOLO;
-    let ink = theme::TEXT;
+    let yellow = theme::solo();
+    let ink = theme::text();
     let badge = |col: Color32| pen.circle(0.0, 0.0, 0.47, BADGE, 0.035, col);
     let w = 0.045;
     match name {
@@ -701,7 +701,7 @@ pub fn draw_builtin(p: &Painter, c: Pos2, size: Vec2, degrees: f32, name: &str) 
                 "tag-ambient" => ("AMBIENT", teal),
                 "tag-drone" => ("DRONE", violet),
                 "tag-loop" => ("LOOP", green),
-                "tag-live" => ("LIVE", theme::METER_RED),
+                "tag-live" => ("LIVE", theme::meter_red()),
                 "tag-wip" => ("WIP", yellow),
                 "tag-noinput" => ("NO INPUT", rose),
                 _ => ("TAG", blue),
@@ -717,8 +717,8 @@ pub fn draw_builtin(p: &Painter, c: Pos2, size: Vec2, degrees: f32, name: &str) 
         }
         _ => {
             // A design this version doesn't know: a plain badge with a "?".
-            badge(theme::TEXT_DIM);
-            pen.text(0.0, 0.0, "?", 0.5, 0.8, theme::TEXT_DIM);
+            badge(theme::text()_DIM);
+            pen.text(0.0, 0.0, "?", 0.5, 0.8, theme::text()_DIM);
         }
     }
 }
@@ -924,7 +924,7 @@ impl BoardUi {
         }
         if bg.grid {
             let (minor, major) = if image.is_some() {
-                (alpha(theme::TEXT, 0.05), alpha(theme::TEXT, 0.10))
+                (alpha(theme::text(), 0.05), alpha(theme::text(), 0.10))
             } else {
                 (preset.minor, preset.major)
             };
@@ -1004,7 +1004,7 @@ impl BoardUi {
                         None => {
                             p.add(Shape::closed_line(
                                 quad.to_vec(),
-                                Stroke::new(1.0, theme::TEXT_FAINT),
+                                Stroke::new(1.0, theme::text()_FAINT),
                             ));
                         }
                     }
@@ -1025,7 +1025,7 @@ impl BoardUi {
                 if self.selected != Some(s.id) {
                     p.add(Shape::closed_line(
                         quad.to_vec(),
-                        Stroke::new(1.0, alpha(theme::ACCENT, 0.45)),
+                        Stroke::new(1.0, alpha(theme::accent(), 0.45)),
                     ));
                 }
             }
@@ -1075,14 +1075,14 @@ impl BoardUi {
             let quad = corners(c, size, s.rotation);
             p.add(Shape::closed_line(
                 quad.to_vec(),
-                Stroke::new(1.0, theme::ACCENT),
+                Stroke::new(1.0, theme::accent()),
             ));
             let resize_at = quad[2];
             let out_dir = (quad[1] - c).normalized();
             let rotate_at = quad[1] + out_dir * 14.0;
             p.line_segment(
                 [quad[1], rotate_at],
-                Stroke::new(1.0, alpha(theme::ACCENT, 0.6)),
+                Stroke::new(1.0, alpha(theme::accent(), 0.6)),
             );
             let resize = ui.interact(
                 Rect::from_center_size(resize_at, vec2(16.0, 16.0)),
@@ -1098,15 +1098,15 @@ impl BoardUi {
             p.rect(
                 Rect::from_center_size(resize_at, vec2(8.0, 8.0)),
                 1.5,
-                if hot(&resize) { theme::ACCENT } else { BADGE },
-                Stroke::new(1.2, theme::ACCENT),
+                if hot(&resize) { theme::accent() } else { BADGE },
+                Stroke::new(1.2, theme::accent()),
                 StrokeKind::Middle,
             );
             p.circle(
                 rotate_at,
                 4.5,
-                if hot(&rotate) { theme::ACCENT } else { BADGE },
-                Stroke::new(1.2, theme::ACCENT),
+                if hot(&rotate) { theme::accent() } else { BADGE },
+                Stroke::new(1.2, theme::accent()),
             );
             if hot(&resize) || hot(&rotate) {
                 out.hovered = true;
@@ -1327,8 +1327,8 @@ impl BoardUi {
             p.rect(
                 rect.shrink(6.0),
                 10.0,
-                alpha(theme::ACCENT, 0.05),
-                Stroke::new(1.5, alpha(theme::ACCENT, 0.7)),
+                alpha(theme::accent(), 0.05),
+                Stroke::new(1.5, alpha(theme::accent(), 0.7)),
                 StrokeKind::Inside,
             );
             p.text(
@@ -1336,7 +1336,7 @@ impl BoardUi {
                 Align2::CENTER_CENTER,
                 "Drop images to add them as stickers (PNG, JPG, SVG)",
                 FontId::proportional(13.0),
-                theme::TEXT,
+                theme::text(),
             );
         }
         let at = view.to_world(
@@ -1391,7 +1391,7 @@ impl BoardUi {
         let commands = &mut self.commands;
         let folder = &self.folder;
         ui.menu_button(
-            RichText::new("Stickers").color(theme::TEXT).size(12.5),
+            RichText::new("Stickers").color(theme::text()).size(12.5),
             |ui| {
                 sticker_picker(ui, at, commands);
                 ui.separator();
@@ -1402,7 +1402,7 @@ impl BoardUi {
                 ui.label(
                     RichText::new("EXAMPLE FILES")
                         .size(9.5)
-                        .color(theme::TEXT_FAINT),
+                        .color(theme::text()_FAINT),
                 );
                 for (i, (name, _)) in EXAMPLES.iter().enumerate() {
                     if super::canvas::menu_item(ui, name, "SVG") {
@@ -1414,7 +1414,7 @@ impl BoardUi {
                     ui.label(
                         RichText::new("YOUR STICKERS")
                             .size(9.5)
-                            .color(theme::TEXT_FAINT),
+                            .color(theme::text()_FAINT),
                     );
                     for path in folder.iter().take(24) {
                         if super::canvas::menu_item(ui, &file_name(path), "") {
@@ -1436,7 +1436,7 @@ impl BoardUi {
             },
         );
         ui.menu_button(
-            RichText::new("Background").color(theme::TEXT).size(12.5),
+            RichText::new("Background").color(theme::text()).size(12.5),
             |ui| background_picker(ui, board, commands),
         );
     }
@@ -1469,7 +1469,7 @@ fn sticker_menu(ui: &mut Ui, id: u32, commands: &mut Vec<Command>) {
 
 /// The built-in designs as a grid of tiles; a click adds one at `at`.
 fn sticker_picker(ui: &mut Ui, at: Pos2, commands: &mut Vec<Command>) {
-    ui.label(RichText::new("STICKERS").size(9.5).color(theme::TEXT_FAINT));
+    ui.label(RichText::new("STICKERS").size(9.5).color(theme::text()_FAINT));
     let icons: Vec<&(&str, &str)> = BUILTINS
         .iter()
         .filter(|(id, _)| !id.starts_with("tag-"))
@@ -1482,7 +1482,7 @@ fn sticker_picker(ui: &mut Ui, at: Pos2, commands: &mut Vec<Command>) {
         let (rect, resp) = ui.allocate_exact_size(size, Sense::CLICK);
         let p = ui.painter();
         if resp.hovered() {
-            p.rect_filled(rect, 6.0, theme::CONTROL);
+            p.rect_filled(rect, 6.0, theme::control());
         }
         let inner = rect.shrink(5.0);
         let aspect = builtin_aspect(id);
@@ -1526,7 +1526,7 @@ fn background_picker(ui: &mut Ui, board: &Board, commands: &mut Vec<Command>) {
     ui.label(
         RichText::new("BACKGROUND")
             .size(9.5)
-            .color(theme::TEXT_FAINT),
+            .color(theme::text()_FAINT),
     );
     for row in PRESETS.chunks(4) {
         ui.horizontal(|ui| {
@@ -1546,15 +1546,15 @@ fn background_picker(ui: &mut Ui, board: &Board, commands: &mut Vec<Command>) {
                     view,
                     preset.grid,
                     preset.major,
-                    theme::mix(preset.major, theme::TEXT, 0.2),
+                    theme::mix(preset.major, theme::text(), 0.2),
                 );
                 let on = bg.preset == preset.id;
                 let border = if on {
-                    theme::ACCENT
+                    theme::accent()
                 } else if resp.hovered() {
-                    theme::CONTROL_HI
+                    theme::control()_HI
                 } else {
-                    theme::NODE_BORDER
+                    theme::node_border()
                 };
                 p.rect_stroke(
                     swatch,
@@ -1567,7 +1567,7 @@ fn background_picker(ui: &mut Ui, board: &Board, commands: &mut Vec<Command>) {
                     Align2::CENTER_CENTER,
                     preset.label,
                     FontId::proportional(10.0),
-                    if on { theme::TEXT } else { theme::TEXT_DIM },
+                    if on { theme::text() } else { theme::text()_DIM },
                 );
                 if resp.on_hover_cursor(CursorIcon::PointingHand).clicked() {
                     commands.push(Command::Preset(preset.id));
@@ -1594,7 +1594,7 @@ fn background_picker(ui: &mut Ui, board: &Board, commands: &mut Vec<Command>) {
             ui.close();
         }
         ui.horizontal(|ui| {
-            ui.label(RichText::new("Veil").size(11.5).color(theme::TEXT_DIM));
+            ui.label(RichText::new("Veil").size(11.5).color(theme::text()_DIM));
             let mut dim = bg.dim;
             if ui
                 .add(egui::Slider::new(&mut dim, 0.0..=0.95).show_value(false))

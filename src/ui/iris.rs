@@ -2345,7 +2345,7 @@ pub fn draw(
             let source = if listens_in { "IN" } else { "MAIN" };
             let text = format!("{}  ·  {}", SCENES[scene], source);
             let font = theme::mono(9.0 * z);
-            let galley = v.painter.layout_no_wrap(text, font, theme::TEXT);
+            let galley = v.painter.layout_no_wrap(text, font, theme::text());
             let pill = Rect::from_min_size(
                 screen.min + vec2(8.0, 8.0) * z,
                 galley.size() + vec2(14.0, 8.0) * z,
@@ -2369,7 +2369,7 @@ pub fn draw(
             painter.galley_with_override_text_color(
                 pill.min + vec2(7.0, 4.0) * z,
                 galley,
-                alpha(theme::TEXT, a),
+                alpha(theme::text(), a),
             );
         }
     });
@@ -2406,11 +2406,11 @@ pub fn draw(
                 if hot {
                     accent
                 } else {
-                    alpha(theme::TEXT_DIM, 0.6)
+                    alpha(theme::text()_DIM, 0.6)
                 },
             ),
         );
-        gear(v.painter, c, z, if hot { accent } else { theme::TEXT });
+        gear(v.painter, c, z, if hot { accent } else { theme::text() });
         let resp = resp.on_hover_text("Iris settings");
         if resp.hovered() {
             v.ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
@@ -2448,7 +2448,7 @@ pub fn draw(
         let resp =
             v.ui.interact(r, Id::unique(("iris-grip", id)), Sense::drag());
         let hot = resp.hovered() || resp.dragged();
-        let col = if hot { accent } else { alpha(theme::TEXT, 0.7) };
+        let col = if hot { accent } else { alpha(theme::text(), 0.7) };
         for k in 1..=3 {
             let d = k as f32 * 4.0 * z;
             v.painter.line_segment(
@@ -2729,14 +2729,14 @@ fn heading(ui: &mut Ui, text: &str) {
         RichText::new(text)
             .small()
             .strong()
-            .color(theme::TEXT_FAINT),
+            .color(theme::text()_FAINT),
     );
 }
 
 fn settings(ui: &mut Ui, id: NodeId, p: &ModuleParams, accent: Color32, input: bool) {
     ui.spacing_mut().item_spacing = vec2(6.0, 5.0);
     ui.horizontal(|ui| {
-        ui.label(RichText::new("Iris").strong().color(theme::TEXT));
+        ui.label(RichText::new("Iris").strong().color(theme::text()));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let open = window_open(id);
             let label = if open {
@@ -2830,7 +2830,7 @@ fn settings(ui: &mut Ui, id: NodeId, p: &ModuleParams, accent: Color32, input: b
         (false, true) => "Listening to the main mix (IN only goes on to THRU)",
         (false, false) => "Listening to the main mix",
     };
-    ui.label(RichText::new(now).small().color(theme::TEXT_FAINT));
+    ui.label(RichText::new(now).small().color(theme::text()_FAINT));
 
     heading(ui, "PALETTE");
     let current = palette_index(p);
@@ -2853,7 +2853,7 @@ fn settings(ui: &mut Ui, id: NodeId, p: &ModuleParams, accent: Color32, input: b
             let stroke = if k == current {
                 Stroke::new(2.0, accent)
             } else {
-                Stroke::new(1.0, theme::PANEL_BORDER)
+                Stroke::new(1.0, theme::panel()_BORDER)
             };
             painter.rect_stroke(rect, 4.0, stroke, StrokeKind::Inside);
             if resp.on_hover_text(pal.name).clicked() {
@@ -2935,7 +2935,7 @@ fn settings(ui: &mut Ui, id: NodeId, p: &ModuleParams, accent: Color32, input: b
         ui.label(
             RichText::new(format!("{:.0} × {:.0}", s.x, s.y))
                 .small()
-                .color(theme::TEXT_FAINT),
+                .color(theme::text()_FAINT),
         );
     });
     ui.horizontal(|ui| {
@@ -2952,7 +2952,7 @@ fn settings(ui: &mut Ui, id: NodeId, p: &ModuleParams, accent: Color32, input: b
     ui.label(
         RichText::new("Drag the corner of the screen to resize (Shift keeps the shape); drag the picture to move the node.")
             .small()
-            .color(theme::TEXT_FAINT),
+            .color(theme::text()_FAINT),
     );
 }
 

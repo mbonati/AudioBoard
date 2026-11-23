@@ -953,7 +953,7 @@ impl Graph {
     }
 
     fn next_accent(&mut self) -> Color32 {
-        let c = theme::OSC_ACCENTS[self.accent_count % theme::OSC_ACCENTS.len()];
+        let c = theme::osc_accents()[self.accent_count % theme::osc_accents().len()];
         self.accent_count += 1;
         c
     }
@@ -1057,7 +1057,7 @@ impl Graph {
             id,
             pos,
             title,
-            accent: theme::MIXER_ACCENT,
+            accent: theme::mixer_accent(),
             collapsed: false,
             bypass,
             kind: NodeKind::Mixer(MixerNode {

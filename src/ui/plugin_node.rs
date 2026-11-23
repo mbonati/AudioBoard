@@ -57,9 +57,9 @@ pub fn draw(
     let w = SIZE.x;
     let col = |on: bool| {
         if on {
-            theme::TEXT_DIM
+            theme::text()_DIM
         } else {
-            theme::TEXT_FAINT
+            theme::text()_FAINT
         }
     };
 
@@ -102,7 +102,7 @@ pub fn draw(
         Align2::CENTER_CENTER,
         category_label(&p.meta.category),
         v.font(11.0),
-        theme::TEXT,
+        theme::text(),
     );
     // The maker, and the format when it isn't VST3.
     let maker = match p.meta.format {
@@ -116,7 +116,7 @@ pub fn draw(
         Align2::CENTER_CENTER,
         maker,
         v.font(9.5),
-        theme::TEXT_DIM,
+        theme::text()_DIM,
     );
 
     // Buttons: EDITOR · PARAMS · KEYBOARD.
@@ -184,7 +184,7 @@ pub fn draw(
             Align2::CENTER_CENTER,
             "No parameters",
             v.font(10.0),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
     }
     for (k, i) in p.pinned.clone().into_iter().enumerate() {
@@ -198,7 +198,7 @@ pub fn draw(
             Align2::CENTER_CENTER,
             label.to_uppercase(),
             v.font(8.0),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         let mut norm = p.values[i] as f32;
         let resp = knob(
@@ -231,7 +231,7 @@ pub fn draw(
             Align2::CENTER_CENTER,
             text,
             v.mono(9.0),
-            if hot { theme::TEXT } else { theme::TEXT_DIM },
+            if hot { theme::text() } else { theme::text()_DIM },
         );
     }
 
@@ -257,7 +257,7 @@ fn parameter_list(button: &egui::Response, p: &mut PluginNode, now: f64) {
                     shown.len()
                 ))
                 .size(10.0)
-                .color(theme::TEXT_FAINT),
+                .color(theme::text()_FAINT),
             );
             ScrollArea::vertical().max_height(380.0).show_rows(
                 ui,
@@ -270,9 +270,9 @@ fn parameter_list(button: &egui::Response, p: &mut PluginNode, now: f64) {
                             let pinned = p.pinned.contains(&i);
                             let full = p.pinned.len() >= PINNED_MAX;
                             let pin_col = if pinned {
-                                theme::ACCENT
+                                theme::accent()
                             } else {
-                                alpha(theme::TEXT_FAINT, 0.8)
+                                alpha(theme::text()_FAINT, 0.8)
                             };
                             let pin = ui
                                 .add_enabled(

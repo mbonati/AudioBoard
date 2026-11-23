@@ -101,7 +101,7 @@ impl SongPanel {
         );
         let p = ui.painter().clone();
         for x in [scenes.right() + 6.0, inspector.left() - 6.0] {
-            p.vline(x, body.y_range(), Stroke::new(1.0, theme::PANEL_BORDER));
+            p.vline(x, body.y_range(), Stroke::new(1.0, theme::panel()_BORDER));
         }
         self.header(ui, header, song, graph, info);
         self.scenes(ui, scenes, song, info);
@@ -119,14 +119,14 @@ impl SongPanel {
         ui.scope_builder(egui::UiBuilder::new().max_rect(r), |ui| {
             ui.horizontal_centered(|ui| {
                 ui.spacing_mut().item_spacing.x = 6.0;
-                ui.label(RichText::new("SONG").font(theme::strong(11.0)).color(theme::TEXT_DIM));
-                if pill(ui, "ON", song.on, theme::ACCENT)
+                ui.label(RichText::new("SONG").font(theme::strong(11.0)).color(theme::text()_DIM));
+                if pill(ui, "ON", song.on, theme::accent())
                     .on_hover_text("The song plays with the transport: Start plays it from the start step")
                     .clicked()
                 {
                     song.on = !song.on;
                 }
-                if pill(ui, "HOLD", song.hold, theme::MIXER_ACCENT)
+                if pill(ui, "HOLD", song.hold, theme::mixer_accent())
                     .on_hover_text("Live: every step repeats until you pick the next (click it twice, 1–9, ← →)")
                     .clicked()
                 {
@@ -196,12 +196,12 @@ impl SongPanel {
                                 secs as u32 % 60
                             ))
                             .size(10.5)
-                            .color(theme::TEXT_FAINT),
+                            .color(theme::text()_FAINT),
                         );
                         ui.add_space(10.0);
                     }
                     if let Some(text) = status(song, info) {
-                        ui.label(RichText::new(text).font(theme::strong(11.0)).color(theme::TEXT));
+                        ui.label(RichText::new(text).font(theme::strong(11.0)).color(theme::text()));
                     }
                 });
             });
@@ -210,18 +210,18 @@ impl SongPanel {
 
     fn scenes(&mut self, ui: &mut Ui, r: Rect, song: &mut Song, info: &Info) {
         let p = ui.painter_at(r.expand(2.0));
-        p.text(r.left_top() + vec2(0.0, 8.0), Align2::LEFT_CENTER, "SCENES", theme::font(9.5), theme::TEXT_FAINT);
+        p.text(r.left_top() + vec2(0.0, 8.0), Align2::LEFT_CENTER, "SCENES", theme::font(9.5), theme::text()_FAINT);
         // + NEW and SAVE on the right of the heading.
         let new_r = Rect::from_min_size(pos2(r.right() - 50.0, r.top()), vec2(50.0, 17.0));
         let save_r = new_r.translate(vec2(-56.0, 0.0));
-        if flat_button(ui, &p, Id::unique("song-new"), new_r, "+ NEW", true, theme::ACCENT)
+        if flat_button(ui, &p, Id::unique("song-new"), new_r, "+ NEW", true, theme::accent())
             .on_hover_text("Keep the board as it is as a new scene, played by a new step at the end of the song")
             .clicked()
         {
             self.acts.push(Act::NewScene);
         }
         let can_save = info.loaded.is_some();
-        let save = flat_button(ui, &p, Id::unique("song-save"), save_r, "SAVE", can_save && info.edited, theme::MIXER_ACCENT);
+        let save = flat_button(ui, &p, Id::unique("song-save"), save_r, "SAVE", can_save && info.edited, theme::mixer_accent());
         let tip = match info.loaded.and_then(|id| song.scene(id)) {
             Some(s) if info.edited => format!("Keep the board's changes in scene {}", s.name),
             Some(s) => format!("Scene {} is on the board, unchanged", s.name),
@@ -240,7 +240,7 @@ impl SongPanel {
                 Align2::LEFT_TOP,
                 "Set the board up, then + NEW\nkeeps it as scene A.",
                 theme::font(10.5),
-                theme::TEXT_FAINT,
+                theme::text()_FAINT,
             );
             return;
         }
@@ -266,9 +266,9 @@ impl SongPanel {
                         let coming = info.coming_scene == Some(scene.id);
                         let col = scene_color(scene.color);
                         let blink = coming && (info.now * 4.0) as i64 % 2 == 0;
-                        let fill = if loaded { col } else if resp.hovered() { mix(theme::NODE_BODY, col, 0.4) } else { mix(theme::NODE_BODY, col, 0.22) };
-                        p.rect(pad, 4.0, fill, Stroke::new(if blink { 2.0 } else { 1.0 }, if blink { theme::TEXT } else { alpha(col, 0.85) }), StrokeKind::Inside);
-                        let text_col = if loaded { theme::INSET } else { theme::TEXT };
+                        let fill = if loaded { col } else if resp.hovered() { mix(theme::node_body(), col, 0.4) } else { mix(theme::node_body(), col, 0.22) };
+                        p.rect(pad, 4.0, fill, Stroke::new(if blink { 2.0 } else { 1.0 }, if blink { theme::text() } else { alpha(col, 0.85) }), StrokeKind::Inside);
+                        let text_col = if loaded { theme::inset() } else { theme::text() };
                         if self.renaming.as_ref().is_some_and(|(r, _)| *r == scene.id) {
                             let (_, text) = self.renaming.as_mut().unwrap();
                             let edit = ui.put(pad.shrink(4.0), egui::TextEdit::singleline(text).font(theme::strong(11.0)).char_limit(12).align(Align2::CENTER_CENTER));
@@ -287,7 +287,7 @@ impl SongPanel {
                             p.text(pad.center(), Align2::CENTER_CENTER, &scene.name, theme::strong(11.5), text_col);
                         }
                         if loaded && info.edited {
-                            p.circle_filled(pad.right_top() + vec2(-7.0, 7.0), 2.5, theme::INSET);
+                            p.circle_filled(pad.right_top() + vec2(-7.0, 7.0), 2.5, theme::inset());
                         }
                         let tip = format!(
                             "Scene {}: click to recall it{}; drag it onto the song to add a step; right-click for more",
@@ -308,7 +308,7 @@ impl SongPanel {
                             ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
                         }
                         egui::Popup::context_menu(&resp).show(|ui| {
-                            ui.label(RichText::new(format!("Scene {}", scene.name)).size(10.5).color(theme::ACCENT));
+                            ui.label(RichText::new(format!("Scene {}", scene.name)).size(10.5).color(theme::accent()));
                             if canvas::menu_item(ui, "Recall", "click") {
                                 self.acts.push(Act::Recall(scene.id));
                                 ui.close();
@@ -334,7 +334,7 @@ impl SongPanel {
                                 for c in 0..COLORS {
                                     let (sw, resp) = ui.allocate_exact_size(vec2(18.0, 18.0), Sense::click());
                                     let on = scene.color == c;
-                                    ui.painter().rect(sw, 3.0, scene_color(c), Stroke::new(if on { 2.0 } else { 0.0 }, theme::TEXT), StrokeKind::Inside);
+                                    ui.painter().rect(sw, 3.0, scene_color(c), Stroke::new(if on { 2.0 } else { 0.0 }, theme::text()), StrokeKind::Inside);
                                     if resp.clicked() {
                                         scene.color = c;
                                     }
@@ -367,7 +367,7 @@ impl SongPanel {
             } else {
                 "Drag a scene here to add a step, or right-click it → Add to the song."
             };
-            p.text(r.left_top() + vec2(0.0, 4.0), Align2::LEFT_TOP, text, theme::font(10.5), theme::TEXT_FAINT);
+            p.text(r.left_top() + vec2(0.0, 4.0), Align2::LEFT_TOP, text, theme::font(10.5), theme::text()_FAINT);
             self.drop_scene(ui, r, song, 0);
             return;
         }
@@ -396,7 +396,7 @@ impl SongPanel {
                         lefts.push(x);
                         let block = Rect::from_min_size(pos2(x + 1.0, top), vec2(w - 2.0, block_h));
                         // The ruler: the bar each step starts on.
-                        p.text(pos2(x + 2.0, area.top() + 6.0), Align2::LEFT_CENTER, format!("{}", bar_at + 1), theme::mono(8.5), theme::TEXT_FAINT);
+                        p.text(pos2(x + 2.0, area.top() + 6.0), Align2::LEFT_CENTER, format!("{}", bar_at + 1), theme::mono(8.5), theme::text()_FAINT);
                         if i == song.start.min(song.steps.len() - 1) {
                             start_flag(&p, pos2(x + 1.0, top - 1.0));
                         }
@@ -419,7 +419,7 @@ impl SongPanel {
                             self.selected = Some(i);
                         }
                         egui::Popup::context_menu(&resp).show(|ui| {
-                            ui.label(RichText::new(format!("Step {}", i + 1)).size(10.5).color(theme::ACCENT));
+                            ui.label(RichText::new(format!("Step {}", i + 1)).size(10.5).color(theme::accent()));
                             if info.running && canvas::menu_item(ui, "Play next", "double-click") {
                                 menu = Some((i, StepMenu::Queue));
                                 ui.close();
@@ -440,11 +440,11 @@ impl SongPanel {
                         x += w;
                         bar_at += step.bars;
                     }
-                    p.text(pos2(x + 2.0, area.top() + 6.0), Align2::LEFT_CENTER, format!("{}", bar_at + 1), theme::mono(8.5), theme::TEXT_FAINT);
+                    p.text(pos2(x + 2.0, area.top() + 6.0), Align2::LEFT_CENTER, format!("{}", bar_at + 1), theme::mono(8.5), theme::text()_FAINT);
                     // + adds a step at the end.
                     let plus = Rect::from_min_size(pos2(x + 4.0, top), vec2(plus_w - 4.0, block_h));
                     let resp = ui.interact(plus, Id::unique("song-add-step"), Sense::click());
-                    let col = if resp.hovered() { theme::TEXT } else { theme::TEXT_FAINT };
+                    let col = if resp.hovered() { theme::text() } else { theme::text()_FAINT };
                     p.rect_stroke(plus, 4.0, Stroke::new(1.0, alpha(col, 0.6)), StrokeKind::Inside);
                     p.text(plus.center(), Align2::CENTER_CENTER, "+", theme::strong(14.0), col);
                     if song.steps.len() < MAX_STEPS
@@ -475,7 +475,7 @@ impl SongPanel {
                     let dragging = self.drag_step.is_some() || self.drag_scene.is_some();
                     if dragging && let Some(slot) = slot {
                         let lx = lefts.get(slot).copied().unwrap_or(x);
-                        p.vline(lx, top - 2.0..=top + block_h + 2.0, Stroke::new(2.0, theme::ACCENT));
+                        p.vline(lx, top - 2.0..=top + block_h + 2.0, Stroke::new(2.0, theme::accent()));
                     }
                     if ui.input(|i| i.pointer.any_released()) && let Some(slot) = slot {
                         if let Some(from) = self.drag_step.take() {
@@ -528,15 +528,15 @@ impl SongPanel {
     #[allow(clippy::too_many_arguments)]
     fn draw_step(&self, p: &Painter, block: Rect, i: usize, step: &Step, song: &Song, info: &Info, hovered: bool, ppb: f32) {
         let scene = song.scene(step.scene);
-        let col = scene.map_or(theme::TEXT_FAINT, |s| scene_color(s.color));
+        let col = scene.map_or(theme::text()_FAINT, |s| scene_color(s.color));
         let playing = info.current == Some(i) && info.running && song.on;
         let coming = info.coming == Some(i) && song.on;
         let fill = if playing {
-            mix(theme::NODE_BODY, col, 0.45)
+            mix(theme::node_body(), col, 0.45)
         } else if hovered {
-            mix(theme::NODE_BODY, col, 0.34)
+            mix(theme::node_body(), col, 0.34)
         } else {
-            mix(theme::NODE_BODY, col, 0.24)
+            mix(theme::node_body(), col, 0.24)
         };
         p.rect_filled(block, 4.0, fill);
         // The part of the step already played, solid, and the playhead.
@@ -545,7 +545,7 @@ impl SongPanel {
             let head = block.left() + block.width() * done;
             let played = Rect::from_min_max(block.min, pos2(head, block.bottom()));
             p.rect_filled(played, 4.0, alpha(col, 0.55));
-            p.vline(head, block.y_range(), Stroke::new(2.0, theme::TEXT));
+            p.vline(head, block.y_range(), Stroke::new(2.0, theme::text()));
         }
         // Bar ticks along the bottom.
         if ppb >= 7.0 {
@@ -553,27 +553,27 @@ impl SongPanel {
                 let x = block.left() + b as f32 * ppb;
                 if x < block.right() - 2.0 {
                     let h = if b % 4 == 0 { 7.0 } else { 4.0 };
-                    p.vline(x, (block.bottom() - h)..=block.bottom(), Stroke::new(1.0, alpha(theme::TEXT, 0.25)));
+                    p.vline(x, (block.bottom() - h)..=block.bottom(), Stroke::new(1.0, alpha(theme::text(), 0.25)));
                 }
             }
         }
         let selected = self.selected == Some(i);
         let blink = coming && (info.now * 4.0) as i64 % 2 == 0;
         let (w, c) = if blink {
-            (2.0, theme::TEXT)
+            (2.0, theme::text())
         } else if selected {
-            (1.5, theme::TEXT)
+            (1.5, theme::text())
         } else {
             (1.0, alpha(col, 0.8))
         };
         p.rect_stroke(block, 4.0, Stroke::new(w, c), StrokeKind::Inside);
         let clip = p.with_clip_rect(block.shrink(2.0));
         let name = scene.map_or("?", |s| s.name.as_str());
-        clip.text(block.left_top() + vec2(6.0, 6.0), Align2::LEFT_TOP, format!("{}", i + 1), theme::mono(9.0), alpha(theme::TEXT, 0.7));
-        clip.text(block.left_top() + vec2(6.0, 18.0), Align2::LEFT_TOP, name, theme::strong(12.5), theme::TEXT);
+        clip.text(block.left_top() + vec2(6.0, 6.0), Align2::LEFT_TOP, format!("{}", i + 1), theme::mono(9.0), alpha(theme::text(), 0.7));
+        clip.text(block.left_top() + vec2(6.0, 18.0), Align2::LEFT_TOP, name, theme::strong(12.5), theme::text());
         // The key: dim when it's the home key.
         let key = song::key_name(song.key_of(step));
-        let key_col = if step.key.is_some_and(|k| k % 12 != song.home) { theme::TEXT } else { theme::TEXT_FAINT };
+        let key_col = if step.key.is_some_and(|k| k % 12 != song.home) { theme::text() } else { theme::text()_FAINT };
         clip.text(block.left_bottom() + vec2(6.0, -8.0), Align2::LEFT_BOTTOM, key, theme::strong(10.5), key_col);
         // MORPH, the tempo and what follows, from the right.
         let mut gx = block.right() - 8.0;
@@ -581,26 +581,26 @@ impl SongPanel {
         match step.then {
             Then::Next => {}
             Then::Loop => {
-                loop_glyph(&clip, pos2(gx - 4.0, gy), theme::TEXT_DIM);
+                loop_glyph(&clip, pos2(gx - 4.0, gy), theme::text()_DIM);
                 gx -= 14.0;
             }
             Then::Stop => {
-                clip.rect_filled(Rect::from_center_size(pos2(gx - 4.0, gy), vec2(7.0, 7.0)), 1.0, theme::TEXT_DIM);
+                clip.rect_filled(Rect::from_center_size(pos2(gx - 4.0, gy), vec2(7.0, 7.0)), 1.0, theme::text()_DIM);
                 gx -= 14.0;
             }
         }
         if step.morph > 0 {
-            let r = clip.text(pos2(gx, gy), Align2::RIGHT_CENTER, format!("{}", step.morph), theme::font(9.5), theme::TEXT_DIM);
-            morph_glyph(&clip, pos2(r.left() - 12.0, gy), theme::TEXT_DIM);
+            let r = clip.text(pos2(gx, gy), Align2::RIGHT_CENTER, format!("{}", step.morph), theme::font(9.5), theme::text()_DIM);
+            morph_glyph(&clip, pos2(r.left() - 12.0, gy), theme::text()_DIM);
             gx = r.left() - 16.0;
         }
         if let Some(t) = step.tempo {
-            clip.text(pos2(gx, gy), Align2::RIGHT_CENTER, format!("{t:.0}"), theme::font(9.5), theme::TEXT_DIM);
+            clip.text(pos2(gx, gy), Align2::RIGHT_CENTER, format!("{t:.0}"), theme::font(9.5), theme::text()_DIM);
         }
         if coming {
-            clip.text(block.right_top() + vec2(-6.0, 6.0), Align2::RIGHT_TOP, "NEXT", theme::strong(8.5), theme::TEXT);
+            clip.text(block.right_top() + vec2(-6.0, 6.0), Align2::RIGHT_TOP, "NEXT", theme::strong(8.5), theme::text());
         } else if playing && let Some(bar) = Some(((info.beat - info.started).max(0.0) / BEATS_PER_BAR) as u32 + 1) {
-            clip.text(block.right_top() + vec2(-6.0, 6.0), Align2::RIGHT_TOP, format!("{}/{}", bar.min(step.bars), step.bars), theme::mono(9.0), theme::TEXT);
+            clip.text(block.right_top() + vec2(-6.0, 6.0), Align2::RIGHT_TOP, format!("{}/{}", bar.min(step.bars), step.bars), theme::mono(9.0), theme::text());
         }
     }
 
@@ -612,14 +612,14 @@ impl SongPanel {
                 Align2::LEFT_TOP,
                 "Click a step to set its bars,\nkey, MORPH, tempo and what\nfollows it.",
                 theme::font(10.5),
-                theme::TEXT_FAINT,
+                theme::text()_FAINT,
             );
             return;
         };
-        p.text(r.left_top() + vec2(0.0, 8.0), Align2::LEFT_CENTER, format!("STEP {}", i + 1), theme::font(9.5), theme::TEXT_FAINT);
+        p.text(r.left_top() + vec2(0.0, 8.0), Align2::LEFT_CENTER, format!("STEP {}", i + 1), theme::font(9.5), theme::text()_FAINT);
         let x_r = Rect::from_min_size(pos2(r.right() - 17.0, r.top()), vec2(17.0, 17.0));
         let remove = ui.interact(x_r, Id::unique("song-step-remove"), Sense::click());
-        p.text(x_r.center(), Align2::CENTER_CENTER, "×", theme::strong(13.0), if remove.hovered() { theme::MUTE } else { theme::TEXT_FAINT });
+        p.text(x_r.center(), Align2::CENTER_CENTER, "×", theme::strong(13.0), if remove.hovered() { theme::mute() } else { theme::text()_FAINT });
         if remove.on_hover_text("Remove this step").clicked() {
             song.remove_step(i);
             self.selected = None;
@@ -636,7 +636,7 @@ impl SongPanel {
             let row = |ui: &mut Ui, label: &str, add: &mut dyn FnMut(&mut Ui)| {
                 ui.horizontal(|ui| {
                     let (lr, _) = ui.allocate_exact_size(vec2(46.0, 18.0), Sense::hover());
-                    ui.painter().text(lr.left_center(), Align2::LEFT_CENTER, label, theme::font(9.5), theme::TEXT_DIM);
+                    ui.painter().text(lr.left_center(), Align2::LEFT_CENTER, label, theme::font(9.5), theme::text()_DIM);
                     add(ui);
                 });
             };
@@ -685,7 +685,7 @@ impl SongPanel {
                 ui.spacing_mut().item_spacing.x = 3.0;
                 for m in MORPHS {
                     let label = if m == 0 { "CUT".to_owned() } else { m.to_string() };
-                    if pill(ui, &label, step.morph == m, theme::ACCENT)
+                    if pill(ui, &label, step.morph == m, theme::accent())
                         .on_hover_text(if m == 0 { "The scene comes in at once".to_owned() } else { format!("Continuous knobs glide into the scene over {m} bar{}", if m == 1 { "" } else { "s" }) })
                         .clicked()
                     {
@@ -695,7 +695,7 @@ impl SongPanel {
             });
             row(ui, "TEMPO", &mut |ui| {
                 let set = step.tempo.is_some();
-                if pill(ui, if set { "SET" } else { "KEEP" }, set, theme::ACCENT)
+                if pill(ui, if set { "SET" } else { "KEEP" }, set, theme::accent())
                     .on_hover_text("Keep the tempo as it is, or set it when the step starts")
                     .clicked()
                 {
@@ -713,7 +713,7 @@ impl SongPanel {
                         Then::Loop => "Then this step again, until you pick another",
                         Then::Stop => "Then the transport stops",
                     };
-                    if pill(ui, t.name(), step.then == t, theme::ACCENT).on_hover_text(tip).clicked() {
+                    if pill(ui, t.name(), step.then == t, theme::accent()).on_hover_text(tip).clicked() {
                         step.then = t;
                     }
                 }
@@ -765,46 +765,46 @@ fn step_tip(song: &Song, i: usize, step: &Step, running: bool) -> String {
 
 /// A small flat button: lit (filled) when `on`.
 fn pill(ui: &mut Ui, text: &str, on: bool, col: Color32) -> Response {
-    let galley = ui.painter().layout_no_wrap(text.to_owned(), theme::strong(9.5), theme::TEXT);
+    let galley = ui.painter().layout_no_wrap(text.to_owned(), theme::strong(9.5), theme::text());
     let size = vec2(galley.size().x + 14.0, 18.0);
     let (r, resp) = ui.allocate_exact_size(size, Sense::click());
     let resp = resp.on_hover_cursor(CursorIcon::PointingHand);
     let p = ui.painter();
-    let fill = if on { col } else if resp.hovered() { theme::CONTROL_HI } else { theme::CONTROL };
+    let fill = if on { col } else if resp.hovered() { theme::control()_HI } else { theme::control() };
     p.rect_filled(r, 9.0, fill);
-    p.text(r.center(), Align2::CENTER_CENTER, text, theme::strong(9.5), if on { theme::INSET } else { theme::TEXT_DIM });
+    p.text(r.center(), Align2::CENTER_CENTER, text, theme::strong(9.5), if on { theme::inset() } else { theme::text()_DIM });
     resp
 }
 
 /// A value that opens a menu: "END ▾".
 fn menu_pill(ui: &mut Ui, text: &str) -> Response {
     let label = format!("{text} ▾");
-    let galley = ui.painter().layout_no_wrap(label.clone(), theme::font(10.5), theme::TEXT);
+    let galley = ui.painter().layout_no_wrap(label.clone(), theme::font(10.5), theme::text());
     let (r, resp) = ui.allocate_exact_size(vec2(galley.size().x + 14.0, 18.0), Sense::click());
     let resp = resp.on_hover_cursor(CursorIcon::PointingHand);
     let p = ui.painter();
-    p.rect(r, 9.0, theme::INSET, Stroke::new(1.0, if resp.hovered() { theme::CONTROL_HI } else { theme::NODE_BORDER }), StrokeKind::Inside);
-    p.text(r.center(), Align2::CENTER_CENTER, label, theme::font(10.5), theme::TEXT);
+    p.rect(r, 9.0, theme::inset(), Stroke::new(1.0, if resp.hovered() { theme::control()_HI } else { theme::node_border() }), StrokeKind::Inside);
+    p.text(r.center(), Align2::CENTER_CENTER, label, theme::font(10.5), theme::text());
     resp
 }
 
 fn caption(ui: &mut Ui, text: &str) {
-    ui.label(RichText::new(text).size(9.5).color(theme::TEXT_FAINT));
+    ui.label(RichText::new(text).size(9.5).color(theme::text()_FAINT));
 }
 
 /// A flat button in a rect: filled with `col` when `on`.
 fn flat_button(ui: &Ui, p: &Painter, id: Id, r: Rect, text: &str, on: bool, col: Color32) -> Response {
     let resp = ui.interact(r, id, Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
-    let fill = if on { col } else if resp.hovered() { theme::CONTROL_HI } else { theme::CONTROL };
+    let fill = if on { col } else if resp.hovered() { theme::control()_HI } else { theme::control() };
     p.rect_filled(r, 8.5, fill);
-    p.text(r.center(), Align2::CENTER_CENTER, text, theme::strong(9.5), if on { theme::INSET } else { theme::TEXT_DIM });
+    p.text(r.center(), Align2::CENTER_CENTER, text, theme::strong(9.5), if on { theme::inset() } else { theme::text()_DIM });
     resp
 }
 
 /// The start step's flag, above its block.
 fn start_flag(p: &Painter, at: Pos2) {
     let pts = vec![at + vec2(0.0, -10.0), at + vec2(7.0, -6.5), at + vec2(0.0, -3.0)];
-    p.add(egui::Shape::convex_polygon(pts, theme::ACCENT, Stroke::NONE));
+    p.add(egui::Shape::convex_polygon(pts, theme::accent(), Stroke::NONE));
 }
 
 /// A ramp: MORPH.
@@ -824,7 +824,7 @@ fn loop_glyph(p: &Painter, c: Pos2, col: Color32) {
 /// The NODES menu: for each node, whether the scenes set it and whether it
 /// follows the key.
 fn nodes_menu(ui: &mut Ui, song: &mut Song, graph: &Graph) {
-    ui.label(RichText::new("Set by the scenes · follows the key").size(10.5).color(theme::TEXT_DIM));
+    ui.label(RichText::new("Set by the scenes · follows the key").size(10.5).color(theme::text()_DIM));
     ui.add_space(2.0);
     egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
         let mut nodes: Vec<&crate::graph::Node> = graph.nodes.iter().collect();
@@ -883,25 +883,25 @@ pub fn chip(ui: &mut Ui, song: &Song, info: &Info, open: bool) -> Response {
             let bar = (((info.beat - info.started).max(0.0) / BEATS_PER_BAR) as u32 + 1).min(step.bars);
             (
                 format!("{} · {}/{}", scene.map_or("?", |s| s.name.as_str()), bar, step.bars),
-                scene.map_or(theme::TEXT_DIM, |s| scene_color(s.color)),
+                scene.map_or(theme::text()_DIM, |s| scene_color(s.color)),
             )
         }
-        None => ("SONG".to_owned(), if song.on { theme::ACCENT } else { theme::TEXT_DIM }),
+        None => ("SONG".to_owned(), if song.on { theme::accent() } else { theme::text()_DIM }),
     };
-    let galley = ui.painter().layout_no_wrap(text.clone(), theme::strong(10.0), theme::TEXT);
+    let galley = ui.painter().layout_no_wrap(text.clone(), theme::strong(10.0), theme::text());
     let (r, resp) = ui.allocate_exact_size(vec2(galley.size().x + 26.0, 24.0), Sense::click());
     let resp = resp.on_hover_cursor(CursorIcon::PointingHand);
     let p = ui.painter();
-    let bg = if open || resp.hovered() { theme::CONTROL } else { Color32::TRANSPARENT };
-    p.rect(r, 12.0, bg, Stroke::new(1.0, theme::NODE_BORDER), StrokeKind::Inside);
+    let bg = if open || resp.hovered() { theme::control() } else { Color32::TRANSPARENT };
+    p.rect(r, 12.0, bg, Stroke::new(1.0, theme::node_border()), StrokeKind::Inside);
     // Three blocks of different lengths: a song.
     let x = r.left() + 8.0;
     let y = r.center().y;
     let lit = song.on;
     for (k, (dx, w)) in [(0.0, 3.0), (4.0, 2.0), (7.0, 4.0)].into_iter().enumerate() {
-        let c = if lit && (k == 0 || playing) { col } else { theme::TEXT_FAINT };
+        let c = if lit && (k == 0 || playing) { col } else { theme::text()_FAINT };
         p.rect_filled(Rect::from_min_size(pos2(x + dx, y - 4.0), vec2(w, 8.0)), 1.0, c);
     }
-    p.text(pos2(r.left() + 20.0, y), Align2::LEFT_CENTER, text, theme::strong(10.0), if song.on { theme::TEXT } else { theme::TEXT_DIM });
+    p.text(pos2(r.left() + 20.0, y), Align2::LEFT_CENTER, text, theme::strong(10.0), if song.on { theme::text() } else { theme::text()_DIM });
     resp
 }

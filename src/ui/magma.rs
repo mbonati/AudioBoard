@@ -68,7 +68,7 @@ const XY_COL: Color32 = Color32::from_rgb(232, 112, 160);
 fn source_color(source: usize) -> Color32 {
     TABS.iter()
         .find(|t| t.2.contains(&source))
-        .map_or(theme::TEXT_DIM, |t| t.1)
+        .map_or(theme::text()_DIM, |t| t.1)
 }
 
 struct Panel<'a, 'b> {
@@ -114,9 +114,9 @@ pub fn draw(
     };
     let col = |on: bool| {
         if on {
-            theme::TEXT_DIM
+            theme::text()_DIM
         } else {
-            theme::TEXT_FAINT
+            theme::text()_FAINT
         }
     };
     v.text(
@@ -296,9 +296,9 @@ impl Panel<'_, '_> {
             rect,
             3.0 * z,
             if resp.hovered() {
-                theme::CONTROL_HI
+                theme::control()_HI
             } else {
-                theme::CONTROL
+                theme::control()
             },
         );
         v.painter.text(
@@ -306,7 +306,7 @@ impl Panel<'_, '_> {
             Align2::CENTER_CENTER,
             labels[cur],
             theme::font(8.0 * z),
-            theme::TEXT,
+            theme::text(),
         );
         for (x, glyph) in [(rect.left() + 5.0 * z, "‹"), (rect.right() - 5.0 * z, "›")] {
             v.painter.text(
@@ -314,7 +314,7 @@ impl Panel<'_, '_> {
                 Align2::CENTER_CENTER,
                 glyph,
                 theme::font(8.5 * z),
-                theme::TEXT_FAINT,
+                theme::text()_FAINT,
             );
         }
     }
@@ -322,7 +322,7 @@ impl Panel<'_, '_> {
     fn inset(&self, rect: Rect) {
         self.v
             .painter
-            .rect_filled(rect, 4.0 * self.z(), theme::INSET);
+            .rect_filled(rect, 4.0 * self.z(), theme::inset());
     }
 
     // -----------------------------------------------------------------------
@@ -385,7 +385,7 @@ impl Panel<'_, '_> {
             Align2::CENTER_CENTER,
             mg::label(i),
             v.font(8.0),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         let mut norm = spec.to_norm(p.get(i));
         let c = v.p(cx, row_y + 18.0);
@@ -433,7 +433,7 @@ impl Panel<'_, '_> {
             Align2::CENTER_CENTER,
             mg::format(p, i, shown),
             v.mono(8.5),
-            if hot { theme::TEXT } else { theme::TEXT_DIM },
+            if hot { theme::text() } else { theme::text()_DIM },
         );
         resp.context_menu(|ui| self.target_menu(ui, i));
     }
@@ -443,7 +443,7 @@ impl Panel<'_, '_> {
         ui.label(
             egui::RichText::new(mg::long_name(i))
                 .size(10.5)
-                .color(theme::TEXT_DIM),
+                .color(theme::text()_DIM),
         );
         ui.menu_button("Modulate with", |ui| {
             for (src, name) in md::SOURCE_NAMES.iter().enumerate().skip(1) {
@@ -471,7 +471,7 @@ impl Panel<'_, '_> {
             Align2::RIGHT_CENTER,
             label,
             theme::font(8.0 * z),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         let resp =
             v.ui.interact(rect, self.uid(("box", i)), Sense::click_and_drag())
@@ -496,9 +496,9 @@ impl Panel<'_, '_> {
             rect,
             3.0 * z,
             if resp.hovered() || resp.dragged() {
-                theme::CONTROL_HI
+                theme::control()_HI
             } else {
-                theme::INSET
+                theme::inset()
             },
         );
         let shown = self.live(i).map_or(p.get(i), |n| spec.denorm(n));
@@ -507,7 +507,7 @@ impl Panel<'_, '_> {
             Align2::CENTER_CENTER,
             mg::format(p, i, shown),
             theme::mono(8.5 * z),
-            theme::TEXT,
+            theme::text(),
         );
         resp.context_menu(|ui| self.target_menu(ui, i));
     }
@@ -550,7 +550,7 @@ impl Panel<'_, '_> {
                 v.r(278.0, y0, 336.0, y1),
                 "BYPASS",
                 bypass,
-                theme::MUTE,
+                theme::mute(),
                 "Bypass, with a soft crossfade",
             )
             .clicked()
@@ -582,7 +582,7 @@ impl Panel<'_, '_> {
         let painter = v
             .painter
             .with_clip_rect(rect.intersect(v.painter.clip_rect()));
-        painter.rect_filled(rect, 4.0 * z, theme::INSET);
+        painter.rect_filled(rect, 4.0 * z, theme::inset());
         let axis = Axis { rect };
         let sr = p.viz[viz::SR].get().max(8_000.0);
         let font = theme::font(7.5 * z);
@@ -598,13 +598,13 @@ impl Panel<'_, '_> {
             (1e4, "10k"),
         ] {
             let x = axis.x(f);
-            painter.vline(x, rect.y_range(), Stroke::new(1.0 * z, theme::GRID_MAJOR));
+            painter.vline(x, rect.y_range(), Stroke::new(1.0 * z, theme::grid_major()));
             painter.text(
                 pos2(x + 2.0 * z, rect.top() + 2.0 * z),
                 Align2::LEFT_TOP,
                 label,
                 font.clone(),
-                theme::TEXT_FAINT,
+                theme::text()_FAINT,
             );
         }
         for db in [-24.0, -12.0, 0.0, 12.0, 24.0f32] {
@@ -615,9 +615,9 @@ impl Panel<'_, '_> {
                 Stroke::new(
                     1.0 * z,
                     if db == 0.0 {
-                        alpha(theme::TEXT_FAINT, 0.5)
+                        alpha(theme::text()_FAINT, 0.5)
                     } else {
-                        theme::GRID_MAJOR
+                        theme::grid_major()
                     },
                 ),
             );
@@ -631,7 +631,7 @@ impl Panel<'_, '_> {
                 Align2::LEFT_BOTTOM,
                 label,
                 font.clone(),
-                theme::TEXT_FAINT,
+                theme::text()_FAINT,
             );
         }
         if self.on(data::ANALYZER) {
@@ -686,7 +686,7 @@ impl Panel<'_, '_> {
                     Color32::from_rgb(120, 170, 240),
                 ]
             } else {
-                [theme::TEXT, Color32::from_rgb(232, 88, 88)]
+                [theme::text(), Color32::from_rgb(232, 88, 88)]
             };
             for (ch, col) in cols.into_iter().enumerate() {
                 painter.add(Shape::line(
@@ -714,14 +714,14 @@ impl Panel<'_, '_> {
         for &(f, c) in &dots {
             let color = FILTER_COLORS[f];
             let r = if f == selected { 7.0 } else { 5.5 } * z;
-            painter.circle_filled(c, r, if f == selected { color } else { theme::INSET });
+            painter.circle_filled(c, r, if f == selected { color } else { theme::inset() });
             painter.circle_stroke(c, r, Stroke::new(1.6 * z, color));
             painter.text(
                 c,
                 Align2::CENTER_CENTER,
                 (f + 1).to_string(),
                 theme::font(7.5 * z),
-                if f == selected { theme::INSET } else { color },
+                if f == selected { theme::inset() } else { color },
             );
         }
         let resp =
@@ -735,7 +735,7 @@ impl Panel<'_, '_> {
                 Align2::RIGHT_TOP,
                 text,
                 theme::mono(8.0 * z),
-                theme::TEXT_DIM,
+                theme::text()_DIM,
             );
         }
         if p.viz[viz::MUTED].get() > 0.5 {
@@ -744,7 +744,7 @@ impl Panel<'_, '_> {
                 Align2::LEFT_BOTTOM,
                 "auto-muted",
                 theme::font(8.0 * z),
-                theme::TEXT_FAINT,
+                theme::text()_FAINT,
             );
         }
     }
@@ -908,13 +908,13 @@ impl Panel<'_, '_> {
                 painter.rect_filled(
                     Rect::from_min_max(pos2(x0, top), pos2(x1, top + 8.5 * z)),
                     0.0,
-                    theme::INSET,
+                    theme::inset(),
                 );
             } else if note % 12 == 0 {
                 painter.vline(
                     x0,
                     top..=r.bottom(),
-                    Stroke::new(1.0 * z, theme::TEXT_FAINT),
+                    Stroke::new(1.0 * z, theme::text()_FAINT),
                 );
             }
         }
@@ -962,16 +962,16 @@ impl Panel<'_, '_> {
         for (ch, state) in states.iter().enumerate() {
             let x = DISPLAY[2] + 8.0 + ch as f32 * 14.0;
             let r = v.r(x, DISPLAY[1], x + 11.0, DISPLAY[3]);
-            v.painter.rect_filled(r, 2.0 * z, theme::INSET);
+            v.painter.rect_filled(r, 2.0 * z, theme::inset());
             let h = norm(state.level);
             if h > 0.0 {
                 let db = crate::audio::params::gain_to_db(state.level);
                 let col = if db > -1.0 {
-                    theme::METER_RED
+                    theme::meter_red()
                 } else if db > -9.0 {
-                    theme::METER_YELLOW
+                    theme::meter_yellow()
                 } else {
-                    theme::METER_GREEN
+                    theme::meter_green()
                 };
                 v.painter.rect_filled(
                     Rect::from_min_max(pos2(r.left(), r.bottom() - r.height() * h), r.max),
@@ -982,7 +982,7 @@ impl Panel<'_, '_> {
             v.painter.hline(
                 r.x_range(),
                 r.bottom() - r.height() * norm(state.peak),
-                Stroke::new(1.0 * z, theme::TEXT_DIM),
+                Stroke::new(1.0 * z, theme::text()_DIM),
             );
         }
     }
@@ -1019,9 +1019,9 @@ impl Panel<'_, '_> {
             rrect,
             4.0 * z,
             if resp.hovered() {
-                theme::CONTROL_HI
+                theme::control()_HI
             } else {
-                theme::CONTROL
+                theme::control()
             },
         );
         let mode = mg::choice(p, data::ROUTING_MODE, 3);
@@ -1044,7 +1044,7 @@ impl Panel<'_, '_> {
             Align2::CENTER_CENTER,
             "ROUTING",
             theme::font(7.0 * z),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         self.seg(
             "mode",
@@ -1065,19 +1065,19 @@ impl Panel<'_, '_> {
                     .on_hover_cursor(CursorIcon::PointingHand)
                     .on_hover_text("Click to select; double-click to switch on or off");
             let fill = if f == selected {
-                if on { color } else { theme::TEXT_FAINT }
+                if on { color } else { theme::text()_FAINT }
             } else if r.hovered() {
-                theme::CONTROL_HI
+                theme::control()_HI
             } else {
-                theme::CONTROL
+                theme::control()
             };
             v.painter.rect_filled(rect, 3.0 * z, fill);
             let text = if f == selected {
-                theme::INSET
+                theme::inset()
             } else if on {
                 color
             } else {
-                theme::TEXT_FAINT
+                theme::text()_FAINT
             };
             v.painter.text(
                 rect.center(),
@@ -1184,9 +1184,9 @@ impl Panel<'_, '_> {
                 if lit {
                     alpha(color, 0.35)
                 } else if r.hovered() {
-                    theme::CONTROL_HI
+                    theme::control()_HI
                 } else {
-                    theme::CONTROL
+                    theme::control()
                 },
             );
             let in_use = sources.iter().any(|s| used.contains(s));
@@ -1196,9 +1196,9 @@ impl Panel<'_, '_> {
                 name,
                 theme::font(8.5 * z),
                 if in_use || lit {
-                    theme::TEXT
+                    theme::text()
                 } else {
-                    theme::TEXT_DIM
+                    theme::text()_DIM
                 },
             );
             if r.clicked() {
@@ -1292,7 +1292,7 @@ impl Panel<'_, '_> {
         let n = md::steps(p, x);
         let area = v.r(PAD + 4.0, EDIT_Y + 4.0, 340.0, EDIT_Y + 92.0);
         v.painter
-            .rect_filled(area, 3.0 * z, alpha(theme::CONTROL, 0.4));
+            .rect_filled(area, 3.0 * z, alpha(theme::control(), 0.4));
         let col_w = area.width() / n as f32;
         let mid = area.center().y;
         let half = area.height() * 0.45;
@@ -1300,7 +1300,7 @@ impl Panel<'_, '_> {
         let phase = p.viz[viz::XLFO_PHASE + x].get();
         let playing = ((phase * n as f32) as usize).min(n - 1);
         v.painter
-            .hline(area.x_range(), mid, Stroke::new(1.0 * z, theme::GRID_MAJOR));
+            .hline(area.x_range(), mid, Stroke::new(1.0 * z, theme::grid_major()));
         for i in 0..n {
             let (value, random, _, _) = md::step(p, x, i);
             let x0 = area.left() + col_w * i as f32;
@@ -1315,7 +1315,7 @@ impl Panel<'_, '_> {
             let bar =
                 Rect::from_min_max(pos2(col.left(), y.min(mid)), pos2(col.right(), y.max(mid)));
             let c = if random {
-                alpha(theme::TEXT_FAINT, 0.6)
+                alpha(theme::text()_FAINT, 0.6)
             } else {
                 alpha(XLFO_COL, if i == playing { 0.9 } else { 0.55 })
             };
@@ -1326,7 +1326,7 @@ impl Panel<'_, '_> {
                     Align2::CENTER_CENTER,
                     "?",
                     theme::font(10.0 * z),
-                    theme::TEXT_DIM,
+                    theme::text()_DIM,
                 );
             }
         }
@@ -1344,7 +1344,7 @@ impl Panel<'_, '_> {
         v.painter.vline(
             area.left() + area.width() * phase,
             area.y_range(),
-            Stroke::new(1.0 * z, alpha(theme::TEXT, 0.7)),
+            Stroke::new(1.0 * z, alpha(theme::text(), 0.7)),
         );
         let resp =
             v.ui.interact(area, self.uid(("steps", x)), Sense::click_and_drag());
@@ -1391,7 +1391,7 @@ impl Panel<'_, '_> {
             Align2::CENTER_CENTER,
             format!("{n}"),
             v.mono(9.0),
-            theme::TEXT_DIM,
+            theme::text()_DIM,
         );
 
         // Global settings.
@@ -1421,7 +1421,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             "SYNC (BARS)",
             v.font(7.5),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         self.cycler(
             "sync",
@@ -1436,7 +1436,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             "MIDI",
             v.font(7.5),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         self.cycler(
             "midi",
@@ -1514,7 +1514,7 @@ impl Panel<'_, '_> {
             Align2::RIGHT_CENTER,
             label,
             theme::font(7.5 * z),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         let resp =
             v.ui.interact(rect, self.uid(("data", i)), Sense::click_and_drag())
@@ -1527,9 +1527,9 @@ impl Panel<'_, '_> {
             rect,
             3.0 * z,
             if resp.hovered() || resp.dragged() {
-                theme::CONTROL_HI
+                theme::control()_HI
             } else {
-                theme::CONTROL
+                theme::control()
             },
         );
         v.painter.text(
@@ -1537,13 +1537,13 @@ impl Panel<'_, '_> {
             Align2::CENTER_CENTER,
             fmt(p.data[i].get()),
             theme::mono(8.0 * z),
-            theme::TEXT,
+            theme::text(),
         );
     }
 
     fn trigger_meter(&self, rect: Rect, level: f32, threshold: Option<f32>, color: Color32) {
         let (v, z) = (self.v, self.z());
-        v.painter.rect_filled(rect, 2.0 * z, theme::INSET);
+        v.painter.rect_filled(rect, 2.0 * z, theme::inset());
         let x_of = |db: f32| rect.left() + rect.width() * ((db + 60.0) / 60.0).clamp(0.0, 1.0);
         v.painter.rect_filled(
             Rect::from_min_max(rect.min, pos2(x_of(level), rect.bottom())),
@@ -1552,7 +1552,7 @@ impl Panel<'_, '_> {
         );
         if let Some(t) = threshold {
             v.painter
-                .vline(x_of(t), rect.y_range(), Stroke::new(1.5 * z, theme::TEXT));
+                .vline(x_of(t), rect.y_range(), Stroke::new(1.5 * z, theme::text()));
         }
     }
 
@@ -1566,13 +1566,13 @@ impl Panel<'_, '_> {
         let held = resp.is_pointer_button_down_on();
         p.viz[viz::AUDITION].set(if held { which as f32 } else { -1.0 });
         v.painter
-            .rect_filled(rect, 3.0 * z, if held { color } else { theme::CONTROL });
+            .rect_filled(rect, 3.0 * z, if held { color } else { theme::control() });
         v.painter.text(
             rect.center(),
             Align2::CENTER_CENTER,
             "AUDITION",
             theme::font(8.0 * z),
-            if held { theme::INSET } else { theme::TEXT_DIM },
+            if held { theme::inset() } else { theme::text()_DIM },
         );
     }
 
@@ -1580,7 +1580,7 @@ impl Panel<'_, '_> {
         let (v, p, z) = (self.v, self.p, self.z());
         let area = v.r(PAD + 4.0, EDIT_Y + 4.0, 366.0, EDIT_Y + 92.0);
         v.painter
-            .rect_filled(area, 3.0 * z, alpha(theme::CONTROL, 0.4));
+            .rect_filled(area, 3.0 * z, alpha(theme::control(), 0.4));
         let val = |k: usize| {
             self.live(egp(e, k))
                 .map_or(p.get(egp(e, k)), |n| mg::spec(egp(e, k)).denorm(n))
@@ -1640,7 +1640,7 @@ impl Panel<'_, '_> {
             Align2::RIGHT_CENTER,
             format!("{:+.2}", out),
             v.mono(8.0),
-            theme::TEXT_DIM,
+            theme::text()_DIM,
         );
         for (k, i) in [
             eg::DELAY,
@@ -1679,7 +1679,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             "TRIGGER",
             v.font(7.5),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         self.cycler(
             "egtrig",
@@ -1694,7 +1694,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             "RANGE",
             v.font(7.5),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         self.cycler(
             "egrange",
@@ -1711,7 +1711,7 @@ impl Panel<'_, '_> {
                 Align2::LEFT_CENTER,
                 "LEVEL vs THRESHOLD",
                 v.font(7.5),
-                theme::TEXT_FAINT,
+                theme::text()_FAINT,
             );
             self.trigger_meter(
                 v.r(col, EDIT_Y + 78.0, 516.0, EDIT_Y + 86.0),
@@ -1731,7 +1731,7 @@ impl Panel<'_, '_> {
         let (v, p, z) = (self.v, self.p, self.z());
         let area = v.r(PAD + 4.0, EDIT_Y + 4.0, 366.0, EDIT_Y + 92.0);
         v.painter
-            .rect_filled(area, 3.0 * z, alpha(theme::CONTROL, 0.4));
+            .rect_filled(area, 3.0 * z, alpha(theme::control(), 0.4));
         // Recent output, newest on the right.
         let id = self.uid(("ef-trace", f));
         let out = p.viz[viz::SOURCES_AT + md::SRC_EF - 1 + f].get();
@@ -1781,7 +1781,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             "TRIGGER",
             v.font(7.5),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         self.cycler(
             "eftrig",
@@ -1796,7 +1796,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             "MODE",
             v.font(7.5),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         self.cycler(
             "efmode",
@@ -1811,7 +1811,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             "LEVEL",
             v.font(7.5),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         self.trigger_meter(
             v.r(col, EDIT_Y + 78.0, 516.0, EDIT_Y + 86.0),
@@ -1834,7 +1834,7 @@ impl Panel<'_, '_> {
         let (v, p, z) = (self.v, self.p, self.z());
         let area = v.r(PAD + 4.0, EDIT_Y + 4.0, 200.0, EDIT_Y + 150.0);
         v.painter
-            .rect_filled(area, 3.0 * z, alpha(theme::CONTROL, 0.4));
+            .rect_filled(area, 3.0 * z, alpha(theme::control(), 0.4));
         let d = data::MIDI + m * 3;
         let curve = mg::choice(p, d + 2, md::MIDI_CURVES.len());
         let pts: Vec<Pos2> = (0..=48)
@@ -1852,7 +1852,7 @@ impl Panel<'_, '_> {
         v.painter.hline(
             area.x_range(),
             area.bottom() - area.height() * out.abs(),
-            Stroke::new(1.0 * z, alpha(theme::TEXT, 0.5)),
+            Stroke::new(1.0 * z, alpha(theme::text(), 0.5)),
         );
         v.text(
             206.0,
@@ -1860,7 +1860,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             format!("{out:+.2}"),
             v.mono(9.0),
-            theme::TEXT_DIM,
+            theme::text()_DIM,
         );
         let col = 376.0;
         v.text(
@@ -1869,7 +1869,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             "INPUT",
             v.font(7.5),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         self.cycler(
             "midiin",
@@ -1893,7 +1893,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             "CURVE",
             v.font(7.5),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         self.cycler(
             "midicurve",
@@ -1908,7 +1908,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_TOP,
             "MIDI from the MIDI input,\nor the keyboards when\nnothing is patched there",
             v.font(8.0),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
     }
 
@@ -1977,7 +1977,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             "MODE",
             v.font(7.5),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         self.cycler(
             "xymode",
@@ -1992,7 +1992,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             "RANGE",
             v.font(7.5),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         let bipolar = self.on(d + 1);
         if self
@@ -2023,9 +2023,9 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             text,
             v.mono(8.5),
-            theme::TEXT_DIM,
+            theme::text()_DIM,
         );
-        v.text(col, EDIT_Y + 96.0, Align2::LEFT_TOP, "Drag the dot (Shift: Y only);\ndouble-click centres it.\nDrag X / Y from the tab\nonto knobs.", v.font(8.0), theme::TEXT_FAINT);
+        v.text(col, EDIT_Y + 96.0, Align2::LEFT_TOP, "Drag the dot (Shift: Y only);\ndouble-click centres it.\nDrag X / Y from the tab\nonto knobs.", v.font(8.0), theme::text()_FAINT);
     }
 
     /// The slots: source, target, level (a knob, so modulatable), invert,
@@ -2038,7 +2038,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             "MODULATION SLOTS",
             theme::strong(8.5 * z),
-            theme::TEXT_DIM,
+            theme::text()_DIM,
         );
         let rows: Vec<usize> = (0..SLOTS)
             .filter(|&s| mg::slot_raw(p, s) != (0, 0))
@@ -2067,7 +2067,7 @@ impl Panel<'_, '_> {
                 Align2::CENTER_CENTER,
                 "Drag a source's ◯ onto a knob,\nor right-click a knob",
                 v.font(8.5),
-                theme::TEXT_FAINT,
+                theme::text()_FAINT,
             );
         }
         for (k, &s) in rows.iter().skip(page * per_page).take(per_page).enumerate() {
@@ -2090,9 +2090,9 @@ impl Panel<'_, '_> {
                 src_rect,
                 3.0 * z,
                 if r.hovered() {
-                    theme::CONTROL_HI
+                    theme::control()_HI
                 } else {
-                    theme::CONTROL
+                    theme::control()
                 },
             );
             v.painter.text(
@@ -2116,9 +2116,9 @@ impl Panel<'_, '_> {
                 tgt_rect,
                 3.0 * z,
                 if t.hovered() {
-                    theme::CONTROL_HI
+                    theme::control()_HI
                 } else {
-                    theme::CONTROL
+                    theme::control()
                 },
             );
             v.painter.text(
@@ -2126,7 +2126,7 @@ impl Panel<'_, '_> {
                 Align2::CENTER_CENTER,
                 label,
                 theme::font(7.5 * z),
-                theme::TEXT,
+                theme::text(),
             );
             let t = if target > 0 {
                 t.on_hover_text(mg::long_name(target - 1))
@@ -2157,7 +2157,7 @@ impl Panel<'_, '_> {
                 p.set(li, 0.5);
             }
             let level = self.live(li).map_or(p.get(li), |n| n * 2.0 - 1.0);
-            v.painter.rect_filled(lvl_rect, 2.0 * z, theme::INSET);
+            v.painter.rect_filled(lvl_rect, 2.0 * z, theme::inset());
             let cx = lvl_rect.center().x;
             let xl = cx + lvl_rect.width() * 0.5 * level;
             v.painter.rect_filled(
@@ -2173,7 +2173,7 @@ impl Panel<'_, '_> {
                 Align2::CENTER_CENTER,
                 format!("{:+.0}%", level * 100.0),
                 theme::mono(7.5 * z),
-                theme::TEXT,
+                theme::text(),
             );
             // Invert, remove.
             if self
@@ -2195,7 +2195,7 @@ impl Panel<'_, '_> {
                     v.r(x1 - 16.0, y, x1, y + 18.0),
                     "×",
                     false,
-                    theme::MUTE,
+                    theme::mute(),
                     "Remove this slot",
                 )
                 .clicked()

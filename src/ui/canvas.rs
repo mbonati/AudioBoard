@@ -1139,7 +1139,7 @@ impl Editor {
             self.title_editor(ui, gid, h.title_rect, &mut actions);
             push_header(h, gid, &mut actions);
 
-            let accent_of = |pr: &PortRef| graph.node(pr.node).map_or(theme::ACCENT, |n| n.accent);
+            let accent_of = |pr: &PortRef| graph.node(pr.node).map_or(theme::accent(), |n| n.accent);
             for pr in &card.ins {
                 self.port(
                     ui,
@@ -1255,8 +1255,8 @@ impl Editor {
             painter.rect(
                 preview,
                 6.0 * z,
-                alpha(theme::ACCENT, 0.06),
-                Stroke::new(1.0, alpha(theme::ACCENT, 0.7)),
+                alpha(theme::accent(), 0.06),
+                Stroke::new(1.0, alpha(theme::accent(), 0.7)),
                 StrokeKind::Inside,
             );
             if ui.input(|i| i.pointer.any_released()) {
@@ -1276,8 +1276,8 @@ impl Editor {
             painter.rect(
                 band,
                 2.0,
-                alpha(theme::ACCENT, 0.08),
-                Stroke::new(1.0, alpha(theme::ACCENT, 0.7)),
+                alpha(theme::accent(), 0.08),
+                Stroke::new(1.0, alpha(theme::accent(), 0.7)),
                 StrokeKind::Inside,
             );
             if !ui.input(|i| i.pointer.primary_down()) {
@@ -1302,7 +1302,7 @@ impl Editor {
                 Align2::CENTER_CENTER,
                 "Right-click to add a node",
                 FontId::proportional(13.0),
-                theme::TEXT_FAINT,
+                theme::text()_FAINT,
             );
         }
 
@@ -1455,9 +1455,9 @@ impl Editor {
         let format = |size: f32, color: Color32| {
             egui::TextFormat::simple(FontId::proportional(size), alpha(color, opacity))
         };
-        job.append(&kind, 0.0, format(11.0, theme::TEXT));
+        job.append(&kind, 0.0, format(11.0, theme::text()));
         if !detail.is_empty() {
-            job.append(&detail, 8.0, format(10.5, theme::TEXT_DIM));
+            job.append(&detail, 8.0, format(10.5, theme::text()_DIM));
         }
         let galley = ui.painter().layout_job(job);
         let pad = vec2(8.0, 4.0);
@@ -1482,11 +1482,11 @@ impl Editor {
         painter.rect(
             pill,
             5.0,
-            alpha(theme::NODE_HEADER, 0.72 * opacity),
-            Stroke::new(1.0, alpha(theme::NODE_BORDER, 0.8 * opacity)),
+            alpha(theme::node_header(), 0.72 * opacity),
+            Stroke::new(1.0, alpha(theme::node_border(), 0.8 * opacity)),
             StrokeKind::Inside,
         );
-        painter.galley(pill.min + pad, galley, theme::TEXT);
+        painter.galley(pill.min + pad, galley, theme::text());
     }
 
     /// MIDI mappings: a dashed line from each MIDI node to the control it
@@ -1533,14 +1533,14 @@ impl Editor {
             painter.rect_stroke(
                 h.rect.expand(2.0 * z),
                 4.0 * z,
-                Stroke::new(1.2, alpha(theme::ACCENT, 0.8)),
+                Stroke::new(1.2, alpha(theme::accent(), 0.8)),
                 StrokeKind::Outside,
             );
         }
         let area = painter.clip_rect();
         let text = "Click a knob or fader to drive it with MIDI  ·  Esc to cancel";
         let galley =
-            painter.layout_no_wrap(text.to_owned(), FontId::proportional(12.0), theme::TEXT);
+            painter.layout_no_wrap(text.to_owned(), FontId::proportional(12.0), theme::text());
         let banner = Rect::from_center_size(
             pos2(area.center().x, area.top() + 24.0),
             galley.size() + vec2(24.0, 12.0),
@@ -1548,11 +1548,11 @@ impl Editor {
         painter.rect(
             banner,
             6.0,
-            theme::NODE_HEADER,
-            Stroke::new(1.0, theme::ACCENT),
+            theme::node_header(),
+            Stroke::new(1.0, theme::accent()),
             StrokeKind::Inside,
         );
-        painter.galley(banner.center() - galley.size() * 0.5, galley, theme::TEXT);
+        painter.galley(banner.center() - galley.size() * 0.5, galley, theme::text());
 
         let Some(p) = pointer else {
             return;
@@ -1764,7 +1764,7 @@ impl Editor {
         let edit = egui::TextEdit::singleline(&mut r.text)
             .id(id)
             .font(theme::strong(11.5 * self.zoom))
-            .text_color(theme::TEXT)
+            .text_color(theme::text())
             .margin(egui::Margin::symmetric(3, 1))
             .desired_width(rect.width());
         let resp = ui.put(rect, edit);
@@ -2010,7 +2010,7 @@ impl Editor {
         let font = FontId::proportional(11.5);
         let count_text = format!("{count} nodes");
         let count_w = painter
-            .layout_no_wrap(count_text.clone(), font.clone(), theme::TEXT_DIM)
+            .layout_no_wrap(count_text.clone(), font.clone(), theme::text()_DIM)
             .size()
             .x;
         let widths: Vec<f32> = items
@@ -2019,7 +2019,7 @@ impl Editor {
                 10.0 + 14.0
                     + 6.0
                     + painter
-                        .layout_no_wrap(label(i).to_owned(), font.clone(), theme::TEXT)
+                        .layout_no_wrap(label(i).to_owned(), font.clone(), theme::text())
                         .size()
                         .x
                     + 10.0
@@ -2054,8 +2054,8 @@ impl Editor {
         painter.rect(
             bar,
             H * 0.5,
-            theme::PANEL,
-            Stroke::new(1.0, theme::NODE_BORDER),
+            theme::panel(),
+            Stroke::new(1.0, theme::node_border()),
             StrokeKind::Inside,
         );
         painter.text(
@@ -2063,13 +2063,13 @@ impl Editor {
             Align2::LEFT_CENTER,
             count_text,
             font.clone(),
-            theme::TEXT_DIM,
+            theme::text()_DIM,
         );
         let rule_x = bar.left() + 14.0 + count_w + 12.0;
         painter.vline(
             rule_x,
             (bar.top() + 8.0)..=(bar.bottom() - 8.0),
-            Stroke::new(1.0, theme::PANEL_BORDER),
+            Stroke::new(1.0, theme::panel()_BORDER),
         );
 
         let mut bx = rule_x + 6.0;
@@ -2091,13 +2091,13 @@ impl Editor {
                 });
             let hot = resp.hovered();
             if hot {
-                painter.rect_filled(r, BUTTON_H * 0.5, theme::CONTROL);
+                painter.rect_filled(r, BUTTON_H * 0.5, theme::control());
             }
             let ink = match item {
-                BarItem::Delete if hot => theme::MUTE,
-                BarItem::Module => theme::ACCENT,
-                _ if hot => theme::TEXT,
-                _ => theme::TEXT_DIM,
+                BarItem::Delete if hot => theme::mute(),
+                BarItem::Module => theme::accent(),
+                _ if hot => theme::text(),
+                _ => theme::text()_DIM,
             };
             bar_icon(
                 painter,
@@ -2110,7 +2110,7 @@ impl Editor {
                 Align2::LEFT_CENTER,
                 label(item),
                 font.clone(),
-                theme::TEXT,
+                theme::text(),
             );
             if resp.clicked() {
                 actions.push(match item {
@@ -2220,10 +2220,10 @@ fn push_header(h: groups::HeaderActions, gid: GroupId, actions: &mut Vec<Action>
 
 pub(super) fn menu_item(ui: &mut Ui, label: &str, hint: &str) -> bool {
     ui.add(
-        egui::Button::new(egui::RichText::new(label).color(theme::TEXT).size(12.5))
+        egui::Button::new(egui::RichText::new(label).color(theme::text()).size(12.5))
             .right_text(
                 egui::RichText::new(hint)
-                    .color(theme::TEXT_FAINT)
+                    .color(theme::text()_FAINT)
                     .size(10.5),
             )
             .min_size(vec2(220.0, 22.0)),
@@ -2233,7 +2233,7 @@ pub(super) fn menu_item(ui: &mut Ui, label: &str, hint: &str) -> bool {
 
 fn menu_heading(ui: &mut Ui, text: &str) {
     ui.add_space(4.0);
-    ui.label(egui::RichText::new(text).size(9.5).color(theme::TEXT_FAINT));
+    ui.label(egui::RichText::new(text).size(9.5).color(theme::text()_FAINT));
 }
 
 /// What a menu acts on, at its top: "4 nodes selected", a node's or a
@@ -2242,7 +2242,7 @@ fn subject_heading(ui: &mut Ui, text: &str) {
     ui.add_space(2.0);
     ui.horizontal(|ui| {
         ui.add_space(6.0);
-        ui.label(egui::RichText::new(text).size(10.5).color(theme::ACCENT));
+        ui.label(egui::RichText::new(text).size(10.5).color(theme::accent()));
     });
     ui.separator();
 }
@@ -2331,7 +2331,7 @@ pub fn add_menu(ui: &mut Ui, library: &[Preset], plugins: &[PluginEntry]) -> Opt
         ui.label(
             egui::RichText::new("Right-click a module → Save to library")
                 .size(10.5)
-                .color(theme::TEXT_FAINT),
+                .color(theme::text()_FAINT),
         );
     }
     for (i, preset) in library.iter().enumerate() {
@@ -2349,7 +2349,7 @@ pub fn add_menu(ui: &mut Ui, library: &[Preset], plugins: &[PluginEntry]) -> Opt
             }
             let remove = ui
                 .add(
-                    egui::Button::new(egui::RichText::new("×").color(theme::TEXT_FAINT))
+                    egui::Button::new(egui::RichText::new("×").color(theme::text()_FAINT))
                         .min_size(vec2(22.0, 22.0)),
                 )
                 .on_hover_text("Remove from the library");
@@ -2631,7 +2631,7 @@ fn bar_icon(p: &Painter, c: Pos2, item: BarItem, col: Color32) {
                 StrokeKind::Inside,
             );
             let front = Rect::from_min_size(c + vec2(-2.5, -2.5), vec2(8.5, 8.5));
-            p.rect_filled(front, 1.5, theme::PANEL);
+            p.rect_filled(front, 1.5, theme::panel());
             p.rect_stroke(front, 1.5, s, StrokeKind::Inside);
         }
         BarItem::Delete => {

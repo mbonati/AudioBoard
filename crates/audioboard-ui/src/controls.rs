@@ -23,7 +23,7 @@ pub fn segmented<P>(
 ) -> Option<usize> {
     let z = v.z;
     let p = v.painter;
-    p.rect_filled(rect, 4.0 * z, theme::INSET);
+    p.rect_filled(rect, 4.0 * z, theme::inset());
     let seg_w = rect.width() / count.max(1) as f32;
     let base = Id::unique(salt);
     let mut picked = None;
@@ -37,14 +37,14 @@ pub fn segmented<P>(
                 .on_hover_cursor(CursorIcon::PointingHand);
         let on = i == selected;
         if on {
-            p.rect_filled(seg.shrink(2.0 * z), 3.0 * z, theme::CONTROL);
+            p.rect_filled(seg.shrink(2.0 * z), 3.0 * z, theme::control());
         }
         let col = if on {
             accent
         } else if resp.hovered() {
-            theme::TEXT_DIM
+            theme::text()_DIM
         } else {
-            theme::TEXT_FAINT
+            theme::text()_FAINT
         };
         let tip = item(i, seg, col);
         let resp = if tip.is_empty() {
@@ -93,9 +93,9 @@ pub fn knob_cell<P>(
         param,
     } = cell;
     let label_col = if dimmed {
-        alpha(theme::TEXT_FAINT, 0.6)
+        alpha(theme::text()_FAINT, 0.6)
     } else {
-        theme::TEXT_FAINT
+        theme::text()_FAINT
     };
     v.text(
         cx,
@@ -127,7 +127,7 @@ pub fn knob_cell<P>(
         Align2::CENTER_CENTER,
         spec.format(new.unwrap_or(value)),
         v.mono(9.0),
-        if hot { theme::TEXT } else { theme::TEXT_DIM },
+        if hot { theme::text() } else { theme::text()_DIM },
     );
     new
 }
@@ -161,7 +161,7 @@ pub fn pill<P>(v: &NodeView<'_, P>, x: f32, y: f32, text: &str, color: Color32, 
             Align2::CENTER_CENTER,
             text,
             font,
-            if on { theme::INSET } else { color },
+            if on { theme::inset() } else { color },
         );
     }
     rect
@@ -186,9 +186,9 @@ pub fn port_labels<P>(
     for (i, label) in labels.iter().enumerate() {
         let on = patched.get(i).copied().unwrap_or(false);
         let col = if on {
-            theme::TEXT_DIM
+            theme::text()_DIM
         } else {
-            theme::TEXT_FAINT
+            theme::text()_FAINT
         };
         v.text(x, y0 + dy * i as f32, align, label, v.font(9.0), col);
     }
@@ -202,6 +202,6 @@ pub fn caption<P>(v: &NodeView<'_, P>, x: f32, y: f32, text: &str) {
         Align2::LEFT_CENTER,
         text,
         theme::strong(7.5 * v.z),
-        theme::TEXT_FAINT,
+        theme::text()_FAINT,
     );
 }

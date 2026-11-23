@@ -82,11 +82,11 @@ pub fn menu(ui: &mut Ui, recent: &[PathBuf]) -> Option<RecentPick> {
             "missing".to_owned()
         };
         let button = egui::Button::new(RichText::new(name).size(12.5).color(if exists {
-            theme::TEXT
+            theme::text()
         } else {
-            theme::TEXT_FAINT
+            theme::text()_FAINT
         }))
-        .right_text(RichText::new(hint).size(10.5).color(theme::TEXT_FAINT))
+        .right_text(RichText::new(hint).size(10.5).color(theme::text()_FAINT))
         .min_size(vec2(260.0, 22.0));
         let resp = ui.add_enabled(exists, button);
         let resp = if exists {

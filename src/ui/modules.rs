@@ -273,9 +273,9 @@ pub fn draw(
     }
     let label_col = |on: bool| {
         if on {
-            theme::TEXT_DIM
+            theme::text()_DIM
         } else {
-            theme::TEXT_FAINT
+            theme::text()_FAINT
         }
     };
 
@@ -339,12 +339,12 @@ pub fn draw(
         Align2::CENTER_CENTER,
         main,
         v.mono(13.0),
-        theme::TEXT,
+        theme::text(),
     );
     let sub_col = if map.target.is_some() || map.picking {
         accent
     } else {
-        theme::TEXT_DIM
+        theme::text()_DIM
     };
     // The second line shares its row with the toggle, if there is one; a
     // mapping that does not fit shows just the control's name.
@@ -405,7 +405,7 @@ pub fn draw(
 
     // Display.
     let rect = v.r(PAD, display_top(def), w - PAD, display_bottom(def));
-    v.painter.rect_filled(rect, 4.0 * z, theme::INSET);
+    v.painter.rect_filled(rect, 4.0 * z, theme::inset());
     let painter = v
         .painter
         .with_clip_rect(rect.intersect(v.painter.clip_rect()));
@@ -871,7 +871,7 @@ impl Screen<'_> {
         self.p.hline(
             r.x_range(),
             r.center().y,
-            Stroke::new(1.0 * self.z, theme::GRID_MAJOR),
+            Stroke::new(1.0 * self.z, theme::grid_major()),
         );
     }
 }
@@ -909,7 +909,7 @@ fn audio_in_display(s: &Screen, p: &ModuleParams) {
             Align2::CENTER_CENTER,
             text,
             theme::mono(8.5 * z),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         return;
     }
@@ -931,9 +931,9 @@ fn audio_in_display(s: &Screen, p: &ModuleParams) {
         let y = r.top() + row_h * (k as f32 + 0.5);
         let missing = channel >= open;
         let col = if missing {
-            theme::TEXT_FAINT
+            theme::text()_FAINT
         } else {
-            theme::TEXT_DIM
+            theme::text()_DIM
         };
         s.p.text(
             pos2(r.left() + label_w * 0.5, y),
@@ -946,13 +946,13 @@ fn audio_in_display(s: &Screen, p: &ModuleParams) {
             pos2(r.left() + label_w, y - 3.0 * z),
             pos2(r.right(), y + 3.0 * z),
         );
-        s.p.rect_filled(bar, 1.5 * z, alpha(theme::TEXT, 0.06));
+        s.p.rect_filled(bar, 1.5 * z, alpha(theme::text(), 0.06));
         if missing {
             continue;
         }
         let w = bar.width() * x_of(level);
         let fill = if level >= 0.89 {
-            theme::METER_RED
+            theme::meter_red()
         } else {
             s.accent
         };
@@ -967,7 +967,7 @@ fn audio_in_display(s: &Screen, p: &ModuleParams) {
             s.p.vline(
                 x,
                 bar.y_range(),
-                Stroke::new(1.0 * z, alpha(theme::TEXT, 0.18)),
+                Stroke::new(1.0 * z, alpha(theme::text(), 0.18)),
             );
         }
     }
@@ -1030,7 +1030,7 @@ fn granular_display(s: &Screen, p: &ModuleParams) {
         let x = x_of(age);
         s.p.line_segment(
             [pos2(x, r.center().y - h), pos2(x, r.center().y + h)],
-            Stroke::new(bar, alpha(theme::TEXT_FAINT, 0.7)),
+            Stroke::new(bar, alpha(theme::text()_FAINT, 0.7)),
         );
     }
 
@@ -1080,7 +1080,7 @@ fn filter_display(s: &Screen, p: &ModuleParams) {
     s.p.hline(
         r.x_range(),
         y_of(0.0),
-        Stroke::new(1.0 * s.z, theme::GRID_MAJOR),
+        Stroke::new(1.0 * s.z, theme::grid_major()),
     );
 
     let n = (r.width() / 3.0).max(16.0) as usize;
@@ -1229,7 +1229,7 @@ fn step_grid(v: &NodeView, id: NodeId, s: &Screen, p: &ModuleParams) {
         s.p.hline(
             r.x_range(),
             y,
-            Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.18)),
+            Stroke::new(1.0 * z, alpha(theme::text()_FAINT, 0.18)),
         );
     }
     let len = sequencer::length(p);
@@ -1237,12 +1237,12 @@ fn step_grid(v: &NodeView, id: NodeId, s: &Screen, p: &ModuleParams) {
     for i in 0..LEN {
         let x0 = r.left() + col_w * i as f32;
         if i % 4 == 0 && i > 0 {
-            s.p.vline(x0, r.y_range(), Stroke::new(1.0 * z, theme::GRID_MAJOR));
+            s.p.vline(x0, r.y_range(), Stroke::new(1.0 * z, theme::grid_major()));
         }
         let column = Rect::from_x_y_ranges(x0..=x0 + col_w, r.y_range());
         let now = playing >= 0.0 && playing.round() as usize == i;
         if now {
-            s.p.rect_filled(column, 0.0, alpha(theme::TEXT, 0.07));
+            s.p.rect_filled(column, 0.0, alpha(theme::text(), 0.07));
         }
         let degree = sequencer::degree(p, i);
         let cell = Rect::from_x_y_ranges(
@@ -1264,7 +1264,7 @@ fn step_grid(v: &NodeView, id: NodeId, s: &Screen, p: &ModuleParams) {
             s.p.rect_stroke(
                 cell,
                 1.0 * z,
-                Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.8 * active)),
+                Stroke::new(1.0 * z, alpha(theme::text()_FAINT, 0.8 * active)),
                 StrokeKind::Inside,
             );
         }
@@ -1283,7 +1283,7 @@ fn step_grid(v: &NodeView, id: NodeId, s: &Screen, p: &ModuleParams) {
             Align2::LEFT_TOP,
             label,
             theme::mono(9.0 * z),
-            theme::TEXT,
+            theme::text(),
         );
     }
 }
@@ -1325,7 +1325,7 @@ fn keys_display(s: &Screen, p: &ModuleParams) {
             continue;
         }
         let key = Rect::from_x_y_ranges(x + 0.5 * z..=x + key_w - 0.5 * z, r.y_range());
-        s.p.rect_filled(key, 1.0 * z, fill(n, theme::CONTROL_HI));
+        s.p.rect_filled(key, 1.0 * z, fill(n, theme::control()_HI));
         if n % 12 == 0 && key_w > 6.0 * z {
             let octave = n / 12 - 1;
             s.p.text(
@@ -1333,7 +1333,7 @@ fn keys_display(s: &Screen, p: &ModuleParams) {
                 Align2::CENTER_BOTTOM,
                 format!("{octave}"),
                 theme::font(7.0 * z),
-                theme::INSET,
+                theme::inset(),
             );
         }
         x += key_w;
@@ -1348,7 +1348,7 @@ fn keys_display(s: &Screen, p: &ModuleParams) {
             pos2(x, r.top() + r.height() * 0.3),
             vec2(key_w * 0.6, r.height() * 0.6),
         );
-        s.p.rect_filled(key, 1.0 * z, fill(n, theme::INSET));
+        s.p.rect_filled(key, 1.0 * z, fill(n, theme::inset()));
     }
 }
 
@@ -1391,9 +1391,9 @@ fn midicer_display(v: &NodeView, id: NodeId, s: &Screen, p: &ModuleParams) {
             column,
             1.5 * z,
             if black {
-                theme::GRID_MINOR
+                theme::grid_minor()
             } else {
-                alpha(theme::CONTROL, 0.6)
+                alpha(theme::control(), 0.6)
             },
         );
         let w = p.data[data::WEIGHTS + i].get().clamp(0.0, 1.0);
@@ -1410,11 +1410,11 @@ fn midicer_display(v: &NodeView, id: NodeId, s: &Screen, p: &ModuleParams) {
             s.p.rect_filled(bar, 1.5 * z, color);
         }
         let label_col = if lit == Some(i) {
-            theme::TEXT
+            theme::text()
         } else if w > 0.0 {
-            theme::TEXT_DIM
+            theme::text()_DIM
         } else {
-            theme::TEXT_FAINT
+            theme::text()_FAINT
         };
         let font = theme::font(8.0 * z);
         if font.size >= super::nodes::MIN_TEXT {
@@ -1440,12 +1440,12 @@ fn midicer_display(v: &NodeView, id: NodeId, s: &Screen, p: &ModuleParams) {
             s.accent
         } else if (first..=last).contains(&i) {
             if i % 4 == 0 {
-                theme::TEXT_FAINT
+                theme::text()_FAINT
             } else {
-                theme::CONTROL_HI
+                theme::control()_HI
             }
         } else {
-            theme::GRID_MINOR
+            theme::grid_minor()
         };
         s.p.rect_filled(c, 1.0 * z, color);
     }
@@ -1565,7 +1565,7 @@ fn midicer_setup(ui: &mut egui::Ui, p: &ModuleParams) {
     ui.set_width(270.0);
     let heading = |ui: &mut egui::Ui, text: &str| {
         ui.add_space(4.0);
-        ui.label(egui::RichText::new(text).size(9.5).color(theme::TEXT_FAINT));
+        ui.label(egui::RichText::new(text).size(9.5).color(theme::text()_FAINT));
     };
     let check = |ui: &mut egui::Ui, i: usize, label: &str| {
         let mut on = p.data[i].get() > 0.5;
@@ -1606,6 +1606,6 @@ fn midicer_setup(ui: &mut egui::Ui, p: &ModuleParams) {
     ui.label(
         egui::RichText::new("C restart · D dice rhythm · E dice melody\nF / G rhythm / melody DICE ⇄ LIVE · A mute while held")
             .size(10.5)
-            .color(theme::TEXT_DIM),
+            .color(theme::text()_DIM),
     );
 }

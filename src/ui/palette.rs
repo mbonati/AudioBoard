@@ -82,12 +82,12 @@ pub struct Palette {
 /// Colour of each palette group's swatch.
 fn group_color(group: &str) -> Color32 {
     match group {
-        "Sources" => theme::OSC_ACCENTS[0],
-        "Texture" => theme::OSC_ACCENTS[3],
-        "Effects" => theme::OSC_ACCENTS[5],
-        "MIDI" => theme::OSC_ACCENTS[1],
-        "Output" => theme::MIXER_ACCENT,
-        _ => theme::ACCENT,
+        "Sources" => theme::osc_accents()[0],
+        "Texture" => theme::osc_accents()[3],
+        "Effects" => theme::osc_accents()[5],
+        "MIDI" => theme::osc_accents()[1],
+        "Output" => theme::mixer_accent(),
+        _ => theme::accent(),
     }
 }
 
@@ -175,7 +175,7 @@ impl Palette {
                                     "Node plugins you install in the Nodes folder show here.",
                                 )
                                 .size(10.5)
-                                .color(theme::TEXT_FAINT),
+                                .color(theme::text()_FAINT),
                             );
                         }
                         for (maker, types) in node_groups {
@@ -187,7 +187,7 @@ impl Palette {
                                         let entry = Entry {
                                             name: ty.name(),
                                             hint: ty.hint(),
-                                            color: theme::OSC_ACCENTS[2],
+                                            color: theme::osc_accents()[2],
                                             spawn: Spawn::Node(ty),
                                             removable: false,
                                         };
@@ -204,7 +204,7 @@ impl Palette {
                                 let link = |ui: &mut Ui, text: &str| {
                                     ui.add(
                                         egui::Label::new(
-                                            RichText::new(text).size(10.5).color(theme::TEXT_DIM),
+                                            RichText::new(text).size(10.5).color(theme::text()_DIM),
                                         )
                                         .sense(Sense::click()),
                                     )
@@ -214,7 +214,7 @@ impl Palette {
                                 if link(ui, "Rescan") {
                                     requests.push(Request::RescanPlugins);
                                 }
-                                ui.label(RichText::new("·").size(10.5).color(theme::TEXT_FAINT));
+                                ui.label(RichText::new("·").size(10.5).color(theme::text()_FAINT));
                                 if link(ui, "Open Nodes folder") {
                                     requests.push(Request::RevealNodePlugins);
                                 }
@@ -236,7 +236,7 @@ impl Palette {
                             ui.label(
                                 RichText::new("No plugins in the system plug-in folders.")
                                     .size(10.5)
-                                    .color(theme::TEXT_FAINT),
+                                    .color(theme::text()_FAINT),
                             );
                         }
                         for (vendor, members) in by_vendor(plugins) {
@@ -255,7 +255,7 @@ impl Palette {
                                         let entry = Entry {
                                             name: &plugin.name,
                                             hint: &plugin.hint,
-                                            color: theme::OSC_ACCENTS[4],
+                                            color: theme::osc_accents()[4],
                                             spawn: Spawn::Plugin(i),
                                             removable: false,
                                         };
@@ -272,7 +272,7 @@ impl Palette {
                                 egui::Label::new(
                                     RichText::new("Rescan plugins")
                                         .size(10.5)
-                                        .color(theme::TEXT_DIM),
+                                        .color(theme::text()_DIM),
                                 )
                                 .sense(Sense::click()),
                             );
@@ -297,7 +297,7 @@ impl Palette {
                                     "Right-click a module → Save to library to keep it here.",
                                 )
                                 .size(10.5)
-                                .color(theme::TEXT_FAINT),
+                                .color(theme::text()_FAINT),
                             );
                         }
                         for (i, preset) in presets {
@@ -310,7 +310,7 @@ impl Palette {
                             let entry = Entry {
                                 name: &preset.name,
                                 hint: &hint,
-                                color: theme::ACCENT,
+                                color: theme::accent(),
                                 spawn: Spawn::Preset(i),
                                 removable: true,
                             };
@@ -328,7 +328,7 @@ impl Palette {
                                 egui::Label::new(
                                     RichText::new("Open library folder")
                                         .size(10.5)
-                                        .color(theme::TEXT_DIM),
+                                        .color(theme::text()_DIM),
                                 )
                                 .sense(Sense::click()),
                             );
@@ -416,9 +416,9 @@ fn fold(
 
     let p = ui.painter();
     let (rest, hot) = if vendor {
-        (theme::TEXT_DIM, theme::TEXT)
+        (theme::text()_DIM, theme::text())
     } else {
-        (theme::TEXT_FAINT, theme::TEXT_DIM)
+        (theme::text()_FAINT, theme::text()_DIM)
     };
     let color = if resp.hovered() && !searching {
         hot
@@ -449,7 +449,7 @@ fn fold(
         color,
     );
     if openness < 1.0 {
-        let fade = alpha(theme::TEXT_FAINT, 1.0 - openness);
+        let fade = alpha(theme::text()_FAINT, 1.0 - openness);
         p.text(
             pos2(rect.right() - 6.0, rect.center().y),
             Align2::RIGHT_CENTER,
@@ -492,7 +492,7 @@ fn row(ui: &mut Ui, e: &Entry) -> RowResponse {
     let p = ui.painter();
     let hot = resp.hovered() || resp.dragged();
     if hot {
-        p.rect_filled(rect, 4.0, theme::CONTROL);
+        p.rect_filled(rect, 4.0, theme::control());
     }
     let swatch =
         Rect::from_center_size(pos2(rect.left() + 14.0, rect.center().y), Vec2::splat(12.0));
@@ -508,14 +508,14 @@ fn row(ui: &mut Ui, e: &Entry) -> RowResponse {
         Align2::LEFT_CENTER,
         e.name,
         FontId::proportional(12.0),
-        theme::TEXT,
+        theme::text(),
     );
     p.text(
         pos2(rect.left() + 30.0, rect.center().y + 8.0),
         Align2::LEFT_CENTER,
         e.hint,
         FontId::proportional(9.5),
-        theme::TEXT_FAINT,
+        theme::text()_FAINT,
     );
 
     let mut removed = false;
@@ -528,9 +528,9 @@ fn row(ui: &mut Ui, e: &Entry) -> RowResponse {
             .interact(x, Id::unique(("palette_remove", e.name)), Sense::click())
             .on_hover_text("Remove from the library");
         let col = if r.hovered() {
-            theme::TEXT
+            theme::text()
         } else {
-            theme::TEXT_FAINT
+            theme::text()_FAINT
         };
         ui.painter().text(
             x.center(),
@@ -568,16 +568,16 @@ fn drag_ghost(ui: &Ui, library: &[Preset], plugins: &[PluginEntry]) {
     let painter = ui
         .ctx()
         .layer_painter(LayerId::new(Order::Tooltip, Id::unique("palette_ghost")));
-    let galley = painter.layout_no_wrap(name, FontId::proportional(12.0), theme::TEXT);
+    let galley = painter.layout_no_wrap(name, FontId::proportional(12.0), theme::text());
     let pill = Rect::from_min_size(p + vec2(14.0, 10.0), galley.size() + vec2(20.0, 10.0));
     painter.rect(
         pill,
         6.0,
-        theme::NODE_HEADER,
-        Stroke::new(1.0, theme::ACCENT),
+        theme::node_header(),
+        Stroke::new(1.0, theme::accent()),
         egui::StrokeKind::Inside,
     );
-    painter.galley(pill.min + vec2(10.0, 5.0), galley, theme::TEXT);
+    painter.galley(pill.min + vec2(10.0, 5.0), galley, theme::text());
 }
 
 #[cfg(test)]

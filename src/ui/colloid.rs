@@ -615,9 +615,9 @@ pub fn draw(
 
     let col = |on: bool| {
         if on {
-            theme::TEXT_DIM
+            theme::text()_DIM
         } else {
-            theme::TEXT_FAINT
+            theme::text()_FAINT
         }
     };
     v.text(
@@ -764,9 +764,9 @@ impl Panel<'_, '_> {
             text,
             v.font(7.5),
             if self.live {
-                theme::TEXT_DIM
+                theme::text()_DIM
             } else {
-                theme::TEXT_FAINT
+                theme::text()_FAINT
             },
         );
     }
@@ -784,7 +784,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             "ROOT",
             theme::strong(8.0 * z),
-            theme::TEXT_DIM,
+            theme::text()_DIM,
         );
         let (x0, x1) = (48.0, 522.0);
         let kw = (x1 - x0) / 12.0;
@@ -811,19 +811,19 @@ impl Panel<'_, '_> {
             let fill = if selected {
                 self.accent
             } else if resp.hovered() {
-                theme::CONTROL_HI
+                theme::control()_HI
             } else if sharp {
-                theme::INSET
+                theme::inset()
             } else {
-                theme::CONTROL
+                theme::control()
             };
             v.painter.rect_filled(rect, 3.0 * z, fill);
             let ink = if selected {
-                theme::INSET
+                theme::inset()
             } else if sharp {
-                theme::TEXT_DIM
+                theme::text()_DIM
             } else {
-                theme::TEXT
+                theme::text()
             };
             label(
                 v.painter,
@@ -837,7 +837,7 @@ impl Panel<'_, '_> {
                 v.painter.rect_stroke(
                     rect.expand(1.0 * z),
                     3.5 * z,
-                    Stroke::new(1.5 * z, theme::TEXT),
+                    Stroke::new(1.5 * z, theme::text()),
                     StrokeKind::Outside,
                 );
             }
@@ -861,9 +861,9 @@ impl Panel<'_, '_> {
             note,
             v.font(7.5),
             if keyed {
-                theme::TEXT
+                theme::text()
             } else {
-                theme::TEXT_FAINT
+                theme::text()_FAINT
             },
         );
     }
@@ -895,7 +895,7 @@ impl Panel<'_, '_> {
         painter.rect_stroke(
             rect,
             4.0 * z,
-            Stroke::new(1.0 * z, alpha(theme::NODE_BORDER, 0.9)),
+            Stroke::new(1.0 * z, alpha(theme::node_border(), 0.9)),
             StrokeKind::Inside,
         );
 
@@ -1445,7 +1445,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_TOP,
             set.name(),
             theme::strong(13.0 * z),
-            alpha(theme::TEXT, 0.95),
+            alpha(theme::text(), 0.95),
         );
         label(
             painter,
@@ -1453,7 +1453,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_TOP,
             &what,
             theme::font(7.5 * z),
-            alpha(theme::TEXT_DIM, 0.9),
+            alpha(theme::text()_DIM, 0.9),
         );
         // The notes' pitch classes, a chip each, coloured by role.
         let mut x = t.rect.right() - 10.0 * z;
@@ -1502,7 +1502,7 @@ impl Panel<'_, '_> {
             Align2::RIGHT_TOP,
             stats,
             theme::font(7.0 * z),
-            alpha(theme::TEXT_DIM, 0.8),
+            alpha(theme::text()_DIM, 0.8),
         );
         label(
             painter,
@@ -1510,7 +1510,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_BOTTOM,
             "COLLOID",
             theme::strong(7.0 * z),
-            alpha(theme::TEXT_FAINT, 0.6),
+            alpha(theme::text()_FAINT, 0.6),
         );
     }
 
@@ -1533,7 +1533,7 @@ impl Panel<'_, '_> {
             );
             let color = view.molecule_color(k, self.now);
             let flash = self.flash(view, k);
-            v.painter.rect_filled(rect, 3.0 * z, theme::INSET);
+            v.painter.rect_filled(rect, 3.0 * z, theme::inset());
             let level = m.ring.max(flash).clamp(0.0, 1.0);
             if level > 0.01 {
                 let fill = Rect::from_min_max(
@@ -1549,9 +1549,9 @@ impl Panel<'_, '_> {
                 color,
             );
             let ink = if m.sounding {
-                theme::TEXT
+                theme::text()
             } else {
-                theme::TEXT_DIM
+                theme::text()_DIM
             };
             label(
                 v.painter,
@@ -1589,13 +1589,13 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             title,
             theme::strong(8.5 * z),
-            theme::TEXT_DIM,
+            theme::text()_DIM,
         );
         let from = (r.right() + 8.0 * z).max(v.p(x0 + 50.0, 0.0).x);
         v.painter.hline(
             from..=v.p(x1, 0.0).x,
             v.p(0.0, y).y,
-            Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.3)),
+            Stroke::new(1.0 * z, alpha(theme::text()_FAINT, 0.3)),
         );
     }
 
@@ -1621,11 +1621,11 @@ impl Panel<'_, '_> {
             Align2::CENTER_CENTER,
             label,
             v.font(7.5),
-            faint(theme::TEXT_FAINT),
+            faint(theme::text()_FAINT),
         );
         let top = y + 8.0;
         let mut norm = spec.to_norm(p.get(i));
-        let color = if idle { theme::TEXT_FAINT } else { self.accent };
+        let color = if idle { theme::text()_FAINT } else { self.accent };
         let resp = widgets::knob(
             v.ui,
             v.painter,
@@ -1656,7 +1656,7 @@ impl Panel<'_, '_> {
             Align2::CENTER_CENTER,
             format(p, i),
             v.mono(7.0),
-            faint(if hot { theme::TEXT } else { theme::TEXT_DIM }),
+            faint(if hot { theme::text() } else { theme::text()_DIM }),
         );
     }
 
@@ -1683,7 +1683,7 @@ impl Panel<'_, '_> {
         v.painter.rect_filled(
             card,
             4.0 * z,
-            if on { theme::CONTROL } else { theme::INSET },
+            if on { theme::control() } else { theme::inset() },
         );
         let ink = |c: Color32| if on { c } else { alpha(c, 0.55) };
 
@@ -1715,9 +1715,9 @@ impl Panel<'_, '_> {
             menu_rect,
             3.0 * z,
             if menu.hovered() {
-                theme::CONTROL_HI
+                theme::control()_HI
             } else {
-                theme::NODE_BODY
+                theme::node_body()
             },
         );
         label(
@@ -1726,7 +1726,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             title,
             v.mono(7.5),
-            ink(theme::TEXT),
+            ink(theme::text()),
         );
         egui::Popup::menu(&menu)
             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
@@ -1765,9 +1765,9 @@ impl Panel<'_, '_> {
             src_rect,
             3.0 * z,
             if src.hovered() {
-                theme::CONTROL_HI
+                theme::control()_HI
             } else {
-                theme::NODE_BODY
+                theme::node_body()
             },
         );
         label(
@@ -1796,7 +1796,7 @@ impl Panel<'_, '_> {
             });
         let (low, high) = (at(cc::LOW), at(cc::HIGH));
         let meter = v.r(x0 + 76.0, y0 + 27.0, x1 - 62.0, y0 + 34.0);
-        v.painter.rect_filled(meter, 2.0 * z, theme::INSET);
+        v.painter.rect_filled(meter, 2.0 * z, theme::inset());
         let x_of = |value: f32| meter.left() + meter.width() * value / 127.0;
         let (a, b) = (x_of(low.min(high)), x_of(low.max(high)));
         v.painter.rect_filled(
@@ -1815,7 +1815,7 @@ impl Panel<'_, '_> {
             v.painter.vline(
                 x,
                 meter.y_range().expand(2.0 * z),
-                Stroke::new(1.5 * z, theme::TEXT),
+                Stroke::new(1.5 * z, theme::text()),
             );
         }
         let shown = if on && sent >= 0.0 {
@@ -1829,7 +1829,7 @@ impl Panel<'_, '_> {
             Align2::CENTER_BOTTOM,
             shown,
             v.mono(6.5),
-            ink(theme::TEXT_DIM),
+            ink(theme::text()_DIM),
         );
         self.number_box(
             k,
@@ -1878,12 +1878,12 @@ impl Panel<'_, '_> {
             rect,
             3.0 * z,
             if hot {
-                theme::CONTROL_HI
+                theme::control()_HI
             } else {
-                theme::NODE_BODY
+                theme::node_body()
             },
         );
-        let ink = if on { theme::TEXT } else { theme::TEXT_FAINT };
+        let ink = if on { theme::text() } else { theme::text()_FAINT };
         label(
             v.painter,
             rect.center(),

@@ -77,7 +77,7 @@ pub fn show(
                 .data(|d| d.get_temp::<String>(error_id))
                 .filter(|e| !e.is_empty())
             {
-                ui.colored_label(theme::MUTE, format!("Could not save: {error}"));
+                ui.colored_label(theme::mute(), format!("Could not save: {error}"));
             }
             ui.separator();
             ui.weak("Built in");

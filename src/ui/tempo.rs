@@ -139,16 +139,16 @@ impl TempoControl {
         let (rect, resp) = ui.allocate_exact_size(vec2(92.0, 24.0), Sense::CLICK);
         let p = ui.painter();
         let border = if bpm.is_some() {
-            theme::ACCENT
+            theme::accent()
         } else {
-            theme::NODE_BORDER
+            theme::node_border()
         };
         for (r, hot) in [(tag, tag_resp.hovered()), (rect, resp.hovered())] {
             p.rect(
                 r,
                 12.0,
                 if hot {
-                    theme::CONTROL
+                    theme::control()
                 } else {
                     Color32::TRANSPARENT
                 },
@@ -162,16 +162,16 @@ impl TempoControl {
             "SYNC",
             FontId::proportional(9.5),
             if bpm.is_some() {
-                theme::ACCENT
+                theme::accent()
             } else {
-                theme::TEXT_DIM
+                theme::text()_DIM
             },
         );
         let flash = beat.map_or(0.0, |b| (1.0 - b.fract() * 4.0).max(0.0));
         p.circle_filled(
             pos2(rect.left() + 13.0, rect.center().y),
             3.0,
-            theme::mix(theme::TEXT_FAINT, theme::ACCENT, flash),
+            theme::mix(theme::text()_FAINT, theme::accent(), flash),
         );
         let text = self.external_bpm.map_or_else(
             || "– –".to_owned(),
@@ -182,14 +182,14 @@ impl TempoControl {
             Align2::LEFT_CENTER,
             text,
             FontId::monospace(11.5),
-            theme::TEXT,
+            theme::text(),
         );
         p.text(
             pos2(rect.right() - 11.0, rect.center().y + 0.5),
             Align2::RIGHT_CENTER,
             "BPM",
             FontId::proportional(9.5),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         if bpm.is_some() || now.fract() < 0.5 {
             ui.ctx()
@@ -222,21 +222,21 @@ impl TempoControl {
         }
         let p = ui.painter();
         let fill = if resp.hovered() {
-            theme::CONTROL
+            theme::control()
         } else {
-            theme::PANEL
+            theme::panel()
         };
         p.rect(
             rect,
             12.0,
-            theme::mix(fill, theme::mix(theme::PANEL, theme::ACCENT, 0.35), flash),
-            Stroke::new(1.0, theme::mix(theme::NODE_BORDER, theme::ACCENT, flash)),
+            theme::mix(fill, theme::mix(theme::panel(), theme::accent(), 0.35), flash),
+            Stroke::new(1.0, theme::mix(theme::node_border(), theme::accent(), flash)),
             StrokeKind::Inside,
         );
         let color = if count > 0 {
-            theme::TEXT
+            theme::text()
         } else {
-            theme::TEXT_DIM
+            theme::text()_DIM
         };
         p.text(
             rect.center(),
@@ -286,16 +286,16 @@ impl TempoControl {
             rect,
             12.0,
             if hot {
-                theme::CONTROL
+                theme::control()
             } else {
                 Color32::TRANSPARENT
             },
             Stroke::new(
                 1.0,
                 if typing {
-                    theme::ACCENT
+                    theme::accent()
                 } else {
-                    theme::NODE_BORDER
+                    theme::node_border()
                 },
             ),
             StrokeKind::Inside,
@@ -305,7 +305,7 @@ impl TempoControl {
         p.circle_filled(
             pos2(rect.left() + 13.0, rect.center().y),
             3.0,
-            theme::mix(theme::TEXT_FAINT, theme::ACCENT, flash),
+            theme::mix(theme::text()_FAINT, theme::accent(), flash),
         );
         let x = rect.left() + 23.0;
         p.text(
@@ -313,7 +313,7 @@ impl TempoControl {
             Align2::RIGHT_CENTER,
             "BPM",
             FontId::proportional(9.5),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         if typing {
             // One text row, centred like the number it replaces.
@@ -328,7 +328,7 @@ impl TempoControl {
                 Align2::LEFT_CENTER,
                 format_tempo(*tempo),
                 FontId::monospace(11.5),
-                theme::TEXT,
+                theme::text(),
             );
         }
         resp
@@ -343,7 +343,7 @@ impl TempoControl {
         let edit = egui::TextEdit::singleline(text)
             .id(id)
             .font(FontId::monospace(11.5))
-            .text_color(theme::TEXT)
+            .text_color(theme::text())
             .frame(egui::Frame::NONE)
             .margin(egui::Margin::symmetric(2, 0))
             .char_limit(6)

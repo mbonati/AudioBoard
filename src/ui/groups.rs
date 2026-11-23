@@ -96,9 +96,9 @@ fn header(
     p.add(Shape::convex_polygon(
         tri,
         if fold.hovered() {
-            theme::TEXT
+            theme::text()
         } else {
-            theme::TEXT_FAINT
+            theme::text()_FAINT
         },
         Stroke::NONE,
     ));
@@ -109,8 +109,8 @@ fn header(
             pos2(x + 2.0 * z, cy),
             3.5 * z,
             theme::mix(
-                theme::CONTROL_HI,
-                theme::ACCENT,
+                theme::control()_HI,
+                theme::accent(),
                 0.35 + 0.65 * level.clamp(0.0, 1.0).sqrt(),
             ),
         );
@@ -126,14 +126,14 @@ fn header(
             Align2::LEFT_CENTER,
             &g.title,
             theme::strong(11.5 * z),
-            theme::TEXT,
+            theme::text(),
         );
         p.text(
             pos2(title.right() + 8.0 * z, cy),
             Align2::LEFT_CENTER,
             note,
             theme::font(9.5 * z),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
     }
 
@@ -146,12 +146,12 @@ fn header(
     if hovered {
         let c = close_rect.center();
         if close.hovered() {
-            p.circle_filled(c, 8.0 * z, theme::CONTROL_HI);
+            p.circle_filled(c, 8.0 * z, theme::control()_HI);
         }
         let col = if close.hovered() {
-            theme::TEXT
+            theme::text()
         } else {
-            theme::TEXT_FAINT
+            theme::text()_FAINT
         };
         let d = 3.0 * z;
         p.line_segment([c - vec2(d, d), c + vec2(d, d)], Stroke::new(1.2 * z, col));
@@ -179,7 +179,7 @@ pub fn draw_frame(
     z: f32,
 ) -> HeaderActions {
     let r = RADIUS * z;
-    p.rect_filled(rect, r, alpha(theme::TEXT, 0.025));
+    p.rect_filled(rect, r, alpha(theme::text(), 0.025));
     let top = CornerRadius {
         nw: (r.round() as u8),
         ne: (r.round() as u8),
@@ -187,11 +187,11 @@ pub fn draw_frame(
         se: 0,
     };
     let head = Rect::from_min_size(rect.min, vec2(rect.width(), HEADER_H * z));
-    p.rect_filled(head, top, alpha(theme::TEXT, 0.04));
+    p.rect_filled(head, top, alpha(theme::text(), 0.04));
     let border = if selected {
-        Stroke::new(1.5 * z, theme::ACCENT)
+        Stroke::new(1.5 * z, theme::accent())
     } else {
-        Stroke::new(1.0 * z, alpha(theme::NODE_BORDER, 0.9))
+        Stroke::new(1.0 * z, alpha(theme::node_border(), 0.9))
     };
     p.rect_stroke(rect, r, border, StrokeKind::Inside);
 
@@ -230,7 +230,7 @@ pub fn draw_card(
 ) -> HeaderActions {
     let r = 6.0 * z;
     widgets::shadow(p, rect, r, z);
-    p.rect_filled(rect, r, theme::NODE_BODY);
+    p.rect_filled(rect, r, theme::node_body());
     let top = CornerRadius {
         nw: (r.round() as u8),
         ne: (r.round() as u8),
@@ -240,18 +240,18 @@ pub fn draw_card(
     p.rect_filled(
         Rect::from_min_size(rect.min, vec2(rect.width(), HEADER_H * z)),
         top,
-        theme::NODE_HEADER,
+        theme::node_header(),
     );
     p.hline(
         rect.x_range(),
         rect.top() + HEADER_H * z,
-        Stroke::new(1.0 * z, theme::NODE_BORDER),
+        Stroke::new(1.0 * z, theme::node_border()),
     );
     // Stacked-card edge: this node holds several.
     p.hline(
         (rect.left() + 6.0 * z)..=(rect.right() - 6.0 * z),
         rect.bottom() + 3.0 * z,
-        Stroke::new(1.0 * z, theme::NODE_BORDER),
+        Stroke::new(1.0 * z, theme::node_border()),
     );
 
     let level = g
@@ -279,9 +279,9 @@ pub fn draw_card(
     let font = theme::font(8.5 * z);
     let col = |on: bool| {
         if on {
-            theme::TEXT_DIM
+            theme::text()_DIM
         } else {
-            theme::TEXT_FAINT
+            theme::text()_FAINT
         }
     };
     let (ins, outs) = ports;
@@ -307,9 +307,9 @@ pub fn draw_card(
     }
 
     let border = if selected {
-        Stroke::new(1.5 * z, theme::ACCENT)
+        Stroke::new(1.5 * z, theme::accent())
     } else {
-        Stroke::new(1.0 * z, theme::NODE_BORDER)
+        Stroke::new(1.0 * z, theme::node_border())
     };
     p.rect_stroke(
         rect,

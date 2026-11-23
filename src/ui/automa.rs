@@ -386,9 +386,9 @@ pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, out: bool
         "MIDI",
         v.font(9.0),
         if out {
-            theme::TEXT_DIM
+            theme::text()_DIM
         } else {
-            theme::TEXT_FAINT
+            theme::text()_FAINT
         },
     );
     s.header();
@@ -582,7 +582,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             text,
             v.font(7.5),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
     }
 
@@ -608,7 +608,7 @@ impl Panel<'_, '_> {
     fn world(&self, view: &mut View) {
         let v = self.v;
         let rect = v.r(PAD, TOP, PAD + WORLD, BOTTOM);
-        v.painter.rect_filled(rect, 4.0 * self.z(), theme::INSET);
+        v.painter.rect_filled(rect, 4.0 * self.z(), theme::inset());
         let painter = v
             .painter
             .with_clip_rect(rect.intersect(v.painter.clip_rect()));
@@ -630,7 +630,7 @@ impl Panel<'_, '_> {
         } else {
             mix(
                 self.accent,
-                theme::TEXT_FAINT,
+                theme::text()_FAINT,
                 ((age - 3.0) / 14.0).min(0.75),
             )
         }
@@ -695,7 +695,7 @@ impl Panel<'_, '_> {
                 let r = cell(x, y);
                 let g = view.glow[i];
                 if g < 0.03 {
-                    painter.circle_filled(r.center(), 0.8 * z, alpha(theme::TEXT_FAINT, 0.18));
+                    painter.circle_filled(r.center(), 0.8 * z, alpha(theme::text()_FAINT, 0.18));
                     continue;
                 }
                 let age = p.viz[viz::CELLS + i].get();
@@ -807,7 +807,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             format!("rule {rule} · {what}"),
             v.font(6.5),
-            alpha(theme::TEXT_FAINT, 0.8),
+            alpha(theme::text()_FAINT, 0.8),
         );
     }
 
@@ -863,7 +863,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             format!("n = {n}"),
             v.mono(8.0),
-            theme::TEXT_DIM,
+            theme::text()_DIM,
         );
         v.text(
             PAD + 8.0,
@@ -879,7 +879,7 @@ impl Panel<'_, '_> {
             Align2::RIGHT_CENTER,
             format!("a(n) = {:+}", series(n)),
             v.mono(8.0),
-            theme::TEXT_DIM,
+            theme::text()_DIM,
         );
         v.text(
             PAD + 6.0,
@@ -887,7 +887,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             "0 ← turn over · step up → 1",
             v.font(6.5),
-            alpha(theme::TEXT_FAINT, 0.8),
+            alpha(theme::text()_FAINT, 0.8),
         );
     }
 
@@ -908,9 +908,9 @@ impl Panel<'_, '_> {
         let term = series((n >> 6) << depth | prefix);
         let t = (term as f32 / 5.0).clamp(-1.0, 1.0);
         let base = if t < 0.0 {
-            mix(theme::TEXT_DIM, LOW, -t)
+            mix(theme::text()_DIM, LOW, -t)
         } else {
-            mix(theme::TEXT_DIM, HIGH, t)
+            mix(theme::text()_DIM, HIGH, t)
         };
         let lit = (n & 63) >> (6 - depth) == prefix;
         let width = (3.2 - 0.42 * depth as f32) * z;
@@ -1002,7 +1002,7 @@ impl Panel<'_, '_> {
         // The fixed point the orbit turns round.
         let fix = Self::plane(rect, (p.viz[viz::FIX].get(), p.viz[viz::FIX + 1].get()));
         let arm = 4.0 * z;
-        let cross = Stroke::new(1.0 * z, alpha(theme::TEXT, 0.6));
+        let cross = Stroke::new(1.0 * z, alpha(theme::text(), 0.6));
         painter.line_segment([fix - vec2(arm, 0.0), fix + vec2(arm, 0.0)], cross);
         painter.line_segment([fix - vec2(0.0, arm), fix + vec2(0.0, arm)], cross);
 
@@ -1058,7 +1058,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             format!("c = {:.3} {:+.3}i", c.0, c.1),
             v.mono(7.0),
-            alpha(theme::TEXT_DIM, 0.9),
+            alpha(theme::text()_DIM, 0.9),
         );
     }
 
@@ -1086,7 +1086,7 @@ impl Panel<'_, '_> {
             rect.right_top() + vec2(-82.0 * z, 6.0 * z),
             vec2(76.0, 65.0) * z,
         );
-        painter.rect_filled(inset.expand(1.0 * z), 3.0 * z, theme::INSET);
+        painter.rect_filled(inset.expand(1.0 * z), 3.0 * z, theme::inset());
         if let Some((texture, _)) = &view.mandelbrot {
             painter.image(
                 texture.id(),
@@ -1107,14 +1107,14 @@ impl Panel<'_, '_> {
             .collect();
         painter.add(Shape::line(
             path,
-            Stroke::new(0.8 * z, alpha(theme::TEXT, 0.35)),
+            Stroke::new(0.8 * z, alpha(theme::text(), 0.35)),
         ));
         painter.circle_filled(at(c), 2.5 * z, Color32::WHITE);
         painter.circle_stroke(at(c), 4.5 * z, Stroke::new(1.0 * z, self.accent));
         painter.rect_stroke(
             inset,
             3.0 * z,
-            Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.5)),
+            Stroke::new(1.0 * z, alpha(theme::text()_FAINT, 0.5)),
             StrokeKind::Outside,
         );
     }
@@ -1124,7 +1124,7 @@ impl Panel<'_, '_> {
     fn roll(&self, view: &View) {
         let (v, p, z) = (self.v, self.p, self.z());
         let rect = v.r(ROLL_X, TOP, W - PAD, BOTTOM);
-        v.painter.rect_filled(rect, 4.0 * z, theme::INSET);
+        v.painter.rect_filled(rect, 4.0 * z, theme::inset());
         let painter = v
             .painter
             .with_clip_rect(rect.intersect(v.painter.clip_rect()));
@@ -1189,7 +1189,7 @@ impl Panel<'_, '_> {
                 painter.vline(
                     x_of(bar * per_beat),
                     rect.y_range(),
-                    Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.12)),
+                    Stroke::new(1.0 * z, alpha(theme::text()_FAINT, 0.12)),
                 );
             }
             bar += 4.0;
@@ -1201,7 +1201,7 @@ impl Panel<'_, '_> {
                 Align2::LEFT_CENTER,
                 note_label(pitch),
                 v.font(6.5),
-                alpha(theme::TEXT_FAINT, 0.9),
+                alpha(theme::text()_FAINT, 0.9),
             );
         }
 
@@ -1251,7 +1251,7 @@ impl Panel<'_, '_> {
             let color = if m.voice == 0 {
                 mix(self.accent, Color32::WHITE, 0.35)
             } else {
-                mix(self.accent, theme::TEXT_DIM, 0.35)
+                mix(self.accent, theme::text()_DIM, 0.35)
             };
             if fresh > 0.0 {
                 painter.rect_filled(
@@ -1277,7 +1277,7 @@ impl Panel<'_, '_> {
             rect.y_range(),
             Stroke::new(
                 1.0 * z,
-                alpha(theme::TEXT, if self.playing { 0.45 } else { 0.2 }),
+                alpha(theme::text(), if self.playing { 0.45 } else { 0.2 }),
             ),
         );
     }
@@ -1314,9 +1314,9 @@ impl Panel<'_, '_> {
                 rect,
                 3.0 * z,
                 if current {
-                    theme::CONTROL
+                    theme::control()
                 } else {
-                    theme::INSET
+                    theme::inset()
                 },
             );
             let ink = if active { 1.0 } else { 0.3 };
@@ -1327,9 +1327,9 @@ impl Panel<'_, '_> {
             );
             let cx = rect.center().x;
             let numeral_color = if current {
-                theme::TEXT
+                theme::text()
             } else {
-                alpha(theme::TEXT_DIM, ink)
+                alpha(theme::text()_DIM, ink)
             };
             v.painter.text(
                 pos2(cx, rect.top() + 15.0 * z),
@@ -1413,7 +1413,7 @@ impl Panel<'_, '_> {
                 CHANGES[am::int(p, CHANGE, 0, 3) as usize].0.to_lowercase()
             ),
             v.font(7.5),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         egui::Popup::menu(&menu)
             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
@@ -1502,7 +1502,7 @@ impl Panel<'_, '_> {
             Align2::CENTER_CENTER,
             format!("{} · {}", chord.name(&h), tones.join(" ")),
             v.mono(8.0),
-            theme::TEXT_DIM,
+            theme::text()_DIM,
         );
         self.group("OUTPUT", 422.0, W - PAD, bottom, &OUTPUT);
     }
@@ -1515,13 +1515,13 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             title,
             theme::strong(8.5 * z),
-            theme::TEXT_DIM,
+            theme::text()_DIM,
         );
         let from = (r.right() + 8.0 * z).max(v.p(x0 + 50.0, 0.0).x);
         v.painter.hline(
             from..=v.p(x1, 0.0).x,
             v.p(0.0, y).y,
-            Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.3)),
+            Stroke::new(1.0 * z, alpha(theme::text()_FAINT, 0.3)),
         );
     }
 
@@ -1545,7 +1545,7 @@ impl Panel<'_, '_> {
             Align2::CENTER_CENTER,
             label,
             v.font(7.5),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         let top = y + 8.0;
         let mut norm = spec.to_norm(p.get(i));
@@ -1596,7 +1596,7 @@ impl Panel<'_, '_> {
             Align2::CENTER_CENTER,
             format(p, i),
             v.mono(7.0),
-            if hot { theme::TEXT } else { theme::TEXT_DIM },
+            if hot { theme::text() } else { theme::text()_DIM },
         );
     }
 }
@@ -1632,12 +1632,12 @@ fn mandelbrot_image(re: (f32, f32), im: f32, accent: Color32) -> ColorImage {
 
 fn shade(t: f32, accent: Color32) -> Color32 {
     if t >= 1.0 {
-        return mix(theme::INSET, accent, 0.16);
+        return mix(theme::inset(), accent, 0.16);
     }
     let g = t.powf(0.5);
     let edge = ((t - 0.5) / 0.5).clamp(0.0, 1.0);
     mix(
-        mix(theme::INSET, accent, g),
+        mix(theme::inset(), accent, g),
         Color32::WHITE,
         edge * edge * 0.7,
     )

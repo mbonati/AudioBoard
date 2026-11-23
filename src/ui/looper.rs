@@ -39,7 +39,7 @@ const ROWS: u8 = 24;
 const KNOBS: f32 = 404.0;
 /// Bars shown at once.
 const PAGE: usize = 4;
-const REC_RED: Color32 = theme::MUTE;
+const REC_RED: Color32 = theme::mute();
 
 const KNOB_ROW: [(usize, &str, &str); 6] = [
     (
@@ -132,9 +132,9 @@ pub fn draw(
     };
     let col = |on: bool| {
         if on {
-            theme::TEXT_DIM
+            theme::text()_DIM
         } else {
-            theme::TEXT_FAINT
+            theme::text()_FAINT
         }
     };
     v.text(
@@ -272,7 +272,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             "SYNC",
             v.font(7.0),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         let tempo = p.viz[viz::TEMPO].get();
         let clock_tip: &'static str = if tempo > 0.0 {
@@ -308,7 +308,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             "REC ON",
             v.font(7.0),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         const TRIGGER_TIPS: [&str; 3] = [
             "Recording starts on the next bar",
@@ -394,9 +394,9 @@ impl Panel<'_, '_> {
             let fill = if is_playing {
                 alpha(color, 0.3)
             } else if resp.hovered() {
-                theme::CONTROL_HI
+                theme::control()_HI
             } else {
-                theme::CONTROL
+                theme::control()
             };
             v.painter.rect_filled(rect, 4.0 * z, fill);
             if s == selected {
@@ -411,14 +411,14 @@ impl Panel<'_, '_> {
                 v.painter.rect_stroke(
                     rect.expand(1.5 * z),
                     5.0 * z,
-                    Stroke::new(1.5 * z, mix(color, theme::TEXT, 0.4)),
+                    Stroke::new(1.5 * z, mix(color, theme::text(), 0.4)),
                     StrokeKind::Outside,
                 );
             }
             let ink = if notes > 0 {
-                theme::TEXT
+                theme::text()
             } else {
-                theme::TEXT_FAINT
+                theme::text()_FAINT
             };
             v.painter.text(
                 rect.left_center() + vec2(8.0 * z, -4.0 * z),
@@ -437,7 +437,7 @@ impl Panel<'_, '_> {
                 Align2::LEFT_CENTER,
                 what,
                 theme::font(6.5 * z),
-                theme::TEXT_DIM,
+                theme::text()_DIM,
             );
             let flags = match lo::direction(p, s) {
                 lo::REVERSE => "◀",
@@ -449,7 +449,7 @@ impl Panel<'_, '_> {
                 Align2::RIGHT_TOP,
                 flags,
                 theme::font(8.0 * z),
-                theme::TEXT_DIM,
+                theme::text()_DIM,
             );
             // How far through its loop.
             let pos = p.viz[viz::POS].get();
@@ -477,7 +477,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             label,
             v.font(7.0),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         let lx = x + 40.0;
         let minus = widgets::toggle(
@@ -497,7 +497,7 @@ impl Panel<'_, '_> {
             Align2::CENTER_CENTER,
             value,
             v.mono(8.0),
-            theme::TEXT,
+            theme::text(),
         );
         let plus = widgets::toggle(
             v.ui,
@@ -530,7 +530,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             format!("SCENE {}", s + 1),
             theme::strong(8.5 * self.z()),
-            theme::TEXT_DIM,
+            theme::text()_DIM,
         );
         let bars = lo::bars(p, s);
         let d = self.stepper(
@@ -596,7 +596,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             "THEN",
             v.font(7.0),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         const FOLLOW_TIPS: [&str; 3] = [
             "After its repeats: the next scene that has notes",
@@ -740,7 +740,7 @@ impl Panel<'_, '_> {
         let y_of = |key: u8| grid.bottom() - (key as f32 - view.low as f32 + 1.0) * row_h;
 
         v.painter
-            .rect_filled(grid.union(ruler), 4.0 * z, theme::INSET);
+            .rect_filled(grid.union(ruler), 4.0 * z, theme::inset());
         // The keys: black ones shaded, a name on every C.
         for r in 0..ROWS {
             let key = view.low + r;
@@ -753,14 +753,14 @@ impl Panel<'_, '_> {
                 v.painter.hline(
                     grid.x_range(),
                     y + row_h,
-                    Stroke::new(0.8 * z, alpha(theme::TEXT_FAINT, 0.3)),
+                    Stroke::new(0.8 * z, alpha(theme::text()_FAINT, 0.3)),
                 );
                 v.painter.text(
                     pos2(grid.left() - 4.0 * z, y + row_h * 0.5),
                     Align2::RIGHT_CENTER,
                     note_label(key as i32),
                     theme::font(6.5 * z),
-                    theme::TEXT_FAINT,
+                    theme::text()_FAINT,
                 );
             }
         }
@@ -778,7 +778,7 @@ impl Panel<'_, '_> {
             v.painter.vline(
                 x,
                 grid.y_range(),
-                Stroke::new(w * z, alpha(theme::TEXT_FAINT, a)),
+                Stroke::new(w * z, alpha(theme::text()_FAINT, a)),
             );
             if t.is_multiple_of(BAR as u32 * PPQ) && t < len {
                 let bar = t / (BAR as u32 * PPQ) + 1;
@@ -787,7 +787,7 @@ impl Panel<'_, '_> {
                     Align2::LEFT_CENTER,
                     bar.to_string(),
                     theme::mono(6.5 * z),
-                    theme::TEXT_DIM,
+                    theme::text()_DIM,
                 );
             }
             t += step;
@@ -844,7 +844,7 @@ impl Panel<'_, '_> {
         if playing && (first as f64..(first + page_ticks) as f64).contains(&content) {
             let x = x_of(content as u32);
             v.painter
-                .vline(x, grid.y_range(), Stroke::new(1.5 * z, theme::TEXT));
+                .vline(x, grid.y_range(), Stroke::new(1.5 * z, theme::text()));
         }
 
         // Editing: not while this scene is being recorded into.
@@ -939,7 +939,7 @@ impl Panel<'_, '_> {
                 Align2::RIGHT_CENTER,
                 text,
                 v.mono(6.5),
-                theme::TEXT_DIM,
+                theme::text()_DIM,
             );
         }
 
@@ -982,7 +982,7 @@ impl Panel<'_, '_> {
                 Align2::CENTER_CENTER,
                 format!("{}/{}", view.page + 1, pages),
                 v.mono(6.5),
-                theme::TEXT_FAINT,
+                theme::text()_FAINT,
             );
         }
 
@@ -994,7 +994,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             self.status(),
             v.font(7.5),
-            if lit { REC_RED } else { theme::TEXT_DIM },
+            if lit { REC_RED } else { theme::text()_DIM },
         );
     }
 
@@ -1006,12 +1006,12 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             "LOOPER",
             theme::strong(8.5 * z),
-            theme::TEXT_DIM,
+            theme::text()_DIM,
         );
         v.painter.hline(
             v.p(PAD + 62.0, 0.0).x..=v.p(500.0, 0.0).x,
             v.p(0.0, KNOBS).y,
-            Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.3)),
+            Stroke::new(1.0 * z, alpha(theme::text()_FAINT, 0.3)),
         );
         let cw = (500.0 - PAD) / KNOB_ROW.len() as f32;
         for (k, &(i, label, tip)) in KNOB_ROW.iter().enumerate() {
@@ -1031,9 +1031,9 @@ impl Panel<'_, '_> {
         ];
         for (k, line) in lines.iter().enumerate() {
             let col = if k == 0 {
-                theme::TEXT_DIM
+                theme::text()_DIM
             } else {
-                theme::TEXT_FAINT
+                theme::text()_FAINT
             };
             v.text(
                 516.0,
@@ -1056,7 +1056,7 @@ impl Panel<'_, '_> {
             Align2::CENTER_CENTER,
             label,
             v.font(7.5),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         let top = y + 8.0;
         let mut norm = spec.to_norm(p.get(i));
@@ -1088,7 +1088,7 @@ impl Panel<'_, '_> {
             Align2::CENTER_CENTER,
             lo::format(p, i),
             v.mono(7.0),
-            if hot { theme::TEXT } else { theme::TEXT_DIM },
+            if hot { theme::text() } else { theme::text()_DIM },
         );
     }
 }

@@ -151,9 +151,9 @@ pub fn collapsed(v: &NodeView, node: &Node, inputs: &[bool], outputs: &[bool]) {
     let row_y = |i: usize| COLLAPSED_ROW0 + COLLAPSED_ROW_H * i as f32;
     let label_col = |on: bool| {
         if on {
-            theme::TEXT_DIM
+            theme::text()_DIM
         } else {
-            theme::TEXT_FAINT
+            theme::text()_FAINT
         }
     };
     for (i, port) in node.input_ports().into_iter().enumerate() {
@@ -185,7 +185,7 @@ pub fn collapsed(v: &NodeView, node: &Node, inputs: &[bool], outputs: &[bool]) {
         Align2::CENTER_CENTER,
         summary(node, v.tempo),
         v.mono(10.5),
-        theme::TEXT,
+        theme::text(),
     );
     // The mixer is the output: keep its master meters in view.
     if let NodeKind::Mixer(m) = &node.kind {
@@ -239,9 +239,9 @@ pub fn osc(
     // Port labels.
     for (i, label) in ["FM", "AM"].iter().enumerate() {
         let col = if inputs[i] {
-            theme::TEXT_DIM
+            theme::text()_DIM
         } else {
-            theme::TEXT_FAINT
+            theme::text()_FAINT
         };
         v.text(
             12.0,
@@ -259,9 +259,9 @@ pub fn osc(
         "OUT",
         v.font(9.0),
         if output {
-            theme::TEXT_DIM
+            theme::text()_DIM
         } else {
-            theme::TEXT_FAINT
+            theme::text()_FAINT
         },
     );
 
@@ -273,7 +273,7 @@ pub fn osc(
         Align2::CENTER_CENTER,
         format_hz(freq),
         v.mono(13.0),
-        theme::TEXT,
+        theme::text(),
     );
     let sub = if wave == Waveform::Noise {
         "random".to_owned()
@@ -288,15 +288,15 @@ pub fn osc(
         Align2::CENTER_CENTER,
         sub,
         v.font(9.5),
-        theme::TEXT_DIM,
+        theme::text()_DIM,
     );
 
     // Waveform display (static: shape and level only).
     let display = v.r(12.0, 72.0, w - 12.0, 114.0);
-    p.rect_filled(display, 4.0 * z, theme::INSET);
+    p.rect_filled(display, 4.0 * z, theme::inset());
     p.line_segment(
         [display.left_center(), display.right_center()],
-        Stroke::new(1.0 * z, theme::GRID_MAJOR),
+        Stroke::new(1.0 * z, theme::grid_major()),
     );
     let level = params.get(osc::LEVEL).max(0.03);
     let pts = widgets::wave_points(
@@ -464,9 +464,9 @@ pub(super) fn bus_fader(
             .master_mute
             .load(std::sync::atomic::Ordering::Relaxed);
     let (value, color) = if aux {
-        (&params.aux_master, theme::AUX)
+        (&params.aux_master, theme::aux())
     } else {
-        (&params.master, theme::TEXT_DIM)
+        (&params.master, theme::text()_DIM)
     };
     let mut pos = value.get();
     let fid = Id::unique((if aux { "aux-master" } else { "master" }, id));
@@ -499,7 +499,7 @@ pub(super) fn master_mute(v: &NodeView, id: NodeId, params: &MixerParams, rect: 
         rect,
         label,
         muted,
-        theme::MUTE,
+        theme::mute(),
         v.z,
     )
     .on_hover_text("Mute the main output (AUX keeps sending)");
@@ -524,7 +524,7 @@ pub(super) fn main_out(
         .max(m.master[1].level)
         .clamp(0.0, 1.0)
         .sqrt();
-    let col = theme::mix(theme::TEXT_FAINT, accent, level);
+    let col = theme::mix(theme::text()_FAINT, accent, level);
     if patched {
         v.text(x, y, Align2::LEFT_CENTER, "Out by cable", v.font(8.5), col);
         return;
@@ -579,7 +579,7 @@ pub fn mixer(
         Align2::CENTER_CENTER,
         "PAN",
         v.font(7.0),
-        theme::TEXT_FAINT,
+        theme::text()_FAINT,
     );
     v.text(
         118.0,
@@ -587,7 +587,7 @@ pub fn mixer(
         Align2::CENTER_CENTER,
         "AUX",
         v.font(7.0),
-        theme::AUX,
+        theme::aux(),
     );
     for ch in 0..MIXER_CHANNELS {
         let cy = MIX_ROW_Y + MIX_ROW_H * (ch as f32 + 0.5);
@@ -600,7 +600,7 @@ pub fn mixer(
             Align2::CENTER_CENTER,
             ch + 1,
             v.mono(10.0),
-            src_col.unwrap_or(theme::TEXT_FAINT),
+            src_col.unwrap_or(theme::text()_FAINT),
         );
 
         // Mute / solo.
@@ -613,7 +613,7 @@ pub fn mixer(
             v.r(30.0, cy - 8.0, 46.0, cy + 8.0),
             "M",
             muted,
-            theme::MUTE,
+            theme::mute(),
             z,
         )
         .clicked()
@@ -627,7 +627,7 @@ pub fn mixer(
             v.r(50.0, cy - 8.0, 66.0, cy + 8.0),
             "S",
             soloed,
-            theme::SOLO,
+            theme::solo(),
             z,
         )
         .clicked()
@@ -645,7 +645,7 @@ pub fn mixer(
             false,
             Pos2::new(88.0, cy - 3.0),
             9.0,
-            src_col.unwrap_or(theme::TEXT_FAINT),
+            src_col.unwrap_or(theme::text()_FAINT),
         );
         v.text(
             88.0,
@@ -653,7 +653,7 @@ pub fn mixer(
             Align2::CENTER_CENTER,
             pan_label(params.pan[ch].get()),
             v.mono(7.5),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         channel_knob(
             v,
@@ -663,7 +663,7 @@ pub fn mixer(
             true,
             Pos2::new(118.0, cy - 3.0),
             9.0,
-            theme::AUX,
+            theme::aux(),
         );
         v.text(
             118.0,
@@ -671,7 +671,7 @@ pub fn mixer(
             Align2::CENTER_CENTER,
             send_label(params.aux[ch].get()),
             v.mono(7.5),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
 
         // Fader + meter.
@@ -682,7 +682,7 @@ pub fn mixer(
             Id::unique(("fader", id, ch)),
             v.r(fx0, cy - 10.0, fx1, cy + 2.0),
             &mut pos,
-            src_col.unwrap_or(theme::TEXT_FAINT),
+            src_col.unwrap_or(theme::text()_FAINT),
             audible,
             z,
         );
@@ -700,14 +700,14 @@ pub fn mixer(
             format_db(db),
             v.mono(10.0),
             if audible {
-                theme::TEXT
+                theme::text()
             } else {
-                theme::TEXT_FAINT
+                theme::text()_FAINT
             },
         );
         let (name, name_col) = match source {
-            Some((_, n)) => (n.as_str(), theme::TEXT_DIM),
-            None => ("No input", theme::TEXT_FAINT),
+            Some((_, n)) => (n.as_str(), theme::text()_DIM),
+            None => ("No input", theme::text()_FAINT),
         };
         v.text(
             w - 12.0,
@@ -723,14 +723,14 @@ pub fn mixer(
     let sep_y = MIX_ROW_Y + MIX_ROW_H * MIXER_CHANNELS as f32 + 4.0;
     p.line_segment(
         [v.p(12.0, sep_y), v.p(w - 12.0, sep_y)],
-        Stroke::new(1.0 * z, theme::NODE_BORDER),
+        Stroke::new(1.0 * z, theme::node_border()),
     );
     let muted = params.master_mute.load(Relaxed);
     for (aux, cy) in [(false, MIX_MASTER_Y), (true, MIX_AUX_Y)] {
         let (label, col) = if aux {
-            ("AUX", theme::AUX)
+            ("AUX", theme::aux())
         } else {
-            ("MASTER", theme::TEXT_DIM)
+            ("MASTER", theme::text()_DIM)
         };
         v.text(
             12.0,
@@ -757,7 +757,7 @@ pub fn mixer(
                 format_db(gain_to_db(fader_gain(value)))
             },
             v.mono(10.0),
-            if off { theme::MUTE } else { theme::TEXT },
+            if off { theme::mute() } else { theme::text() },
         );
         for (i, meter) in meters.iter().enumerate() {
             let y = cy + 9.0 + i as f32 * 6.0;
@@ -767,7 +767,7 @@ pub fn mixer(
                 Align2::CENTER_CENTER,
                 ["L", "R"][i],
                 v.font(7.0),
-                theme::TEXT_FAINT,
+                theme::text()_FAINT,
             );
             hmeter(p, v.r(fx0, y, fx1, y + 3.0), meter, z);
         }
@@ -790,7 +790,7 @@ pub fn mixer(
             "Not patched"
         },
         v.font(8.5),
-        theme::TEXT_FAINT,
+        theme::text()_FAINT,
     );
 
     let peak = m.master[0].peak.max(m.master[1].peak);
@@ -800,9 +800,9 @@ pub fn mixer(
         clip_rect,
         2.0 * z,
         if clip {
-            theme::METER_RED
+            theme::meter_red()
         } else {
-            theme::CONTROL
+            theme::control()
         },
     );
     p.text(
@@ -811,9 +811,9 @@ pub fn mixer(
         "CLIP",
         v.font(7.5),
         if clip {
-            theme::INSET
+            theme::inset()
         } else {
-            theme::TEXT_FAINT
+            theme::text()_FAINT
         },
     );
 }

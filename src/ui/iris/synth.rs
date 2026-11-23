@@ -721,14 +721,14 @@ fn names(list: &[&str]) -> Vec<String> {
 }
 
 fn faint(ui: &mut Ui, text: impl Into<String>) {
-    ui.label(RichText::new(text).small().color(theme::TEXT_FAINT));
+    ui.label(RichText::new(text).small().color(theme::text()_FAINT));
 }
 
 /// A small bar showing a source now (LFOs from the middle).
 fn meter(ui: &mut Ui, v: f32, bipolar: bool, accent: Color32) {
     let (r, _) = ui.allocate_exact_size(vec2(34.0, 8.0), Sense::hover());
     let p = ui.painter();
-    p.rect_filled(r, 2.0, theme::PANEL_BORDER);
+    p.rect_filled(r, 2.0, theme::panel()_BORDER);
     let fill = if bipolar {
         let mid = r.center().x;
         let x = mid + v.clamp(-1.0, 1.0) * r.width() * 0.5;
@@ -740,7 +740,7 @@ fn meter(ui: &mut Ui, v: f32, bipolar: bool, accent: Color32) {
     p.rect_stroke(
         r,
         2.0,
-        Stroke::new(1.0, theme::PANEL_BORDER),
+        Stroke::new(1.0, theme::panel()_BORDER),
         egui::StrokeKind::Inside,
     );
 }

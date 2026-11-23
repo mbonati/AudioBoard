@@ -82,6 +82,14 @@ pub enum SettingsChange {
     Sync(SyncSettings),
     Plugins(PluginSettings),
     RescanPlugins,
+    Theme(String),
+}
+
+#[derive(Clone, Debug)]
+pub struct ThemeChoice {
+    pub id: String,
+    pub name: String,
+    pub description: String,
 }
 
 /// What the window shows, from the app.
@@ -96,6 +104,8 @@ pub struct SettingsContext<'a> {
     pub plugins: &'a PluginSettings,
     /// Plugins listed: VST3, and Audio Units (v2, v3).
     pub plugin_counts: PluginCounts,
+    pub theme: &'a str,
+    pub themes: &'a [ThemeChoice],
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -112,10 +122,17 @@ pub enum Tab {
     Midi,
     Sync,
     Plugins,
+    Appearance,
 }
 
 impl Tab {
-    const ALL: [Tab; 4] = [Tab::Audio, Tab::Midi, Tab::Sync, Tab::Plugins];
+    const ALL: [Tab; 5] = [
+        Tab::Audio,
+        Tab::Midi,
+        Tab::Sync,
+        Tab::Plugins,
+        Tab::Appearance,
+    ];
 
     fn title(self) -> &'static str {
         match self {
@@ -123,6 +140,7 @@ impl Tab {
             Tab::Midi => "MIDI",
             Tab::Sync => "Sync",
             Tab::Plugins => "Plugins",
+            Tab::Appearance => "Appearance",
         }
     }
 
@@ -132,6 +150,7 @@ impl Tab {
             Tab::Midi => "Keyboards and controllers: every input plays the MIDI nodes",
             Tab::Sync => "Who keeps time: the board, or a MIDI clock",
             Tab::Plugins => "Where plugins are found, and which are listed",
+            Tab::Appearance => "Colour themes for the interface",
         }
     }
 }
@@ -216,9 +235,9 @@ impl SettingsWindow {
                 ui.set_max_size(SIZE);
                 // Outlined fields: combo boxes read as controls, flat.
                 let v = ui.visuals_mut();
-                v.widgets.inactive.bg_stroke = Stroke::new(1.0, theme::NODE_BORDER);
-                v.widgets.hovered.bg_stroke = Stroke::new(1.0, theme::CONTROL_HI);
-                v.widgets.open.bg_stroke = Stroke::new(1.0, theme::ACCENT);
+                v.widgets.inactive.bg_stroke = Stroke::new(1.0, theme::node_border());
+                v.widgets.hovered.bg_stroke = Stroke::new(1.0, theme::control()_HI);
+                v.widgets.open.bg_stroke = Stroke::new(1.0, theme::accent());
                 let full = Rect::from_min_size(ui.max_rect().min, SIZE);
                 if close_button(
                     ui,
@@ -240,12 +259,12 @@ impl SettingsWindow {
                         sw: 8,
                         ..Default::default()
                     },
-                    theme::PANEL,
+                    theme::panel(),
                 );
                 ui.painter().vline(
                     side.right(),
                     side.y_range(),
-                    Stroke::new(1.0, theme::PANEL_BORDER),
+                    Stroke::new(1.0, theme::panel()_BORDER),
                 );
                 ui.scope_builder(
                     egui::UiBuilder::new().max_rect(side.shrink2(vec2(8.0, 10.0))),
@@ -260,12 +279,12 @@ impl SettingsWindow {
                     ui.label(
                         RichText::new(self.tab.title())
                             .font(theme::strong(15.0))
-                            .color(theme::TEXT),
+                            .color(theme::text()),
                     );
                     ui.label(
                         RichText::new(self.tab.subtitle())
                             .size(11.0)
-                            .color(theme::TEXT_FAINT),
+                            .color(theme::text()_FAINT),
                     );
                     ui.add_space(10.0);
                     egui::ScrollArea::vertical()
@@ -299,6 +318,7 @@ impl SettingsWindow {
                                     }
                                 }
                                 Tab::Plugins => plugins_card(ui, cx, &mut changes),
+                                Tab::Appearance => appearance_card(ui, cx, &mut changes),
                             }
                         });
                     // The footer, on the window's bottom edge.
@@ -311,7 +331,7 @@ impl SettingsWindow {
                             ui.label(
                                 RichText::new("Changes apply at once and are kept.")
                                     .size(10.5)
-                                    .color(theme::TEXT_FAINT),
+                                    .color(theme::text()_FAINT),
                             );
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
@@ -330,6 +350,7 @@ impl SettingsWindow {
                                         }
                                     }
                                     Tab::Midi => {}
+                                    Tab::Appearance => {}
                                 },
                             );
                         });
@@ -351,7 +372,7 @@ impl SettingsWindow {
                 RichText::new("SETTINGS")
                     .size(10.0)
                     .strong()
-                    .color(theme::TEXT_FAINT),
+                    .color(theme::text()_FAINT),
             );
         });
         ui.add_space(8.0);
@@ -366,9 +387,9 @@ impl SettingsWindow {
                     rect,
                     5.0,
                     if selected {
-                        theme::CONTROL
+                        theme::control()
                     } else {
-                        alpha(theme::CONTROL, 0.5)
+                        alpha(theme::control(), 0.5)
                     },
                 );
             }
@@ -376,17 +397,17 @@ impl SettingsWindow {
                 p.rect_filled(
                     Rect::from_min_size(rect.left_top() + vec2(0.0, 7.0), vec2(2.5, 16.0)),
                     1.0,
-                    theme::ACCENT,
+                    theme::accent(),
                 );
             }
             let col = if selected {
-                theme::TEXT
+                theme::text()
             } else if hot {
-                theme::TEXT
+                theme::text()
             } else {
-                theme::TEXT_DIM
+                theme::text()_DIM
             };
-            let icon_col = if selected { theme::ACCENT } else { col };
+            let icon_col = if selected { theme::accent() } else { col };
             tab_icon(p, pos2(rect.left() + 20.0, rect.center().y), tab, icon_col);
             p.text(
                 pos2(rect.left() + 36.0, rect.center().y),
@@ -407,7 +428,7 @@ impl SettingsWindow {
             Align2::LEFT_BOTTOM,
             concat!("AudioBoard ", env!("CARGO_PKG_VERSION")),
             FontId::proportional(10.0),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
     }
 
@@ -444,19 +465,19 @@ impl SettingsWindow {
             let (text, color) = match &sync.source {
                 None => (
                     "The board keeps time: its BPM, TAP, and Start/Stop in the toolbar.".to_owned(),
-                    theme::TEXT_FAINT,
+                    theme::text()_FAINT,
                 ),
                 Some(name) => {
                     let clock = cx.shared.sync.clock();
                     let t = now_ns();
                     if !inputs.contains(&name.as_str()) {
-                        (format!("Waiting for {name} to be connected."), theme::SOLO)
+                        (format!("Waiting for {name} to be connected."), theme::solo())
                     } else if !clock.alive(t) {
                         (
                             format!(
                                 "No clock from {name} yet: start it there, or send clock from it."
                             ),
-                            theme::SOLO,
+                            theme::solo(),
                         )
                     } else {
                         let bpm = clock.bpm() as f32;
@@ -479,7 +500,7 @@ impl SettingsWindow {
                         };
                         (
                             format!("Receiving {:.1} BPM · {state}", self.shown_bpm),
-                            theme::METER_GREEN,
+                            theme::meter_green(),
                         )
                     }
                 }
@@ -490,7 +511,7 @@ impl SettingsWindow {
                 ui.add_space(2.0);
                 ui.horizontal(|ui| {
                     ui.add_space(LABEL_W + 12.0);
-                    light(ui, "clock", now - l.clock_at < 0.15, theme::METER_GREEN);
+                    light(ui, "clock", now - l.clock_at < 0.15, theme::meter_green());
                 });
             }
             note(
@@ -501,7 +522,7 @@ impl SettingsWindow {
         ui.add_space(12.0);
         card(ui, "SEND CLOCK", |ui| {
             if outputs.is_empty() {
-                line(ui, "No MIDI outputs on this computer.", theme::TEXT_FAINT);
+                line(ui, "No MIDI outputs on this computer.", theme::text()_FAINT);
             }
             for name in outputs {
                 let mut on = sync.clock_out.contains(name);
@@ -523,12 +544,12 @@ impl SettingsWindow {
             }
             let (sending, error) = &cx.clock_out;
             if let Some(e) = error {
-                line(ui, e, theme::MUTE);
+                line(ui, e, theme::mute());
             } else if !sending.is_empty() {
                 line(
                     ui,
                     format!("Sending to {}", sending.join(", ")),
-                    theme::METER_GREEN,
+                    theme::meter_green(),
                 );
             }
             note(
@@ -550,12 +571,12 @@ fn card(ui: &mut Ui, title: &str, body: impl FnOnce(&mut Ui)) {
         RichText::new(title)
             .size(10.0)
             .strong()
-            .color(theme::TEXT_DIM),
+            .color(theme::text()_DIM),
     );
     ui.add_space(4.0);
     egui::Frame::NONE
-        .fill(alpha(theme::INSET, 0.55))
-        .stroke(Stroke::new(1.0, theme::PANEL_BORDER))
+        .fill(alpha(theme::inset(), 0.55))
+        .stroke(Stroke::new(1.0, theme::panel()_BORDER))
         .corner_radius(6.0)
         .inner_margin(egui::Margin::symmetric(12, 10))
         .show(ui, |ui| {
@@ -575,7 +596,7 @@ fn row<R>(ui: &mut Ui, label: &str, control: impl FnOnce(&mut Ui) -> R) -> R {
             Align2::LEFT_CENTER,
             label,
             FontId::proportional(12.0),
-            theme::TEXT_DIM,
+            theme::text()_DIM,
         );
         ui.add_space(6.0);
         control(ui)
@@ -601,12 +622,12 @@ fn line(ui: &mut Ui, text: impl Into<String>, color: Color32) {
 fn close_button(ui: &mut Ui, rect: Rect) -> Response {
     let resp = ui.interact(rect, egui::Id::unique("settings_close"), Sense::CLICK);
     let col = if resp.hovered() {
-        theme::TEXT
+        theme::text()
     } else {
-        theme::TEXT_DIM
+        theme::text()_DIM
     };
     if resp.hovered() {
-        ui.painter().rect_filled(rect, 4.0, theme::CONTROL);
+        ui.painter().rect_filled(rect, 4.0, theme::control());
     }
     let c = rect.center();
     for d in [vec2(4.5, 4.5), vec2(4.5, -4.5)] {
@@ -628,14 +649,14 @@ fn status(ui: &mut Ui, text: impl Into<String>, color: Color32) {
 /// A quiet explanation at the bottom of a card.
 fn note(ui: &mut Ui, text: &str) {
     ui.add_space(2.0);
-    ui.add(egui::Label::new(RichText::new(text).size(10.5).color(theme::TEXT_FAINT)).wrap());
+    ui.add(egui::Label::new(RichText::new(text).size(10.5).color(theme::text()_FAINT)).wrap());
 }
 
 /// A small outlined button.
 fn pill_button(ui: &mut Ui, text: &str) -> Response {
     ui.add(
-        egui::Button::new(RichText::new(text).size(11.0).color(theme::TEXT))
-            .stroke(Stroke::new(1.0, theme::NODE_BORDER))
+        egui::Button::new(RichText::new(text).size(11.0).color(theme::text()))
+            .stroke(Stroke::new(1.0, theme::node_border()))
             .fill(Color32::TRANSPARENT)
             .corner_radius(11.0)
             .min_size(vec2(0.0, 22.0)),
@@ -649,7 +670,7 @@ fn switch(ui: &mut Ui, on: &mut bool, label: &str) -> Response {
     let font = FontId::proportional(12.0);
     let galley = ui
         .painter()
-        .layout_no_wrap(label.to_owned(), font, theme::TEXT);
+        .layout_no_wrap(label.to_owned(), font, theme::text());
     let (rect, mut resp) =
         ui.allocate_exact_size(vec2(34.0 + 10.0 + galley.size().x, ROW_H), Sense::CLICK);
     if resp.clicked() {
@@ -659,15 +680,15 @@ fn switch(ui: &mut Ui, on: &mut bool, label: &str) -> Response {
     let p = ui.painter();
     let track = Rect::from_min_size(pos2(rect.left(), rect.center().y - 8.0), vec2(30.0, 16.0));
     let col = if *on {
-        theme::ACCENT
+        theme::accent()
     } else {
-        theme::NODE_BORDER
+        theme::node_border()
     };
     p.rect(
         track,
         8.0,
         if *on {
-            alpha(theme::ACCENT, 0.18)
+            alpha(theme::accent(), 0.18)
         } else {
             Color32::TRANSPARENT
         },
@@ -681,14 +702,14 @@ fn switch(ui: &mut Ui, on: &mut bool, label: &str) -> Response {
     };
     let dot = pos2(x, track.center().y);
     if *on {
-        p.circle_filled(dot, 4.5, theme::ACCENT);
+        p.circle_filled(dot, 4.5, theme::accent());
     } else {
-        p.circle_stroke(dot, 4.0, Stroke::new(1.2, theme::TEXT_DIM));
+        p.circle_stroke(dot, 4.0, Stroke::new(1.2, theme::text()_DIM));
     }
     let text_col = if resp.hovered() || *on {
-        theme::TEXT
+        theme::text()
     } else {
-        theme::TEXT_DIM
+        theme::text()_DIM
     };
     p.galley(
         pos2(
@@ -712,14 +733,14 @@ fn light(ui: &mut Ui, label: &str, active: bool, color: Color32) {
     if active {
         p.circle_filled(c, 4.0, color);
     } else {
-        p.circle_stroke(c, 3.5, Stroke::new(1.0, theme::TEXT_FAINT));
+        p.circle_stroke(c, 3.5, Stroke::new(1.0, theme::text()_FAINT));
     }
     p.text(
         pos2(c.x + 9.0, c.y),
         Align2::LEFT_CENTER,
         label,
         FontId::monospace(9.5),
-        if active { color } else { theme::TEXT_FAINT },
+        if active { color } else { theme::text()_FAINT },
     );
 }
 
@@ -757,7 +778,7 @@ fn tab_icon(p: &egui::Painter, c: Pos2, tab: Tab, col: Color32) {
             }
             p.line_segment(
                 [c + vec2(-1.5, 7.0), c + vec2(1.5, 7.0)],
-                Stroke::new(2.0, theme::PANEL),
+                Stroke::new(2.0, theme::panel()),
             );
         }
         Tab::Sync => {
@@ -780,6 +801,11 @@ fn tab_icon(p: &egui::Painter, c: Pos2, tab: Tab, col: Color32) {
             p.line_segment([c + vec2(2.5, -2.0), c + vec2(2.5, -6.5)], s);
             p.line_segment([c + vec2(0.0, 5.0), c + vec2(0.0, 8.0)], s);
         }
+        Tab::Appearance => {
+            p.circle_stroke(c + vec2(-3.0, -2.0), 5.5, s);
+            p.circle_filled(c + vec2(4.0, 1.0), 4.0, theme::accent());
+            p.line_segment([c + vec2(-7.0, 6.0), c + vec2(7.0, 6.0)], s);
+        }
     }
 }
 
@@ -789,6 +815,35 @@ fn rate_label(rate: u32) -> String {
     } else {
         format!("{:.1} kHz", rate as f32 / 1000.0)
     }
+}
+
+fn appearance_card(ui: &mut Ui, cx: &SettingsContext, changes: &mut Vec<SettingsChange>) {
+    card(ui, "UI THEME", |ui| {
+        for theme_choice in cx.themes {
+            let selected = theme_choice.id == cx.theme;
+            item(ui, |ui| {
+                let mut on = selected;
+                let label = format!(
+                    "{}{}",
+                    if selected { "●  " } else { "    " },
+                    theme_choice.name
+                );
+                if ui
+                    .button(RichText::new(label).size(11.5))
+                    .on_hover_text(&theme_choice.description)
+                    .clicked()
+                {
+                    on = true;
+                    changes.push(SettingsChange::Theme(theme_choice.id.clone()));
+                }
+                let _ = on;
+            });
+        }
+    });
+    note(
+        ui,
+        "Third-party themes are loaded from the Themes folder in the AudioBoard data directory.",
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -915,7 +970,7 @@ fn output_card(ui: &mut Ui, list: &DeviceList, audio: &AudioHandle, config: &mut
                 });
         });
         match &info.error {
-            Some(e) => status(ui, e, theme::MUTE),
+            Some(e) => status(ui, e, theme::mute()),
             None => {
                 let frames = audio
                     .shared
@@ -933,7 +988,7 @@ fn output_card(ui: &mut Ui, list: &DeviceList, audio: &AudioHandle, config: &mut
                         info.device,
                         rate_label(info.sample_rate)
                     ),
-                    theme::METER_GREEN,
+                    theme::meter_green(),
                 );
             }
         }
@@ -995,7 +1050,7 @@ fn input_card(
                 });
         });
         if let Some(e) = &info.input_error {
-            status(ui, e, theme::MUTE);
+            status(ui, e, theme::mute());
             return;
         }
         let Some(name) = &info.input else {
@@ -1003,7 +1058,7 @@ fn input_card(
                 status(
                     ui,
                     "Opens while an Audio In node is on the board.",
-                    theme::TEXT_FAINT,
+                    theme::text()_FAINT,
                 );
             }
             return;
@@ -1012,7 +1067,7 @@ fn input_card(
         status(
             ui,
             format!("Listening to {name} · {channels} ch · Audio In nodes pick their channels"),
-            theme::METER_GREEN,
+            theme::meter_green(),
         );
         ui.add_space(4.0);
         for (c, &level) in levels.iter().enumerate().take(channels) {
@@ -1029,7 +1084,7 @@ fn input_card(
                 format!(
                     "{lost} input dropouts (a larger buffer, or the same device for input and output, helps)"
                 ),
-                theme::SOLO,
+                theme::solo(),
             );
         }
     });
@@ -1046,7 +1101,7 @@ fn meter(ui: &mut Ui, channel: usize, level: f32) {
         Align2::RIGHT_CENTER,
         format!("in {channel}"),
         theme::mono(9.0),
-        theme::TEXT_DIM,
+        theme::text()_DIM,
     );
     let bar = Rect::from_min_max(
         pos2(rect.left() + LABEL_W + 12.0, rect.top() + 2.0),
@@ -1055,16 +1110,16 @@ fn meter(ui: &mut Ui, channel: usize, level: f32) {
     p.rect_stroke(
         bar,
         2.0,
-        Stroke::new(1.0, theme::PANEL_BORDER),
+        Stroke::new(1.0, theme::panel()_BORDER),
         StrokeKind::Inside,
     );
     let x = (1.0 + 20.0 * level.max(1e-6).log10() / 60.0).clamp(0.0, 1.0);
     let color = if level >= 0.89 {
-        theme::METER_RED
+        theme::meter_red()
     } else if level >= 0.5 {
-        theme::METER_YELLOW
+        theme::meter_yellow()
     } else {
-        theme::METER_GREEN
+        theme::meter_green()
     };
     if x > 0.0 {
         p.rect_filled(
@@ -1078,7 +1133,7 @@ fn meter(ui: &mut Ui, channel: usize, level: f32) {
     }
     for db in [-18.0, -6.0] {
         let x = bar.left() + bar.width() * (1.0 + db / 60.0);
-        p.vline(x, bar.y_range(), Stroke::new(1.0, alpha(theme::TEXT, 0.18)));
+        p.vline(x, bar.y_range(), Stroke::new(1.0, alpha(theme::text(), 0.18)));
     }
 }
 
@@ -1089,27 +1144,27 @@ fn meter(ui: &mut Ui, channel: usize, level: f32) {
 fn midi_card(ui: &mut Ui, cx: &SettingsContext, lights: &HashMap<String, Lights>, now: f64) {
     card(ui, "INPUTS", |ui| {
         if let Some(e) = cx.midi_error {
-            line(ui, format!("MIDI is unavailable: {e}"), theme::MUTE);
+            line(ui, format!("MIDI is unavailable: {e}"), theme::mute());
             return;
         }
         if cx.midi_inputs.is_empty() {
             line(
                 ui,
                 "No MIDI input connected. Plug one in: it is picked up within seconds.",
-                theme::TEXT_FAINT,
+                theme::text()_FAINT,
             );
         }
         for input in &cx.midi_inputs {
             let l = lights.get(&input.name).copied().unwrap_or_default();
             item(ui, |ui| {
-                ui.label(RichText::new(&input.name).size(12.0).color(theme::TEXT));
+                ui.label(RichText::new(&input.name).size(12.0).color(theme::text()));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    light(ui, "clock", now - l.clock_at < 0.15, theme::ACCENT);
+                    light(ui, "clock", now - l.clock_at < 0.15, theme::accent());
                     ui.add_space(8.0);
-                    light(ui, "notes", now - l.events_at < 0.15, theme::METER_GREEN);
+                    light(ui, "notes", now - l.events_at < 0.15, theme::meter_green());
                     if cx.sync.source.as_deref() == Some(input.name.as_str()) {
                         ui.add_space(8.0);
-                        ui.label(RichText::new("SYNC SOURCE").size(9.5).color(theme::ACCENT));
+                        ui.label(RichText::new("SYNC SOURCE").size(9.5).color(theme::accent()));
                     }
                 });
             });
@@ -1141,16 +1196,16 @@ fn plugins_card(ui: &mut Ui, cx: &SettingsContext, changes: &mut Vec<SettingsCha
                     RichText::new(text)
                         .font(FontId::monospace(10.5))
                         .color(if there {
-                            theme::TEXT
+                            theme::text()
                         } else {
-                            theme::TEXT_FAINT
+                            theme::text()_FAINT
                         }),
                 );
                 if !there {
                     ui.label(
                         RichText::new("not there")
                             .size(10.0)
-                            .color(theme::TEXT_FAINT),
+                            .color(theme::text()_FAINT),
                     );
                 }
             });
@@ -1162,13 +1217,13 @@ fn plugins_card(ui: &mut Ui, cx: &SettingsContext, changes: &mut Vec<SettingsCha
                 counts.vst3,
                 if counts.vst3 == 1 { "" } else { "s" }
             ),
-            theme::METER_GREEN,
+            theme::meter_green(),
         );
     });
     ui.add_space(12.0);
     card(ui, "AUDIO UNITS", |ui| {
         if !cfg!(target_os = "macos") {
-            line(ui, "Audio Units are a macOS format.", theme::TEXT_FAINT);
+            line(ui, "Audio Units are a macOS format.", theme::text()_FAINT);
             return;
         }
         let mut p = cx.plugins.clone();
@@ -1195,7 +1250,7 @@ fn plugins_card(ui: &mut Ui, cx: &SettingsContext, changes: &mut Vec<SettingsCha
                     if counts.au == 1 { "" } else { "s" },
                     counts.auv3
                 ),
-                theme::METER_GREEN,
+                theme::meter_green(),
             );
         }
         note(
@@ -1220,16 +1275,16 @@ fn plugins_card(ui: &mut Ui, cx: &SettingsContext, changes: &mut Vec<SettingsCha
                     RichText::new(text)
                         .font(FontId::monospace(10.5))
                         .color(if there {
-                            theme::TEXT
+                            theme::text()
                         } else {
-                            theme::TEXT_FAINT
+                            theme::text()_FAINT
                         }),
                 );
                 if !there {
                     ui.label(
                         RichText::new("not there")
                             .size(10.0)
-                            .color(theme::TEXT_FAINT),
+                            .color(theme::text()_FAINT),
                     );
                 }
             });
@@ -1240,11 +1295,11 @@ fn plugins_card(ui: &mut Ui, cx: &SettingsContext, changes: &mut Vec<SettingsCha
             line(
                 ui,
                 format!("{name} {version} · {nodes} node{s} · {file}"),
-                theme::METER_GREEN,
+                theme::meter_green(),
             );
         }
         if libraries.is_empty() {
-            line(ui, "No node plugins loaded", theme::TEXT_FAINT);
+            line(ui, "No node plugins loaded", theme::text()_FAINT);
         }
         note(
             ui,

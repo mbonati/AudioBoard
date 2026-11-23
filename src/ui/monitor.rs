@@ -45,7 +45,7 @@ impl Monitor {
         p.hline(
             inner.x_range(),
             inner.center().y,
-            Stroke::new(1.0, theme::GRID_MAJOR),
+            Stroke::new(1.0, theme::grid_major()),
         );
 
         shared.scope.snapshot(&mut self.samples, 4096);
@@ -68,7 +68,7 @@ impl Monitor {
                 )
             })
             .collect();
-        p.add(Shape::line(pts, Stroke::new(1.2, theme::ACCENT)));
+        p.add(Shape::line(pts, Stroke::new(1.2, theme::accent())));
     }
 
     pub fn spectrum(&mut self, ui: &mut Ui, sample_rate: f32, dt: f32, size: Vec2) {
@@ -102,7 +102,7 @@ impl Monitor {
         // Frequency grid.
         for f in [100.0, 1000.0, 10_000.0] {
             let x = x_of(f);
-            p.vline(x, inner.y_range(), Stroke::new(1.0, theme::GRID_MAJOR));
+            p.vline(x, inner.y_range(), Stroke::new(1.0, theme::grid_major()));
             let label = if f >= 1000.0 {
                 format!("{}k", f / 1000.0)
             } else {
@@ -113,7 +113,7 @@ impl Monitor {
                 Align2::LEFT_BOTTOM,
                 label,
                 FontId::monospace(8.5),
-                theme::TEXT_FAINT,
+                theme::text()_FAINT,
             );
         }
 
@@ -137,7 +137,7 @@ impl Monitor {
             ));
         }
 
-        let color = theme::ACCENT;
+        let color = theme::accent();
         let mut mesh = Mesh::default();
         for (i, pt) in pts.iter().enumerate() {
             mesh.vertices.push(Vertex {
@@ -163,11 +163,11 @@ impl Monitor {
 
 /// Inset analyzer background with its title; returns the plotting area.
 fn screen(p: &Painter, rect: Rect, title: &str, detail: &str) -> Rect {
-    p.rect_filled(rect, 4.0, theme::INSET);
+    p.rect_filled(rect, 4.0, theme::inset());
     p.rect_stroke(
         rect,
         4.0,
-        Stroke::new(1.0, theme::PANEL_BORDER),
+        Stroke::new(1.0, theme::panel()_BORDER),
         egui::StrokeKind::Inside,
     );
     let t = p.text(
@@ -175,14 +175,14 @@ fn screen(p: &Painter, rect: Rect, title: &str, detail: &str) -> Rect {
         Align2::LEFT_CENTER,
         title,
         FontId::proportional(10.5),
-        theme::TEXT_DIM,
+        theme::text()_DIM,
     );
     p.text(
         pos2(t.right() + 8.0, t.center().y),
         Align2::LEFT_CENTER,
         detail,
         FontId::monospace(9.0),
-        theme::TEXT_FAINT,
+        theme::text()_FAINT,
     );
     Rect::from_min_max(rect.min + vec2(6.0, LABEL_H), rect.max - vec2(6.0, 6.0))
 }

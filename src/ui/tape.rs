@@ -167,9 +167,9 @@ pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, ports: (b
     let w = s.l.size.x;
     let col = |on: bool| {
         if on {
-            theme::TEXT_DIM
+            theme::text()_DIM
         } else {
-            theme::TEXT_FAINT
+            theme::text()_FAINT
         }
     };
     v.text(
@@ -195,7 +195,7 @@ pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, ports: (b
         Align2::LEFT_CENTER,
         format!("{} · {} ips", m.name, tp::speed_name(p)),
         v.font(8.0),
-        theme::TEXT_FAINT,
+        theme::text()_FAINT,
     );
     let switch = v.r(w - 44.0 - 120.0, 34.0, w - 44.0, 50.0);
     if let Some(k) = s.seg("detail", switch, &DETAILS, tp::choice(p, data::DETAIL, 2)) {
@@ -324,7 +324,7 @@ impl Panel<'_, '_> {
         painter.rect_filled(
             v.r(PAD, l.deck[0], w - PAD, l.deck[1]),
             8.0 * z,
-            alpha(theme::INSET, 0.35),
+            alpha(theme::inset(), 0.35),
         );
 
         let packs = [pack(1.0 - d.wound) * l.reel_r, pack(d.wound) * l.reel_r];
@@ -347,7 +347,7 @@ impl Panel<'_, '_> {
             pos2(a.x + (b.x - a.x) * t, a.y + (PI * t).sin() * sway)
         }));
         line.push(tangent(l.reels[1], packs[1], b));
-        let tape = Stroke::new(1.4 * z, alpha(theme::TEXT_DIM, 0.75 * (1.0 - 0.7 * drop)));
+        let tape = Stroke::new(1.4 * z, alpha(theme::text()_DIM, 0.75 * (1.0 - 0.7 * drop)));
         painter.add(Shape::line(
             line.iter().map(|q| v.p(q.x, q.y)).collect(),
             tape,
@@ -361,7 +361,7 @@ impl Panel<'_, '_> {
         // (orange when the tape squeezes).
         let glow = if running { out } else { 0.0 };
         let colour = theme::mix(
-            theme::mix(theme::TEXT_FAINT, self.accent, glow),
+            theme::mix(theme::text()_FAINT, self.accent, glow),
             SAT_COL,
             sat,
         );
@@ -405,10 +405,10 @@ impl Panel<'_, '_> {
                 .collect();
             painter.add(Shape::line(
                 arc,
-                Stroke::new(1.4 * z, alpha(theme::TEXT_DIM, 0.8)),
+                Stroke::new(1.4 * z, alpha(theme::text()_DIM, 0.8)),
             ));
         }
-        painter.circle_filled(centre, r * 0.09 * z, theme::TEXT_DIM);
+        painter.circle_filled(centre, r * 0.09 * z, theme::text()_DIM);
         let a = turns * TAU;
         painter.circle_filled(
             centre + vec2(a.cos(), a.sin()) * r * HUB * 0.9 * z,
@@ -434,30 +434,30 @@ impl Panel<'_, '_> {
         };
         painter.add(Shape::line(
             arc(0.0, zero),
-            Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.9)),
+            Stroke::new(1.0 * z, alpha(theme::text()_FAINT, 0.9)),
         ));
         painter.add(Shape::line(
             arc(zero, 1.0),
-            Stroke::new(2.0 * z, alpha(theme::METER_RED, 0.8)),
+            Stroke::new(2.0 * z, alpha(theme::meter_red(), 0.8)),
         ));
         painter.line_segment(
             [at(zero, r + 2.0), at(zero, r + 5.0)],
-            Stroke::new(1.0 * z, theme::TEXT_FAINT),
+            Stroke::new(1.0 * z, theme::text()_FAINT),
         );
         let hot = pos >= 0.99;
-        let needle = if hot { theme::METER_RED } else { self.accent };
+        let needle = if hot { theme::meter_red() } else { self.accent };
         painter.line_segment(
             [v.p(c.x, c.y), at(pos, r + 3.0)],
             Stroke::new(1.5 * z, needle),
         );
-        painter.circle_filled(v.p(c.x, c.y), 2.5 * z, theme::TEXT_DIM);
+        painter.circle_filled(v.p(c.x, c.y), 2.5 * z, theme::text()_DIM);
         v.text(
             c.x,
             c.y + 9.0,
             Align2::CENTER_CENTER,
             label,
             v.font(6.5),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
     }
 
@@ -479,7 +479,7 @@ impl Panel<'_, '_> {
                     .on_hover_cursor(CursorIcon::PointingHand)
                     .on_hover_text(tip);
             if resp.hovered() {
-                painter.circle_filled(rect.center(), 9.0 * z, theme::CONTROL_HI);
+                painter.circle_filled(rect.center(), 9.0 * z, theme::control()_HI);
             }
             let lit = play == running;
             painter.text(
@@ -487,7 +487,7 @@ impl Panel<'_, '_> {
                 Align2::CENTER_CENTER,
                 glyph,
                 theme::font(10.0 * z),
-                if lit { self.accent } else { theme::TEXT_FAINT },
+                if lit { self.accent } else { theme::text()_FAINT },
             );
             if resp.clicked() {
                 p.data[data::RUNNING].set(if play { 1.0 } else { 0.0 });
@@ -501,7 +501,7 @@ impl Panel<'_, '_> {
                 Align2::CENTER_CENTER,
                 format!("{:02}:{:02}", (secs / 60) % 100, secs % 60),
                 v.mono(8.0),
-                theme::TEXT_FAINT,
+                theme::text()_FAINT,
             );
         }
     }
@@ -552,7 +552,7 @@ impl Panel<'_, '_> {
                 Align2::LEFT_CENTER,
                 label,
                 v.font(7.5),
-                theme::TEXT_FAINT,
+                theme::text()_FAINT,
             );
             (x0 + 54.0, x1, y(row))
         };
@@ -563,7 +563,7 @@ impl Panel<'_, '_> {
                 Align2::LEFT_CENTER,
                 text,
                 v.font(7.5),
-                theme::TEXT_DIM,
+                theme::text()_DIM,
             )
         };
 
@@ -655,7 +655,7 @@ impl Panel<'_, '_> {
                 Align2::CENTER_CENTER,
                 label,
                 v.font(7.5),
-                theme::TEXT_FAINT,
+                theme::text()_FAINT,
             );
             let mut norm = spec.to_norm(p.get(*i));
             let resp = widgets::knob(
@@ -682,7 +682,7 @@ impl Panel<'_, '_> {
                 Align2::CENTER_CENTER,
                 tp::format(p, *i),
                 v.mono(7.5),
-                if hot { theme::TEXT } else { theme::TEXT_DIM },
+                if hot { theme::text() } else { theme::text()_DIM },
             );
         }
         if std::ptr::eq(l, &FULL) {
@@ -700,7 +700,7 @@ impl Panel<'_, '_> {
                 Align2::CENTER_CENTER,
                 state,
                 v.font(7.5),
-                theme::TEXT_FAINT,
+                theme::text()_FAINT,
             );
         }
     }

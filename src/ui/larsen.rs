@@ -273,10 +273,10 @@ impl View {
 /// A small caption on the field, on a patch of its background so that
 /// lines pass behind it.
 fn caption(painter: &egui::Painter, pos: Pos2, align: Align2, text: &str, z: f32) {
-    let galley = painter.layout_no_wrap(text.to_owned(), theme::font(6.5 * z), theme::TEXT_FAINT);
+    let galley = painter.layout_no_wrap(text.to_owned(), theme::font(6.5 * z), theme::text()_FAINT);
     let rect = align.anchor_size(pos, galley.size());
-    painter.rect_filled(rect.expand(2.0 * z), 2.0 * z, alpha(theme::INSET, 0.85));
-    painter.galley(rect.min, galley, theme::TEXT_FAINT);
+    painter.rect_filled(rect.expand(2.0 * z), 2.0 * z, alpha(theme::inset(), 0.85));
+    painter.galley(rect.min, galley, theme::text()_FAINT);
 }
 
 /// Column `c`'s lower edge, in Hz.
@@ -314,9 +314,9 @@ pub fn draw(
     };
     let col = |on: bool| {
         if on {
-            theme::TEXT_DIM
+            theme::text()_DIM
         } else {
-            theme::TEXT_FAINT
+            theme::text()_FAINT
         }
     };
     v.text(
@@ -412,7 +412,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             "KEYS",
             v.font(7.0),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         self.switch(
             "pitch",
@@ -434,7 +434,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             "STRINGS",
             v.font(7.0),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         self.switch(
             "poly",
@@ -466,7 +466,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             text,
             v.font(7.5),
-            if midi { self.accent } else { theme::TEXT_FAINT },
+            if midi { self.accent } else { theme::text()_FAINT },
         );
         // The knobs' two colours.
         let r = v.text(
@@ -500,7 +500,7 @@ impl Panel<'_, '_> {
     fn field(&self, view: &View) {
         let (v, p, z) = (self.v, self.p, self.z());
         let outer = v.r(PAD, TOP, W - PAD, BOTTOM);
-        v.painter.rect_filled(outer, 4.0 * z, theme::INSET);
+        v.painter.rect_filled(outer, 4.0 * z, theme::inset());
         let painter = v
             .painter
             .with_clip_rect(outer.intersect(v.painter.clip_rect()));
@@ -520,14 +520,14 @@ impl Panel<'_, '_> {
             let x = self.x_of(rect, hz);
             painter.line_segment(
                 [pos2(x, rect.top()), pos2(x, rect.bottom())],
-                Stroke::new(0.6 * z, alpha(theme::TEXT_FAINT, 0.1)),
+                Stroke::new(0.6 * z, alpha(theme::text()_FAINT, 0.1)),
             );
             painter.text(
                 pos2(x + 2.0 * z, rect.bottom() - 1.0 * z),
                 Align2::LEFT_BOTTOM,
                 label,
                 theme::font(6.5 * z),
-                alpha(theme::TEXT_FAINT, 0.7),
+                alpha(theme::text()_FAINT, 0.7),
             );
         }
 
@@ -652,7 +652,7 @@ impl Panel<'_, '_> {
         ));
         painter.add(Shape::line(
             points,
-            Stroke::new(1.1 * z, mix(self.accent, theme::TEXT, 0.35)),
+            Stroke::new(1.1 * z, mix(self.accent, theme::text(), 0.35)),
         ));
 
         caption(
@@ -683,13 +683,13 @@ impl Panel<'_, '_> {
                 Align2::LEFT_CENTER,
                 title,
                 theme::strong(8.5 * z),
-                theme::TEXT_DIM,
+                theme::text()_DIM,
             );
             let end = if title == "ECHO" { 300.0 } else { x1 };
             v.painter.hline(
                 v.p(x0 + 62.0, 0.0).x..=v.p(end, 0.0).x,
                 v.p(0.0, y).y,
-                Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.3)),
+                Stroke::new(1.0 * z, alpha(theme::text()_FAINT, 0.3)),
             );
             let cw = (x1 - x0) / knobs.len() as f32;
             for (k, &(i, label)) in knobs.iter().enumerate() {
@@ -763,7 +763,7 @@ impl Panel<'_, '_> {
             Align2::CENTER_CENTER,
             format_seconds(time as f32),
             v.mono(6.5),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
     }
 
@@ -777,7 +777,7 @@ impl Panel<'_, '_> {
             Align2::CENTER_CENTER,
             label,
             v.font(7.5),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         let top = y + 8.0;
         let color = if after_loop(i) { AMBER } else { self.accent };
@@ -823,11 +823,11 @@ impl Panel<'_, '_> {
             _ => la::format(p, i),
         };
         let col = if hot {
-            theme::TEXT
+            theme::text()
         } else if dim {
-            theme::TEXT_FAINT
+            theme::text()_FAINT
         } else {
-            theme::TEXT_DIM
+            theme::text()_DIM
         };
         v.text(
             cx,

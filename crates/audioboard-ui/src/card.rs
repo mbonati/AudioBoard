@@ -50,17 +50,17 @@ pub fn card<P>(v: &NodeView<'_, P>, c: &Card<'_>) -> CardActions {
     let p = v.painter;
 
     widgets::shadow(p, rect, RADIUS * z, z);
-    p.rect_filled(rect, RADIUS * z, theme::NODE_BODY);
+    p.rect_filled(rect, RADIUS * z, theme::node_body());
     let top = CornerRadius {
         nw: radius(RADIUS, z),
         ne: radius(RADIUS, z),
         sw: 0,
         se: 0,
     };
-    p.rect_filled(v.r(0.0, 0.0, size.x, HEADER_H), top, theme::NODE_HEADER);
+    p.rect_filled(v.r(0.0, 0.0, size.x, HEADER_H), top, theme::node_header());
     p.line_segment(
         [v.p(0.0, HEADER_H), v.p(size.x, HEADER_H)],
-        Stroke::new(1.0 * z, theme::NODE_BORDER),
+        Stroke::new(1.0 * z, theme::node_border()),
     );
 
     // Collapse chevron: points down when expanded, right when collapsed.
@@ -89,9 +89,9 @@ pub fn card<P>(v: &NodeView<'_, P>, c: &Card<'_>) -> CardActions {
         ]
     };
     let fold_col = if fold.hovered() {
-        theme::TEXT
+        theme::text()
     } else {
-        theme::TEXT_FAINT
+        theme::text()_FAINT
     };
     p.add(Shape::convex_polygon(tri, fold_col, Stroke::NONE));
 
@@ -100,7 +100,7 @@ pub fn card<P>(v: &NodeView<'_, P>, c: &Card<'_>) -> CardActions {
     p.circle_filled(
         v.p(26.0, HEADER_H * 0.5),
         3.5 * z,
-        theme::mix(theme::CONTROL_HI, c.accent, 0.35 + 0.65 * level),
+        theme::mix(theme::control()_HI, c.accent, 0.35 + 0.65 * level),
     );
     v.text(
         36.0,
@@ -108,7 +108,7 @@ pub fn card<P>(v: &NodeView<'_, P>, c: &Card<'_>) -> CardActions {
         Align2::LEFT_CENTER,
         c.title,
         theme::strong(11.5 * z),
-        theme::TEXT,
+        theme::text(),
     );
 
     // Close button, only shown while the node is hovered or selected.
@@ -120,12 +120,12 @@ pub fn card<P>(v: &NodeView<'_, P>, c: &Card<'_>) -> CardActions {
     if c.selected || v.ui.rect_contains_pointer(rect) {
         let center = close_rect.center();
         if close.hovered() {
-            p.circle_filled(center, 8.0 * z, theme::CONTROL_HI);
+            p.circle_filled(center, 8.0 * z, theme::control()_HI);
         }
         let col = if close.hovered() {
-            theme::TEXT
+            theme::text()
         } else {
-            theme::TEXT_FAINT
+            theme::text()_FAINT
         };
         let d = 3.0 * z;
         p.line_segment(
@@ -152,9 +152,9 @@ pub fn card<P>(v: &NodeView<'_, P>, c: &Card<'_>) -> CardActions {
                     "Bypass: hear the dry signal (B)"
                 });
         if resp.hovered() {
-            p.circle_filled(bp_rect.center(), 8.0 * z, theme::CONTROL_HI);
+            p.circle_filled(bp_rect.center(), 8.0 * z, theme::control()_HI);
         }
-        let col = if off { theme::METER_YELLOW } else { c.accent };
+        let col = if off { theme::meter_yellow() } else { c.accent };
         power_icon(p, bp_rect.center(), 4.0 * z, Stroke::new(1.3 * z, col));
         if off {
             v.text(
@@ -163,7 +163,7 @@ pub fn card<P>(v: &NodeView<'_, P>, c: &Card<'_>) -> CardActions {
                 Align2::RIGHT_CENTER,
                 "BYPASS",
                 theme::strong(8.0 * z),
-                theme::METER_YELLOW,
+                theme::meter_yellow(),
             );
         }
         bypass = resp.clicked();
@@ -180,7 +180,7 @@ pub fn card<P>(v: &NodeView<'_, P>, c: &Card<'_>) -> CardActions {
         p.rect_stroke(
             rect,
             RADIUS * z,
-            Stroke::new(1.0 * z, theme::NODE_BORDER),
+            Stroke::new(1.0 * z, theme::node_border()),
             StrokeKind::Inside,
         );
     }
@@ -215,5 +215,5 @@ pub fn veil<P>(v: &NodeView<'_, P>, size: Vec2) {
         se: radius(RADIUS, v.z),
     };
     v.painter
-        .rect_filled(rect, bottom, alpha(theme::NODE_BODY, 0.55));
+        .rect_filled(rect, bottom, alpha(theme::node_body(), 0.55));
 }

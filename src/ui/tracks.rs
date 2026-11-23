@@ -44,7 +44,7 @@ const NEW_ROW_H: f32 = 64.0;
 /// Open panels are scaled down to this height at most.
 const PANEL_H: f32 = 360.0;
 /// Colour of MIDI notes and tags.
-const MIDI_COL: Color32 = theme::OSC_ACCENTS[3];
+const MIDI_COL: Color32 = theme::osc_accents()[3];
 
 /// Where something picked in an add menu (or dropped) goes.
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -173,7 +173,7 @@ impl TrackView {
     ) {
         let view = ui.max_rect();
         let now = ui.input(|i| i.time);
-        ui.painter_at(view).rect_filled(view, 0.0, theme::BG);
+        ui.painter_at(view).rect_filled(view, 0.0, theme::bg());
         tick_iris(ui, graph);
         if let Some(id) = self.selected
             && graph.node(id).is_none()
@@ -254,13 +254,13 @@ impl TrackView {
             ui.painter_at(view).hline(
                 row.x_range(),
                 row.bottom() - 0.5,
-                Stroke::new(1.0, theme::PANEL_BORDER),
+                Stroke::new(1.0, theme::panel()_BORDER),
             );
         }
         // The header column runs to the bottom.
         let below = Rect::from_min_max(pos2(view.left(), y), pos2(view.left() + HEADER_W, view.bottom()));
         if below.height() > 0.0 {
-            ui.painter_at(view).rect_filled(below, 0.0, theme::PANEL);
+            ui.painter_at(view).rect_filled(below, 0.0, theme::panel());
         }
         let new_row = self.new_track_row(ui, view, y, graph.nodes.is_empty(), library, plugins, &mut acts);
 
@@ -401,8 +401,8 @@ impl TrackView {
             }
             // Where it goes.
             let (text, col) = match t.dest {
-                Some(p) => (format!("▸ {}", channel_label(graph, p)), theme::MIXER_ACCENT),
-                None => ("not routed".to_owned(), theme::TEXT_FAINT),
+                Some(p) => (format!("▸ {}", channel_label(graph, p)), theme::mixer_accent()),
+                None => ("not routed".to_owned(), theme::text()_FAINT),
             };
             if let Some((px, c)) = chain_prev
                 && t.dest.is_some()
@@ -418,7 +418,7 @@ impl TrackView {
                     .interact(plus, Id::unique(("trk-plus", t.key)), Sense::CLICK)
                     .on_hover_cursor(CursorIcon::PointingHand)
                     .on_hover_text("Add a device at the end of this track");
-                let col = if resp.hovered() { theme::TEXT } else { theme::TEXT_FAINT };
+                let col = if resp.hovered() { theme::text() } else { theme::text()_FAINT };
                 dashed_rect(&painter, plus, Stroke::new(1.0, col));
                 plus_icon(&painter, plus.center(), col);
                 if let Some(choice) = egui::Popup::menu(&resp)
@@ -435,7 +435,7 @@ impl TrackView {
                 Align2::LEFT_CENTER,
                 "nothing here",
                 theme::font(10.5),
-                theme::TEXT_FAINT,
+                theme::text()_FAINT,
             );
         }
         self.widths.insert(t.key, x + scroll - lane.left() + LANE_PAD);
@@ -464,12 +464,12 @@ impl TrackView {
         p.rect(
             r,
             r.height() * 0.5,
-            theme::NODE_BODY,
-            Stroke::new(if selected { 1.5 } else { 1.0 }, if selected { d.accent } else { theme::NODE_BORDER }),
+            theme::node_body(),
+            Stroke::new(if selected { 1.5 } else { 1.0 }, if selected { d.accent } else { theme::node_border() }),
             StrokeKind::Inside,
         );
-        p.circle_filled(r.left_center() + vec2(10.0, 0.0), 3.0, theme::mix(theme::CONTROL_HI, d.accent, 0.35 + 0.65 * d.level.clamp(0.0, 1.0).sqrt()));
-        let col = if d.bypass == Some(true) { theme::TEXT_FAINT } else { theme::TEXT };
+        p.circle_filled(r.left_center() + vec2(10.0, 0.0), 3.0, theme::mix(theme::control()_HI, d.accent, 0.35 + 0.65 * d.level.clamp(0.0, 1.0).sqrt()));
+        let col = if d.bypass == Some(true) { theme::text()_FAINT } else { theme::text() };
         p.text(r.left_center() + vec2(18.0, 0.0), Align2::LEFT_CENTER, &d.title, theme::strong(10.5), col);
     }
 
@@ -514,7 +514,7 @@ impl TrackView {
             ui.ctx().set_cursor_icon(CursorIcon::Grab);
         }
         egui::Popup::context_menu(&body).show(|ui| {
-            ui.label(egui::RichText::new(&d.title).size(10.5).color(theme::TEXT_DIM));
+            ui.label(egui::RichText::new(&d.title).size(10.5).color(theme::text()_DIM));
             if canvas::menu_item(ui, if open { "Close panel" } else { "Open panel" }, "C") {
                 acts.push(Act::ToggleOpen(id));
                 ui.close();
@@ -580,7 +580,7 @@ impl TrackView {
             audioboard_ui::card::veil(&v, size);
         }
         if self.drag == Some(id) {
-            painter.rect_filled(r, audioboard_ui::card::RADIUS * z, alpha(theme::BG, 0.6));
+            painter.rect_filled(r, audioboard_ui::card::RADIUS * z, alpha(theme::bg(), 0.6));
         }
     }
 
@@ -603,8 +603,8 @@ impl TrackView {
         let mut hui = ui.new_child(UiBuilder::new().max_rect(hr));
         hui.set_clip_rect(hr.intersect(view));
         let p = hui.painter().clone();
-        p.rect_filled(hr, 0.0, theme::PANEL);
-        p.vline(hr.right() - 0.5, hr.y_range(), Stroke::new(1.0, theme::PANEL_BORDER));
+        p.rect_filled(hr, 0.0, theme::panel());
+        p.vline(hr.right() - 0.5, hr.y_range(), Stroke::new(1.0, theme::panel()_BORDER));
         p.rect_filled(Rect::from_min_size(hr.min, vec2(3.0, hr.height())), 0.0, h.color);
         let top = hr.top();
         let name_y = if folded { hr.center().y } else { top + 16.0 };
@@ -626,13 +626,13 @@ impl TrackView {
             } else {
                 vec![c + vec2(-s, -0.6 * s), c + vec2(s, -0.6 * s), c + vec2(0.0, 0.9 * s)]
             };
-            let col = if resp.hovered() { theme::TEXT } else { theme::TEXT_FAINT };
+            let col = if resp.hovered() { theme::text() } else { theme::text()_FAINT };
             p.add(Shape::convex_polygon(tri, col, Stroke::NONE));
         }
         let name_x = hr.left() + 27.0;
-        p.text(pos2(hr.right() - 10.0, name_y), Align2::RIGHT_CENTER, h.kind, theme::strong(8.0), theme::TEXT_FAINT);
+        p.text(pos2(hr.right() - 10.0, name_y), Align2::RIGHT_CENTER, h.kind, theme::strong(8.0), theme::text()_FAINT);
         let name_clip = p.with_clip_rect(Rect::from_min_max(pos2(name_x, top), pos2(hr.right() - 70.0, hr.bottom())).intersect(view));
-        name_clip.text(pos2(name_x, name_y), Align2::LEFT_CENTER, &h.name, theme::strong(12.0), theme::TEXT);
+        name_clip.text(pos2(name_x, name_y), Align2::LEFT_CENTER, &h.name, theme::strong(12.0), theme::text());
         // Drag the name to move the track up or down.
         if let Some(i) = index {
             let grip = Rect::from_min_max(pos2(name_x - 2.0, name_y - 10.0), pos2(hr.right() - 70.0, name_y + 10.0));
@@ -655,13 +655,13 @@ impl TrackView {
         // Where it goes (a menu of free channels), and where it comes from.
         let dest_pos = pos2(name_x, top + 37.0);
         if t.is_track() {
-            let galley = p.layout_no_wrap(h.dest.clone(), theme::font(10.5), theme::MIXER_ACCENT);
+            let galley = p.layout_no_wrap(h.dest.clone(), theme::font(10.5), theme::mixer_accent());
             let r = Rect::from_min_size(dest_pos - vec2(0.0, galley.size().y * 0.5), galley.size()).expand(2.0);
             let resp = hui
                 .interact(r, Id::unique(("trk-dest", t.key)), Sense::CLICK)
                 .on_hover_cursor(CursorIcon::PointingHand)
                 .on_hover_text("Send this track to another channel");
-            let col = if t.dest.is_none() { theme::TEXT_FAINT } else if resp.hovered() { theme::TEXT } else { theme::MIXER_ACCENT };
+            let col = if t.dest.is_none() { theme::text()_FAINT } else if resp.hovered() { theme::text() } else { theme::mixer_accent() };
             p.text(dest_pos, Align2::LEFT_CENTER, &h.dest, theme::font(10.5), col);
             let current = t.dest;
             if let Some(dest) = egui::Popup::menu(&resp)
@@ -672,7 +672,7 @@ impl TrackView {
                         ui.close();
                     }
                     if free.is_empty() {
-                        ui.label(egui::RichText::new("No free channel: add a Mixer or Console").size(10.5).color(theme::TEXT_FAINT));
+                        ui.label(egui::RichText::new("No free channel: add a Mixer or Console").size(10.5).color(theme::text()_FAINT));
                     }
                     for (port, label) in free {
                         if canvas::menu_item(ui, label, "") {
@@ -687,10 +687,10 @@ impl TrackView {
                 acts.push(Act::Route(t.key, dest));
             }
         } else {
-            p.text(dest_pos, Align2::LEFT_CENTER, &h.dest, theme::font(10.5), theme::TEXT_DIM);
+            p.text(dest_pos, Align2::LEFT_CENTER, &h.dest, theme::font(10.5), theme::text()_DIM);
         }
         if let Some(from) = &h.from {
-            p.text(pos2(name_x, top + 53.0), Align2::LEFT_CENTER, from, theme::font(9.5), theme::TEXT_FAINT);
+            p.text(pos2(name_x, top + 53.0), Align2::LEFT_CENTER, from, theme::font(9.5), theme::text()_FAINT);
         }
 
         // Its channel: mute, solo, fader, meter.
@@ -708,7 +708,7 @@ impl TrackView {
             Strip::Master { params, meters } => {
                 let mr = Rect::from_min_size(pos2(name_x, strip_y - 7.0), vec2(18.0, 14.0));
                 let muted = params.master_mute.load(Ordering::Relaxed);
-                if widgets::toggle(&hui, &p, Id::unique(("trk-mm", t.key)), mr, "M", muted, theme::MUTE, 1.0).clicked() {
+                if widgets::toggle(&hui, &p, Id::unique(("trk-mm", t.key)), mr, "M", muted, theme::mute(), 1.0).clicked() {
                     params.master_mute.store(!muted, Ordering::Relaxed);
                 }
                 let fr = Rect::from_min_max(pos2(name_x + 52.0, strip_y - 6.0), pos2(hr.right() - 14.0, strip_y + 2.0));
@@ -722,7 +722,7 @@ impl TrackView {
             }
             Strip::Level(level) => {
                 let r = Rect::from_min_max(pos2(name_x, strip_y - 1.5), pos2(hr.right() - 14.0, strip_y + 1.5));
-                p.rect_filled(r, 1.5, theme::CONTROL);
+                p.rect_filled(r, 1.5, theme::control());
                 let w = r.width() * widgets::meter_norm(*level);
                 p.rect_filled(Rect::from_min_size(r.min, vec2(w, r.height())), 1.5, alpha(h.color, 0.8));
             }
@@ -752,7 +752,7 @@ impl TrackView {
         let resp = nui
             .interact(r, Id::unique("trk-new"), Sense::CLICK)
             .on_hover_cursor(CursorIcon::PointingHand);
-        let col = if resp.hovered() { theme::TEXT_DIM } else { theme::TEXT_FAINT };
+        let col = if resp.hovered() { theme::text()_DIM } else { theme::text()_FAINT };
         let p = nui.painter();
         dashed_rect(p, r, Stroke::new(1.0, col));
         let text = if empty {
@@ -837,7 +837,7 @@ impl TrackView {
         let to_new = target.is_none() && payload.is_some();
         match target {
             Some((_, x, g)) => {
-                let col = theme::ACCENT;
+                let col = theme::accent();
                 painter.vline(x, (g.top + 6.0)..=(g.bottom - 6.0), Stroke::new(2.0, col));
                 for (y, d) in [(g.top + 6.0, 1.0), (g.bottom - 6.0, -1.0)] {
                     painter.add(Shape::convex_polygon(
@@ -848,7 +848,7 @@ impl TrackView {
                 }
             }
             None if to_new => {
-                painter.rect(new_row, 4.0, alpha(theme::ACCENT, 0.06), Stroke::new(1.0, alpha(theme::ACCENT, 0.7)), StrokeKind::Inside);
+                painter.rect(new_row, 4.0, alpha(theme::accent(), 0.06), Stroke::new(1.0, alpha(theme::accent(), 0.7)), StrokeKind::Inside);
             }
             None => {}
         }
@@ -885,7 +885,7 @@ impl TrackView {
             Some(g) => g.top,
             None => rows.last().map_or(view.top(), |g| g.bottom),
         };
-        ui.painter_at(view).hline(view.x_range(), y, Stroke::new(2.0, theme::ACCENT));
+        ui.painter_at(view).hline(view.x_range(), y, Stroke::new(2.0, theme::accent()));
         ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
         if !ui.input(|i| i.pointer.primary_down()) {
             self.row_drag = None;
@@ -1130,10 +1130,10 @@ fn head_info(g: &Graph, t: &Track) -> Head {
         Input::Loose => "",
     };
     let (name, color) = match (t.input, head, input_node) {
-        (Input::Loose, ..) => ("NOT IN A TRACK".to_owned(), theme::TEXT_FAINT),
+        (Input::Loose, ..) => ("NOT IN A TRACK".to_owned(), theme::text()_FAINT),
         (_, Some(n), _) => (n.title.clone(), n.accent),
         (_, None, Some(n)) => (from.clone().unwrap_or_default(), n.accent),
-        _ => (String::new(), theme::TEXT_FAINT),
+        _ => (String::new(), theme::text()_FAINT),
     };
     let dest = match t.input {
         Input::Master => {
@@ -1201,15 +1201,15 @@ fn compact(v: &NodeView, s: &tracks::Slot, d: &Dev, size: Vec2) {
     let x = 10.0;
     let mut lines: Vec<(String, Color32)> = Vec::new();
     if s.serves.is_none() {
-        lines.push((d.summary.clone(), theme::TEXT));
+        lines.push((d.summary.clone(), theme::text()));
     }
     for t in &d.tags {
         let col = if t.midi {
             MIDI_COL
         } else if t.incoming {
-            theme::TEXT_DIM
+            theme::text()_DIM
         } else {
-            theme::AUX
+            theme::aux()
         };
         lines.push((t.text.clone(), col));
     }
@@ -1267,7 +1267,7 @@ fn panel(v: &NodeView, node: &mut Node, d: &Dev, now: f64, notices: &mut Vec<Str
 
 fn mute_solo(ui: &Ui, p: &Painter, params: &MixerParams, ch: usize, r: Rect, key: TrackKey) {
     let muted = params.mute[ch].load(Ordering::Relaxed);
-    if widgets::toggle(ui, p, Id::unique(("trk-m", key)), r, "M", muted, theme::MUTE, 1.0)
+    if widgets::toggle(ui, p, Id::unique(("trk-m", key)), r, "M", muted, theme::mute(), 1.0)
         .on_hover_text("Mute")
         .clicked()
     {
@@ -1275,7 +1275,7 @@ fn mute_solo(ui: &Ui, p: &Painter, params: &MixerParams, ch: usize, r: Rect, key
     }
     let solo = params.solo[ch].load(Ordering::Relaxed);
     let sr = r.translate(vec2(r.width() + 4.0, 0.0));
-    if widgets::toggle(ui, p, Id::unique(("trk-s", key)), sr, "S", solo, theme::SOLO, 1.0)
+    if widgets::toggle(ui, p, Id::unique(("trk-s", key)), sr, "S", solo, theme::solo(), 1.0)
         .on_hover_text("Solo")
         .clicked()
     {
@@ -1285,7 +1285,7 @@ fn mute_solo(ui: &Ui, p: &Painter, params: &MixerParams, ch: usize, r: Rect, key
 
 fn theme_text_w(ui: &Ui, text: &str, size: f32) -> f32 {
     ui.painter()
-        .layout_no_wrap(text.to_owned(), theme::strong(size), theme::TEXT)
+        .layout_no_wrap(text.to_owned(), theme::strong(size), theme::text())
         .size()
         .x
 }
@@ -1294,7 +1294,7 @@ fn theme_text_w(ui: &Ui, text: &str, size: f32) -> f32 {
 fn chip(p: &Painter, at: Pos2, text: &str, col: Color32) -> Rect {
     let galley = p.layout_no_wrap(text.to_owned(), theme::font(10.0), col);
     let r = Rect::from_min_size(at - vec2(0.0, 10.0), vec2(galley.size().x + 16.0, 20.0));
-    p.rect(r, 10.0, theme::NODE_BODY, Stroke::new(1.0, alpha(col, 0.8)), StrokeKind::Inside);
+    p.rect(r, 10.0, theme::node_body(), Stroke::new(1.0, alpha(col, 0.8)), StrokeKind::Inside);
     p.galley(r.center() - galley.size() * 0.5, galley, col);
     r
 }

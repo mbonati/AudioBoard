@@ -278,9 +278,9 @@ pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, (midi, ou
     };
     let col = |on: bool| {
         if on {
-            theme::TEXT_DIM
+            theme::text()_DIM
         } else {
-            theme::TEXT_FAINT
+            theme::text()_FAINT
         }
     };
     v.text(
@@ -416,7 +416,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             text,
             v.font(7.5),
-            if lit { self.accent } else { theme::TEXT_FAINT },
+            if lit { self.accent } else { theme::text()_FAINT },
         );
         if source == 2 {
             let rect = Rect::from_min_size(
@@ -445,7 +445,7 @@ impl Panel<'_, '_> {
     fn flower(&self, view: &View) {
         let (v, p, z) = (self.v, self.p, self.z());
         let rect = v.r(PAD, TOP, PAD + FLOWER, BOTTOM);
-        v.painter.rect_filled(rect, 4.0 * z, theme::INSET);
+        v.painter.rect_filled(rect, 4.0 * z, theme::inset());
         let painter = v
             .painter
             .with_clip_rect(rect.intersect(v.painter.clip_rect()));
@@ -464,7 +464,7 @@ impl Panel<'_, '_> {
             painter.circle_stroke(
                 c,
                 radius * 0.3 * k as f32,
-                Stroke::new(0.6 * z, alpha(theme::TEXT_FAINT, 0.12)),
+                Stroke::new(0.6 * z, alpha(theme::text()_FAINT, 0.12)),
             );
         }
 
@@ -487,7 +487,7 @@ impl Panel<'_, '_> {
             while let Some((from, a, l, depth, index)) = stack.pop() {
                 let to = from + vec2(a.cos(), a.sin()) * l;
                 let width = (2.6 - 0.5 * depth as f32) * z;
-                let col = mix(color, theme::TEXT, 0.12 * depth as f32);
+                let col = mix(color, theme::text(), 0.12 * depth as f32);
                 painter.line_segment([from, to], Stroke::new(width * 2.2, glow(col, 0.12 * ink)));
                 painter.line_segment([from, to], Stroke::new(width, alpha(col, 0.55 * ink)));
                 if depth == 4 {
@@ -553,7 +553,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             "FRACTAL",
             v.font(6.5),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
     }
 
@@ -570,7 +570,7 @@ impl Panel<'_, '_> {
             let col = if k == 0 {
                 Color32::from_rgb(22, 18, 38)
             } else {
-                theme::INSET
+                theme::inset()
             };
             sky.vertices.push(Vertex {
                 pos: pos2(rect.left(), y),
@@ -598,7 +598,7 @@ impl Panel<'_, '_> {
             painter.hline(
                 rect.x_range(),
                 y,
-                Stroke::new(0.6 * z, alpha(theme::TEXT_FAINT, 0.14)),
+                Stroke::new(0.6 * z, alpha(theme::text()_FAINT, 0.14)),
             );
             if octave < 7 {
                 v.text(
@@ -607,7 +607,7 @@ impl Panel<'_, '_> {
                     Align2::LEFT_CENTER,
                     format!("A{}", octave - 1),
                     v.font(6.0),
-                    alpha(theme::TEXT_FAINT, 0.6),
+                    alpha(theme::text()_FAINT, 0.6),
                 );
             }
         }
@@ -710,7 +710,7 @@ impl Panel<'_, '_> {
             let note = note_of(voice);
             let tag = v.r(W - PAD - 30.0, y - 4.5, W - PAD - 4.0, y + 4.5);
             v.painter
-                .rect_filled(tag, 2.0 * z, alpha(theme::INSET, 0.8));
+                .rect_filled(tag, 2.0 * z, alpha(theme::inset(), 0.8));
             let col = alpha(VOICE_COLORS[voice], 0.5 + 0.5 * run);
             v.text(
                 W - PAD - 17.0,
@@ -732,7 +732,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             "AURORA",
             v.font(6.5),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         v.text(
             AURORA_X + 48.0,
@@ -740,7 +740,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             state,
             v.font(6.5),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
     }
 
@@ -751,7 +751,7 @@ impl Panel<'_, '_> {
         let (v, p, z) = (self.v, self.p, self.z());
         let [y0, y1] = STRIP;
         let rect = v.r(PAD, y0, W - PAD, y1);
-        v.painter.rect_filled(rect, 4.0 * z, theme::INSET);
+        v.painter.rect_filled(rect, 4.0 * z, theme::inset());
         let painter = v
             .painter
             .with_clip_rect(rect.intersect(v.painter.clip_rect()));
@@ -783,7 +783,7 @@ impl Panel<'_, '_> {
         painter.hline(
             inner.x_range(),
             inner.center().y,
-            Stroke::new(0.6 * z, alpha(theme::TEXT_FAINT, 0.15)),
+            Stroke::new(0.6 * z, alpha(theme::text()_FAINT, 0.15)),
         );
         // Bar lines (synced) or a line every tenth of the period.
         let (ticks, every) = if p.toggled() {
@@ -800,7 +800,7 @@ impl Panel<'_, '_> {
             painter.vline(
                 x,
                 inner.y_range(),
-                Stroke::new(0.6 * z, alpha(theme::TEXT_FAINT, 0.2)),
+                Stroke::new(0.6 * z, alpha(theme::text()_FAINT, 0.2)),
             );
         }
         painter.add(Shape::line(
@@ -823,7 +823,7 @@ impl Panel<'_, '_> {
         painter.vline(
             now_x,
             rect.y_range(),
-            Stroke::new(1.0 * z, alpha(theme::TEXT, 0.4)),
+            Stroke::new(1.0 * z, alpha(theme::text(), 0.4)),
         );
         let color_now = p.viz[viz::COLOR].get();
         painter.circle_filled(past[past.len() - 1], 3.0 * z, glow(self.accent, 0.9));
@@ -834,7 +834,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             "TIMBRE",
             v.font(6.5),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         v.text(
             PAD + 8.0,
@@ -842,7 +842,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             spectrum_name(color_now),
             theme::strong(7.0 * z),
-            theme::TEXT_DIM,
+            theme::text()_DIM,
         );
         v.text(
             W - PAD - 8.0,
@@ -850,7 +850,7 @@ impl Panel<'_, '_> {
             Align2::RIGHT_CENTER,
             "PERIOD",
             v.font(6.5),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         v.text(
             W - PAD - 8.0,
@@ -858,7 +858,7 @@ impl Panel<'_, '_> {
             Align2::RIGHT_CENTER,
             ae::format(p, EVOLVE),
             v.mono(7.0),
-            theme::TEXT_DIM,
+            theme::text()_DIM,
         );
     }
 
@@ -872,7 +872,7 @@ impl Panel<'_, '_> {
                 Align2::LEFT_CENTER,
                 title,
                 theme::strong(8.5 * z),
-                theme::TEXT_DIM,
+                theme::text()_DIM,
             );
             // GLITCH has its step lights and grid on the title line, VOICE
             // its GLIDE.
@@ -881,7 +881,7 @@ impl Panel<'_, '_> {
                 v.painter.hline(
                     v.p(x0 + 62.0, 0.0).x..=v.p(end, 0.0).x,
                     v.p(0.0, y).y,
-                    Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.3)),
+                    Stroke::new(1.0 * z, alpha(theme::text()_FAINT, 0.3)),
                 );
             }
             let cw = (x1 - x0) / knobs.len() as f32;
@@ -957,7 +957,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             line,
             v.font(7.5),
-            theme::TEXT_DIM,
+            theme::text()_DIM,
         );
         v.text(
             x + 64.0,
@@ -965,7 +965,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             format!("octaves from {seconds:.1} s to {fastest:.2} s"),
             v.font(7.0),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         v.text(
             x + 64.0,
@@ -973,7 +973,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             format!("seed {}", ae::seed(p)),
             v.mono(6.5),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
     }
 
@@ -1024,7 +1024,7 @@ impl Panel<'_, '_> {
             let col = match (here, landed) {
                 (true, true) => Color32::WHITE,
                 (true, false) => self.accent,
-                _ => alpha(theme::TEXT_FAINT, 0.4),
+                _ => alpha(theme::text()_FAINT, 0.4),
             };
             if here && landed {
                 v.painter
@@ -1046,7 +1046,7 @@ impl Panel<'_, '_> {
             Align2::CENTER_CENTER,
             label,
             v.font(7.5),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         let top = y + 8.0;
         let mut norm = spec.to_norm(p.get(i));
@@ -1087,7 +1087,7 @@ impl Panel<'_, '_> {
             Align2::CENTER_CENTER,
             ae::format(p, i),
             v.mono(7.0),
-            if hot { theme::TEXT } else { theme::TEXT_DIM },
+            if hot { theme::text() } else { theme::text()_DIM },
         );
     }
 }

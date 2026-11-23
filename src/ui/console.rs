@@ -183,7 +183,7 @@ fn keys(v: &NodeView, id: NodeId, m: &MixerNode, ch: usize, mute: [f32; 4], solo
         rect(mute),
         "M",
         muted,
-        theme::MUTE,
+        theme::mute(),
         v.z,
     )
     .clicked()
@@ -197,7 +197,7 @@ fn keys(v: &NodeView, id: NodeId, m: &MixerNode, ch: usize, mute: [f32; 4], solo
         rect(solo),
         "S",
         soloed,
-        theme::SOLO,
+        theme::solo(),
         v.z,
     )
     .clicked()
@@ -261,9 +261,9 @@ fn horizontal(
             label,
             v.font(7.0),
             if label == "AUX" {
-                theme::AUX
+                theme::aux()
             } else {
-                theme::TEXT_FAINT
+                theme::text()_FAINT
             },
         );
     }
@@ -274,11 +274,11 @@ fn horizontal(
             v.painter.rect_filled(
                 v.r(x0, 28.0, x0 + STRIP_W, H_HEIGHT - 6.0),
                 3.0 * z,
-                alpha(theme::INSET, 0.35),
+                alpha(theme::inset(), 0.35),
             );
         }
         let source = sources.get(ch).and_then(|s| s.as_ref());
-        let col = source.map_or(theme::TEXT_FAINT, |s| s.0);
+        let col = source.map_or(theme::text()_FAINT, |s| s.0);
         v.text(cx, 36.0, Align2::CENTER_CENTER, ch + 1, v.mono(10.0), col);
         let name = source.map_or("—".to_owned(), |s| short(&s.1, 7));
         v.text(
@@ -287,7 +287,7 @@ fn horizontal(
             Align2::CENTER_CENTER,
             name,
             v.font(7.0),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         channel_knob(
             v,
@@ -297,7 +297,7 @@ fn horizontal(
             true,
             Pos2::new(cx, H_AUX_Y),
             10.0,
-            theme::AUX,
+            theme::aux(),
         );
         v.text(
             cx,
@@ -305,7 +305,7 @@ fn horizontal(
             Align2::CENTER_CENTER,
             send_label(m.params.aux[ch].get()),
             v.mono(7.0),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         channel_knob(
             v,
@@ -323,7 +323,7 @@ fn horizontal(
             Align2::CENTER_CENTER,
             super::nodes::pan_label(m.params.pan[ch].get()),
             v.mono(7.0),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         keys(
             v,
@@ -348,9 +348,9 @@ fn horizontal(
             fader_db(m, ch),
             v.mono(7.5),
             if audible(m, ch) {
-                theme::TEXT_DIM
+                theme::text()_DIM
             } else {
-                theme::TEXT_FAINT
+                theme::text()_FAINT
             },
         );
     }
@@ -369,7 +369,7 @@ fn horizontal(
             "AUX not patched"
         },
         v.font(8.5),
-        theme::TEXT_FAINT,
+        theme::text()_FAINT,
     );
     v.text(
         w - PAD,
@@ -378,9 +378,9 @@ fn horizontal(
         "OUT",
         v.font(9.0),
         if outs.0 {
-            theme::TEXT_DIM
+            theme::text()_DIM
         } else {
-            theme::TEXT_FAINT
+            theme::text()_FAINT
         },
     );
     v.text(
@@ -390,22 +390,22 @@ fn horizontal(
         "AUX",
         v.font(9.0),
         if outs.1 {
-            theme::AUX
+            theme::aux()
         } else {
-            theme::TEXT_FAINT
+            theme::text()_FAINT
         },
     );
     v.painter.vline(
         v.p(x - 4.0, 0.0).x,
         v.p(0.0, 30.0).y..=v.p(0.0, H_HEIGHT - 8.0).y,
-        Stroke::new(1.0 * z, theme::NODE_BORDER),
+        Stroke::new(1.0 * z, theme::node_border()),
     );
     let muted = m.params.master_mute.load(Relaxed);
     for (aux, cx) in [(false, x + 40.0), (true, x + 112.0)] {
         let (label, col) = if aux {
-            ("AUX", theme::AUX)
+            ("AUX", theme::aux())
         } else {
-            ("MASTER", theme::TEXT_DIM)
+            ("MASTER", theme::text()_DIM)
         };
         v.text(
             cx,
@@ -446,7 +446,7 @@ fn horizontal(
             Align2::CENTER_CENTER,
             text,
             v.mono(8.5),
-            if off { theme::MUTE } else { theme::TEXT },
+            if off { theme::mute() } else { theme::text() },
         );
     }
     master_mute(
@@ -475,7 +475,7 @@ fn vertical(
         Align2::CENTER_CENTER,
         "PAN",
         v.font(7.0),
-        theme::TEXT_FAINT,
+        theme::text()_FAINT,
     );
     v.text(
         100.0,
@@ -483,7 +483,7 @@ fn vertical(
         Align2::CENTER_CENTER,
         "AUX",
         v.font(7.0),
-        theme::AUX,
+        theme::aux(),
     );
     for ch in 0..c.channels {
         let y0 = ROWS_Y + ROW_H * ch as f32;
@@ -492,11 +492,11 @@ fn vertical(
             v.painter.rect_filled(
                 v.r(4.0, y0, V_WIDTH - 4.0, y0 + ROW_H),
                 3.0 * z,
-                alpha(theme::INSET, 0.35),
+                alpha(theme::inset(), 0.35),
             );
         }
         let source = sources.get(ch).and_then(|s| s.as_ref());
-        let col = source.map_or(theme::TEXT_FAINT, |s| s.0);
+        let col = source.map_or(theme::text()_FAINT, |s| s.0);
         v.text(14.0, cy, Align2::CENTER_CENTER, ch + 1, v.mono(9.0), col);
         keys(
             v,
@@ -515,7 +515,7 @@ fn vertical(
             true,
             Pos2::new(100.0, cy),
             8.0,
-            theme::AUX,
+            theme::aux(),
         );
         channel_fader(v, id, m, ch, [f0, cy - 8.0, f1, cy + 2.0], col, false);
         hmeter(
@@ -531,9 +531,9 @@ fn vertical(
             fader_db(m, ch),
             v.mono(8.5),
             if audible(m, ch) {
-                theme::TEXT
+                theme::text()
             } else {
-                theme::TEXT_FAINT
+                theme::text()_FAINT
             },
         );
         let name = source.map_or("No input".to_owned(), |s| short(&s.1, 13));
@@ -544,9 +544,9 @@ fn vertical(
             name,
             v.font(7.5),
             if source.is_some() {
-                theme::TEXT_DIM
+                theme::text()_DIM
             } else {
-                theme::TEXT_FAINT
+                theme::text()_FAINT
             },
         );
     }
@@ -557,15 +557,15 @@ fn vertical(
     v.painter.hline(
         v.p(PAD, 0.0).x..=v.p(w - PAD, 0.0).x,
         v.p(0.0, sep).y,
-        Stroke::new(1.0 * z, theme::NODE_BORDER),
+        Stroke::new(1.0 * z, theme::node_border()),
     );
     let muted = m.params.master_mute.load(Relaxed);
     for aux in [false, true] {
         let cy = v_bus_y(c, aux);
         let (label, col) = if aux {
-            ("AUX", theme::AUX)
+            ("AUX", theme::aux())
         } else {
-            ("MASTER", theme::TEXT_DIM)
+            ("MASTER", theme::text()_DIM)
         };
         v.text(
             PAD,
@@ -605,12 +605,12 @@ fn vertical(
             Align2::RIGHT_CENTER,
             text,
             v.mono(10.0),
-            if off { theme::MUTE } else { theme::TEXT },
+            if off { theme::mute() } else { theme::text() },
         );
         let port = if aux {
-            ("AUX", outs.1, theme::AUX)
+            ("AUX", outs.1, theme::aux())
         } else {
-            ("OUT", outs.0, theme::TEXT_DIM)
+            ("OUT", outs.0, theme::text()_DIM)
         };
         v.text(
             w - PAD,
@@ -618,7 +618,7 @@ fn vertical(
             Align2::RIGHT_CENTER,
             port.0,
             v.font(9.0),
-            if port.1 { port.2 } else { theme::TEXT_FAINT },
+            if port.1 { port.2 } else { theme::text()_FAINT },
         );
     }
     let my = v_bus_y(c, false);
@@ -641,6 +641,6 @@ fn vertical(
             "Not patched"
         },
         v.font(8.5),
-        theme::TEXT_FAINT,
+        theme::text()_FAINT,
     );
 }

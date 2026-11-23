@@ -173,9 +173,9 @@ pub fn draw(
     };
     let col = |on: bool| {
         if on {
-            theme::TEXT_DIM
+            theme::text()_DIM
         } else {
-            theme::TEXT_FAINT
+            theme::text()_FAINT
         }
     };
     v.text(
@@ -301,9 +301,9 @@ impl Panel<'_, '_> {
                 label,
                 v.font(7.5),
                 if dim {
-                    alpha(theme::TEXT_FAINT, 0.5)
+                    alpha(theme::text()_FAINT, 0.5)
                 } else {
-                    theme::TEXT_FAINT
+                    theme::text()_FAINT
                 },
             );
         }
@@ -317,7 +317,7 @@ impl Panel<'_, '_> {
             &mut norm,
             spec.to_norm(spec.default),
             spec.bipolar,
-            if dim { theme::TEXT_FAINT } else { self.accent },
+            if dim { theme::text()_FAINT } else { self.accent },
             z,
         );
         v.hit(resp.rect, ParamRef::Module(i));
@@ -331,7 +331,7 @@ impl Panel<'_, '_> {
             Align2::CENTER_CENTER,
             pp::format(i, p.get(i)),
             v.mono(7.5),
-            if hot { theme::TEXT } else { theme::TEXT_DIM },
+            if hot { theme::text() } else { theme::text()_DIM },
         );
     }
 
@@ -442,7 +442,7 @@ impl Panel<'_, '_> {
                 Align2::CENTER_CENTER,
                 format!("board {:.0}", v.tempo),
                 v.font(7.0),
-                theme::TEXT_FAINT,
+                theme::text()_FAINT,
             );
         }
 
@@ -463,7 +463,7 @@ impl Panel<'_, '_> {
                 if lit {
                     Color32::from_rgb(240, 80, 60)
                 } else {
-                    theme::INSET
+                    theme::inset()
                 },
             );
         }
@@ -474,7 +474,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             main,
             theme::strong(9.5 * z),
-            theme::TEXT,
+            theme::text(),
         );
         let feel = pp::current(p).map_or(String::new(), |r| {
             let bars = r.len as f32 / (r.per_beat as f32 * 4.0);
@@ -494,7 +494,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             format!("{sub} · {feel}"),
             v.font(8.0),
-            theme::TEXT_DIM,
+            theme::text()_DIM,
         );
         let hint = if source == 0 {
             "click: one rhythm · shift/right-click: combine"
@@ -507,7 +507,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             hint,
             v.font(7.5),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
     }
 
@@ -664,7 +664,7 @@ impl Panel<'_, '_> {
         v.painter.hline(
             v.r(PAD, MIXER_Y, W - PAD, MIXER_Y).x_range(),
             v.p(0.0, MIXER_Y).y,
-            Stroke::new(1.0 * z, theme::GRID_MAJOR),
+            Stroke::new(1.0 * z, theme::grid_major()),
         );
         let cw = (W - 2.0 * PAD) / COUNT as f32;
         let now = v.ui.input(|i| i.time);
@@ -685,7 +685,7 @@ impl Panel<'_, '_> {
                 if selected {
                     self.accent
                 } else {
-                    theme::TEXT_DIM
+                    theme::text()_DIM
                 },
             );
             // The pad: flashes on each hit; click to play it.
@@ -703,9 +703,9 @@ impl Panel<'_, '_> {
                         info.name
                     ));
             let base = if self.on(data::MUTE + inst) {
-                alpha(theme::CONTROL, 0.4)
+                alpha(theme::control(), 0.4)
             } else {
-                theme::CONTROL
+                theme::control()
             };
             v.painter
                 .rect_filled(pad, 3.0 * z, theme::mix(base, self.accent, glow));
@@ -722,7 +722,7 @@ impl Panel<'_, '_> {
                     v.r(x + 6.0, MIXER_Y + 110.0, x + cw - 6.0, MIXER_Y + 124.0),
                     "M",
                     mute,
-                    theme::MUTE,
+                    theme::mute(),
                     "Mute in the rhythm",
                 )
                 .clicked()
@@ -742,7 +742,7 @@ impl Panel<'_, '_> {
         v.painter.hline(
             v.r(PAD, EDITOR_Y, W - PAD, EDITOR_Y).x_range(),
             v.p(0.0, EDITOR_Y).y,
-            Stroke::new(1.0 * z, theme::GRID_MAJOR),
+            Stroke::new(1.0 * z, theme::grid_major()),
         );
         let k = (p.data[data::PATTERN].get().round().max(0.0) as usize).min(PATTERNS - 1);
         let pat = pp::user(p, k);
@@ -753,7 +753,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             "PATTERN",
             theme::strong(8.5 * z),
-            theme::TEXT_DIM,
+            theme::text()_DIM,
         );
         if let Some(n) = self.seg("edit", v.r(70.0, y, 330.0, y + 18.0), &PATTERN_ITEMS, k) {
             p.data[data::PATTERN].set(n as f32);
@@ -794,9 +794,9 @@ impl Panel<'_, '_> {
             len_rect,
             3.0 * z,
             if resp.hovered() {
-                theme::CONTROL_HI
+                theme::control()_HI
             } else {
-                theme::CONTROL
+                theme::control()
             },
         );
         v.painter.text(
@@ -804,7 +804,7 @@ impl Panel<'_, '_> {
             Align2::CENTER_CENTER,
             format!("‹ {len} STEPS ›"),
             theme::font(8.0 * z),
-            theme::TEXT,
+            theme::text(),
         );
         let feel = usize::from(pat.per_beat == 3);
         if let Some(f) = self.seg(
@@ -847,7 +847,7 @@ impl Panel<'_, '_> {
                 v.r(644.0, y, W - PAD, y + 18.0),
                 "CLEAR",
                 false,
-                theme::MUTE,
+                theme::mute(),
                 "Clear every step",
             )
             .clicked()
@@ -882,9 +882,9 @@ impl Panel<'_, '_> {
                 info.name,
                 theme::font(8.0 * z),
                 if inst == selected {
-                    theme::TEXT
+                    theme::text()
                 } else {
-                    theme::TEXT_DIM
+                    theme::text()_DIM
                 },
             );
             if lr.clicked() {
@@ -904,14 +904,14 @@ impl Panel<'_, '_> {
                 v.painter.vline(
                     v.p(x, 0.0).x,
                     grid.y_range(),
-                    Stroke::new(1.0 * z, theme::GRID_MAJOR),
+                    Stroke::new(1.0 * z, theme::grid_major()),
                 );
             }
             if shown && used && step as usize == s {
                 v.painter.rect_filled(
                     v.r(x, top, x + cell, top + row_h * COUNT as f32),
                     0.0,
-                    alpha(theme::TEXT, 0.08),
+                    alpha(theme::text(), 0.08),
                 );
             }
             for (inst, bits) in pat.rows.iter().enumerate() {
@@ -920,9 +920,9 @@ impl Panel<'_, '_> {
                 let hit = bits >> s & 1 == 1;
                 let fill = match (used, hit) {
                     (true, true) => self.accent,
-                    (true, false) => theme::CONTROL,
+                    (true, false) => theme::control(),
                     (false, true) => alpha(self.accent, 0.25),
-                    (false, false) => alpha(theme::CONTROL, 0.3),
+                    (false, false) => alpha(theme::control(), 0.3),
                 };
                 v.painter.rect_filled(r, 2.0 * z, fill);
             }
@@ -967,7 +967,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             "SOUND",
             theme::strong(8.5 * z),
-            theme::TEXT_DIM,
+            theme::text()_DIM,
         );
         v.text(
             PAD + 50.0,
@@ -1075,12 +1075,12 @@ impl Panel<'_, '_> {
             if resp.clicked() {
                 self.play(inst);
             }
-            v.painter.rect_filled(area, 3.0 * z, theme::INSET);
+            v.painter.rect_filled(area, 3.0 * z, theme::inset());
         }
         // The outline: a bar per column, from its lowest sample to its highest.
         let (mid, h) = (hit.center().y, hit.height() * 0.44);
         v.painter
-            .hline(hit.x_range(), mid, Stroke::new(1.0 * z, theme::GRID_MAJOR));
+            .hline(hit.x_range(), mid, Stroke::new(1.0 * z, theme::grid_major()));
         let w = hit.width() / COLUMNS as f32;
         for (c, &(lo, hi)) in preview.columns.iter().enumerate() {
             let x = hit.left() + w * (c as f32 + 0.5);
@@ -1095,14 +1095,14 @@ impl Panel<'_, '_> {
             Align2::RIGHT_BOTTOM,
             format_seconds(preview.seconds),
             v.mono(7.0),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         // The close-up, as a line under its label.
         let (mid, h) = (close.center().y + 6.0 * z, close.height() * 0.36);
         v.painter.hline(
             close.x_range(),
             mid,
-            Stroke::new(1.0 * z, theme::GRID_MAJOR),
+            Stroke::new(1.0 * z, theme::grid_major()),
         );
         let n = preview.close.len().max(2) as f32 - 1.0;
         let points = preview
@@ -1123,7 +1123,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_TOP,
             label,
             v.mono(7.0),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
     }
 }

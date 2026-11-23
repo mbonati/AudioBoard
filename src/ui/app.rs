@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -17,6 +17,7 @@ use super::recent;
 use super::song::{self as song_ui, SongPanel};
 use super::settings::{
     PluginCounts, PluginSettings, SettingsChange, SettingsContext, SettingsWindow, SyncSettings,
+    ThemeChoice,
 };
 use super::tempo::TempoControl;
 use super::theme::{self, alpha};
@@ -183,6 +184,8 @@ pub struct AudioBoardApp {
     recorder: Recorder,
     export: ExportWindow,
     settings_window: SettingsWindow,
+    theme_choices: Vec<ThemeChoice>,
+    theme_palettes: BTreeMap<String, theme::Palette>,
     /// The audio engine the nodes were built for (see `AudioHandle::generation`).
     generation: u32,
     #[cfg(target_os = "macos")]
@@ -191,11 +194,17 @@ pub struct AudioBoardApp {
 
 impl AudioBoardApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        theme::apply(&cc.egui_ctx);
         let shared = Arc::new(EngineShared::new());
         // The patch waits for Start.
         shared.running.store(false, Ordering::Relaxed);
         let settings = load_settings();
+        let (theme_choices, theme_palettes) = load_themes();
+        if let Some(palette) = theme_palettes.get(&settings.theme) {
+            theme::set_palette(*palette);
+        } else {
+            theme::set_palette(theme::Palette::GRAPHITE);
+        }
+        theme::apply(&cc.egui_ctx);
         shared.output.set(db_to_gain(settings.output_db));
         let audio = audio::start(shared.clone(), settings.audio.clone());
         let mut graph = Graph::default();
@@ -231,6 +240,8 @@ impl AudioBoardApp {
             recorder: Recorder::new(shared.clone()),
             export: ExportWindow::default(),
             settings_window: SettingsWindow::default(),
+            theme_choices,
+            theme_palettes,
             generation: audio.generation,
             shared,
             audio,
@@ -312,7 +323,7 @@ impl AudioBoardApp {
             rect,
             12.0,
             Color32::TRANSPARENT,
-            Stroke::new(1.0, theme::NODE_BORDER),
+            Stroke::new(1.0, theme::node_border()),
             StrokeKind::Inside,
         );
         let resp = ui
@@ -401,7 +412,7 @@ impl AudioBoardApp {
                         take.sample_rate,
                         peak
                     ))
-                    .color(theme::TEXT_DIM),
+                    .color(theme::text()_DIM),
                 );
                 ui.add_space(6.0);
                 ui.label("Format");
@@ -1013,7 +1024,7 @@ impl AudioBoardApp {
                     let export = ui
                         .add(
                             egui::Button::new(
-                                RichText::new("EXPORT").size(10.5).color(theme::TEXT_DIM),
+                                RichText::new("EXPORT").size(10.5).color(theme::text()_DIM),
                             )
                             .corner_radius(10.0),
                         )
@@ -1112,7 +1123,7 @@ impl AudioBoardApp {
                 ui.add_space(10.0);
                 let info = &self.audio.info;
                 let (text, col, tip) = match &info.error {
-                    Some(e) => ("Audio unavailable".to_owned(), theme::MUTE, e.clone()),
+                    Some(e) => ("Audio unavailable".to_owned(), theme::mute(), e.clone()),
                     None => {
                         let input = info
                             .input
@@ -1120,7 +1131,7 @@ impl AudioBoardApp {
                             .map_or(String::new(), |i| format!("\nInput: {i}"));
                         (
                             info.device.clone(),
-                            theme::TEXT_DIM,
+                            theme::text()_DIM,
                             format!(
                                 "Output: {}{input}\nClick for the audio settings",
                                 info.device
@@ -1389,17 +1400,17 @@ impl AudioBoardApp {
             };
             match self.toast.as_ref().filter(|t| t.until > now) {
                 Some(t) => {
-                    let col = if t.error { theme::MUTE } else { theme::TEXT };
+                    let col = if t.error { theme::mute() } else { theme::text() };
                     ui.label(RichText::new(&t.text).size(10.5).color(col));
                 }
                 None => {
-                    ui.label(RichText::new(hint).size(10.5).color(theme::TEXT_FAINT));
+                    ui.label(RichText::new(hint).size(10.5).color(theme::text()_FAINT));
                 }
             }
 
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 20.0;
-                let item = |text: String| RichText::new(text).size(10.0).monospace().color(theme::TEXT_DIM);
+                let item = |text: String| RichText::new(text).size(10.0).monospace().color(theme::text()_DIM);
                 if self.graph.tracks.view == View::Nodes {
                     let auto = if self.editor.auto_fit { "  auto" } else { "" };
                     let zoom = ui
@@ -1419,7 +1430,7 @@ impl AudioBoardApp {
                     (None, 0) => ("MIDI —".to_owned(), "No MIDI input connected".to_owned()),
                     (None, n) => (format!("MIDI {n}"), devices.join("\n")),
                 };
-                let col = if active { theme::METER_GREEN } else { theme::TEXT_DIM };
+                let col = if active { theme::meter_green() } else { theme::text()_DIM };
                 ui.label(item(text).color(col)).on_hover_text(tip);
                 ui.label(item(format!(
                     "{} nodes · {} cables",
@@ -1451,7 +1462,7 @@ impl AudioBoardApp {
                 ui.label(
                     RichText::new("Buffer size")
                         .size(10.0)
-                        .color(theme::TEXT_FAINT),
+                        .color(theme::text()_FAINT),
                 );
                 let mut picked = None;
                 let mut option = |ui: &mut Ui, size: Option<u32>, label: String| {
@@ -1500,11 +1511,11 @@ impl AudioBoardApp {
         let load = self.shared.load.get();
         let color = |l: f32| {
             if l > 0.85 {
-                theme::METER_RED
+                theme::meter_red()
             } else if l > 0.5 {
-                theme::METER_YELLOW
+                theme::meter_yellow()
             } else {
-                theme::TEXT_DIM
+                theme::text()_DIM
             }
         };
         ui.label(
@@ -1521,7 +1532,7 @@ impl AudioBoardApp {
             self.limiting = (reduction, now);
         }
         if self.limiting.0 > 0.1 {
-            ui.label(item(format!("limit −{:.1} dB", self.limiting.0)).color(theme::METER_YELLOW)).on_hover_text(
+            ui.label(item(format!("limit −{:.1} dB", self.limiting.0)).color(theme::meter_yellow())).on_hover_text(
                 "The output is louder than full scale, so the limiter turns it down\n(instead of clipping): lower the master or the plugins",
             );
         }
@@ -1537,7 +1548,7 @@ impl AudioBoardApp {
                     "{total} dropout{}",
                     if total == 1 { "" } else { "s" }
                 ))
-                .color(theme::METER_RED),
+                .color(theme::meter_red()),
             )
             .on_hover_text("The audio could not keep up: try a larger buffer size");
         }
@@ -1579,7 +1590,7 @@ impl eframe::App for AudioBoardApp {
             self.song_keys(ui);
         }
 
-        let bar_frame = |margin: Margin| Frame::NONE.fill(theme::PANEL).inner_margin(margin);
+        let bar_frame = |margin: Margin| Frame::NONE.fill(theme::panel()).inner_margin(margin);
         Panel::top("toolbar")
             .exact_size(36.0)
             .frame(bar_frame(Margin::symmetric(10, 0)))
@@ -1618,7 +1629,7 @@ impl eframe::App for AudioBoardApp {
             }
         }
         CentralPanel::default()
-            .frame(Frame::NONE.fill(theme::BG))
+            .frame(Frame::NONE.fill(theme::bg()))
             .show(ui, |ui| match self.graph.tracks.view {
                 View::Nodes => self.editor.show(ui, &mut self.graph, &self.audio),
                 View::Tracks => {
@@ -1842,25 +1853,25 @@ fn ask(question: &str) -> bool {
 fn doc_button(ui: &mut Ui, name: &str, dirty: bool) -> Response {
     let galley =
         ui.painter()
-            .layout_no_wrap(name.to_owned(), FontId::proportional(12.0), theme::TEXT);
+            .layout_no_wrap(name.to_owned(), FontId::proportional(12.0), theme::text());
     let text_w = galley.size().x;
     let (rect, resp) = ui.allocate_exact_size(vec2(text_w + 40.0, 24.0), Sense::CLICK);
     let hot = resp.hovered();
     let p = ui.painter();
     if hot {
-        p.rect_filled(rect, 4.0, theme::CONTROL);
+        p.rect_filled(rect, 4.0, theme::control());
     }
     let text_pos = pos2(rect.left() + 8.0, rect.center().y - galley.size().y * 0.5);
     p.galley(
         text_pos,
         galley,
-        if hot { theme::TEXT } else { theme::TEXT_DIM },
+        if hot { theme::text() } else { theme::text()_DIM },
     );
     if dirty {
         p.circle_filled(
             pos2(text_pos.x + text_w + 8.0, rect.center().y),
             2.5,
-            theme::TEXT_DIM,
+            theme::text()_DIM,
         );
     }
     let c = pos2(rect.right() - 9.0, rect.center().y);
@@ -1870,7 +1881,7 @@ fn doc_button(ui: &mut Ui, name: &str, dirty: bool) -> Response {
             c + vec2(3.0, -1.5),
             c + vec2(0.0, 2.0),
         ],
-        theme::TEXT_FAINT,
+        theme::text()_FAINT,
         Stroke::NONE,
     ));
     resp.on_hover_cursor(CursorIcon::PointingHand)
@@ -1891,7 +1902,7 @@ fn file_menu(ui: &mut Ui, recent: &[PathBuf]) -> Option<FileCommand> {
     let mut picked = item(ui, "New project", "Cmd+N", FileCommand::New);
     picked = picked.or(item(ui, "Open…", "Cmd+O", FileCommand::Open));
     let submenu = ui.menu_button(
-        RichText::new("Open Recent").color(theme::TEXT).size(12.5),
+        RichText::new("Open Recent").color(theme::text()).size(12.5),
         |ui| recent::menu(ui, recent),
     );
     picked = picked.or(match submenu.inner.flatten() {
@@ -1907,11 +1918,11 @@ fn file_menu(ui: &mut Ui, recent: &[PathBuf]) -> Option<FileCommand> {
 fn logo(ui: &mut Ui) {
     let galley =
         ui.painter()
-            .layout_no_wrap(crate::APP_TITLE.to_owned(), theme::strong(12.5), theme::TEXT);
+            .layout_no_wrap(crate::APP_TITLE.to_owned(), theme::strong(12.5), theme::text());
     let (rect, _) = ui.allocate_exact_size(vec2(26.0 + galley.size().x, 24.0), Sense::hover());
     let p = ui.painter();
     let icon = Rect::from_center_size(pos2(rect.left() + 9.0, rect.center().y), vec2(18.0, 18.0));
-    p.rect_filled(icon, 4.0, theme::ACCENT);
+    p.rect_filled(icon, 4.0, theme::accent());
     let pts = super::widgets::wave_points(
         icon.shrink2(vec2(3.5, 5.0)),
         Waveform::Sine,
@@ -1921,17 +1932,17 @@ fn logo(ui: &mut Ui) {
         0.0,
         0,
     );
-    p.add(Shape::line(pts, Stroke::new(1.5, theme::INSET)));
+    p.add(Shape::line(pts, Stroke::new(1.5, theme::inset())));
     p.galley(
         pos2(icon.right() + 8.0, rect.center().y - galley.size().y * 0.5),
         galley,
-        theme::TEXT,
+        theme::text(),
     );
 }
 
 fn vsep(ui: &mut Ui) {
     let (rect, _) = ui.allocate_exact_size(vec2(1.0, 16.0), Sense::hover());
-    ui.painter().rect_filled(rect, 0.0, theme::PANEL_BORDER);
+    ui.painter().rect_filled(rect, 0.0, theme::panel()_BORDER);
 }
 
 enum Icon {
@@ -1956,16 +1967,16 @@ fn icon_button(ui: &mut Ui, icon: Icon, active: bool) -> Response {
             rect,
             4.0,
             if resp.hovered() {
-                theme::CONTROL_HI
+                theme::control()_HI
             } else {
-                theme::CONTROL
+                theme::control()
             },
         );
     }
     let col = if active || resp.hovered() {
-        theme::TEXT
+        theme::text()
     } else {
-        theme::TEXT_DIM
+        theme::text()_DIM
     };
     let c = rect.center();
     match icon {
@@ -2089,17 +2100,17 @@ fn record_button(ui: &mut Ui, recording: bool, seconds: f64, now: f64) -> Respon
     );
     let p = ui.painter();
     let hot = resp.hovered();
-    let red = theme::MUTE;
+    let red = theme::mute();
     let (fill, border) = if recording {
         (alpha(red, if hot { 0.22 } else { 0.14 }), alpha(red, 0.6))
     } else {
         (
             if hot {
-                theme::CONTROL
+                theme::control()
             } else {
                 Color32::TRANSPARENT
             },
-            theme::NODE_BORDER,
+            theme::node_border(),
         )
     };
     p.rect(
@@ -2126,7 +2137,7 @@ fn record_button(ui: &mut Ui, recording: bool, seconds: f64, now: f64) -> Respon
         Align2::LEFT_CENTER,
         text,
         FontId::monospace(11.0),
-        theme::TEXT,
+        theme::text(),
     );
     resp.on_hover_cursor(CursorIcon::PointingHand)
         .on_hover_text(if recording {
@@ -2145,17 +2156,17 @@ fn transport_button(ui: &mut Ui, playing: bool, external: bool) -> Response {
     let hot = resp.hovered();
     let (fill, border) = if playing {
         (
-            alpha(theme::METER_GREEN, if hot { 0.18 } else { 0.10 }),
-            alpha(theme::METER_GREEN, 0.45),
+            alpha(theme::meter_green(), if hot { 0.18 } else { 0.10 }),
+            alpha(theme::meter_green(), 0.45),
         )
     } else {
         (
             if hot {
-                theme::CONTROL
+                theme::control()
             } else {
                 Color32::TRANSPARENT
             },
-            theme::NODE_BORDER,
+            theme::node_border(),
         )
     };
     p.rect(
@@ -2172,14 +2183,14 @@ fn transport_button(ui: &mut Ui, playing: bool, external: bool) -> Response {
             Align2::RIGHT_CENTER,
             "EXT",
             FontId::proportional(8.5),
-            theme::ACCENT,
+            theme::accent(),
         );
     }
     if playing {
         p.rect_filled(
             Rect::from_center_size(c, vec2(7.0, 7.0)),
             1.5,
-            theme::METER_GREEN,
+            theme::meter_green(),
         );
     } else {
         let triangle = vec![
@@ -2189,7 +2200,7 @@ fn transport_button(ui: &mut Ui, playing: bool, external: bool) -> Response {
         ];
         p.add(Shape::convex_polygon(
             triangle,
-            theme::METER_GREEN,
+            theme::meter_green(),
             Stroke::NONE,
         ));
     }
@@ -2198,7 +2209,7 @@ fn transport_button(ui: &mut Ui, playing: bool, external: bool) -> Response {
         Align2::LEFT_CENTER,
         if playing { "Stop" } else { "Start" },
         FontId::proportional(11.5),
-        theme::TEXT,
+        theme::text(),
     );
     resp.on_hover_cursor(CursorIcon::PointingHand)
         .on_hover_text(if external {
@@ -2211,7 +2222,7 @@ fn transport_button(ui: &mut Ui, playing: bool, external: bool) -> Response {
 }
 
 fn shortcuts(ui: &mut Ui) {
-    ui.label(RichText::new("Shortcuts").size(11.5).color(theme::TEXT));
+    ui.label(RichText::new("Shortcuts").size(11.5).color(theme::text()));
     ui.add_space(4.0);
     egui::Grid::new("shortcuts")
         .num_columns(2)
@@ -2222,9 +2233,9 @@ fn shortcuts(ui: &mut Ui) {
                     RichText::new(keys)
                         .size(10.5)
                         .monospace()
-                        .color(theme::TEXT),
+                        .color(theme::text()),
                 );
-                ui.label(RichText::new(what).size(11.0).color(theme::TEXT_DIM));
+                ui.label(RichText::new(what).size(11.0).color(theme::text()_DIM));
                 ui.end_row();
             }
         });
@@ -2252,9 +2263,166 @@ fn catalog_path() -> Option<PathBuf> {
     project::data_dir().map(|d| d.join("plugins.json"))
 }
 
+#[derive(serde::Deserialize)]
+struct ThemeFile {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    colors: Option<HashMap<String, String>>,
+}
+
+fn parse_hex(value: &str) -> Option<egui::Color32> {
+    let hex = value.trim().trim_start_matches('#');
+    if hex.len() == 6
+        && let (Ok(r), Ok(g), Ok(b)) = (
+            u8::from_str_radix(&hex[0..2], 16),
+            u8::from_str_radix(&hex[2..4], 16),
+            u8::from_str_radix(&hex[4..6], 16),
+        )
+    {
+        return Some(egui::Color32::from_rgb(r, g, b));
+    }
+    if hex.len() == 3
+        && let (Some(r), Some(g), Some(b)) = (
+            u8::from_str_radix(&hex[0..1], 16).ok(),
+            u8::from_str_radix(&hex[1..2], 16).ok(),
+            u8::from_str_radix(&hex[2..3], 16).ok(),
+        )
+    {
+        return Some(egui::Color32::from_rgb(r * 17, g * 17, b * 17));
+    }
+    None
+}
+
+fn custom_palette(text: &str) -> Option<theme::Palette> {
+    let file: ThemeFile = serde_json::from_str(text).ok()?;
+    let mut palette = theme::Palette::GRAPHITE;
+    let Some(colors) = file.colors else {
+        return Some(palette);
+    };
+    let mut apply = |key: &str, aliases: &[&str], target: &mut egui::Color32| {
+        for alias in std::iter::once(&key).chain(aliases.iter().copied()) {
+            if let Some(value) = colors.get(alias).and_then(|value| parse_hex(value)) {
+                *target = value;
+                break;
+            }
+        }
+    };
+    apply("bg", &["background"], &mut palette.bg);
+    apply("grid_minor", &["gridMinor"], &mut palette.grid_minor);
+    apply("grid_major", &["gridMajor"], &mut palette.grid_major);
+    apply("panel", &[], &mut palette.panel);
+    apply("panel_border", &["panelBorder"], &mut palette.panel_border);
+    apply("node_body", &["nodeBody"], &mut palette.node_body);
+    apply("node_header", &["nodeHeader"], &mut palette.node_header);
+    apply("node_border", &["nodeBorder"], &mut palette.node_border);
+    apply("inset", &[], &mut palette.inset);
+    apply("control", &[], &mut palette.control);
+    apply("control_hi", &["controlHi"], &mut palette.control_hi);
+    apply("text", &[], &mut palette.text);
+    apply("text_dim", &["textDim"], &mut palette.text_dim);
+    apply("text_faint", &["textFaint"], &mut palette.text_faint);
+    apply("accent", &[], &mut palette.accent);
+    apply("mixer_accent", &["mixerAccent"], &mut palette.mixer_accent);
+    apply("meter_green", &["meterGreen"], &mut palette.meter_green);
+    apply("meter_yellow", &["meterYellow"], &mut palette.meter_yellow);
+    apply("meter_red", &["meterRed"], &mut palette.meter_red);
+    apply("mute", &[], &mut palette.mute);
+    apply("solo", &[], &mut palette.solo);
+    apply("aux", &[], &mut palette.aux);
+    for (i, key) in ["osc_1", "osc_2", "osc_3", "osc_4", "osc_5", "osc_6"]
+        .iter()
+        .enumerate()
+    {
+        if let Some(value) = colors.get(*key).and_then(|value| parse_hex(value)) {
+            palette.osc_accents[i] = value;
+        }
+    }
+    Some(palette)
+}
+
+fn load_themes() -> (Vec<ThemeChoice>, BTreeMap<String, theme::Palette>) {
+    let mut choices = vec![
+        ThemeChoice {
+            id: "graphite".to_owned(),
+            name: "Graphite".to_owned(),
+            description: "The default dark theme".to_owned(),
+        },
+        ThemeChoice {
+            id: "porcelain".to_owned(),
+            name: "Porcelain".to_owned(),
+            description: "A neutral warm-white light theme".to_owned(),
+        },
+        ThemeChoice {
+            id: "sand".to_owned(),
+            name: "Sand".to_owned(),
+            description: "A warm sand-coloured light theme".to_owned(),
+        },
+        ThemeChoice {
+            id: "midnight".to_owned(),
+            name: "Midnight".to_owned(),
+            description: "A deep blue dark theme".to_owned(),
+        },
+        ThemeChoice {
+            id: "forest".to_owned(),
+            name: "Forest".to_owned(),
+            description: "A green dark theme".to_owned(),
+        },
+    ];
+    let mut palettes = BTreeMap::from([
+        ("graphite".to_owned(), theme::Palette::GRAPHITE),
+        ("porcelain".to_owned(), theme::Palette::porcelain()),
+        ("sand".to_owned(), theme::Palette::sand()),
+        ("midnight".to_owned(), theme::Palette::midnight()),
+        ("forest".to_owned(), theme::Palette::forest()),
+    ]);
+
+    if let Some(dir) = project::data_dir().map(|d| d.join("Themes"))
+        && let Ok(entries) = std::fs::read_dir(dir)
+    {
+        let mut entries: Vec<_> = entries.flatten().collect();
+        entries.sort_by_key(|entry| entry.file_name());
+        for entry in entries {
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) != Some("json") {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            let Ok(file): Result<ThemeFile, _> = serde_json::from_str(&text) else {
+                continue;
+            };
+            let Some(palette) = custom_palette(&text) else {
+                continue;
+            };
+            let stem = path
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned();
+            let id = format!("custom:{stem}");
+            choices.push(ThemeChoice {
+                name: file.name.unwrap_or_else(|| stem.clone()),
+                description: file.description.unwrap_or_else(|| {
+                    format!("Third-party theme: {}", path.display())
+                }),
+                id: id.clone(),
+            });
+            palettes.insert(id, palette);
+        }
+    }
+    (choices, palettes)
+}
+
 /// Preferences kept between launches.
 #[derive(serde::Serialize, serde::Deserialize, Default, Clone, Debug, PartialEq)]
 pub(crate) struct AppSettings {
+    /// Selected built-in or third-party UI theme.
+    #[serde(default = "default_theme")]
+    pub(crate) theme: String,
     /// The audio devices, rate and buffer size.
     #[serde(default)]
     pub(crate) audio: AudioConfig,
@@ -2276,12 +2444,19 @@ pub(crate) struct AppSettings {
     buffer_size: Option<u32>,
 }
 
+fn default_theme() -> String {
+    "graphite".to_owned()
+}
+
 impl AppSettings {
     /// Settings from the file's text (older files too).
     pub(crate) fn parse(text: &str) -> Option<Self> {
         let mut settings: Self = serde_json::from_str(text).ok()?;
         if let Some(size) = settings.buffer_size.take() {
             settings.audio.buffer_size.get_or_insert(size);
+        }
+        if settings.theme.is_empty() {
+            settings.theme = default_theme();
         }
         Some(settings)
     }
@@ -2292,10 +2467,17 @@ fn settings_path() -> Option<PathBuf> {
 }
 
 fn load_settings() -> AppSettings {
-    settings_path()
+    let settings = settings_path()
         .and_then(|p| std::fs::read_to_string(p).ok())
         .and_then(|text| AppSettings::parse(&text))
-        .unwrap_or_default()
+        .unwrap_or_default();
+    if settings.theme.is_empty() {
+        let mut settings = settings;
+        settings.theme = default_theme();
+        settings
+    } else {
+        settings
+    }
 }
 
 fn save_settings(settings: &AppSettings) {

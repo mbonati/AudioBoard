@@ -52,18 +52,18 @@ pub fn meter_norm(lin: f32) -> f32 {
 /// A meter's colour at a level in dB: green, yellow, red.
 pub fn meter_color(db: f32) -> Color32 {
     if db > -1.0 {
-        theme::METER_RED
+        theme::meter_red()
     } else if db > -9.0 {
-        theme::METER_YELLOW
+        theme::meter_yellow()
     } else {
-        theme::METER_GREEN
+        theme::meter_green()
     }
 }
 
 /// Horizontal peak meter: a continuous bar split into green / yellow / red
 /// zones, plus a thin peak-hold marker.
 pub fn hmeter(p: &Painter, rect: Rect, m: &MeterState, z: f32) {
-    p.rect_filled(rect, 1.0 * z, theme::INSET);
+    p.rect_filled(rect, 1.0 * z, theme::inset());
     let x_of = |t: f32| emath::lerp(rect.left()..=rect.right(), t);
     let lvl = if m.level > 1e-4 {
         meter_norm(m.level)
@@ -71,9 +71,9 @@ pub fn hmeter(p: &Painter, rect: Rect, m: &MeterState, z: f32) {
         0.0
     };
     let zones = [
-        (-9.0, theme::METER_GREEN),
-        (-1.0, theme::METER_YELLOW),
-        (METER_MAX_DB, theme::METER_RED),
+        (-9.0, theme::meter_green()),
+        (-1.0, theme::meter_yellow()),
+        (METER_MAX_DB, theme::meter_red()),
     ];
     let mut t0 = 0.0;
     for (db, color) in zones {
@@ -206,7 +206,7 @@ pub fn knob(
     let w = 2.2 * z;
     p.add(Shape::line(
         arc(c, r, KNOB_START, KNOB_START + KNOB_SWEEP),
-        Stroke::new(w, theme::CONTROL),
+        Stroke::new(w, theme::control()),
     ));
     if a1 - a0 > 0.01 {
         p.add(Shape::line(arc(c, r, a0, a1), Stroke::new(w, accent)));
@@ -217,16 +217,16 @@ pub fn knob(
         c,
         body_r,
         if active {
-            theme::CONTROL_HI
+            theme::control()_HI
         } else {
-            theme::CONTROL
+            theme::control()
         },
         Stroke::NONE,
     );
     let dir = vec2(a_val.cos(), a_val.sin());
     p.line_segment(
         [c + dir * body_r * 0.25, c + dir * body_r * 0.9],
-        Stroke::new(1.6 * z, theme::TEXT),
+        Stroke::new(1.6 * z, theme::text()),
     );
     resp
 }
@@ -237,7 +237,7 @@ pub fn knob(
 
 /// Vertical peak meter, bottom to top (see [`hmeter`]).
 pub fn vmeter(p: &Painter, rect: Rect, m: &MeterState, z: f32) {
-    p.rect_filled(rect, 1.0 * z, theme::INSET);
+    p.rect_filled(rect, 1.0 * z, theme::inset());
     let y_of = |t: f32| emath::lerp(rect.bottom()..=rect.top(), t);
     let lvl = if m.level > 1e-4 {
         meter_norm(m.level)
@@ -245,9 +245,9 @@ pub fn vmeter(p: &Painter, rect: Rect, m: &MeterState, z: f32) {
         0.0
     };
     let zones = [
-        (-9.0, theme::METER_GREEN),
-        (-1.0, theme::METER_YELLOW),
-        (METER_MAX_DB, theme::METER_RED),
+        (-9.0, theme::meter_green()),
+        (-1.0, theme::meter_yellow()),
+        (METER_MAX_DB, theme::meter_red()),
     ];
     let mut t0 = 0.0;
     for (db, color) in zones {
@@ -309,9 +309,9 @@ pub fn vfader(
         pos2(cx - 1.5 * z, rect.top()),
         pos2(cx + 1.5 * z, rect.bottom()),
     );
-    p.rect_filled(track, 1.5 * z, theme::CONTROL);
+    p.rect_filled(track, 1.5 * z, theme::control());
     let y = emath::lerp(rect.bottom()..=rect.top(), shown_position(ui, id, value));
-    let fill = if enabled { accent } else { theme::TEXT_FAINT };
+    let fill = if enabled { accent } else { theme::text()_FAINT };
     p.rect_filled(
         Rect::from_min_max(pos2(track.min.x, y), track.max),
         1.5 * z,
@@ -322,7 +322,7 @@ pub fn vfader(
     let uy = emath::lerp(rect.bottom()..=rect.top(), FADER_UNITY);
     p.line_segment(
         [pos2(cx - 7.0 * z, uy), pos2(cx - 4.0 * z, uy)],
-        Stroke::new(1.0 * z, theme::TEXT_FAINT),
+        Stroke::new(1.0 * z, theme::text()_FAINT),
     );
 
     let hot = resp.dragged() || resp.hovered();
@@ -331,7 +331,7 @@ pub fn vfader(
         thumb,
         1.5 * z,
         if hot {
-            theme::TEXT
+            theme::text()
         } else {
             Color32::from_rgb(188, 192, 200)
         },
@@ -373,9 +373,9 @@ pub fn hfader(
         pos2(rect.left(), cy - 1.5 * z),
         pos2(rect.right(), cy + 1.5 * z),
     );
-    p.rect_filled(track, 1.5 * z, theme::CONTROL);
+    p.rect_filled(track, 1.5 * z, theme::control());
     let x = emath::lerp(rect.left()..=rect.right(), shown_position(ui, id, value));
-    let fill = if enabled { accent } else { theme::TEXT_FAINT };
+    let fill = if enabled { accent } else { theme::text()_FAINT };
     p.rect_filled(
         Rect::from_min_max(track.min, pos2(x, track.max.y)),
         1.5 * z,
@@ -386,7 +386,7 @@ pub fn hfader(
     let ux = emath::lerp(rect.left()..=rect.right(), FADER_UNITY);
     p.line_segment(
         [pos2(ux, cy - 6.0 * z), pos2(ux, cy - 3.5 * z)],
-        Stroke::new(1.0 * z, theme::TEXT_FAINT),
+        Stroke::new(1.0 * z, theme::text()_FAINT),
     );
 
     let hot = resp.dragged() || resp.hovered();
@@ -395,7 +395,7 @@ pub fn hfader(
         thumb,
         1.5 * z,
         if hot {
-            theme::TEXT
+            theme::text()
         } else {
             Color32::from_rgb(188, 192, 200)
         },
@@ -424,9 +424,9 @@ pub fn toggle(
     let fill = if on {
         color
     } else if resp.hovered() {
-        theme::CONTROL_HI
+        theme::control()_HI
     } else {
-        theme::CONTROL
+        theme::control()
     };
     p.rect_filled(rect, 3.0 * z, fill);
     p.text(
@@ -434,7 +434,7 @@ pub fn toggle(
         Align2::CENTER_CENTER,
         label,
         theme::font(9.0 * z),
-        if on { theme::INSET } else { theme::TEXT_DIM },
+        if on { theme::inset() } else { theme::text()_DIM },
     );
     resp
 }
@@ -445,14 +445,14 @@ pub fn port(p: &Painter, c: Pos2, connected: bool, hot: bool, color: Color32, mi
     let ring = if connected || hot {
         color
     } else {
-        theme::TEXT_FAINT
+        theme::text()_FAINT
     };
     if midi {
         let rect = Rect::from_center_size(c, vec2(r, r) * 1.8);
         p.rect(
             rect,
             1.5 * z,
-            theme::NODE_BODY,
+            theme::node_body(),
             Stroke::new(1.4 * z, ring),
             egui::StrokeKind::Middle,
         );
@@ -465,7 +465,7 @@ pub fn port(p: &Painter, c: Pos2, connected: bool, hot: bool, color: Color32, mi
         }
         return;
     }
-    p.circle(c, r, theme::NODE_BODY, Stroke::new(1.4 * z, ring));
+    p.circle(c, r, theme::node_body(), Stroke::new(1.4 * z, ring));
     if connected {
         p.circle_filled(c, 2.2 * z, color);
     }

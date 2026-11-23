@@ -31,8 +31,8 @@ pub fn display(painter: &Painter, rect: Rect, accent: Color32, z: f32, m: &Modul
         Display::Dot { x, y } => s.dot(viz(x), viz(y)),
     }
     if let Some(trouble) = node.trouble() {
-        painter.rect_filled(rect, 2.0 * z, theme::alpha(theme::INSET, 0.8));
-        s.message(trouble, theme::METER_RED);
+        painter.rect_filled(rect, 2.0 * z, theme::alpha(theme::inset(), 0.8));
+        s.message(trouble, theme::meter_red());
     }
 }
 

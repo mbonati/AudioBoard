@@ -151,9 +151,9 @@ pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, out: bool
         "OUT",
         v.font(9.0),
         if out {
-            theme::TEXT_DIM
+            theme::text()_DIM
         } else {
-            theme::TEXT_FAINT
+            theme::text()_FAINT
         },
     );
     s.header();
@@ -263,7 +263,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             state,
             v.font(7.5),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
         let now = p.viz[viz::GLITCH].get().round() as usize;
         let crackle = p.viz[viz::STATIC].get() > 0.5;
@@ -277,9 +277,9 @@ impl Panel<'_, '_> {
                 label,
                 theme::strong(7.5 * z),
                 if on {
-                    theme::TEXT
+                    theme::text()
                 } else {
-                    alpha(theme::TEXT_FAINT, 0.5)
+                    alpha(theme::text()_FAINT, 0.5)
                 },
             );
         }
@@ -291,7 +291,7 @@ impl Panel<'_, '_> {
         let (v, p, z) = (self.v, self.p, self.z());
         let painter = v.painter;
         let [y0, y1] = DISPLAY;
-        painter.rect_filled(v.r(PAD, y0, W - PAD, y1), 4.0 * z, theme::INSET);
+        painter.rect_filled(v.r(PAD, y0, W - PAD, y1), 4.0 * z, theme::inset());
         let pos = p.viz[viz::STRIP_POS].get() as usize;
         let n = viz::STRIP_LEN;
         let (x0, x1) = (PAD + 10.0, W - PAD - 10.0);
@@ -308,7 +308,7 @@ impl Panel<'_, '_> {
             let width = (bw * (0.25 + 0.6 * peak)).max(1.0);
             painter.line_segment(
                 [v.p(x, mid - h), v.p(x, mid + h)],
-                Stroke::new(width * z, alpha(theme::TEXT, 0.35 + 0.65 * peak)),
+                Stroke::new(width * z, alpha(theme::text(), 0.35 + 0.65 * peak)),
             );
         }
         v.text(
@@ -317,7 +317,7 @@ impl Panel<'_, '_> {
             Align2::LEFT_CENTER,
             "OUT",
             v.font(6.5),
-            theme::TEXT_FAINT,
+            theme::text()_FAINT,
         );
     }
 
@@ -332,7 +332,7 @@ impl Panel<'_, '_> {
                 Align2::CENTER_CENTER,
                 label,
                 v.font(7.0),
-                theme::TEXT_FAINT,
+                theme::text()_FAINT,
             );
         }
         let step = p.viz[viz::STEP].get();
@@ -351,9 +351,9 @@ impl Panel<'_, '_> {
             }
             let glow = (1.0 - ((now - flashes[vc].1) / 0.12) as f32).clamp(0.0, 1.0);
             let name_col = if muted {
-                theme::TEXT_FAINT
+                theme::text()_FAINT
             } else {
-                theme::mix(theme::TEXT_DIM, theme::TEXT, glow)
+                theme::mix(theme::text()_DIM, theme::text(), glow)
             };
             let name_rect = v.text(
                 PAD,
@@ -372,7 +372,7 @@ impl Panel<'_, '_> {
                 v.r(46.0, cy - 7.0, 60.0, cy + 7.0),
                 "M",
                 muted,
-                theme::MUTE,
+                theme::mute(),
                 z,
             )
             .on_hover_text("Mute this voice");
@@ -459,7 +459,7 @@ impl Panel<'_, '_> {
         for s in 0..MAX_LEN {
             let c = v.p(CELLS_X + CELL * (s as f32 + 0.5), cy);
             if s >= len {
-                painter.circle_filled(c, 0.8 * z, alpha(theme::TEXT_FAINT, 0.25));
+                painter.circle_filled(c, 0.8 * z, alpha(theme::text()_FAINT, 0.25));
                 continue;
             }
             let hit = bits >> s & 1 == 1;
@@ -468,7 +468,7 @@ impl Panel<'_, '_> {
                 let col = if here {
                     self.accent
                 } else {
-                    alpha(theme::TEXT, 0.75 * ink)
+                    alpha(theme::text(), 0.75 * ink)
                 };
                 painter.rect_filled(
                     egui::Rect::from_center_size(c, vec2(6.0, 6.0) * z),
@@ -479,7 +479,7 @@ impl Panel<'_, '_> {
                 painter.rect_stroke(
                     egui::Rect::from_center_size(c, vec2(5.0, 5.0) * z),
                     1.0 * z,
-                    Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.6 * ink)),
+                    Stroke::new(1.0 * z, alpha(theme::text()_FAINT, 0.6 * ink)),
                     egui::StrokeKind::Inside,
                 );
             }
@@ -504,12 +504,12 @@ impl Panel<'_, '_> {
                 Align2::LEFT_CENTER,
                 title,
                 theme::strong(8.5 * z),
-                theme::TEXT_DIM,
+                theme::text()_DIM,
             );
             v.painter.hline(
                 v.p(x0 + 60.0, 0.0).x..=v.p(x1, 0.0).x,
                 v.p(0.0, y).y,
-                Stroke::new(1.0 * z, alpha(theme::TEXT_FAINT, 0.3)),
+                Stroke::new(1.0 * z, alpha(theme::text()_FAINT, 0.3)),
             );
             let cw = (x1 - x0) / knobs.len() as f32;
             for (k, (i, label)) in knobs.iter().enumerate() {
@@ -530,7 +530,7 @@ impl Panel<'_, '_> {
                 Align2::CENTER_CENTER,
                 label,
                 v.font(7.5),
-                theme::TEXT_FAINT,
+                theme::text()_FAINT,
             );
             y + 8.0
         } else {
@@ -580,7 +580,7 @@ impl Panel<'_, '_> {
             Align2::CENTER_CENTER,
             np::format(p, i),
             v.mono(7.0),
-            if hot { theme::TEXT } else { theme::TEXT_DIM },
+            if hot { theme::text() } else { theme::text()_DIM },
         );
     }
 }

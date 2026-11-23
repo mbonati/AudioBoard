@@ -101,7 +101,7 @@ pub fn draw(v: &NodeView, id: NodeId, accent: Color32, m: &ModuleNode, (midi_in,
     let s = Panel { v, id, p, accent, col: std::cell::Cell::new(accent) };
 
     // Ports.
-    let col = |on: bool| if on { theme::TEXT_DIM } else { theme::TEXT_FAINT };
+    let col = |on: bool| if on { theme::text()_DIM } else { theme::text()_FAINT };
     v.text(10.0, 43.0, Align2::LEFT_CENTER, "MIDI", v.font(8.5), col(midi_in));
     v.text(W - 10.0, 43.0, Align2::RIGHT_CENTER, "OUT", v.font(8.5), col(out));
 
@@ -184,9 +184,9 @@ impl Panel<'_, '_> {
     /// A small caption over a group of controls.
     fn caption(&self, s: &str, x0: f32, x1: f32, y: f32) {
         let v = self.v;
-        let r = self.text((x0 + x1) * 0.5, y, Align2::CENTER_CENTER, s, 6.2, theme::TEXT_FAINT);
+        let r = self.text((x0 + x1) * 0.5, y, Align2::CENTER_CENTER, s, 6.2, theme::text()_FAINT);
         if r.width() > 0.0 {
-            let stroke = self.stroke(0.8, alpha(theme::TEXT_FAINT, 0.5));
+            let stroke = self.stroke(0.8, alpha(theme::text()_FAINT, 0.5));
             v.painter.line_segment([v.p(x0, y), pos2(r.left() - 3.0 * self.z(), r.center().y)], stroke);
             v.painter.line_segment([pos2(r.right() + 3.0 * self.z(), r.center().y), v.p(x1, y)], stroke);
         }
@@ -256,13 +256,13 @@ impl Panel<'_, '_> {
         if a1 - a0 > 0.01 {
             v.painter.add(Shape::line(arc(a0, a1), Stroke::new(w, col)));
         }
-        v.painter.circle_filled(c, r * z, theme::INSET);
-        v.painter.circle_stroke(c, r * z, self.stroke(1.0, if hot { col } else { theme::CONTROL_HI }));
+        v.painter.circle_filled(c, r * z, theme::inset());
+        v.painter.circle_stroke(c, r * z, self.stroke(1.0, if hot { col } else { theme::control()_HI }));
         let dir = vec2(a.cos(), a.sin());
-        v.painter.line_segment([c + dir * r * 0.25 * z, c + dir * r * 0.88 * z], self.stroke(1.3 + r * 0.03, theme::TEXT));
+        v.painter.line_segment([c + dir * r * 0.25 * z, c + dir * r * 0.88 * z], self.stroke(1.3 + r * 0.03, theme::text()));
         let text = if hot { value.unwrap_or_else(|| spec.format(now)) } else { label.to_owned() };
         if !text.is_empty() {
-            self.text(cx, cy + ring + 8.0, Align2::CENTER_CENTER, text, if r >= 12.0 { 6.8 } else { 6.0 }, if hot { theme::TEXT } else { theme::TEXT_DIM });
+            self.text(cx, cy + ring + 8.0, Align2::CENTER_CENTER, text, if r >= 12.0 { 6.8 } else { 6.0 }, if hot { theme::text() } else { theme::text()_DIM });
         }
         if hot && !label.is_empty() {
             resp.on_hover_text(spec.name);
@@ -286,15 +286,15 @@ impl Panel<'_, '_> {
         let edge = if lit {
             col
         } else if resp.hovered() {
-            theme::TEXT_DIM
+            theme::text()_DIM
         } else {
-            theme::CONTROL_HI
+            theme::control()_HI
         };
         v.painter.rect_stroke(rect, 3.0 * z, self.stroke(1.0, edge), StrokeKind::Inside);
         if !label.is_empty() {
             let font = theme::font(5.8 * z);
             if font.size >= MIN_TEXT {
-                v.painter.text(rect.center(), Align2::CENTER_CENTER, label, font, if lit { col } else { theme::TEXT_DIM });
+                v.painter.text(rect.center(), Align2::CENTER_CENTER, label, font, if lit { col } else { theme::text()_DIM });
             }
         }
         if tip.is_empty() { resp } else { resp.on_hover_text(tip) }
@@ -319,12 +319,12 @@ impl Panel<'_, '_> {
         let resp = v.ui.interact(rect, self.uid(("sel", k)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
         v.hit(resp.rect, ParamRef::Module(k));
         let i = self.idx(k).min(names.len() - 1);
-        v.painter.rect_filled(rect, 3.0 * z, theme::INSET);
+        v.painter.rect_filled(rect, 3.0 * z, theme::inset());
         v.painter.rect_stroke(rect, 3.0 * z, self.stroke(1.0, if resp.hovered() { col } else { alpha(col, 0.45) }), StrokeKind::Inside);
         let clip = v.painter.with_clip_rect(rect.shrink(1.0).intersect(v.painter.clip_rect()));
         let font = theme::font(size * z);
         if font.size >= MIN_TEXT {
-            clip.text(rect.center() - vec2(3.0 * z, 0.0), Align2::CENTER_CENTER, names[i], font, theme::TEXT);
+            clip.text(rect.center() - vec2(3.0 * z, 0.0), Align2::CENTER_CENTER, names[i], font, theme::text());
             clip.text(pos2(rect.right() - 4.0 * z, rect.center().y), Align2::RIGHT_CENTER, "▾", theme::font(size * 0.8 * z), alpha(col, 0.8));
         }
         let resp = resp.on_hover_text(DEF.params[k].name);
@@ -374,7 +374,7 @@ impl Panel<'_, '_> {
             self.set(k, DEF.params[k].default);
         }
         let col = self.col.get();
-        v.painter.rect_filled(rect, 3.0 * z, theme::INSET);
+        v.painter.rect_filled(rect, 3.0 * z, theme::inset());
         v.painter.rect_stroke(rect, 3.0 * z, self.stroke(1.0, if resp.hovered() { col } else { alpha(col, 0.45) }), StrokeKind::Inside);
         self.text((x0 + x1) * 0.5, (y0 + y1) * 0.5, Align2::CENTER_CENTER, format!("CC {:.0}", self.p.get(k)), 7.0, col);
     }
@@ -402,8 +402,8 @@ impl Panel<'_, '_> {
             if on {
                 v.painter.rect_filled(rect, 9.0 * z, alpha(self.accent, 0.2));
             }
-            v.painter.rect_stroke(rect, 9.0 * z, self.stroke(1.0, if on { self.accent } else { theme::CONTROL_HI }), StrokeKind::Inside);
-            self.strong(x + 27.0, cy, Align2::CENTER_CENTER, label, 7.0, if on { self.accent } else { theme::TEXT_DIM });
+            v.painter.rect_stroke(rect, 9.0 * z, self.stroke(1.0, if on { self.accent } else { theme::control()_HI }), StrokeKind::Inside);
+            self.strong(x + 27.0, cy, Align2::CENTER_CENTER, label, 7.0, if on { self.accent } else { theme::text()_DIM });
             resp.clicked()
         };
         let tweaks = p.data[data::VIEW].get() > 0.5;
@@ -417,12 +417,12 @@ impl Panel<'_, '_> {
         // Voices.
         let unison = self.on(UNISON);
         let k = if unison { UNI_VOICES } else { VOICES };
-        self.text(164.0, cy, Align2::LEFT_CENTER, if unison { "UNISON" } else { "VOICES" }, 6.0, theme::TEXT_FAINT);
+        self.text(164.0, cy, Align2::LEFT_CENTER, if unison { "UNISON" } else { "VOICES" }, 6.0, theme::text()_FAINT);
         let names: [&str; MAX_VOICES] = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16"];
         let rect = v.r(200.0, cy - 8.0, 230.0, cy + 8.0);
         let resp = v.ui.interact(rect, self.uid("voices"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
         v.painter.rect_stroke(rect, 3.0 * z, self.stroke(1.0, if resp.hovered() { VOICE_COL } else { alpha(VOICE_COL, 0.45) }), StrokeKind::Inside);
-        self.text(215.0, cy, Align2::CENTER_CENTER, format!("{:.0}", p.get(k)), 7.5, theme::TEXT);
+        self.text(215.0, cy, Align2::CENTER_CENTER, format!("{:.0}", p.get(k)), 7.5, theme::text());
         let resp = resp.on_hover_text(if unison { "Voices stacked in UNISON" } else { "Voices played before one is stolen" });
         egui::Popup::menu(&resp).show(|ui| {
             for (n, name) in names.iter().enumerate() {
@@ -436,7 +436,7 @@ impl Panel<'_, '_> {
         // The programmer: display, name, presets.
         let prog = sb::program(p);
         let disp = v.r(240.0, cy - 9.0, 276.0, cy + 9.0);
-        v.painter.rect_filled(disp, 3.0 * z, theme::INSET);
+        v.painter.rect_filled(disp, 3.0 * z, theme::inset());
         v.painter.rect_stroke(disp, 3.0 * z, self.stroke(1.0, alpha(self.accent, 0.45)), StrokeKind::Inside);
         let font = theme::mono(12.0 * z);
         if font.size >= MIN_TEXT {
@@ -446,8 +446,8 @@ impl Panel<'_, '_> {
             let x = 282.0 + 15.0 * n as f32;
             let rect = v.r(x, cy - 8.0, x + 13.0, cy + 8.0);
             let resp = v.ui.interact(rect, self.uid(("step", n)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
-            v.painter.rect_stroke(rect, 3.0 * z, self.stroke(1.0, if resp.hovered() { theme::TEXT_DIM } else { theme::CONTROL_HI }), StrokeKind::Inside);
-            self.text(x + 6.5, cy, Align2::CENTER_CENTER, label, 6.5, theme::TEXT_DIM);
+            v.painter.rect_stroke(rect, 3.0 * z, self.stroke(1.0, if resp.hovered() { theme::text()_DIM } else { theme::control()_HI }), StrokeKind::Inside);
+            self.text(x + 6.5, cy, Align2::CENTER_CENTER, label, 6.5, theme::text()_DIM);
             if resp.on_hover_text(if n == 0 { "Previous program" } else { "Next program" }).clicked() {
                 load_program(p, (prog + delta) % PROGRAMS);
             }
@@ -457,7 +457,7 @@ impl Panel<'_, '_> {
         let clip = v.painter.with_clip_rect(v.r(318.0, cy - 10.0, 466.0, cy + 10.0).intersect(v.painter.clip_rect()));
         let font = theme::font(9.0 * z);
         if font.size >= MIN_TEXT {
-            clip.text(v.p(320.0, cy), Align2::LEFT_CENTER, name, font, if edited { theme::TEXT_DIM } else { theme::TEXT });
+            clip.text(v.p(320.0, cy), Align2::LEFT_CENTER, name, font, if edited { theme::text()_DIM } else { theme::text() });
         }
         let save = self.push("save", 488.0, cy, 36.0, "SAVE", false, "Save this sound: in your library (every project) or in a program");
         self.save_menu(&save);
@@ -465,7 +465,7 @@ impl Panel<'_, '_> {
         self.browse_menu(&browse);
 
         // BANK, PROGRAM, RECORD.
-        self.text(590.0, cy, Align2::RIGHT_CENTER, "BANK", 6.0, theme::TEXT_FAINT);
+        self.text(590.0, cy, Align2::RIGHT_CENTER, "BANK", 6.0, theme::text()_FAINT);
         for b in 0..BANKS {
             let tip = match b {
                 0 => "Bank 1: arpeggios",
@@ -480,7 +480,7 @@ impl Panel<'_, '_> {
                 load_program(p, b * 8 + prog % 8);
             }
         }
-        self.text(758.0, cy, Align2::RIGHT_CENTER, "PROGRAM", 6.0, theme::TEXT_FAINT);
+        self.text(758.0, cy, Align2::RIGHT_CENTER, "PROGRAM", 6.0, theme::text()_FAINT);
         for n in 0..8 {
             let k = (prog / 8) * 8 + n;
             let tip = if view.record { "Store the panel here" } else { bank::name(k) };
@@ -519,15 +519,15 @@ impl Panel<'_, '_> {
         self.button(A440, 1026.0, cy, 34.0, "A-440");
         self.col.set(MIX_COL);
         self.knob_with(TUNE, 1066.0, cy, 8.0, "", None);
-        self.text(1078.0, cy, Align2::LEFT_CENTER, "TUNE", 6.0, theme::TEXT_FAINT);
+        self.text(1078.0, cy, Align2::LEFT_CENTER, "TUNE", 6.0, theme::text()_FAINT);
         self.knob_with(OUTPUT, 1118.0, cy, 8.0, "", None);
-        self.text(1130.0, cy, Align2::LEFT_CENTER, "OUTPUT", 6.0, theme::TEXT_FAINT);
+        self.text(1130.0, cy, Align2::LEFT_CENTER, "OUTPUT", 6.0, theme::text()_FAINT);
         self.col.set(LIGHT);
         let panic = self.push("panic", 1210.0, cy, 48.0, "ALL OFF", false, "Silence every voice and let go of every key");
         if panic.clicked() {
             p.viz[viz::PANIC].set(p.viz[viz::PANIC].get() + 1.0);
         }
-        v.painter.line_segment([v.p(16.0, 58.0), v.p(W - 16.0, 58.0)], self.stroke(1.0, theme::NODE_BORDER));
+        v.painter.line_segment([v.p(16.0, 58.0), v.p(W - 16.0, 58.0)], self.stroke(1.0, theme::node_border()));
     }
 
     // --- Presets -------------------------------------------------------
@@ -706,7 +706,7 @@ impl Panel<'_, '_> {
         self.button(PM_FREQ_A, x0 + 176.0, y + 72.0, 30.0, "FREQ A");
         self.button(PM_PW_A, x0 + 212.0, y + 72.0, 30.0, "PW A");
         self.button(PM_FILTER, x0 + 248.0, y + 72.0, 30.0, "FILTER");
-        self.text((x0 + x1) * 0.5, y + 126.0, Align2::CENTER_CENTER, "per voice, at audio rate", 5.8, theme::TEXT_FAINT);
+        self.text((x0 + x1) * 0.5, y + 126.0, Align2::CENTER_CENTER, "per voice, at audio rate", 5.8, theme::text()_FAINT);
     }
 
     fn lfo(&self) {
@@ -729,7 +729,7 @@ impl Panel<'_, '_> {
         self.button(LFO_TRI, x0 + 212.0, y + 72.0, 30.0, "TRI");
         self.button(LFO_SQR, x0 + 248.0, y + 72.0, 30.0, "SQUARE");
         let rate = if synced { format!("{div} of the board's tempo") } else { "shapes add up when several are on".to_owned() };
-        self.text((x0 + x1) * 0.5, y + 126.0, Align2::CENTER_CENTER, rate, 5.8, theme::TEXT_FAINT);
+        self.text((x0 + x1) * 0.5, y + 126.0, Align2::CENTER_CENTER, rate, 5.8, theme::text()_FAINT);
     }
 
     fn wheel_mod(&self) {
@@ -737,15 +737,15 @@ impl Panel<'_, '_> {
         let y = R3;
         self.section("WHEEL MOD", x0, x1, y, MOD_COL);
         self.knob(WM_MIX, x0 + 45.0, y + 72.0, 16.0, "SOURCE MIX");
-        self.text(x0 + 22.0, y + 92.0, Align2::RIGHT_CENTER, "LFO", 5.6, theme::TEXT_FAINT);
+        self.text(x0 + 22.0, y + 92.0, Align2::RIGHT_CENTER, "LFO", 5.6, theme::text()_FAINT);
         let noise = if self.on(WM_SH) { "S&H" } else { "NOISE" };
-        self.text(x0 + 68.0, y + 92.0, Align2::LEFT_CENTER, noise, 5.6, theme::TEXT_FAINT);
+        self.text(x0 + 68.0, y + 92.0, Align2::LEFT_CENTER, noise, 5.6, theme::text()_FAINT);
         self.caption("DESTINATION", x0 + 94.0, x1 - 6.0, y + 30.0);
         for (n, (k, label)) in [(WM_FREQ_A, "FREQ A"), (WM_FREQ_B, "FREQ B"), (WM_PW_A, "PW A"), (WM_PW_B, "PW B"), (WM_FILTER, "FILTER")].into_iter().enumerate() {
             self.button(k, x0 + 112.0 + 34.0 * n as f32, y + 72.0, 30.0, label);
         }
         let (low, high) = (self.p.get(WM_LOW), self.p.get(WM_HIGH));
-        self.text((x0 + x1) * 0.5, y + 126.0, Align2::CENTER_CENTER, format!("wheel depth {:.0}–{:.0}%", low * 100.0, high * 100.0), 5.8, theme::TEXT_FAINT);
+        self.text((x0 + x1) * 0.5, y + 126.0, Align2::CENTER_CENTER, format!("wheel depth {:.0}–{:.0}%", low * 100.0, high * 100.0), 5.8, theme::text()_FAINT);
     }
 
     /// OCTAVE: a four-position switch, its positions around it.
@@ -757,7 +757,7 @@ impl Panel<'_, '_> {
             let p = self.v.p(cx, cy) + vec2(a.cos(), a.sin()) * 19.0 * self.z();
             let font = theme::font(5.4 * self.z());
             if font.size >= MIN_TEXT {
-                self.v.painter.text(p, Align2::CENTER_CENTER, n, font, if n == o { self.col.get() } else { theme::TEXT_FAINT });
+                self.v.painter.text(p, Align2::CENTER_CENTER, n, font, if n == o { self.col.get() } else { theme::text()_FAINT });
             }
         }
     }
@@ -768,7 +768,7 @@ impl Panel<'_, '_> {
         self.section("OSCILLATOR A", x0, x1, y, OSC_COL);
         self.knob(A_FREQ, x0 + 40.0, y + 72.0, 16.0, "FREQUENCY");
         self.knob(A_FINE, x0 + 84.0, y + 56.0, 6.5, "");
-        self.text(x0 + 84.0, y + 70.0, Align2::CENTER_CENTER, "FINE", 5.4, theme::TEXT_FAINT);
+        self.text(x0 + 84.0, y + 70.0, Align2::CENTER_CENTER, "FINE", 5.4, theme::text()_FAINT);
         self.octave(A_OCT, x0 + 126.0, y + 76.0);
         self.caption("SHAPE", x0 + 156.0, x0 + 222.0, y + 30.0);
         self.button(A_SAW, x0 + 172.0, y + 72.0, 30.0, "SAW");
@@ -776,7 +776,7 @@ impl Panel<'_, '_> {
         self.knob(A_PW, x0 + 258.0, y + 72.0, 16.0, "PULSE WIDTH");
         self.button(A_SYNC, x0 + 308.0, y + 72.0, 30.0, "SYNC");
         let model = A_MODELS[self.idx(A_MODEL).min(3)];
-        self.text(x1 - 4.0, y + 126.0, Align2::RIGHT_CENTER, model, 5.8, theme::TEXT_FAINT);
+        self.text(x1 - 4.0, y + 126.0, Align2::RIGHT_CENTER, model, 5.8, theme::text()_FAINT);
     }
 
     fn osc_b(&self) {
@@ -794,7 +794,7 @@ impl Panel<'_, '_> {
         self.button(B_LO, x0 + 318.0, y + 54.0, 32.0, "LO FREQ");
         self.button(B_KBD, x0 + 318.0, y + 92.0, 32.0, "KYBD");
         let model = B_MODELS[self.idx(B_MODEL).min(4)];
-        self.text(x1 - 4.0, y + 126.0, Align2::RIGHT_CENTER, model, 5.8, theme::TEXT_FAINT);
+        self.text(x1 - 4.0, y + 126.0, Align2::RIGHT_CENTER, model, 5.8, theme::text()_FAINT);
     }
 
     fn mixer(&self) {
@@ -815,7 +815,7 @@ impl Panel<'_, '_> {
         self.section("UNISON", x0, x1, y, VOICE_COL);
         self.button(UNISON, x0 + 30.0, y + 52.0, 40.0, "UNISON");
         let stack = if self.on(UNISON) { format!("×{:.0}", p.get(UNI_VOICES)) } else { format!("{:.0} voices", p.get(VOICES)) };
-        self.text(x0 + 30.0, y + 72.0, Align2::CENTER_CENTER, stack, 6.2, theme::TEXT_DIM);
+        self.text(x0 + 30.0, y + 72.0, Align2::CENTER_CENTER, stack, 6.2, theme::text()_DIM);
         self.knob(GLIDE, x0 + 86.0, y + 58.0, 13.0, "GLIDE");
         self.knob(DETUNE, x0 + 140.0, y + 58.0, 13.0, "VOICE DETUNE");
         // A light per voice.
@@ -826,7 +826,7 @@ impl Panel<'_, '_> {
             if i < used || level > 1e-3 {
                 self.light(cx, cy, 3.0, level.sqrt(), VOICE_COL);
             } else {
-                self.v.painter.circle_filled(self.v.p(cx, cy), 1.2 * self.z(), theme::CONTROL_HI);
+                self.v.painter.circle_filled(self.v.p(cx, cy), 1.2 * self.z(), theme::control()_HI);
             }
         }
         let _ = x1;
@@ -842,14 +842,14 @@ impl Panel<'_, '_> {
         self.knob(ENV_AMT, x0 + 254.0, y + 74.0, 16.0, env);
         self.knob(KEY_AMT, x0 + 348.0, y + 74.0, 16.0, "KEYBOARD");
         let model = FILTER_MODELS[self.idx(FILTER_MODEL).min(3)];
-        self.text(x1 - 4.0, y + 126.0, Align2::RIGHT_CENTER, format!("4-pole low pass · {model}"), 5.8, theme::TEXT_FAINT);
+        self.text(x1 - 4.0, y + 126.0, Align2::RIGHT_CENTER, format!("4-pole low pass · {model}"), 5.8, theme::text()_FAINT);
     }
 
     fn envelope(&self, title: &str, y: f32, vel: usize, adsr: [usize; 4]) {
         let [x0, x1] = C4;
         self.section(title, x0, x1, y, ENV_COL);
         self.knob(vel, x0 + 30.0, y + 60.0, 6.5, "");
-        self.text(x0 + 30.0, y + 74.0, Align2::CENTER_CENTER, "VEL", 5.4, theme::TEXT_FAINT);
+        self.text(x0 + 30.0, y + 74.0, Align2::CENTER_CENTER, "VEL", 5.4, theme::text()_FAINT);
         for (n, (k, label)) in adsr.into_iter().zip(["ATTACK", "DECAY", "SUSTAIN", "RELEASE"]).enumerate() {
             self.knob(k, x0 + 100.0 + 84.0 * n as f32, y + 72.0, 16.0, label);
         }
@@ -897,16 +897,16 @@ impl Panel<'_, '_> {
             let k = page * 2 + side;
             let sx = x0 + 6.0 + 262.0 * side as f32;
             let live = self.idx(sp(k, slot::SOURCE)) != 0 && self.idx(sp(k, slot::DEST)) != 0;
-            self.text(sx + 154.0, y + 29.0, Align2::RIGHT_CENTER, format!("SLOT {}", k + 1), 6.0, if live { MOD_COL } else { theme::TEXT_FAINT });
-            self.text(sx, y + 47.0, Align2::LEFT_CENTER, "SOURCE", 5.4, theme::TEXT_FAINT);
+            self.text(sx + 154.0, y + 29.0, Align2::RIGHT_CENTER, format!("SLOT {}", k + 1), 6.0, if live { MOD_COL } else { theme::text()_FAINT });
+            self.text(sx, y + 47.0, Align2::LEFT_CENTER, "SOURCE", 5.4, theme::text()_FAINT);
             self.selector(sp(k, slot::SOURCE), sx, y + 52.0, sx + 154.0, y + 68.0, &SOURCES, 7.2);
-            self.text(sx, y + 79.0, Align2::LEFT_CENTER, "DESTINATION", 5.4, theme::TEXT_FAINT);
+            self.text(sx, y + 79.0, Align2::LEFT_CENTER, "DESTINATION", 5.4, theme::text()_FAINT);
             self.selector(sp(k, slot::DEST), sx, y + 84.0, sx + 154.0, y + 100.0, &DESTS, 7.2);
             self.knob(sp(k, slot::DEPTH), sx + 202.0, y + 74.0, 16.0, "DEPTH");
             let mods = [(slot::CURVE, &CURVES[..], "CURVE"), (slot::RECTIFY, &RECTIFIERS[..], "RECT"), (slot::QUANTIZE, &QUANTIZERS[..], "QUANT"), (slot::SH, &SH_SOURCES[..], "S+H"), (slot::SLEW, &SLEWS[..], "SLEW")];
             for (n, (f, names, label)) in mods.into_iter().enumerate() {
                 let mx = sx + 50.0 * n as f32;
-                self.text(mx + 23.0, y + 112.0, Align2::CENTER_CENTER, label, 5.2, theme::TEXT_FAINT);
+                self.text(mx + 23.0, y + 112.0, Align2::CENTER_CENTER, label, 5.2, theme::text()_FAINT);
                 self.selector(sp(k, f), mx, y + 118.0, mx + 46.0, y + 132.0, names, 5.4);
             }
         }
@@ -940,21 +940,21 @@ impl Panel<'_, '_> {
         if resp.clicked() {
             self.set(k, ((cur + 1) % count) as f32);
         }
-        self.text(cx, cy - 13.0, Align2::CENTER_CENTER, title, 6.0, theme::TEXT_DIM);
+        self.text(cx, cy - 13.0, Align2::CENTER_CENTER, title, 6.0, theme::text()_DIM);
         for i in 0..pins {
             let c = v.p(left + pitch * i as f32, cy);
-            v.painter.rect_stroke(Rect::from_center_size(c, vec2(4.0, 4.0) * z), 0.5 * z, self.stroke(0.9, theme::TEXT_FAINT), StrokeKind::Inside);
+            v.painter.rect_stroke(Rect::from_center_size(c, vec2(4.0, 4.0) * z), 0.5 * z, self.stroke(0.9, theme::text()_FAINT), StrokeKind::Inside);
         }
         let a = v.p(left + pitch * cur as f32 - 4.0, cy - 5.0);
         let b = v.p(left + pitch * (cur + 1) as f32 + 4.0, cy + 5.0);
         v.painter.rect_filled(Rect::from_two_pos(a, b), 2.0 * z, alpha(col, 0.2));
-        v.painter.rect_stroke(Rect::from_two_pos(a, b), 2.0 * z, self.stroke(1.0, if resp.hovered() { theme::TEXT } else { col }), StrokeKind::Inside);
+        v.painter.rect_stroke(Rect::from_two_pos(a, b), 2.0 * z, self.stroke(1.0, if resp.hovered() { theme::text() } else { col }), StrokeKind::Inside);
         if count == 2 {
-            self.text(left - 8.0, cy, Align2::RIGHT_CENTER, labels[0], 5.8, if cur == 0 { col } else { theme::TEXT_FAINT });
-            self.text(left + w + 8.0, cy, Align2::LEFT_CENTER, labels[1], 5.8, if cur == 1 { col } else { theme::TEXT_FAINT });
+            self.text(left - 8.0, cy, Align2::RIGHT_CENTER, labels[0], 5.8, if cur == 0 { col } else { theme::text()_FAINT });
+            self.text(left + w + 8.0, cy, Align2::LEFT_CENTER, labels[1], 5.8, if cur == 1 { col } else { theme::text()_FAINT });
         } else {
             for (i, l) in labels.iter().enumerate() {
-                self.text(left + pitch * (i as f32 + 0.5), cy + 12.0, Align2::CENTER_CENTER, l, 5.2, if cur == i { col } else { theme::TEXT_FAINT });
+                self.text(left + pitch * (i as f32 + 0.5), cy + 12.0, Align2::CENTER_CENTER, l, 5.2, if cur == i { col } else { theme::text()_FAINT });
             }
         }
     }
@@ -991,7 +991,7 @@ impl Panel<'_, '_> {
         for (n, (k, title, names, col)) in sels.into_iter().enumerate() {
             self.col.set(col);
             let x = 676.0 + 142.0 * n as f32;
-            self.text(x + 55.0, R1 + 44.0, Align2::CENTER_CENTER, title, 6.2, theme::TEXT_DIM);
+            self.text(x + 55.0, R1 + 44.0, Align2::CENTER_CENTER, title, 6.2, theme::text()_DIM);
             self.selector(k, x, R1 + 52.0, x + 110.0, R1 + 70.0, names, 7.2);
         }
         self.col.set(MOD_COL);
@@ -999,18 +999,18 @@ impl Panel<'_, '_> {
         let ranges: Vec<&str> = ranges.iter().map(|s| s.as_str()).collect();
         for (n, (k, title)) in [(PB_DOWN, "BEND DOWN"), (PB_UP, "BEND UP")].into_iter().enumerate() {
             let x = 676.0 + 142.0 * n as f32;
-            self.text(x + 55.0, R1 + 104.0, Align2::CENTER_CENTER, title, 6.2, theme::TEXT_DIM);
+            self.text(x + 55.0, R1 + 104.0, Align2::CENTER_CENTER, title, 6.2, theme::text()_DIM);
             self.selector(k, x, R1 + 112.0, x + 110.0, R1 + 130.0, &ranges, 7.2);
         }
         let counts: [&str; MAX_VOICES] = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16"];
         for (n, (k, title)) in [(VOICES, "POLY VOICES"), (UNI_VOICES, "UNISON VOICES")].into_iter().enumerate() {
             let x = 960.0 + 142.0 * n as f32;
-            self.text(x + 55.0, R1 + 104.0, Align2::CENTER_CENTER, title, 6.2, theme::TEXT_DIM);
+            self.text(x + 55.0, R1 + 104.0, Align2::CENTER_CENTER, title, 6.2, theme::text()_DIM);
             let rect = v.r(x, R1 + 112.0, x + 110.0, R1 + 130.0);
             let resp = v.ui.interact(rect, self.uid(("count", k)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
-            v.painter.rect_filled(rect, 3.0 * z, theme::INSET);
+            v.painter.rect_filled(rect, 3.0 * z, theme::inset());
             v.painter.rect_stroke(rect, 3.0 * z, self.stroke(1.0, if resp.hovered() { VOICE_COL } else { alpha(VOICE_COL, 0.45) }), StrokeKind::Inside);
-            self.text(x + 55.0, R1 + 121.0, Align2::CENTER_CENTER, format!("{:.0}", p.get(k)), 7.2, theme::TEXT);
+            self.text(x + 55.0, R1 + 121.0, Align2::CENTER_CENTER, format!("{:.0}", p.get(k)), 7.2, theme::text());
             egui::Popup::menu(&resp).show(|ui| {
                 for (i, name) in counts.iter().enumerate() {
                     if ui.selectable_label(self.idx(k) == i + 1, *name).clicked() {
@@ -1028,7 +1028,7 @@ impl Panel<'_, '_> {
         .into_iter()
         .enumerate()
         {
-            self.text(954.0, R1 + 168.0 + 18.0 * n as f32, Align2::CENTER_CENTER, line, 5.8, theme::TEXT_FAINT);
+            self.text(954.0, R1 + 168.0 + 18.0 * n as f32, Align2::CENTER_CENTER, line, 5.8, theme::text()_FAINT);
         }
 
         // Wheels and controllers.
@@ -1036,15 +1036,15 @@ impl Panel<'_, '_> {
         self.knob(MOD_WHEEL, 100.0, 380.0, 16.0, "MOD WHEEL");
         self.knob(WM_LOW, 190.0, 380.0, 16.0, "LOW LIMIT");
         self.knob(WM_HIGH, 280.0, 380.0, 16.0, "HIGH LIMIT");
-        self.text(190.0, 420.0, Align2::CENTER_CENTER, "the wheel moves wheel-mod between the limits", 5.8, theme::TEXT_FAINT);
+        self.text(190.0, 420.0, Align2::CENTER_CENTER, "the wheel moves wheel-mod between the limits", 5.8, theme::text()_FAINT);
         for (n, (k, title)) in [(CC_A, "CONTROL A"), (CC_B, "CONTROL B")].into_iter().enumerate() {
             let x = 380.0 + 120.0 * n as f32;
-            self.text(x + 40.0, 360.0, Align2::CENTER_CENTER, title, 6.2, theme::TEXT_DIM);
+            self.text(x + 40.0, 360.0, Align2::CENTER_CENTER, title, 6.2, theme::text()_DIM);
             self.drag_box(k, x, 368.0, x + 80.0, 388.0);
         }
-        self.text(480.0, 404.0, Align2::CENTER_CENTER, "controllers for the matrix (drag)", 5.8, theme::TEXT_FAINT);
-        self.text(332.0, 476.0, Align2::CENTER_CENTER, "Mod wheel: CC 1 · Sustain: CC 64 · Aftertouch and bend are matrix sources too", 6.0, theme::TEXT_FAINT);
-        self.text(332.0, 494.0, Align2::CENTER_CENTER, format!("Program Change 1–{PROGRAMS} picks a program"), 6.0, theme::TEXT_FAINT);
+        self.text(480.0, 404.0, Align2::CENTER_CENTER, "controllers for the matrix (drag)", 5.8, theme::text()_FAINT);
+        self.text(332.0, 476.0, Align2::CENTER_CENTER, "Mod wheel: CC 1 · Sustain: CC 64 · Aftertouch and bend are matrix sources too", 6.0, theme::text()_FAINT);
+        self.text(332.0, 494.0, Align2::CENTER_CENTER, format!("Program Change 1–{PROGRAMS} picks a program"), 6.0, theme::text()_FAINT);
 
         // Voice panning.
         self.board("VOICE PANNING", 652.0, 308.0, 1256.0, 556.0, VOICE_COL);
@@ -1053,7 +1053,7 @@ impl Panel<'_, '_> {
             self.knob_with(PAN + i, cx, cy, 11.0, &format!("{}", i + 1), None);
             self.light(cx + 17.0, cy - 15.0, 2.5, p.viz[viz::LEVEL + i].get().sqrt(), VOICE_COL);
         }
-        self.text(954.0, 540.0, Align2::CENTER_CENTER, "each voice's place: left to right · double-click for the default spread", 5.8, theme::TEXT_FAINT);
+        self.text(954.0, 540.0, Align2::CENTER_CENTER, "each voice's place: left to right · double-click for the default spread", 5.8, theme::text()_FAINT);
     }
 
     // --- The lower panel -----------------------------------------------
@@ -1061,7 +1061,7 @@ impl Panel<'_, '_> {
     fn lower(&self, view: &mut View) {
         let (v, p, z) = (self.v, self.p, self.z());
         let y0 = LOWER;
-        v.painter.line_segment([v.p(16.0, y0 - 6.0), v.p(W - 16.0, y0 - 6.0)], self.stroke(1.0, theme::NODE_BORDER));
+        v.painter.line_segment([v.p(16.0, y0 - 6.0), v.p(W - 16.0, y0 - 6.0)], self.stroke(1.0, theme::node_border()));
         let effects = p.data[data::LOWER].get() > 0.5;
         // The distortion, then the chain's effects: which are on.
         let lit: Vec<bool> = std::iter::once(self.on(DIST_ON)).chain((0..5).map(|e| self.on(SWITCHES[e]))).collect();
@@ -1076,13 +1076,13 @@ impl Panel<'_, '_> {
             let edge = if on {
                 col
             } else if resp.hovered() {
-                theme::TEXT_DIM
+                theme::text()_DIM
             } else {
-                theme::CONTROL_HI
+                theme::control()_HI
             };
             v.painter.rect_stroke(rect, 6.0 * z, self.stroke(1.0, edge), StrokeKind::Inside);
             let cy = y0 + 30.0 + 72.0 * n as f32;
-            self.strong(49.0, cy, Align2::CENTER_CENTER, label, 7.0, if on { col } else { theme::TEXT_DIM });
+            self.strong(49.0, cy, Align2::CENTER_CENTER, label, 7.0, if on { col } else { theme::text()_DIM });
             if n == 1 {
                 for (i, &on) in lit.iter().enumerate() {
                     let c = v.p(34.0 + 6.0 * i as f32, cy + 14.0);
@@ -1093,7 +1093,7 @@ impl Panel<'_, '_> {
                     }
                 }
                 let count = lit.iter().filter(|&&l| l).count();
-                self.text(49.0, cy + 24.0, Align2::CENTER_CENTER, if count == 0 { "all off".to_owned() } else { format!("{count} on") }, 5.4, theme::TEXT_FAINT);
+                self.text(49.0, cy + 24.0, Align2::CENTER_CENTER, if count == 0 { "all off".to_owned() } else { format!("{count} on") }, 5.4, theme::text()_FAINT);
             }
             let resp = resp.on_hover_text(if n == 0 { "The keyboard, the wheels and the arpeggiator" } else { "Distortion, the effects chain and its five effects" });
             if resp.clicked() {
@@ -1118,13 +1118,13 @@ impl Panel<'_, '_> {
         for (n, label) in ["PB", "MOD"].into_iter().enumerate() {
             let x = LOW_X + 2.0 + 30.0 * n as f32;
             let rect = v.r(x, top, x + 20.0, bottom);
-            v.painter.rect_filled(rect, 4.0 * z, theme::INSET);
-            v.painter.rect_stroke(rect, 4.0 * z, self.stroke(1.0, theme::CONTROL_HI), StrokeKind::Inside);
+            v.painter.rect_filled(rect, 4.0 * z, theme::inset());
+            v.painter.rect_stroke(rect, 4.0 * z, self.stroke(1.0, theme::control()_HI), StrokeKind::Inside);
             let value = if n == 0 { p.viz[viz::BEND].get() * 0.5 + 0.5 } else { p.viz[viz::WHEEL].get() };
             let y = bottom - 5.0 - travel * value.clamp(0.0, 1.0);
             if n == 0 {
                 let mid = bottom - 5.0 - travel * 0.5;
-                v.painter.line_segment([v.p(x + 4.0, mid), v.p(x + 16.0, mid)], self.stroke(0.8, theme::TEXT_FAINT));
+                v.painter.line_segment([v.p(x + 4.0, mid), v.p(x + 16.0, mid)], self.stroke(0.8, theme::text()_FAINT));
             } else {
                 v.painter.rect_filled(v.r(x + 3.0, y, x + 17.0, bottom - 3.0), 2.0 * z, alpha(MOD_COL, 0.18));
             }
@@ -1143,7 +1143,7 @@ impl Panel<'_, '_> {
             } else if n == 0 && p.viz[viz::PANEL_BEND].get() != 0.0 {
                 p.viz[viz::PANEL_BEND].set(0.0);
             }
-            self.text(x + 10.0, bottom + 9.0, Align2::CENTER_CENTER, label, 5.6, theme::TEXT_FAINT);
+            self.text(x + 10.0, bottom + 9.0, Align2::CENTER_CENTER, label, 5.6, theme::text()_FAINT);
         }
         // The wheel-mod limits: triangles beside the mod wheel.
         let x = LOW_X + 56.0;
@@ -1151,7 +1151,7 @@ impl Panel<'_, '_> {
             let value = p.get(k);
             let y = bottom - 5.0 - travel * value;
             let pts = vec![v.p(x, y), v.p(x + 7.0, y - 4.5), v.p(x + 7.0, y + 4.5)];
-            v.painter.add(Shape::convex_polygon(pts, if filled { MOD_COL } else { theme::INSET }, self.stroke(1.0, MOD_COL)));
+            v.painter.add(Shape::convex_polygon(pts, if filled { MOD_COL } else { theme::inset() }, self.stroke(1.0, MOD_COL)));
             let rect = v.r(x - 2.0, y - 6.0, x + 11.0, y + 6.0);
             let resp = v.ui.interact(rect, self.uid(("limit", k)), Sense::drag()).on_hover_cursor(CursorIcon::ResizeVertical).on_hover_text(DEF.params[k].name);
             if resp.dragged() {
@@ -1167,12 +1167,12 @@ impl Panel<'_, '_> {
         self.section("ARPEGGIATOR", x0, x1, y, ARP_COL);
         self.button(ARP_ON, x0 + 20.0, y + 38.0, 34.0, "ARP");
         self.button(ARP_LATCH, x0 + 20.0, y + 62.0, 34.0, "LATCH");
-        self.text(x0 + 46.0, y + 25.0, Align2::LEFT_CENTER, "MODE", 5.4, theme::TEXT_FAINT);
+        self.text(x0 + 46.0, y + 25.0, Align2::LEFT_CENTER, "MODE", 5.4, theme::text()_FAINT);
         self.selector(ARP_MODE, x0 + 46.0, y + 30.0, x0 + 110.0, y + 46.0, &ARP_MODES, 6.8);
         let rates: Vec<&str> = ARP_RATES.iter().map(|r| r.0).collect();
-        self.text(x0 + 116.0, y + 25.0, Align2::LEFT_CENTER, "RATE", 5.4, theme::TEXT_FAINT);
+        self.text(x0 + 116.0, y + 25.0, Align2::LEFT_CENTER, "RATE", 5.4, theme::text()_FAINT);
         self.selector(ARP_RATE, x0 + 116.0, y + 30.0, x0 + 162.0, y + 46.0, &rates, 6.8);
-        self.text(x0 + 170.0, y + 25.0, Align2::LEFT_CENTER, "OCTAVES", 5.4, theme::TEXT_FAINT);
+        self.text(x0 + 170.0, y + 25.0, Align2::LEFT_CENTER, "OCTAVES", 5.4, theme::text()_FAINT);
         let oct = self.idx(ARP_OCT).clamp(1, 4);
         for n in 1..=4 {
             let resp = self.push(("oct", n), x0 + 162.0 + 14.0 * n as f32, y + 38.0, 12.0, &format!("{n}"), oct == n, "Octaves");
@@ -1194,7 +1194,7 @@ impl Panel<'_, '_> {
         } else {
             "play a chord".to_owned()
         };
-        self.text(x0 + 196.0, y + 76.0, Align2::CENTER_CENTER, state, 5.8, theme::TEXT_DIM);
+        self.text(x0 + 196.0, y + 76.0, Align2::CENTER_CENTER, state, 5.8, theme::text()_DIM);
         if self.on(ARP_LATCH) && held > 0 {
             let resp = self.push("unlatch", x0 + 196.0, y + 96.0, 40.0, "CLEAR", false, "Let go of the latched chord");
             if resp.clicked() {
@@ -1256,18 +1256,18 @@ impl Panel<'_, '_> {
         for (i, &n) in whites.iter().enumerate() {
             let r = v.r(x0 + ww * i as f32 + 0.6, top, x0 + ww * (i + 1) as f32 - 0.6, bottom);
             let on = lit[n as usize];
-            v.painter.rect_filled(r, 2.5 * z, if on { alpha(key_col, 0.55) } else { theme::CONTROL });
-            v.painter.rect_stroke(r, 2.5 * z, self.stroke(1.0, if on { key_col } else { theme::CONTROL_HI }), StrokeKind::Inside);
+            v.painter.rect_filled(r, 2.5 * z, if on { alpha(key_col, 0.55) } else { theme::control() });
+            v.painter.rect_stroke(r, 2.5 * z, self.stroke(1.0, if on { key_col } else { theme::control()_HI }), StrokeKind::Inside);
             if n % 12 == 0 {
-                self.text(x0 + ww * (i as f32 + 0.5), bottom - 8.0, Align2::CENTER_CENTER, note_label(n as i32), 5.2, theme::TEXT_FAINT);
+                self.text(x0 + ww * (i as f32 + 0.5), bottom - 8.0, Align2::CENTER_CENTER, note_label(n as i32), 5.2, theme::text()_FAINT);
             }
         }
         for n in (LOW_KEY..LOW_KEY + KEYS as u8).filter(|n| is_black(*n)) {
             let (a, b) = black_span(n);
             let r = v.r(a, top, b, black_bottom);
             let on = lit[n as usize];
-            v.painter.rect_filled(r, 2.0 * z, if on { theme::mix(key_col, theme::INSET, 0.35) } else { theme::INSET });
-            v.painter.rect_stroke(r, 2.0 * z, self.stroke(1.0, if on { key_col } else { theme::CONTROL_HI }), StrokeKind::Inside);
+            v.painter.rect_filled(r, 2.0 * z, if on { theme::mix(key_col, theme::inset(), 0.35) } else { theme::inset() });
+            v.painter.rect_stroke(r, 2.0 * z, self.stroke(1.0, if on { key_col } else { theme::control()_HI }), StrokeKind::Inside);
         }
     }
 
@@ -1288,7 +1288,7 @@ impl Panel<'_, '_> {
         self.knob(DIST_AMOUNT, x0 + 26.0, ky + 10.0, 14.0, if corrode { "RATE" } else { "AMOUNT" });
         self.knob(DIST_TONE, x0 + 78.0, ky + 10.0, 14.0, if corrode { "CRUSH" } else { "TONE" });
         self.knob(DIST_MIX, x0 + 130.0, ky + 10.0, 14.0, "MIX");
-        self.text((x0 + x1) * 0.5, ky2 + 22.0, Align2::CENTER_CENTER, "one per voice, before the chain", 5.6, theme::TEXT_FAINT);
+        self.text((x0 + x1) * 0.5, ky2 + 22.0, Align2::CENTER_CENTER, "one per voice, before the chain", 5.6, theme::text()_FAINT);
 
         // The chain: click to switch, drag to move.
         let (x0, x1) = (LOW_X + 168.0, LOW_X + 256.0);
@@ -1310,13 +1310,13 @@ impl Panel<'_, '_> {
             let edge = if on {
                 FX_COL
             } else if resp.hovered() {
-                theme::TEXT_DIM
+                theme::text()_DIM
             } else {
-                theme::CONTROL_HI
+                theme::control()_HI
             };
             v.painter.rect_stroke(rect, 3.0 * z, self.stroke(1.0, edge), StrokeKind::Inside);
-            self.text(x0 + 6.0, cy + (cell_h - 4.0) * 0.5, Align2::LEFT_CENTER, format!("{}", slot_i + 1), 5.4, theme::TEXT_FAINT);
-            self.text(x0 + 16.0, cy + (cell_h - 4.0) * 0.5, Align2::LEFT_CENTER, EFFECTS[e], 6.0, if on { FX_COL } else { theme::TEXT_DIM });
+            self.text(x0 + 6.0, cy + (cell_h - 4.0) * 0.5, Align2::LEFT_CENTER, format!("{}", slot_i + 1), 5.4, theme::text()_FAINT);
+            self.text(x0 + 16.0, cy + (cell_h - 4.0) * 0.5, Align2::LEFT_CENTER, EFFECTS[e], 6.0, if on { FX_COL } else { theme::text()_DIM });
             let resp = resp.on_hover_text("Click: switch in or out · drag: move it in the chain");
             if resp.clicked() {
                 self.set(SWITCHES[e], if on { 0.0 } else { 1.0 });
@@ -1361,7 +1361,7 @@ impl Panel<'_, '_> {
             (ECHO_MODE, (172.0, 226.0), &ECHO_MODES[..], "MODE"),
             (ECHO_MOD, (232.0, 272.0), &ECHO_MODS[..], "MOD"),
         ] {
-            self.text(x0 + fx0, y + 21.0, Align2::LEFT_CENTER, label, 5.2, theme::TEXT_FAINT);
+            self.text(x0 + fx0, y + 21.0, Align2::LEFT_CENTER, label, 5.2, theme::text()_FAINT);
             self.selector(k, x0 + fx0, y + 26.0, x0 + fx1, y + 42.0, names, 6.6);
         }
         let range = self.idx(ECHO_RANGE).min(3);

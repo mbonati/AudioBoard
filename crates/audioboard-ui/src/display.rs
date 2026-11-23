@@ -11,7 +11,7 @@ use crate::widgets::{MeterState, hmeter};
 
 /// The dark inset a display sits in, `rect` on screen.
 pub fn inset(p: &Painter, rect: Rect, z: f32) {
-    p.rect_filled(rect, 4.0 * z, theme::INSET);
+    p.rect_filled(rect, 4.0 * z, theme::inset());
 }
 
 /// A display area: clipped, padded, in the node's colour.
@@ -50,7 +50,7 @@ impl Screen<'_> {
     pub fn guide(&self, y: f32) {
         self.p.line_segment(
             [pos2(self.rect.left(), y), pos2(self.rect.right(), y)],
-            Stroke::new(1.0 * self.z, theme::CONTROL),
+            Stroke::new(1.0 * self.z, theme::control()),
         );
     }
 
