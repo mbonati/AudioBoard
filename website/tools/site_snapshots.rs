@@ -769,6 +769,36 @@ mod site_snap {
             });
         }
 
+        // Quartz: a factory voice held on its keyboard; Stormo's swarm.
+        for (name, voice) in [("quartz", 2usize), ("quartz-bell", 6)] {
+            if !want(name) {
+                continue;
+            }
+            let mut s = scene(112.0);
+            let id = add(&mut s, ModuleKind::Quartz, 0.0, 0.0);
+            let p = module_params(&s.g, id);
+            md::quartz::load_voice(&p, voice);
+            node_shot_with(name, FRAMES, &mut s, id, |_, f| {
+                p.viz[md::quartz::viz::PANEL_KEY].set(if f > 20 { 61.0 } else { 0.0 });
+            });
+        }
+
+        for (name, preset, page) in [("stormo", 1usize, 13.0), ("stormo-idle", 2, 4.0)] {
+            if !want(name) {
+                continue;
+            }
+            let mut s = scene(112.0);
+            let id = add(&mut s, ModuleKind::Stormo, 0.0, 0.0);
+            let p = module_params(&s.g, id);
+            md::stormo::load_preset(&p, preset);
+            p.data[md::stormo::data::PAGE].set(page);
+            let play = name == "stormo";
+            node_shot_with(name, FRAMES, &mut s, id, |_, f| {
+                let key = if play && f > 20 { 61.0 } else { 0.0 };
+                p.viz[md::stormo::viz::PANEL_KEY].set(key);
+            });
+        }
+
         // Splitter: a loop of its own cut at its transients (SLICE, MIDI),
         // and the built-in kit on its Euclidean rings (SEQUENCE).
         for (name, tab, mode, loaded) in [

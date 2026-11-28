@@ -13,6 +13,7 @@ pub mod drone;
 pub mod equalizer;
 pub mod filter;
 pub mod fjord;
+pub mod fm;
 pub mod frakture;
 pub mod granular;
 pub mod iris;
@@ -29,6 +30,7 @@ pub mod oversample;
 pub mod pingpong;
 pub mod pops;
 pub mod prism;
+pub mod quartz;
 pub mod random;
 pub mod resonator;
 pub mod reverb;
@@ -36,6 +38,7 @@ pub mod sequencer;
 pub mod sibyl;
 pub mod splitter;
 pub mod steps;
+pub mod stormo;
 pub mod tape;
 pub mod vesper;
 
@@ -88,12 +91,14 @@ pub enum ModuleKind {
     Looper,
     Iris,
     Sibyl,
+    Quartz,
+    Stormo,
     /// A node from a node plugin (see `audio::node_plugin`).
     Ext(super::node_plugin::ExtId),
 }
 
 impl ModuleKind {
-    pub const ALL: [ModuleKind; 33] = [
+    pub const ALL: [ModuleKind; 35] = [
         ModuleKind::Drone,
         ModuleKind::Aether,
         ModuleKind::Larsen,
@@ -127,6 +132,8 @@ impl ModuleKind {
         ModuleKind::Looper,
         ModuleKind::Iris,
         ModuleKind::Sibyl,
+        ModuleKind::Quartz,
+        ModuleKind::Stormo,
     ];
 
     pub fn def(self) -> &'static ModuleDef {
@@ -164,6 +171,8 @@ impl ModuleKind {
             ModuleKind::Looper => &looper::DEF,
             ModuleKind::Iris => &iris::DEF,
             ModuleKind::Sibyl => &sibyl::DEF,
+            ModuleKind::Quartz => &quartz::DEF,
+            ModuleKind::Stormo => &stormo::DEF,
             ModuleKind::Ext(e) => super::node_plugin::ext(e).def,
         }
     }
@@ -237,6 +246,8 @@ impl ModuleKind {
                 sample_rate,
             )),
             ModuleKind::Sibyl => Box::new(sibyl::Sibyl::new(params, midi.clone(), sample_rate)),
+            ModuleKind::Quartz => Box::new(quartz::Quartz::new(params, midi.clone(), sample_rate)),
+            ModuleKind::Stormo => Box::new(stormo::Stormo::new(params, midi.clone(), sample_rate)),
             ModuleKind::Ext(e) => super::node_plugin::processor(e, params, sample_rate),
         }
     }

@@ -37,7 +37,7 @@
 <main id="main">
 <section class="page-hero">
   <div class="wrap">
-    <span class="label">Catalogue · 35 built-in nodes + plugins</span>
+    <span class="label">Catalogue · 38 built-in nodes + plugins</span>
     <h1>Every node, <span class="outline" style="--accent: var(--teal)">on the board.</span></h1>
     <p class="lead">Sources make sound, textures and effects shape it, MIDI nodes play and move it, mixers bring it home, and Iris turns it into pictures. Every cable is stereo; mono sources write the same signal to both sides. Click a node for its full description; every picture is its real panel, rendered from the app while the board plays.</p>
   </div>
@@ -68,7 +68,7 @@
   <header>
     <span class="label">01 · Sources</span>
     <h2>Sources</h2>
-    <p>Oscillators and drones, generative instruments, drum machines, a feedback loop and the audio interface's own inputs. Like every source, they play while the transport runs (or while keys are held) and rest, costing nothing, once quiet.</p>
+    <p>Oscillators and drones, generative instruments, synthesizers (analog, FM and a swarm), drum machines, a feedback loop and the audio interface's own inputs. Like every source, they play while the transport runs (or while keys are held) and rest, costing nothing, once quiet.</p>
   </header>
   <div class="cards">
 
@@ -150,6 +150,55 @@
           <li><b>MixType</b>: CLEAN, DREAM, DUST or EDGE over the whole mix.</li>
           <li><b>PLAY</b> on, it plays with the transport and sends its score as MIDI (chord, bass, shimmer on channels 1–3); off, your keys play it.</li>
           <li><b>PRESETS</b>: twenty-eight scenes, the last eight for large-scale film scoring.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="card" id="node-sibyl" tabindex="0" role="button" data-group="sources" data-group-label="Sources" data-name="Sibyl" data-after="after the Sequential Prophet-5 and u-he's Repro-5" data-shots="assets/shots/sibyl.png|SYNTH · KEYS,assets/shots/sibyl-fx.png|EFFECTS,assets/shots/sibyl-tweaks.png|TWEAKS" data-keys="polysynth analog prophet repro poly-mod unison arpeggiator programs pad lead bass" style="--accent: var(--blue)">
+      <div class="thumb"><img src="assets/shots/sibyl.png" width="2736" height="1560" loading="lazy" alt="Sibyl panel"></div>
+      <div class="meta"><div class="row"><h3>Sibyl</h3><span class="label">Analog polysynth</span></div>
+        <p>Sixteen analog voices: two oscillators, a four-pole filter that sings and self-oscillates, poly-mod, unison and an arpeggiator on the board's clock.</p></div>
+      <div class="more">
+        <p>The panel follows Repro-5's synth view in three rows, in the board's flat style; the engine, sounds and names are its own.</p>
+        <ul>
+          <li><b>Voice.</b> Oscillator A (saw, pulse, hard sync to B) and B (saw, triangle, pulse, LO FREQ, keyboard tracking), a mixer with noise, a CEM3320-style low pass, two envelopes. Oscillators are band-limited, so sync and audio-rate FM stay clean.</li>
+          <li><b>VOICE MOD.</b> The filter envelope and oscillator B to A's pitch, A's pulse width and the cutoff: sync sweeps, metallic FM, growls.</li>
+          <li><b>LFO, WHEEL MOD, UNISON, GLIDE.</b> Up to sixteen voices, stacked on one key with a note priority; VOICE DETUNE makes them differ and drift like real voice cards.</li>
+          <li><b>MOD MATRIX</b> with curves, rectifier, quantizer, sample &amp; hold and slew; <b>TWEAKS</b> (jumpers and models), a distortion per voice and five reorderable effects: tape, bucket-brigade echo, res·EQ, plate, conditioner.</li>
+          <li><b>Programs.</b> Forty-eight of our own in six banks, RECORD to keep yours, and a preset library by category.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="card" id="node-quartz" tabindex="0" role="button" data-group="sources" data-group-label="Sources" data-name="Quartz" data-after="after the Yamaha TX81Z" data-shots="assets/shots/quartz.png|GLASS PIANO,assets/shots/quartz-bell.png|BELL TOWER" data-keys="fm synth yamaha tx81z dx 4-op operator algorithm waveform bell electric piano bass microtune" style="--accent: var(--blue)">
+      <div class="thumb"><img src="assets/shots/quartz.png" width="2536" height="1512" loading="lazy" alt="Quartz panel"></div>
+      <div class="meta"><div class="row"><h3>Quartz</h3><span class="label">4-op FM</span></div>
+        <p>Eight voices of four-operator FM with the TX81Z's eight waveforms, eight algorithms and its parameters, from glassy keys and bells to slap basses and brass.</p></div>
+      <div class="more">
+        <p>Built from the TX81Z owner's manual: the same parameters with the same ranges, its own sounds and name.</p>
+        <ul>
+          <li><b>Operators.</b> Eight waveforms each (W1 sine to W8, the harmonics of the manual's table), frequency as a RATIO (0.50–27.57, four families) or FIXED (8 Hz to 32 kHz), DETUNE, output level.</li>
+          <li><b>Envelopes.</b> AR, D1R, D1L, D2R, RR and EG SHIFT, drawn per operator; rate and level scaling, key velocity, EG bias and amplitude-modulation sensitivity.</li>
+          <li><b>Algorithms.</b> The eight, drawn as diagrams to click, with feedback on operator 4.</li>
+          <li><b>LFO and FUNCTION.</b> Saw, square, triangle, S/Hold with delay and sync; poly or mono, full-time or fingered portamento, pitch bend, the mod wheel and the breath controller, transpose, the pseudo-reverb.</li>
+          <li><b>Effects</b> worked on the notes, as on the TX: a transposed DELAY that replays them, PAN between the outputs, a CHORD from one key. <b>Microtune</b>: seven historical temperaments, quarter and eighth tones.</li>
+          <li><b>Voices.</b> Sixteen of our own, and a keyboard on the panel.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="card" id="node-stormo" tabindex="0" role="button" data-group="sources" data-group-label="Sources" data-name="Stormo" data-after="a motion-based swarm synthesizer" data-shots="assets/shots/stormo.png|PLAYING,assets/shots/stormo-idle.png|THE FIELD" data-keys="swarm flock boids physics generative fm motion orbit particles nodes scale quantize" style="--accent: var(--blue)">
+      <div class="thumb"><img src="assets/shots/stormo.png" width="2056" height="1112" loading="lazy" alt="Stormo panel"></div>
+      <div class="meta"><div class="row"><h3>Stormo</h3><span class="label">Swarm synth</span></div>
+        <p>Every note is a swarm: up to forty-eight FM voices that orbit, flock and drift, and sound like where they are.</p></div>
+      <div class="more">
+        <p>Each node is a voice of Quartz's FM engine. The field on the left shows every swarm as dots linked to their nearest neighbours; fourteen tiles on the right each open a page (click) or change its main setting (drag).</p>
+        <ul>
+          <li><b>The field.</b> A SHAPE of nodes round the attractor (drag the ✕), held by an ORBIT, a FLOCK, a DRIFT or a STORM; SPIN, TILT, CHAOS, DAMPING and SPEED move it, a BOUNDARY (edge, circle, wrap) keeps it in.</li>
+          <li><b>Place is sound.</b> X and Y, bent by WARP, go to pitch (quantized to a scale on the root), pan, brightness, level or detune; the distance from the attractor dims and darkens a node, its speed bends its pitch.</li>
+          <li><b>Timbre.</b> One of Quartz's voices for the nodes, STACK in unison, octaves, fifths, a triad or harmonics; SCATTER brings them in one by one, and a resonant filter ends each voice.</li>
+          <li><b>TRIGGER</b> re-strikes the nodes when they hit the boundary, or as a sweep of the board's clock passes them (1/4 to 1/32).</li>
+          <li><b>Presets.</b> Eight, from Murmur and Karst to Glass Rain and Ember. Hold the field to play the root.</li>
         </ul>
       </div>
     </article>

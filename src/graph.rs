@@ -77,6 +77,8 @@ impl NodeType {
                 NodeType::Module(ModuleKind::Random),
                 NodeType::Module(ModuleKind::Pops),
                 NodeType::Module(ModuleKind::Sibyl),
+                NodeType::Module(ModuleKind::Quartz),
+                NodeType::Module(ModuleKind::Stormo),
                 NodeType::Module(ModuleKind::Fjord),
                 NodeType::Module(ModuleKind::Splitter),
                 NodeType::Module(ModuleKind::Nullpunkt),

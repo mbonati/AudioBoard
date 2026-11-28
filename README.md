@@ -301,6 +301,76 @@ Performance: the slow parts of a voice (envelopes, glide, the matrix, pitches, l
 every 16 frames (or at each MIDI event) and ramped; the oscillators run per voice, the filter four voices
 at a time in lanes; idle voices cost nothing and the node rests when silent.
 
+**Quartz**: an eight-voice, four-operator FM synthesizer after the Yamaha TX81Z, built from its owner's
+manual, for glassy keys, bells, slap basses, brass and the metallic sounds only FM makes. Its engine, sounds and
+name are its own; the parameters are the TX's, with the same ranges.
+
+- **Operators.** Four, each with one of the eight TX waveforms (W1 sine; W2 its cusped variant, odd partials;
+  W3 and W4 their positive half only; W5–W8 the same at twice the rate in the first half of the period and
+  silent in the second, W7 and W8 rectified — the harmonics of the manual's table), shown as icons to click.
+  The frequency is a RATIO of the key (CRS 0.50–25.95 in the TX's four families on 1, √2, π/2 and √3, FINE
+  adds sixteenths, up to 27.57) or FIX in Hz (eight ranges, 8 Hz to 32 kHz); DET ±3. OUT 0–99 is the level
+  (a carrier's loudness, a modulator's brightness).
+- **Envelopes.** AR, D1R, D1L, D2R, RR with the TX's ranges (rates 0–31, D1L 0–15, RR 1–15) and EG SHIFT
+  (OFF, 48, 24, 12 dB: a modulator moving over part of its range only), drawn as a small envelope per
+  operator. RS (rate scaling) and LS (level scaling) follow the key; KVS is the velocity sensitivity, EBS
+  the EG bias sensitivity to the breath controller, AME lets the LFO move the operator's level.
+- **Algorithms and feedback.** The eight algorithms, drawn as diagrams to click (carriers orange, modulators
+  blue); operator 4 feeds itself back (FEEDBACK 0–7).
+- **LFO.** SAW UP, SQUARE, TRIANGLE, S/HOLD; SPEED 0–99 (about 0.007 to 50 Hz), DELAY (up to 15 s), PMD and
+  AMD, SYNC (restart on every key), and the voice's PMS (0–7) and AMS (0–3).
+- **Function.** POLY or MONO, NOTES (1–8), PB RANGE (0–12), portamento FULL or FINGERED and its time, MW
+  PITCH and MW AMP (the mod wheel), BC PITCH, BC AMP, BC P BIAS and BC EG BIAS (the breath controller, CC 2,
+  or aftertouch), MIDDLE C (transpose ±2 octaves) and the pseudo-REVERB (once operator 1 is 18 dB down after
+  the key is let go, every release slows to its rate).
+- **Effect.** As on the TX, in the note domain: DELAY replays each key (TIME 0.01–1.28 s, SHIFT ±24
+  semitones, FEEDBACK repeats, LEVEL), PAN throws each note between the outputs by the LFO, the velocity or
+  the key (I→II, II→I, alternating; RANGE), CHORD plays a chord from one key (one chord for every key,
+  where the TX keeps one per key).
+- **Microtune.** EQUAL, the seven temperaments of the manual's table (pure major and minor, meantone,
+  Pythagorean, Werckmeister, Kirnberger, Vallotti & Young) on any KEY, quarter and eighth tones.
+- **Voices.** Sixteen factory voices of our own (‹ › on the LCD, Program Change 1–16), from Solid Bass, Glass
+  Piano and Tine Keys to Bell Tower, Metal Drop and Space Pad; ALL OFF silences every voice. The panel's
+  keyboard plays it; mod wheel CC 1, breath CC 2, portamento time CC 5, volume CC 7, sustain CC 64,
+  portamento on/off CC 65, bend.
+
+Not there: the TX's performance mode (eight instruments on eight channels), the two user scales and the
+128 ROM voices.
+
+Performance: envelopes, pitch and levels are worked out every 16 frames and ramped; the operators read
+interpolated wave tables, one loop per algorithm. Idle voices cost nothing.
+
+**Stormo**: a motion-based swarm synthesizer. Every note is a swarm of nodes, up to forty-eight signal paths,
+each one a four-operator FM voice of Quartz's engine, and each driven by where it is and how it moves. The
+panel is drawn in dots and thin lines: the field on the left, fourteen tiles on the right (click one to edit
+its page, drag it up or down to change its main setting, double-click to reset it), the nodes' lanes and the
+page's controls under them, and pills on top for VOICES, TRIGGER, ROOT / SCALE and the preset.
+
+- **The field.** A note lays its nodes out in a SHAPE (cluster, ring, line, grid, spiral, scatter) of a
+  SIZE round the attractor (the ✕: drag it, double-click to centre it) and lets them go. The FIELD holds them
+  (ORBIT on a ring of RADIUS, FLOCK together, DRIFT on a slow current, STORM after a wandering attractor;
+  GRAVITY, COHESION), SPIN turns them, TILT leans the whole field one way, CHAOS kicks them, DAMPING slows
+  them, SPEED is the pace of it all. The BOUNDARY keeps them in: EDGE (walls), CIRCLE or WRAP, with BOUNCE;
+  off, they are only drawn back from far away. Every voice's nodes are drawn as dots (three groups, three
+  colours), linked to their nearest neighbour and larger as they sound; with nothing playing an idle swarm
+  shows how the settings move. Hold the mouse in the field to play the root.
+- **Where it is, is what it sounds like.** X and Y (bent by WARP: BEND, FOLD or STEP) each go to PAN, PITCH,
+  BRIGHT (the FM modulators' level), LEVEL or DETUNE with an AMOUNT; PITCH spans RANGE (±24 semitones) and is
+  quantized to the SCALE on the ROOT (major, minor, the modes, pentatonics, whole tone, chromatic, or free),
+  with GLIDE between the steps. The distance from the attractor dims the node (DEPTH) and darkens or
+  brightens it (FOCUS); its speed bends its pitch (DOPPLER). STACK puts the groups in unison, octaves,
+  fifths, a triad or on the harmonic series.
+- **Timbre.** The nodes play one of Quartz's sixteen voices (FM VOICE), BRIGHT scales their modulators,
+  DETUNE spreads them. Each node has an envelope (ATTACK, DECAY, SUSTAIN, RELEASE) and SCATTER brings them in
+  one by one. TRIGGER re-strikes the FM voices: HIT when a node hits the boundary or leaves the orbit's ring,
+  or /4 to /32, as a sweep of the board's clock passes it (drawn as a dashed hand). Each voice ends in a
+  resonant FILTER (LP, BP, HP; CUTOFF, RESO, ENV, following the key).
+- **Presets.** Eight (Murmur, Karst, Lantern, Tidepool, Hive, Comet, Glass Rain, Ember), on the pill or by
+  Program Change.
+
+Cost: every node is an FM voice, so the swarm is held to 64 nodes over all the voices (with eight voices,
+eight nodes each); the NODES page says how many each voice gets.
+
 **Fjord**: a four-channel drum synthesizer after the Clavia Nord Drum (the first one, 2012), with a step
 sequencer. Each channel plays one sound at a time, blended from three components, each with its own
 parameters, as on the Nord Drum:
@@ -2003,6 +2073,13 @@ src/
 │   │   ├── sibyl/      voice (oscillators with BLEP, sync and FM; the CEM3320-style filter in lanes of four
 │   │   │               voices; envelopes; distortion; the patch decoded), mods (LFO, wheel noise, the matrix
 │   │   │               and its modifiers), fx (tape, echo, res·eq, plate, conditioner), arp, bank (programs)
+│   │   ├── fm.rs       the four-operator FM engine after the TX81Z (Quartz, Stormo): waveforms and their tables,
+│   │   │               ratios and fixed frequencies, envelopes, algorithms, feedback, LFO, microtonal scales
+│   │   ├── quartz.rs   Quartz (after the Yamaha TX81Z): parameters, factory voices, keys, mono and portamento,
+│   │   │               the note effects (delay, pan, chord), MIDI, the output
+│   │   ├── stormo.rs   Stormo (swarm synth): parameters, presets, voices of FM nodes, the mapping from place
+│   │   │               to sound, triggers, the voice filter
+│   │   ├── stormo/     swarm (the field's physics: shapes, fields, spin, tilt, chaos, boundaries, hits)
 │   │   ├── fjord.rs    Fjord (after the Clavia Nord Drum): the channels' knobs, programs (packed three settings
 │   │   │               to a value, store, Memory Protect), MIDI in and out, learning, Local, the step lanes
 │   │   ├── fjord/      voice (tone, noise and click, gates, sweeps, bend, punch, the tone's ADSRs, held notes,
@@ -2130,6 +2207,10 @@ src/
 │   │               MIDI (the keyboard, LEARN)
 │   ├── sibyl.rs    the Sibyl panel: control bar and programmer, the three rows, the tweaks' boards, keys
 │   │               with wheels and arpeggiator, the effects and their chain
+│   ├── quartz.rs   the Quartz panel: LCD and voices, the algorithms' diagrams, a row per operator (wave icons,
+│   │               frequency, knobs, its envelope drawn), LFO, function, effect, microtune, wheels, keys
+│   ├── stormo.rs   the Stormo panel: the field (swarms, attractor, ring, boundary, sweep), the pills, the
+│   │               fourteen tiles and their dot figures, the nodes' lanes, each page's controls
 │   ├── fjord.rs    the Fjord panel: the bank map of the 99 programs, channel keys and their lights, ALEA and
 │   │               its die; pages SOUND (the strike's outlines, NOISE, TONE, CLICK, MIXER, AMP and FILTER
 │   │               ENV) and SEQUENCER · MIDI (the lanes, SYSTEM); the node resizes with the page
@@ -2188,7 +2269,7 @@ modes, toggle) and a `Processor`, an entry in `ModuleKind` and, in `ui/modules.r
 A node that should ship on its own is a plugin instead (see [Writing nodes](#writing-nodes-sdk-plugins-and-ui-kit)):
 it needs no change to the app.
 The panel (ports, selector, knobs) is generated from the definition; Frakture, too large for the generic
-panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`), Prism (`ui/prism.rs`), Magma (`ui/magma.rs`), Tape (`ui/tape.rs`), Nullpunkt (`ui/nullpunkt.rs`), Aether (`ui/aether.rs`), Larsen (`ui/larsen.rs`), Vesper (`ui/vesper.rs`), the MIDI Looper (`ui/looper.rs`), Automa (`ui/automa.rs`), Colloid (`ui/colloid.rs`), Orrery (`ui/orrery.rs`), Sibyl (`ui/sibyl.rs`), Fjord (`ui/fjord.rs`), Splitter (`ui/splitter.rs`), Iris (`ui/iris.rs`, sized by the user) and Pops 66
+panel, draws its own (`ui/frakture.rs`), and so do the Equalizer (`ui/equalizer.rs`), Prism (`ui/prism.rs`), Magma (`ui/magma.rs`), Tape (`ui/tape.rs`), Nullpunkt (`ui/nullpunkt.rs`), Aether (`ui/aether.rs`), Larsen (`ui/larsen.rs`), Vesper (`ui/vesper.rs`), the MIDI Looper (`ui/looper.rs`), Automa (`ui/automa.rs`), Colloid (`ui/colloid.rs`), Orrery (`ui/orrery.rs`), Sibyl (`ui/sibyl.rs`), Quartz (`ui/quartz.rs`), Stormo (`ui/stormo.rs`), Fjord (`ui/fjord.rs`), Splitter (`ui/splitter.rs`), Iris (`ui/iris.rs`, sized by the user) and Pops 66
 (`ui/pops.rs`; its size, like Fjord's and Iris's, follows its settings through `modules::size_of`). Frakture's hexagon runs on the audio thread, block by block: the panel
 hands it the mouse through the module's display values, so paths keep time even when the window doesn't
 redraw.
