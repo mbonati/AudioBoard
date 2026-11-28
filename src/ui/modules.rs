@@ -17,7 +17,7 @@ use crate::audio::modules::{
     ModuleDef, ModuleKind, ModuleParams, aether, arpeggiator, audio_in, automa, colloid, delay,
     drone, equalizer, filter, fjord, frakture, granular, iris, larsen, looper, magma, midi_cc,
     midi_in, midi_note, midicer, nullpunkt, orrery, pingpong, pops, prism, random, resonator,
-    reverb, sequencer, sibyl, splitter, steps, tape, vesper,
+    quartz, reverb, sequencer, sibyl, splitter, steps, stormo, tape, vesper,
 };
 use crate::audio::params::{
     DIVISIONS, NOTE_NAMES, NOTE_VALUES, format_hz, format_seconds, note_label, sync_division,
@@ -94,6 +94,12 @@ pub fn size(def: &ModuleDef) -> Vec2 {
     }
     if std::ptr::eq(def, &sibyl::DEF) {
         return super::sibyl::SIZE;
+    }
+    if std::ptr::eq(def, &quartz::DEF) {
+        return super::quartz::SIZE;
+    }
+    if std::ptr::eq(def, &stormo::DEF) {
+        return super::stormo::SIZE_V;
     }
     if std::ptr::eq(def, &iris::DEF) {
         return Vec2::from(iris::DEFAULT_SIZE);
@@ -233,6 +239,26 @@ pub fn draw(
     }
     if kind == ModuleKind::Sibyl {
         super::sibyl::draw(
+            v,
+            id,
+            accent,
+            m,
+            (midi.0, outputs.first().copied().unwrap_or(false)),
+        );
+        return MapButton::default();
+    }
+    if kind == ModuleKind::Stormo {
+        super::stormo::draw(
+            v,
+            id,
+            accent,
+            m,
+            (midi.0, outputs.first().copied().unwrap_or(false)),
+        );
+        return MapButton::default();
+    }
+    if kind == ModuleKind::Quartz {
+        super::quartz::draw(
             v,
             id,
             accent,
@@ -437,7 +463,9 @@ pub fn draw(
         | ModuleKind::Orrery
         | ModuleKind::Looper
         | ModuleKind::Iris
-        | ModuleKind::Sibyl => {}
+        | ModuleKind::Sibyl
+        | ModuleKind::Quartz
+        | ModuleKind::Stormo => {}
         ModuleKind::Resonator => resonator_display(&screen, p),
         ModuleKind::Filter => filter_display(&screen, p),
         ModuleKind::Delay => delay_display(&screen, p, echo_seconds(p, v.tempo)),
@@ -757,6 +785,8 @@ fn readout(kind: ModuleKind, p: &ModuleParams, tempo: f32) -> (String, String) {
         ModuleKind::Looper => super::looper::readout(p),
         ModuleKind::Iris => super::iris::readout(p),
         ModuleKind::Sibyl => super::sibyl::readout(p),
+        ModuleKind::Quartz => super::quartz::readout(p),
+        ModuleKind::Stormo => super::stormo::readout(p),
         ModuleKind::Automa => super::automa::readout(p),
         ModuleKind::Colloid => super::colloid::readout(p),
         ModuleKind::Orrery => super::orrery::readout(p),
