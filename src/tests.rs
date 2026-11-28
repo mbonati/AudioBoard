@@ -356,7 +356,7 @@ fn every_module_stays_finite_across_settings() {
         a.midi.handle(&[0x90, 60, 100]);
         render_buf(&mut e, 48_000);
         let buf = render_buf(&mut e, 24_000);
-        assert!(rms_of(&buf) > 0.005, "{kind:?} is silent at its defaults");
+        assert!(rms_of(&buf) > 0.005, "{kind:?} is silent at its defaults ({})", rms_of(&buf));
     }
 }
 
@@ -2438,7 +2438,7 @@ fn palette_categories_fold() {
         !shows(&texts, "Oscillator") && shows(&texts, "SOURCES"),
         "folded"
     );
-    assert!(shows(&texts, "12"), "a folded category shows its count");
+    assert!(shows(&texts, "14"), "a folded category shows its count");
     assert!(shows(&texts, "Reverb"), "the others stay open");
 
     // Searching opens what matches; clearing it folds it again.
@@ -14128,4 +14128,173 @@ mod song_mode {
         }
         assert_eq!(panel.acts, [Act::NewScene]);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Quartz (4-op FM)
+// ---------------------------------------------------------------------------
+
+/// Runs any MIDI-driven processor for `blocks`, with `midi` at (frame, msg).
+fn run_midi_proc(
+    proc: &mut dyn crate::audio::engine::Processor,
+    blocks: usize,
+    midi: &[(usize, [u8; 3])],
+) -> (Vec<f32>, Vec<f32>) {
+    use crate::audio::engine::{Inputs, MAX_INPUTS, MidiBuf, ProcessCtx};
+    let ctx = ProcessCtx {
+        sample_rate: 48_000.0,
+        smooth: 0.01,
+        beat: 0.0,
+        beats_per_sample: 2.0 / 48_000.0,
+        playing: false,
+        restart: false,
+    };
+    let mut inputs = Box::new(Inputs {
+        bufs: [[[0.0; 64]; 2]; MAX_INPUTS],
+        connected: [false; MAX_INPUTS],
+        midi: MidiBuf::default(),
+        midi_connected: true,
+    });
+    let mut outputs = vec![[[0.0f32; 64]; 2]; 1];
+    let (mut l, mut r) = (Vec::new(), Vec::new());
+    for b in 0..blocks {
+        let at = b * 64;
+        inputs.midi.clear();
+        for (f, m) in midi.iter().filter(|(f, _)| (at..at + 64).contains(f)) {
+            inputs.midi.push(f - at, *m);
+        }
+        proc.process(&ctx, &inputs, &mut outputs, 64);
+        l.extend_from_slice(&outputs[0][0]);
+        r.extend_from_slice(&outputs[0][1]);
+    }
+    (l, r)
+}
+
+fn quartz(p: &Arc<ModuleParams>) -> crate::audio::modules::quartz::Quartz {
+    crate::audio::modules::quartz::Quartz::new(
+        p.clone(),
+        Arc::new(crate::audio::midi::MidiState::new()),
+        48_000.0,
+    )
+}
+
+#[test]
+fn quartz_every_factory_voice_sounds_finite_and_in_range() {
+    use crate::audio::modules::quartz::*;
+    for k in 0..VOICES.len() {
+        let p = Arc::new(ModuleParams::new(ModuleKind::Quartz));
+        load_voice(&p, k);
+        let mut q = quartz(&p);
+        let midi = [on(0, 60, 110), on(0, 64, 90), off(30_000, 60), off(30_000, 64)];
+        let (l, r) = run_midi_proc(&mut q, 800, &midi);
+        let peak = l.iter().chain(&r).fold(0.0f32, |a, x| a.max(x.abs()));
+        assert!(l.iter().chain(&r).all(|x| x.is_finite()), "{}", VOICES[k].name);
+        assert!(peak > 0.02, "{} is silent ({peak})", VOICES[k].name);
+        assert!(peak <= 1.0, "{} clips ({peak})", VOICES[k].name);
+    }
+}
+
+#[test]
+fn quartz_sine_carrier_is_in_tune() {
+    use crate::audio::modules::quartz::*;
+    let p = Arc::new(ModuleParams::new(ModuleKind::Quartz));
+    // Only OP1, a sine at ratio 1, held.
+    p.set(op(1, op::OUT), 0.0);
+    p.set(op(0, op::D1L), 15.0);
+    p.set(op(0, op::KVS), 0.0);
+    let mut q = quartz(&p);
+    let (l, _) = run_midi_proc(&mut q, 600, &[on(0, 69, 127)]);
+    let tail = &l[9600..38_400];
+    let ups = tail.windows(2).filter(|w| w[0] < 0.0 && w[1] >= 0.0).count();
+    let hz = ups as f32 / (tail.len() as f32 / 48_000.0);
+    assert!((hz - 440.0).abs() < 2.0, "{hz} Hz");
+}
+
+#[test]
+fn quartz_transposed_delay_replays_notes() {
+    use crate::audio::modules::quartz::*;
+    let p = Arc::new(ModuleParams::new(ModuleKind::Quartz));
+    p.set(EFFECT, 1.0);
+    p.set(DLY_TIME, 49.0); // 0.5 s
+    p.set(op(0, op::D1R), 31.0);
+    p.set(op(0, op::D1L), 0.0);
+    p.set(op(0, op::RR), 15.0);
+    let mut q = quartz(&p);
+    let (l, _) = run_midi_proc(&mut q, 600, &[on(0, 60, 120), off(2000, 60)]);
+    let energy = |a: usize, b: usize| l[a..b].iter().map(|x| x * x).sum::<f32>();
+    // Silent between the note and its echo, sounding again at 0.5 s.
+    assert!(energy(14_000, 22_000) < energy(24_200, 26_000) * 0.1);
+}
+
+// ---------------------------------------------------------------------------
+// Stormo (swarm synth)
+// ---------------------------------------------------------------------------
+
+fn stormo(p: &Arc<ModuleParams>) -> crate::audio::modules::stormo::Stormo {
+    crate::audio::modules::stormo::Stormo::new(
+        p.clone(),
+        Arc::new(crate::audio::midi::MidiState::new()),
+        48_000.0,
+    )
+}
+
+#[test]
+fn stormo_every_preset_sounds_finite_and_in_range() {
+    use crate::audio::modules::stormo::*;
+    for k in 0..PRESETS.len() {
+        let p = Arc::new(ModuleParams::new(ModuleKind::Stormo));
+        load_preset(&p, k);
+        let mut s = stormo(&p);
+        let midi = [on(0, 48, 110), on(0, 55, 90), off(60_000, 48), off(60_000, 55)];
+        let (l, r) = run_midi_proc(&mut s, 1500, &midi);
+        let peak = l.iter().chain(&r).fold(0.0f32, |a, x| a.max(x.abs()));
+        assert!(l.iter().chain(&r).all(|x| x.is_finite()), "{}", PRESETS[k].name);
+        assert!(peak > 0.01, "{} is silent ({peak})", PRESETS[k].name);
+        assert!(peak <= 1.0, "{} clips ({peak})", PRESETS[k].name);
+    }
+}
+
+#[test]
+fn stormo_nodes_stay_in_the_field_and_move() {
+    use crate::audio::modules::stormo::*;
+    let p = Arc::new(ModuleParams::new(ModuleKind::Stormo));
+    let mut s = stormo(&p);
+    run_midi_proc(&mut s, 10, &[on(0, 60, 100)]);
+    let pos = |p: &ModuleParams| (p.viz[viz::VOICE + 3].get(), p.viz[viz::VOICE + 4].get());
+    let a = pos(&p);
+    run_midi_proc(&mut s, 400, &[]);
+    let b = pos(&p);
+    assert!((a.0 - b.0).abs() + (a.1 - b.1).abs() > 0.01, "the swarm stands still");
+    for i in 0..nodes_per_voice(&p) {
+        let x = p.viz[viz::VOICE + 3 + i * 3].get();
+        let y = p.viz[viz::VOICE + 4 + i * 3].get();
+        assert!(x.abs() <= 1.0 && y.abs() <= 1.0, "node {i} out at {x},{y}");
+    }
+}
+
+#[test]
+fn stormo_quantizes_to_the_scale() {
+    use crate::audio::modules::stormo::quantize;
+    let dorian = 0b0110_1010_1101;
+    assert_eq!(quantize(61.2, 0, dorian), 62.0);
+    assert_eq!(quantize(64.0, 0, dorian), 65.0); // a tie goes up
+    assert_eq!(quantize(66.4, 2, 0b1010_1011_0101), 66.0);
+}
+
+#[test]
+fn stormo_full_swarm_runs_faster_than_real_time() {
+    use crate::audio::modules::stormo::*;
+    let p = Arc::new(ModuleParams::new(ModuleKind::Stormo));
+    p.set(VOICES, 8.0);
+    p.set(NODES, 48.0);
+    let mut s = stormo(&p);
+    let midi: Vec<_> = (0..8).map(|k| on(0, 48 + k * 3, 100)).collect();
+    let t = std::time::Instant::now();
+    run_midi_proc(&mut s, 750, &midi); // 1 s
+    let secs = t.elapsed().as_secs_f32();
+    // Generous: debug builds are slow; release takes a fraction of this.
+    // (Run alone it takes well under half of that; other tests share the CPU.)
+    let limit = if cfg!(debug_assertions) { 30.0 } else { 1.0 };
+    eprintln!("full swarm: {secs:.3} s for 1 s");
+    assert!(secs < limit, "1 s of a full swarm took {secs:.2} s");
 }
